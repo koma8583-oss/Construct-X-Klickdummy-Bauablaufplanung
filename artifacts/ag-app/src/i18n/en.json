@@ -1,0 +1,109 @@
+{
+  "login": {
+    "title": "Login",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "noAccount": "Don't have an account?",
+    "register": "Register"
+  },
+  "register": {
+    "title": "Create Account",
+    "name": "Full Name",
+    "email": "Email",
+    "password": "Password",
+    "companyName": "Company Name (Client)",
+    "submit": "Create account",
+    "hasAccount": "Already have an account?",
+    "login": "Sign in"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "proposals": "Proposals",
+    "contractors": "Contractors",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "projects": "Total Projects",
+    "pending": "Pending",
+    "critical": "Critical",
+    "confirmed": "Confirmed",
+    "upcoming": "Upcoming Tasks (7 Days)",
+    "recentActivity": "Recent Activity"
+  },
+  "projects": {
+    "title": "Projects",
+    "create": "New Project",
+    "search": "Search projects...",
+    "status": "Status",
+    "takte": "Tasks",
+    "noProjects": "No projects found.",
+    "newProject": "Create Project",
+    "name": "Project Name",
+    "description": "Description",
+    "location": "Location",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "save": "Save",
+    "cancel": "Cancel",
+    "details": "Project Details",
+    "gantt": "Schedule",
+    "proposals": "Proposals",
+    "contractors": "Assign Contractor"
+  },
+  "takt": {
+    "zone": "Zone",
+    "gewerk": "Trade",
+    "start": "Planned Start",
+    "end": "Planned End",
+    "buffer": "Buffer",
+    "delegate": "Delegate",
+    "contractor": "Contractor",
+    "message": "Message",
+    "confirm": "Delegate",
+    "status": {
+      "UNDELEGATED": "Undelegated",
+      "PENDING": "Pending",
+      "CONFIRMED": "Confirmed",
+      "ALTERNATIVE_PROPOSED": "Alternative",
+      "REJECTED": "Rejected"
+    }
+  },
+  "proposals": {
+    "title": "Proposals",
+    "critical": "Critical (Outside Buffer)",
+    "accept": "Accept",
+    "reject": "Reject",
+    "comment": "Comment (optional)"
+  },
+  "contractors": {
+    "title": "Contractors",
+    "search": "Search contractors...",
+    "add": "Add to Project",
+    "remove": "Remove",
+    "email": "Email",
+    "noContractors": "No contractors found."
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "team": "Team",
+    "webhooks": "Webhooks",
+    "language": "Language",
+    "save": "Save Settings",
+    "name": "Name"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Saved successfully",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close"
+  }
+}

@@ -3,20 +3,38 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: organizations
+    description: Organization management (AG and AN orgs)
+  - name: projects
+    description: AG project management
+  - name: takte
+    description: Taktplan entries (construction schedule cycles)
+  - name: delegations
+    description: Task delegations from AG to AN
+  - name: delegation-responses
+    description: AN responses to delegations
+  - name: resources
+    description: AN resource management (employees, equipment, machines)
+  - name: resource-assignments
+    description: AN Gantt resource assignments
+  - name: webhooks
+    description: Webhook subscriptions and event log
+  - name: dashboard
+    description: Dashboard summary endpoints
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +42,934 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ──────────── Organizations ────────────
+  /organizations:
+    get:
+      operationId: listOrganizations
+      tags: [organizations]
+      summary: List organizations (optionally filter by type)
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [AG, AN]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Organization"
+    post:
+      operationId: createOrganization
+      tags: [organizations]
+      summary: Create a new organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+
+  /organizations/me:
+    get:
+      operationId: getMyOrganizations
+      tags: [organizations]
+      summary: Get current user's organization memberships
+      responses:
+        "200":
+          description: User's organizations with roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationMembership"
+
+  /organizations/{orgId}:
+    get:
+      operationId: getOrganization
+      tags: [organizations]
+      summary: Get organization by ID
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+    patch:
+      operationId: updateOrganization
+      tags: [organizations]
+      summary: Update organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationRequest"
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+
+  /organizations/{orgId}/members:
+    get:
+      operationId: listOrganizationMembers
+      tags: [organizations]
+      summary: List members of an organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Members list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationMember"
+    post:
+      operationId: addOrganizationMember
+      tags: [organizations]
+      summary: Add a member to an organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberRequest"
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationMember"
+
+  /organizations/{orgId}/members/{userId}:
+    delete:
+      operationId: removeOrganizationMember
+      tags: [organizations]
+      summary: Remove a member from an organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Member removed
+
+  # ──────────── User Profile ────────────
+  /users/me:
+    get:
+      operationId: getMyProfile
+      tags: [organizations]
+      summary: Get current user's profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    patch:
+      operationId: updateMyProfile
+      tags: [organizations]
+      summary: Update current user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  # ──────────── Projects (AG) ────────────
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects for the current AG organization
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, ARCHIVED]
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{projectId}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get project details
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{projectId}/contractors:
+    get:
+      operationId: listProjectContractors
+      tags: [projects]
+      summary: List AN organizations assigned to this project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of contractor organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Organization"
+    post:
+      operationId: addProjectContractor
+      tags: [projects]
+      summary: Add a subcontractor (AN org) to a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddProjectContractorRequest"
+      responses:
+        "201":
+          description: Contractor added
+
+  /projects/{projectId}/contractors/{anOrgId}:
+    delete:
+      operationId: removeProjectContractor
+      tags: [projects]
+      summary: Remove a subcontractor from a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: anOrgId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+
+  # ──────────── Takte ────────────
+  /projects/{projectId}/takte:
+    get:
+      operationId: listTakte
+      tags: [takte]
+      summary: List all Takte (schedule entries) for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of Takte
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Takt"
+    post:
+      operationId: createTakt
+      tags: [takte]
+      summary: Create a new Takt entry
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaktRequest"
+      responses:
+        "201":
+          description: Created Takt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Takt"
+
+  /projects/{projectId}/takte/{taktId}:
+    get:
+      operationId: getTakt
+      tags: [takte]
+      summary: Get a Takt entry
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taktId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Takt details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Takt"
+    patch:
+      operationId: updateTakt
+      tags: [takte]
+      summary: Update a Takt entry (incl. Gantt bar move/resize)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taktId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaktRequest"
+      responses:
+        "200":
+          description: Updated Takt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Takt"
+    delete:
+      operationId: deleteTakt
+      tags: [takte]
+      summary: Delete a Takt entry
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taktId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────── Delegations ────────────
+  /delegations:
+    get:
+      operationId: listDelegations
+      tags: [delegations]
+      summary: List delegations (AG sees outgoing, AN sees incoming)
+      parameters:
+        - name: projectId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, ALTERNATIVE_PROPOSED, REJECTED, CANCELLED]
+        - name: anOrgId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of delegations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Delegation"
+    post:
+      operationId: createDelegation
+      tags: [delegations]
+      summary: AG creates a delegation (assigns a Takt to an AN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDelegationRequest"
+      responses:
+        "201":
+          description: Created delegation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delegation"
+
+  /delegations/{delegationId}:
+    get:
+      operationId: getDelegation
+      tags: [delegations]
+      summary: Get delegation details
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delegation details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delegation"
+    patch:
+      operationId: updateDelegation
+      tags: [delegations]
+      summary: AG updates or cancels a delegation
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDelegationRequest"
+      responses:
+        "200":
+          description: Updated delegation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delegation"
+    delete:
+      operationId: deleteDelegation
+      tags: [delegations]
+      summary: Cancel/delete a delegation
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────── Delegation Responses ────────────
+  /delegations/{delegationId}/responses:
+    get:
+      operationId: listDelegationResponses
+      tags: [delegation-responses]
+      summary: Get all responses for a delegation
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of responses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DelegationResponse"
+    post:
+      operationId: createDelegationResponse
+      tags: [delegation-responses]
+      summary: AN submits a response (confirm or propose alternative)
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDelegationResponseRequest"
+      responses:
+        "201":
+          description: Created response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationResponse"
+
+  /delegations/{delegationId}/responses/{responseId}:
+    patch:
+      operationId: updateDelegationResponse
+      tags: [delegation-responses]
+      summary: AG accepts or rejects a delegation response
+      parameters:
+        - name: delegationId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: responseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDelegationResponseDecisionRequest"
+      responses:
+        "200":
+          description: Updated response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationResponse"
+
+  # ──────────── Resources (AN) ────────────
+  /resources:
+    get:
+      operationId: listResources
+      tags: [resources]
+      summary: List resources for the current AN organization
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+      responses:
+        "200":
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Resource"
+    post:
+      operationId: createResource
+      tags: [resources]
+      summary: Create a new resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResourceRequest"
+      responses:
+        "201":
+          description: Created resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+
+  /resources/{resourceId}:
+    patch:
+      operationId: updateResource
+      tags: [resources]
+      summary: Update a resource
+      parameters:
+        - name: resourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateResourceRequest"
+      responses:
+        "200":
+          description: Updated resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+    delete:
+      operationId: deleteResource
+      tags: [resources]
+      summary: Delete a resource
+      parameters:
+        - name: resourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────── Resource Assignments (AN Gantt) ────────────
+  /resource-assignments:
+    get:
+      operationId: listResourceAssignments
+      tags: [resource-assignments]
+      summary: List resource assignments (optionally filtered by delegation)
+      parameters:
+        - name: delegationId
+          in: query
+          schema:
+            type: string
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: List of resource assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceAssignment"
+    post:
+      operationId: createResourceAssignment
+      tags: [resource-assignments]
+      summary: Assign a resource to a delegation period
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResourceAssignmentRequest"
+      responses:
+        "201":
+          description: Created assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAssignment"
+
+  /resource-assignments/{assignmentId}:
+    patch:
+      operationId: updateResourceAssignment
+      tags: [resource-assignments]
+      summary: Update resource assignment (Gantt drag & drop)
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateResourceAssignmentRequest"
+      responses:
+        "200":
+          description: Updated assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAssignment"
+    delete:
+      operationId: deleteResourceAssignment
+      tags: [resource-assignments]
+      summary: Remove a resource assignment
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  # ──────────── Webhooks ────────────
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [webhooks]
+      summary: List webhook subscriptions for current org
+      responses:
+        "200":
+          description: List of webhook subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookSubscription"
+    post:
+      operationId: createWebhook
+      tags: [webhooks]
+      summary: Register a new webhook subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+      responses:
+        "201":
+          description: Created webhook
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+
+  /webhooks/{webhookId}:
+    patch:
+      operationId: updateWebhook
+      tags: [webhooks]
+      summary: Update a webhook subscription
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWebhookRequest"
+      responses:
+        "200":
+          description: Updated webhook
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+    delete:
+      operationId: deleteWebhook
+      tags: [webhooks]
+      summary: Delete a webhook subscription
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /webhooks/events:
+    get:
+      operationId: listWebhookEvents
+      tags: [webhooks]
+      summary: List webhook event delivery log
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, DELIVERED, FAILED]
+      responses:
+        "200":
+          description: Event log
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookEvent"
+
+  # ──────────── Dashboard (wow endpoints) ────────────
+  /dashboard/ag:
+    get:
+      operationId: getAgDashboard
+      tags: [dashboard]
+      summary: AG dashboard summary
+      responses:
+        "200":
+          description: AG dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgDashboard"
+
+  /dashboard/an:
+    get:
+      operationId: getAnDashboard
+      tags: [dashboard]
+      summary: AN dashboard summary
+      responses:
+        "200":
+          description: AN dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnDashboard"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +977,713 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # ── Organization ──
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [AG, AN]
+        description:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, type, createdAt]
+
+    CreateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [AG, AN]
+        description:
+          type: string
+        contactEmail:
+          type: string
+      required: [name, type]
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        contactEmail:
+          type: string
+
+    OrganizationMembership:
+      type: object
+      properties:
+        organization:
+          $ref: "#/components/schemas/Organization"
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+        joinedAt:
+          type: string
+          format: date-time
+      required: [organization, role, joinedAt]
+
+    OrganizationMember:
+      type: object
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+        joinedAt:
+          type: string
+          format: date-time
+      required: [userId, name, email, role, joinedAt]
+
+    AddMemberRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+      required: [email]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        preferredLanguage:
+          type: string
+          enum: [de, en]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, createdAt]
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        preferredLanguage:
+          type: string
+          enum: [de, en]
+
+    # ── Project ──
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        agOrgId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, ARCHIVED]
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        taktCount:
+          type: integer
+        delegationCount:
+          type: integer
+        pendingResponseCount:
+          type: integer
+      required: [id, agOrgId, name, status, createdAt, taktCount, delegationCount, pendingResponseCount]
+
+    CreateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        location:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+      required: [name]
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        location:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, ARCHIVED]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    # ── Takt ──
+    Takt:
+      type: object
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        taktNumber:
+          type: integer
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+          nullable: true
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+          nullable: true
+        latestEnd:
+          type: string
+          format: date
+          nullable: true
+        lvReference:
+          type: string
+          nullable: true
+          description: "Placeholder for Leistungsverzeichnis reference"
+        bimReference:
+          type: string
+          nullable: true
+          description: "Placeholder for BIM model reference"
+        requiredResources:
+          type: string
+          nullable: true
+          description: "Free-text description of required resources"
+        delegationStatus:
+          type: string
+          enum: [UNDELEGATED, PENDING, CONFIRMED, ALTERNATIVE_PROPOSED, REJECTED]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, projectId, taktNumber, zone, gewerk, plannedStart, plannedEnd, createdAt]
+
+    CreateTaktRequest:
+      type: object
+      properties:
+        taktNumber:
+          type: integer
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+        latestEnd:
+          type: string
+          format: date
+        lvReference:
+          type: string
+        bimReference:
+          type: string
+        requiredResources:
+          type: string
+      required: [taktNumber, zone, gewerk, plannedStart, plannedEnd]
+
+    UpdateTaktRequest:
+      type: object
+      properties:
+        taktNumber:
+          type: integer
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+        latestEnd:
+          type: string
+          format: date
+        lvReference:
+          type: string
+        bimReference:
+          type: string
+        requiredResources:
+          type: string
+
+    # ── Delegation ──
+    Delegation:
+      type: object
+      properties:
+        id:
+          type: string
+        taktId:
+          type: string
+        projectId:
+          type: string
+        agOrgId:
+          type: string
+        anOrgId:
+          type: string
+        takt:
+          $ref: "#/components/schemas/Takt"
+        anOrganization:
+          $ref: "#/components/schemas/Organization"
+        agOrganization:
+          $ref: "#/components/schemas/Organization"
+        requestedStart:
+          type: string
+          format: date
+        requestedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+          nullable: true
+        latestEnd:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, ALTERNATIVE_PROPOSED, REJECTED, CANCELLED]
+        message:
+          type: string
+          nullable: true
+        isWithinBuffer:
+          type: boolean
+          nullable: true
+          description: "True if the latest AN proposal is within the buffer window"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, taktId, projectId, agOrgId, anOrgId, requestedStart, requestedEnd, status, createdAt, updatedAt]
+
+    AddProjectContractorRequest:
+      type: object
+      properties:
+        anOrgId:
+          type: string
+      required: [anOrgId]
+
+    UpdateDelegationResponseDecisionRequest:
+      type: object
+      properties:
+        agDecision:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        agComment:
+          type: string
+      required: [agDecision]
+
+    CreateDelegationRequest:
+      type: object
+      properties:
+        taktId:
+          type: string
+        anOrgId:
+          type: string
+        requestedStart:
+          type: string
+          format: date
+        requestedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+        latestEnd:
+          type: string
+          format: date
+        message:
+          type: string
+      required: [taktId, anOrgId, requestedStart, requestedEnd]
+
+    UpdateDelegationRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [CANCELLED]
+        message:
+          type: string
+
+    # ── Delegation Response ──
+    DelegationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        delegationId:
+          type: string
+        type:
+          type: string
+          enum: [CONFIRMED, ALTERNATIVE, REJECTED]
+        proposedStart:
+          type: string
+          format: date
+          nullable: true
+        proposedEnd:
+          type: string
+          format: date
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        isWithinBuffer:
+          type: boolean
+          description: "True if proposed dates are within the delegation buffer window"
+        agDecision:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+          nullable: true
+        agComment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, delegationId, type, isWithinBuffer, createdAt]
+
+    CreateDelegationResponseRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [CONFIRMED, ALTERNATIVE, REJECTED]
+        proposedStart:
+          type: string
+          format: date
+        proposedEnd:
+          type: string
+          format: date
+        comment:
+          type: string
+      required: [type]
+
+    # ── Resource ──
+    Resource:
+      type: object
+      properties:
+        id:
+          type: string
+        anOrgId:
+          type: string
+        type:
+          type: string
+          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+        name:
+          type: string
+        qualification:
+          type: string
+          nullable: true
+        dailyCapacityHours:
+          type: number
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          description: "Hex color for Gantt display"
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, anOrgId, type, name, createdAt]
+
+    CreateResourceRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+        name:
+          type: string
+        qualification:
+          type: string
+        dailyCapacityHours:
+          type: number
+        color:
+          type: string
+      required: [type, name]
+
+    UpdateResourceRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+        name:
+          type: string
+        qualification:
+          type: string
+        dailyCapacityHours:
+          type: number
+        color:
+          type: string
+
+    # ── Resource Assignment ──
+    ResourceAssignment:
+      type: object
+      properties:
+        id:
+          type: string
+        resourceId:
+          type: string
+        resource:
+          $ref: "#/components/schemas/Resource"
+        delegationId:
+          type: string
+        delegation:
+          $ref: "#/components/schemas/Delegation"
+        fromDate:
+          type: string
+          format: date
+        toDate:
+          type: string
+          format: date
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, resourceId, delegationId, fromDate, toDate, createdAt]
+
+    CreateResourceAssignmentRequest:
+      type: object
+      properties:
+        resourceId:
+          type: string
+        delegationId:
+          type: string
+        fromDate:
+          type: string
+          format: date
+        toDate:
+          type: string
+          format: date
+        note:
+          type: string
+      required: [resourceId, delegationId, fromDate, toDate]
+
+    UpdateResourceAssignmentRequest:
+      type: object
+      properties:
+        fromDate:
+          type: string
+          format: date
+        toDate:
+          type: string
+          format: date
+        note:
+          type: string
+
+    # ── Webhook ──
+    WebhookSubscription:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              - delegation.created
+              - delegation.confirmed
+              - delegation.alternative_proposed
+              - delegation.rejected
+              - delegation.cancelled
+              - response.accepted
+              - response.rejected
+        active:
+          type: boolean
+        secret:
+          type: string
+          nullable: true
+          description: "HMAC signing secret for payload verification"
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, orgId, url, events, active, createdAt]
+
+    CreateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+      required: [url, events]
+
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        secret:
+          type: string
+
+    WebhookEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        subscriptionId:
+          type: string
+        event:
+          type: string
+        payload:
+          type: string
+          description: "JSON-encoded webhook event payload"
+        status:
+          type: string
+          enum: [PENDING, DELIVERED, FAILED]
+        attempts:
+          type: integer
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, subscriptionId, event, payload, status, attempts, createdAt]
+
+    # ── Dashboards ──
+    AgDashboard:
+      type: object
+      properties:
+        totalProjects:
+          type: integer
+        activeProjects:
+          type: integer
+        pendingDelegations:
+          type: integer
+        confirmedDelegations:
+          type: integer
+        alternativeProposals:
+          type: integer
+        criticalProposals:
+          type: integer
+          description: "Proposals outside buffer window"
+        upcomingTakte:
+          type: array
+          items:
+            $ref: "#/components/schemas/Takt"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/Delegation"
+      required: [totalProjects, activeProjects, pendingDelegations, confirmedDelegations, alternativeProposals, criticalProposals, upcomingTakte, recentActivity]
+
+    AnDashboard:
+      type: object
+      properties:
+        pendingRequests:
+          type: integer
+        confirmedWork:
+          type: integer
+        upcomingDeadlines:
+          type: array
+          items:
+            $ref: "#/components/schemas/Delegation"
+        resourceUtilization:
+          type: array
+          items:
+            type: object
+            properties:
+              resource:
+                $ref: "#/components/schemas/Resource"
+              utilizationPercent:
+                type: number
+            required: [resource, utilizationPercent]
+        recentRequests:
+          type: array
+          items:
+            $ref: "#/components/schemas/Delegation"
+      required: [pendingRequests, confirmedWork, upcomingDeadlines, resourceUtilization, recentRequests]

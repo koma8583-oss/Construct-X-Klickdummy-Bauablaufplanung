@@ -1,0 +1,109 @@
+{
+  "login": {
+    "title": "Anmelden",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "noAccount": "Noch kein Konto?",
+    "register": "Registrieren"
+  },
+  "register": {
+    "title": "Konto erstellen",
+    "name": "Vollständiger Name",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "companyName": "Unternehmensname (AG)",
+    "submit": "Konto erstellen",
+    "hasAccount": "Bereits ein Konto?",
+    "login": "Anmelden"
+  },
+  "nav": {
+    "dashboard": "Übersicht",
+    "projects": "Projekte",
+    "proposals": "Vorschläge",
+    "contractors": "Nachunternehmer",
+    "settings": "Einstellungen",
+    "logout": "Abmelden"
+  },
+  "dashboard": {
+    "title": "Übersicht",
+    "projects": "Gesamtprojekte",
+    "pending": "Ausstehend",
+    "critical": "Kritisch",
+    "confirmed": "Bestätigt",
+    "upcoming": "Anstehende Takte (7 Tage)",
+    "recentActivity": "Kürzliche Aktivität"
+  },
+  "projects": {
+    "title": "Projekte",
+    "create": "Neues Projekt",
+    "search": "Projekte durchsuchen...",
+    "status": "Status",
+    "takte": "Takte",
+    "noProjects": "Keine Projekte gefunden.",
+    "newProject": "Projekt erstellen",
+    "name": "Projektname",
+    "description": "Beschreibung",
+    "location": "Ort",
+    "startDate": "Startdatum",
+    "endDate": "Enddatum",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "details": "Projekt Details",
+    "gantt": "Taktplan",
+    "proposals": "Vorschläge",
+    "contractors": "AN zuweisen"
+  },
+  "takt": {
+    "zone": "Bereich",
+    "gewerk": "Gewerk",
+    "start": "Geplanter Start",
+    "end": "Geplantes Ende",
+    "buffer": "Puffer",
+    "delegate": "Delegieren",
+    "contractor": "Nachunternehmer",
+    "message": "Nachricht",
+    "confirm": "Delegieren",
+    "status": {
+      "UNDELEGATED": "Nicht delegiert",
+      "PENDING": "Ausstehend",
+      "CONFIRMED": "Bestätigt",
+      "ALTERNATIVE_PROPOSED": "Gegenvorschlag",
+      "REJECTED": "Abgelehnt"
+    }
+  },
+  "proposals": {
+    "title": "Vorschläge",
+    "critical": "Kritisch (Außerhalb Puffer)",
+    "accept": "Akzeptieren",
+    "reject": "Ablehnen",
+    "comment": "Kommentar (optional)"
+  },
+  "contractors": {
+    "title": "Nachunternehmer",
+    "search": "AN durchsuchen...",
+    "add": "Zum Projekt hinzufügen",
+    "remove": "Entfernen",
+    "email": "E-Mail",
+    "noContractors": "Keine Nachunternehmer gefunden."
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "team": "Team",
+    "webhooks": "Webhooks",
+    "language": "Sprache",
+    "save": "Einstellungen speichern",
+    "name": "Name"
+  },
+  "common": {
+    "loading": "Lädt...",
+    "error": "Ein Fehler ist aufgetreten",
+    "success": "Erfolgreich gespeichert",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "close": "Schließen"
+  }
+}

@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/an/"
+title = "TaktKoord – Nachunternehmen"
+version = "1.0.0"
+id = "artifacts/an-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/an/" ]
+localPort = 23934
+
+[services.development]
+run = "pnpm --filter @workspace/an-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/an-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/an-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23934"
+BASE_PATH = "/an/"

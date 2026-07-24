@@ -1,0 +1,2 @@
+- [Express v5 params typing](express-v5-params.md) — ParamsDictionary in @types/express-serve-static-core@5.1.2 is `string | string[]`; add `as string` casts to all req.params access in drizzle eq() calls.
+- [DB schema & backend routes](taktkoord-backend.md) — TaktKoord backend: session auth (bcryptjs + express-session + connect-pg-simple), 7 schema files, full route set; zod v4 in schema files, plain zod in route files.

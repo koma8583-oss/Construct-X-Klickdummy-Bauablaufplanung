@@ -1,0 +1,126 @@
+import { useState } from "react";
+import { useAuth } from "@/contexts/auth";
+import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useTranslation } from "react-i18next";
+import { SiHexo } from "react-icons/si";
+import { Loader2 } from "lucide-react";
+
+export default function Register() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const { register, user } = useAuth();
+  const [, setLocation] = useLocation();
+  const { t } = useTranslation();
+
+  if (user) {
+    setLocation("/");
+    return null;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await register({ name, email, password, companyName, orgType: "AN" });
+      setLocation("/");
+    } catch (err: any) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-12 h-12 rounded bg-primary/20 flex items-center justify-center text-primary mb-4">
+            <SiHexo size={24} />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">TaktKoord</h1>
+          <p className="text-sm text-primary uppercase font-bold tracking-widest mt-1">
+            Operations
+          </p>
+        </div>
+
+        <div className="bg-card border border-border p-6 rounded-lg shadow-xl">
+          <h2 className="text-lg font-semibold mb-6">{t("auth.register")}</h2>
+          
+          {error && (
+            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded mb-4">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">{t("auth.name")}</Label>
+              <Input
+                id="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="companyName">{t("auth.companyName")}</Label>
+              <Input
+                id="companyName"
+                required
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">{t("auth.email")}</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">{t("auth.password")}</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t("auth.register")}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            {t("auth.haveAccount")}{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              {t("auth.login")}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

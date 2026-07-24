@@ -1,0 +1,92 @@
+{
+  "common": {
+    "loading": "Lädt...",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "add": "Hinzufügen",
+    "confirm": "Bestätigen",
+    "reject": "Ablehnen",
+    "proposeAlternative": "Alternative vorschlagen",
+    "status": {
+      "PENDING": "Ausstehend",
+      "CONFIRMED": "Bestätigt",
+      "ALTERNATIVE_PROPOSED": "Alternative",
+      "REJECTED": "Abgelehnt",
+      "CANCELLED": "Storniert"
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "requests": "Anfragen",
+    "gantt": "Gantt-Plan",
+    "resources": "Ressourcen",
+    "settings": "Einstellungen",
+    "logout": "Abmelden"
+  },
+  "dashboard": {
+    "pendingRequests": "Offene Anfragen",
+    "confirmedWork": "Bestätigte Arbeiten",
+    "criticalProposals": "Kritische Vorschläge",
+    "upcomingDeadlines": "Kommende Termine (14 Tage)",
+    "resourceUtilization": "Ressourcenauslastung (Monat)",
+    "recentRequests": "Aktuelle Anfragen"
+  },
+  "requests": {
+    "title": "Anfragen",
+    "empty": "Keine Anfragen gefunden.",
+    "filterStatus": "Status filtern",
+    "all": "Alle",
+    "withinBuffer": "Innerhalb Puffer",
+    "outsideBuffer": "Außerhalb Puffer - AG Freigabe nötig",
+    "detail": {
+      "taktInfo": "Takt Informationen",
+      "timeline": "Zeitplan",
+      "response": "Rückmeldung",
+      "gewerk": "Gewerk",
+      "zone": "Zone",
+      "taktNumber": "Takt",
+      "ag": "Auftraggeber",
+      "requestedDates": "Angefragter Zeitraum",
+      "bufferWindow": "Pufferfenster",
+      "requiredResources": "Benötigte Ressourcen",
+      "history": "Verlauf",
+      "proposeTitle": "Alternative Termine",
+      "commentLabel": "Kommentar"
+    }
+  },
+  "gantt": {
+    "title": "Ressourcen-Gantt",
+    "empty": "Keine Zuweisungen."
+  },
+  "resources": {
+    "title": "Ressourcenverwaltung",
+    "tabs": {
+      "EMPLOYEE": "Mitarbeiter",
+      "EQUIPMENT": "Gerät",
+      "MACHINE": "Maschinen",
+      "OTHER": "Sonstige"
+    },
+    "name": "Name",
+    "qualification": "Qualifikation",
+    "capacity": "Tageskapazität (h)",
+    "color": "Farbe"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "team": "Team",
+    "webhooks": "Webhooks"
+  },
+  "auth": {
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "name": "Name",
+    "companyName": "Firmenname",
+    "noAccount": "Noch kein Konto?",
+    "haveAccount": "Bereits ein Konto?"
+  }
+}

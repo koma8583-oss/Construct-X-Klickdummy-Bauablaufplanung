@@ -1,0 +1,92 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "confirm": "Confirm",
+    "reject": "Reject",
+    "proposeAlternative": "Propose Alternative",
+    "status": {
+      "PENDING": "Pending",
+      "CONFIRMED": "Confirmed",
+      "ALTERNATIVE_PROPOSED": "Alternative",
+      "REJECTED": "Rejected",
+      "CANCELLED": "Cancelled"
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "requests": "Requests",
+    "gantt": "Gantt Chart",
+    "resources": "Resources",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+  "dashboard": {
+    "pendingRequests": "Pending Requests",
+    "confirmedWork": "Confirmed Work",
+    "criticalProposals": "Critical Proposals",
+    "upcomingDeadlines": "Upcoming Deadlines (14 days)",
+    "resourceUtilization": "Resource Utilization (Month)",
+    "recentRequests": "Recent Requests"
+  },
+  "requests": {
+    "title": "Requests",
+    "empty": "No requests found.",
+    "filterStatus": "Filter Status",
+    "all": "All",
+    "withinBuffer": "Within Buffer",
+    "outsideBuffer": "Outside Buffer - AG approval needed",
+    "detail": {
+      "taktInfo": "Takt Information",
+      "timeline": "Timeline",
+      "response": "Response",
+      "gewerk": "Trade",
+      "zone": "Zone",
+      "taktNumber": "Takt",
+      "ag": "Client",
+      "requestedDates": "Requested Dates",
+      "bufferWindow": "Buffer Window",
+      "requiredResources": "Required Resources",
+      "history": "History",
+      "proposeTitle": "Alternative Dates",
+      "commentLabel": "Comment"
+    }
+  },
+  "gantt": {
+    "title": "Resource Gantt",
+    "empty": "No assignments."
+  },
+  "resources": {
+    "title": "Resource Management",
+    "tabs": {
+      "EMPLOYEE": "Employees",
+      "EQUIPMENT": "Equipment",
+      "MACHINE": "Machines",
+      "OTHER": "Other"
+    },
+    "name": "Name",
+    "qualification": "Qualification",
+    "capacity": "Daily Capacity (h)",
+    "color": "Color"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "team": "Team",
+    "webhooks": "Webhooks"
+  },
+  "auth": {
+    "login": "Log in",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "companyName": "Company Name",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?"
+  }
+}
