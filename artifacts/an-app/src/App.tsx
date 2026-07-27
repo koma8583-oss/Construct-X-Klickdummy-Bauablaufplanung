@@ -4,8 +4,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider } from '@/contexts/auth';
-import { AuthGuard } from '@/components/auth-guard';
+import { useAuth } from '@/contexts/auth';
 import { Layout } from '@/components/layout';
+import { Loader2 } from 'lucide-react';
 import './i18n/config';
 
 import Login from '@/pages/login';
@@ -19,31 +20,44 @@ import Settings from '@/pages/settings';
 
 const queryClient = new QueryClient();
 
-function ProtectedRouter() {
-  return (
-    <AuthGuard>
-      <Layout>
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/requests" component={Requests} />
-          <Route path="/requests/:delegationId" component={RequestDetail} />
-          <Route path="/gantt" component={GanttPage} />
-          <Route path="/resources" component={Resources} />
-          <Route path="/settings" component={Settings} />
-          <Route component={NotFound} />
-        </Switch>
-      </Layout>
-    </AuthGuard>
-  );
-}
+/**
+ * Auth-aware router: renders login/register when not authenticated,
+ * and the protected app when authenticated — without any URL redirects.
+ * This avoids the Replit preview pane resetting the URL when wouter
+ * tries to navigate from /an/ to /an/login.
+ */
+function AuthRoutedApp() {
+  const { user, isLoading } = useAuth();
 
-function Router() {
+  if (isLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Switch>
+        <Route path="/register" component={Register} />
+        <Route component={Login} />
+      </Switch>
+    );
+  }
+
   return (
-    <Switch>
-      <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
-      <Route path="/:rest*" component={ProtectedRouter} />
-    </Switch>
+    <Layout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/requests" component={Requests} />
+        <Route path="/requests/:delegationId" component={RequestDetail} />
+        <Route path="/gantt" component={GanttPage} />
+        <Route path="/resources" component={Resources} />
+        <Route path="/settings" component={Settings} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
   );
 }
 
@@ -53,7 +67,7 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
+            <AuthRoutedApp />
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
