@@ -204,28 +204,20 @@ export default function ProjectDetail() {
     [delegations, selectedTaktId],
   );
 
-  // Panel click: editable takte → edit dialog; delegated → delegation panel
+  // Any click opens the info Sheet; editing is started via the button inside the Sheet
   function handleGanttClick(taktId: string) {
-    const takt = takte?.find(t => t.id === taktId);
-    if (!takt) return;
-    if (isTaktEditable(takt.status)) {
-      setEditTargetId(taktId);
-      setIsEditOpen(true);
-    } else {
-      setSelectedTaktId(taktId);
-    }
+    setSelectedTaktId(taktId);
   }
 
-  // Takt list row click (same logic)
   function handleTaktRowClick(taktId: string) {
-    const takt = takte?.find(t => t.id === taktId);
-    if (!takt) return;
-    if (isTaktEditable(takt.status)) {
-      setEditTargetId(taktId);
-      setIsEditOpen(true);
-    } else {
-      setSelectedTaktId(taktId);
-    }
+    setSelectedTaktId(taktId);
+  }
+
+  function handleOpenEdit() {
+    if (!selectedTaktId) return;
+    setEditTargetId(selectedTaktId);
+    setSelectedTaktId(null); // close Sheet so Edit Dialog has full focus
+    setIsEditOpen(true);
   }
 
   const invalidateTakte = () => {
@@ -389,7 +381,6 @@ export default function ProjectDetail() {
             {label}
           </span>
         ))}
-        <span className="text-[10px] ml-1 opacity-60">(Grau/Rot/Slate = klickbar zum Bearbeiten)</span>
       </div>
 
       {/* Takt table + Gantt */}
@@ -465,17 +456,25 @@ export default function ProjectDetail() {
           {selectedTakt && (
             <>
               <SheetHeader className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="font-mono text-xs">{selectedTakt.taktBezeichnung}</Badge>
-                  <Badge
-                    style={{
-                      backgroundColor: getTaktColor(selectedTakt.status) + '20',
-                      color: getTaktColor(selectedTakt.status),
-                    }}
-                    className="border-transparent"
-                  >
-                    {STATUS_LABEL[selectedTakt.status] ?? selectedTakt.status}
-                  </Badge>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-xs">{selectedTakt.taktBezeichnung}</Badge>
+                    <Badge
+                      style={{
+                        backgroundColor: getTaktColor(selectedTakt.status) + '20',
+                        color: getTaktColor(selectedTakt.status),
+                      }}
+                      className="border-transparent"
+                    >
+                      {STATUS_LABEL[selectedTakt.status] ?? selectedTakt.status}
+                    </Badge>
+                  </div>
+                  {isTaktEditable(selectedTakt.status) && (
+                    <Button size="sm" variant="outline" onClick={handleOpenEdit}>
+                      <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                      Bearbeiten
+                    </Button>
+                  )}
                 </div>
                 <SheetTitle className="text-xl">{selectedTakt.gewerk}</SheetTitle>
                 <SheetDescription>Zone: {selectedTakt.zone}</SheetDescription>
