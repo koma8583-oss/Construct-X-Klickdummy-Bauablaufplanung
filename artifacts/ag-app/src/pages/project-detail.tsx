@@ -7,6 +7,7 @@ import {
   useListTakte,
   useCreateTakt,
   useUpdateTakt,
+  useDeleteTakt,
   useListProjectContractors,
   useCreateDelegation,
   useUpdateDelegation,
@@ -189,6 +190,7 @@ export default function ProjectDetail() {
   // Mutations
   const createTakt = useCreateTakt();
   const updateTakt = useUpdateTakt();
+  const deleteTakt = useDeleteTakt();
   const createDelegation = useCreateDelegation();
   const updateDelegation = useUpdateDelegation();
   const createDep = useCreateTaktDependency();
@@ -348,6 +350,19 @@ export default function ProjectDetail() {
         setIsEditOpen(false);
         setEditTargetId(null);
         setSelectedTaktId(null);
+      },
+      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+    });
+  };
+
+  const handleDeleteTakt = () => {
+    if (!editTargetId) return;
+    deleteTakt.mutate({ projectId, taktId: editTargetId }, {
+      onSuccess: () => {
+        toast({ title: 'Takt gelöscht' });
+        invalidateTakte();
+        setIsEditOpen(false);
+        setEditTargetId(null);
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
@@ -891,13 +906,24 @@ export default function ProjectDetail() {
                 </form>
               </div>
 
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditTargetId(null); }}>
-                  Abbrechen
+              <DialogFooter className="flex-row justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                  onClick={handleDeleteTakt}
+                  disabled={deleteTakt.isPending}
+                >
+                  {deleteTakt.isPending ? 'Löscht…' : 'Takt löschen'}
                 </Button>
-                <Button type="submit" form="edit-takt-form" disabled={updateTakt.isPending}>
-                  {updateTakt.isPending ? 'Speichert…' : 'Speichern'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditTargetId(null); }}>
+                    Abbrechen
+                  </Button>
+                  <Button type="submit" form="edit-takt-form" disabled={updateTakt.isPending}>
+                    {updateTakt.isPending ? 'Speichert…' : 'Speichern'}
+                  </Button>
+                </div>
               </DialogFooter>
             </div>
           )}

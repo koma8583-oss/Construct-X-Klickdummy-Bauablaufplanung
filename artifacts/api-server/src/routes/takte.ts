@@ -167,6 +167,25 @@ router.delete(
   "/projects/:projectId/takte/:taktId",
   requireAuth,
   async (req, res): Promise<void> => {
+    const [existing] = await db
+      .select()
+      .from(takteTable)
+      .where(eq(takteTable.id, req.params.taktId as string))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Takt not found" });
+      return;
+    }
+
+    if (!isTaktEditable(existing.status)) {
+      res.status(409).json({
+        error: "Takt cannot be deleted in its current status. Cancel the delegation first.",
+        status: existing.status,
+      });
+      return;
+    }
+
     await db
       .delete(takteTable)
       .where(
