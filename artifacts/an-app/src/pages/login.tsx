@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth";
-import { Link, useLocation } from "wouter";
+import { Link, Redirect, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +13,21 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { login, user } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
 
+  // Wait for auth state to be known before deciding to redirect
+  if (isLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (user) {
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
