@@ -75,13 +75,19 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   req.session.userId = user.id;
   req.session.orgId = org.id;
 
-  res.status(201).json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    orgId: org.id,
-    orgName: org.name,
-    orgType: org.type,
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ error: "Session save failed" });
+      return;
+    }
+    res.status(201).json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      orgId: org.id,
+      orgName: org.name,
+      orgType: org.type,
+    });
   });
 });
 
@@ -134,15 +140,21 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   req.session.userId = user.id;
   req.session.orgId = membership.orgId;
 
-  res.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    preferredLanguage: user.preferredLanguage,
-    orgId: membership.orgId,
-    orgName: membership.orgName,
-    orgType: membership.orgType,
-    role: membership.role,
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ error: "Session save failed" });
+      return;
+    }
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      preferredLanguage: user.preferredLanguage,
+      orgId: membership.orgId,
+      orgName: membership.orgName,
+      orgType: membership.orgType,
+      role: membership.role,
+    });
   });
 });
 
