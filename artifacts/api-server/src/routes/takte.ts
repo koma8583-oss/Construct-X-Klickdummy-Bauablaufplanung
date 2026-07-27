@@ -16,7 +16,7 @@ router.get(
       .select()
       .from(takteTable)
       .where(eq(takteTable.projectId, (req.params.projectId as string)))
-      .orderBy(takteTable.taktNumber);
+      .orderBy(takteTable.taktBezeichnung);
 
     // Enrich with delegation status
     const enriched = await Promise.all(
@@ -51,7 +51,7 @@ router.post(
   requireAuth,
   async (req, res): Promise<void> => {
     const schema = z.object({
-      taktNumber: z.number().int().positive(),
+      taktBezeichnung: z.string().min(1),
       zone: z.string().min(1),
       gewerk: z.string().min(1),
       description: z.string().optional(),
@@ -110,7 +110,7 @@ router.patch(
   requireAuth,
   async (req, res): Promise<void> => {
     const schema = z.object({
-      taktNumber: z.number().int().positive().optional(),
+      taktBezeichnung: z.string().min(1).optional(),
       zone: z.string().min(1).optional(),
       gewerk: z.string().min(1).optional(),
       description: z.string().optional(),

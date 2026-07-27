@@ -183,7 +183,7 @@ export const TaktDelegationStatus = {
 export interface Takt {
   id: string;
   projectId: string;
-  taktNumber: number;
+  taktBezeichnung: string;
   zone: string;
   gewerk: string;
   description?: string | null;
@@ -202,7 +202,7 @@ export interface Takt {
 }
 
 export interface CreateTaktRequest {
-  taktNumber: number;
+  taktBezeichnung: string;
   zone: string;
   gewerk: string;
   description?: string;
@@ -216,7 +216,7 @@ export interface CreateTaktRequest {
 }
 
 export interface UpdateTaktRequest {
-  taktNumber?: number;
+  taktBezeichnung?: string;
   zone?: string;
   gewerk?: string;
   description?: string;

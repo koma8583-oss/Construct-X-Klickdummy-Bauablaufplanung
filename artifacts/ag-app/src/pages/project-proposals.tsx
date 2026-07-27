@@ -125,7 +125,7 @@ function DelegationProposalCard({ delegation }: { delegation: any }) {
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-lg">
-              Takt {delegation.takt?.taktNumber} - {delegation.takt?.gewerk}
+              {delegation.takt?.taktBezeichnung} · {delegation.takt?.gewerk}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               Contractor: <span className="font-medium text-foreground">{delegation.anOrganization?.name}</span>

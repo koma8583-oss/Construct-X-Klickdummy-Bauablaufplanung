@@ -109,7 +109,7 @@ export default function Dashboard() {
                 {dashboard.upcomingTakte.map((takt) => (
                   <div key={takt.id} className="flex items-center justify-between p-3 rounded-lg bg-background border border-border">
                     <div>
-                      <div className="font-medium text-sm">Takt {takt.taktNumber} - {takt.gewerk}</div>
+                      <div className="font-medium text-sm">{takt.taktBezeichnung} · {takt.gewerk}</div>
                       <div className="text-xs text-muted-foreground mt-1">Zone: {takt.zone}</div>
                     </div>
                     <div className="text-right text-sm">

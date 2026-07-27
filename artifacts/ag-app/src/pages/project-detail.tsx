@@ -17,6 +17,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
+import type { TaskListHeaderProps, TaskListTableProps } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
 import { 
   ArrowLeft, Plus, Users, Calendar, MapPin, 
@@ -47,6 +48,46 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
+
+// ── Custom Gantt task list (compact, no From/To columns) ──────────────────────
+const GanttListHeader: React.FC<TaskListHeaderProps> = ({ headerHeight, rowWidth, fontFamily, fontSize }) => (
+  <div
+    style={{ fontFamily, fontSize, height: headerHeight, width: rowWidth,
+      display: 'flex', alignItems: 'center', padding: '0 12px',
+      borderBottom: '1px solid hsl(var(--border))', borderRight: '1px solid hsl(var(--border))',
+      color: 'hsl(var(--muted-foreground))', fontWeight: 600, letterSpacing: '0.07em',
+      textTransform: 'uppercase', background: 'hsl(var(--background))' }}
+  >
+    Bezeichnung
+  </div>
+);
+
+const GanttListTable: React.FC<TaskListTableProps> = ({
+  rowHeight, rowWidth, fontFamily, fontSize, tasks, selectedTaskId, setSelectedTask,
+}) => (
+  <div style={{ fontFamily, fontSize, borderRight: '1px solid hsl(var(--border))' }}>
+    {tasks.map((task, idx) => (
+      <div
+        key={task.id}
+        onClick={() => setSelectedTask(task.id)}
+        style={{
+          height: rowHeight, width: rowWidth,
+          display: 'flex', alignItems: 'center', padding: '0 12px',
+          cursor: 'pointer', userSelect: 'none',
+          borderBottom: '1px solid hsl(var(--border) / 0.4)',
+          background: task.id === selectedTaskId
+            ? 'hsl(var(--sidebar-accent))'
+            : idx % 2 === 0 ? 'hsl(var(--background))' : 'hsl(var(--card) / 0.6)',
+          color: 'hsl(var(--foreground))',
+        }}
+      >
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', fontSize: '11px' }}>
+          {task.name}
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 // Helper to map delegation status to color
 const getTaktColor = (status?: string | null) => {
@@ -97,7 +138,7 @@ export default function ProjectDetail() {
       const color = getTaktColor(takt.delegationStatus);
       return {
         id: takt.id,
-        name: `Takt ${takt.taktNumber} - ${takt.gewerk}`,
+        name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
         start: new Date(takt.plannedStart),
         end: new Date(takt.plannedEnd),
         type: 'task' as const,
@@ -128,7 +169,7 @@ export default function ProjectDetail() {
     createTakt.mutate({
       projectId,
       data: {
-        taktNumber: Number(formData.get('taktNumber')),
+        taktBezeichnung: formData.get('taktBezeichnung') as string,
         zone: formData.get('zone') as string,
         gewerk: formData.get('gewerk') as string,
         description: formData.get('description') as string,
@@ -265,21 +306,28 @@ export default function ProjectDetail() {
             <div className="rounded-lg border border-border overflow-hidden bg-card text-card-foreground">
               {/* Force gantt styles to adapt to dark mode using CSS variables injected via style */}
               <style dangerouslySetInnerHTML={{__html: `
-                .gantt { font-family: var(--font-sans) !important; }
-                .gantt ._3zlnZ { fill: hsl(var(--card)) !important; }
-                .gantt ._3wXGj { fill: hsl(var(--foreground)) !important; }
-                .gantt ._3r-f2 { stroke: hsl(var(--border)) !important; }
-                .gantt ._3vWJ5 { fill: hsl(var(--muted)) !important; }
+                .gantt { font-family: inherit !important; }
+                ._CZjuD { background: hsl(var(--background)) !important; }
+                ._3zlnZ { fill: hsl(var(--card)) !important; }
+                ._3wXGj { fill: hsl(var(--foreground)) !important; }
+                ._3r-f2 { stroke: hsl(var(--border)) !important; }
+                ._3vWJ5 { fill: hsl(var(--muted)) !important; }
+                ._2k9Ys { fill: hsl(var(--border)) !important; }
+                ._9w8d5 { fill: hsl(var(--muted-foreground)) !important; }
+                ._2q1Ar { fill: hsl(var(--muted-foreground)) !important; }
               `}} />
               <Gantt
                 tasks={ganttTasks}
                 viewMode={viewMode}
                 onClick={(task) => setSelectedTaktId(task.id)}
-                listCellWidth="200px"
-                columnWidth={viewMode === ViewMode.Day ? 60 : viewMode === ViewMode.Week ? 200 : 300}
-                rowHeight={48}
-                fontSize="12"
+                listCellWidth="190px"
+                columnWidth={viewMode === ViewMode.Day ? 38 : viewMode === ViewMode.Week ? 120 : 180}
+                rowHeight={40}
+                headerHeight={48}
+                fontSize="11"
                 fontFamily="inherit"
+                TaskListHeader={GanttListHeader}
+                TaskListTable={GanttListTable}
               />
             </div>
           ) : (
@@ -308,7 +356,7 @@ export default function ProjectDetail() {
               <SheetHeader className="mb-6">
                 <div className="flex items-center gap-2 mb-2">
                   <Badge variant="outline" className="font-mono text-xs">
-                    TAKT {selectedTakt.taktNumber}
+                    {selectedTakt.taktBezeichnung}
                   </Badge>
                   <Badge 
                     style={{ backgroundColor: getTaktColor(selectedTakt.delegationStatus) + '20', color: getTaktColor(selectedTakt.delegationStatus) }}
@@ -482,12 +530,12 @@ export default function ProjectDetail() {
           <form onSubmit={handleCreateTakt} className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Takt Number</Label>
-                <Input name="taktNumber" type="number" required min="1" />
+                <Label>Takt-Bezeichnung</Label>
+                <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
               </div>
               <div className="space-y-2">
                 <Label>Zone</Label>
-                <Input name="zone" required placeholder="e.g. Floor 1, Section A" />
+                <Input name="zone" required placeholder="z.B. OG 1, Abschnitt A" />
               </div>
             </div>
             

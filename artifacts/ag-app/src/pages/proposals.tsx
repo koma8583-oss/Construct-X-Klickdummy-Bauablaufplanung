@@ -77,7 +77,7 @@ export default function Proposals() {
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-lg group-hover:text-primary transition-colors">
-                          Takt {delegation.takt?.taktNumber} - {delegation.takt?.gewerk}
+                          {delegation.takt?.taktBezeichnung} · {delegation.takt?.gewerk}
                         </span>
                         {delegation.isWithinBuffer === false && (
                           <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Critical</Badge>

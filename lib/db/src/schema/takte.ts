@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, date, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
@@ -10,7 +10,7 @@ export const takteTable = pgTable("takte", {
   projectId: text("project_id")
     .notNull()
     .references(() => projectsTable.id, { onDelete: "cascade" }),
-  taktNumber: integer("takt_number").notNull(),
+  taktBezeichnung: text("takt_bezeichnung").notNull(),
   zone: text("zone").notNull(),
   gewerk: text("gewerk").notNull(),
   description: text("description"),

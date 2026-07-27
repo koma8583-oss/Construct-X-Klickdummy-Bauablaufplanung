@@ -1173,8 +1173,9 @@ components:
           type: string
         projectId:
           type: string
-        taktNumber:
-          type: integer
+        taktBezeichnung:
+          type: string
+          description: "Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)"
         zone:
           type: string
         gewerk:
@@ -1215,13 +1216,13 @@ components:
         createdAt:
           type: string
           format: date-time
-      required: [id, projectId, taktNumber, zone, gewerk, plannedStart, plannedEnd, createdAt]
+      required: [id, projectId, taktBezeichnung, zone, gewerk, plannedStart, plannedEnd, createdAt]
 
     CreateTaktRequest:
       type: object
       properties:
-        taktNumber:
-          type: integer
+        taktBezeichnung:
+          type: string
         zone:
           type: string
         gewerk:
@@ -1246,13 +1247,13 @@ components:
           type: string
         requiredResources:
           type: string
-      required: [taktNumber, zone, gewerk, plannedStart, plannedEnd]
+      required: [taktBezeichnung, zone, gewerk, plannedStart, plannedEnd]
 
     UpdateTaktRequest:
       type: object
       properties:
-        taktNumber:
-          type: integer
+        taktBezeichnung:
+          type: string
         zone:
           type: string
         gewerk:
