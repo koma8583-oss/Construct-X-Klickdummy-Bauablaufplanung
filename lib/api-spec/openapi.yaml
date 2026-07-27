@@ -1166,6 +1166,18 @@ components:
           format: date
 
     # ── Takt ──
+    TaktStatus:
+      type: string
+      enum: [GEPLANT, VERGEBEN, ALTERNATIV, BESTAETIGT, ABGELEHNT, STORNIERT]
+      description: >
+        Lifecycle-Status eines Takts.
+        GEPLANT = angelegt, editierbar;
+        VERGEBEN = Delegation verschickt;
+        ALTERNATIV = AN hat Gegenvorschlag;
+        BESTAETIGT = Termin bestätigt;
+        ABGELEHNT = abgelehnt, wieder editierbar;
+        STORNIERT = Vergabe storniert, wieder editierbar.
+
     Takt:
       type: object
       properties:
@@ -1209,14 +1221,12 @@ components:
           type: string
           nullable: true
           description: "Free-text description of required resources"
-        delegationStatus:
-          type: string
-          enum: [UNDELEGATED, PENDING, CONFIRMED, ALTERNATIVE_PROPOSED, REJECTED]
-          nullable: true
+        status:
+          $ref: "#/components/schemas/TaktStatus"
         createdAt:
           type: string
           format: date-time
-      required: [id, projectId, taktBezeichnung, zone, gewerk, plannedStart, plannedEnd, createdAt]
+      required: [id, projectId, taktBezeichnung, zone, gewerk, plannedStart, plannedEnd, status, createdAt]
 
     CreateTaktRequest:
       type: object

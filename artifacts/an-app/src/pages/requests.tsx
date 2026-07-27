@@ -88,7 +88,7 @@ export default function Requests() {
                           {del.takt?.gewerk}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {del.takt?.zone} (Takt {del.takt?.taktNumber})
+                          {del.takt?.zone}{del.takt?.taktBezeichnung ? ` (${del.takt.taktBezeichnung})` : ''}
                         </div>
                       </Link>
                     </TableCell>

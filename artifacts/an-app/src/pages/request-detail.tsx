@@ -100,7 +100,7 @@ export default function RequestDetail() {
           <h1 className="text-2xl font-bold text-foreground">
             {delegation.takt?.gewerk} - {delegation.takt?.zone}
           </h1>
-          <p className="text-sm text-muted-foreground">Takt {delegation.takt?.taktNumber}</p>
+          <p className="text-sm text-muted-foreground">{delegation.takt?.taktBezeichnung}</p>
         </div>
       </div>
 

@@ -169,15 +169,15 @@ export interface UpdateProjectRequest {
   endDate?: string;
 }
 
-export type TaktDelegationStatus = typeof TaktDelegationStatus[keyof typeof TaktDelegationStatus] | null;
+export type TaktStatus = typeof TaktStatus[keyof typeof TaktStatus];
 
-
-export const TaktDelegationStatus = {
-  UNDELEGATED: 'UNDELEGATED',
-  PENDING: 'PENDING',
-  CONFIRMED: 'CONFIRMED',
-  ALTERNATIVE_PROPOSED: 'ALTERNATIVE_PROPOSED',
-  REJECTED: 'REJECTED',
+export const TaktStatus = {
+  GEPLANT: 'GEPLANT',
+  VERGEBEN: 'VERGEBEN',
+  ALTERNATIV: 'ALTERNATIV',
+  BESTAETIGT: 'BESTAETIGT',
+  ABGELEHNT: 'ABGELEHNT',
+  STORNIERT: 'STORNIERT',
 } as const;
 
 export interface Takt {
@@ -197,7 +197,7 @@ export interface Takt {
   bimReference?: string | null;
   /** Free-text description of required resources */
   requiredResources?: string | null;
-  delegationStatus?: TaktDelegationStatus;
+  status: TaktStatus;
   createdAt: string;
 }
 

@@ -1,11 +1,17 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { takteTable, delegationsTable } from "@workspace/db";
+import { takteTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { z } from "zod";
 
 const router = Router();
+
+const EDITABLE_STATUSES = ["GEPLANT", "ABGELEHNT", "STORNIERT"] as const;
+
+function isTaktEditable(status: string): boolean {
+  return (EDITABLE_STATUSES as readonly string[]).includes(status);
+}
 
 // GET /projects/:projectId/takte
 router.get(
@@ -15,35 +21,12 @@ router.get(
     const takte = await db
       .select()
       .from(takteTable)
-      .where(eq(takteTable.projectId, (req.params.projectId as string)))
+      .where(eq(takteTable.projectId, req.params.projectId as string))
       .orderBy(takteTable.taktBezeichnung);
 
-    // Enrich with delegation status
-    const enriched = await Promise.all(
-      takte.map(async (takt) => {
-        const [delegation] = await db
-          .select({ status: delegationsTable.status })
-          .from(delegationsTable)
-          .where(eq(delegationsTable.taktId, takt.id))
-          .orderBy(delegationsTable.createdAt)
-          .limit(1);
-
-        return {
-          ...takt,
-          delegationStatus: delegation?.status
-            ? mapDelegationStatus(delegation.status)
-            : "UNDELEGATED",
-        };
-      }),
-    );
-
-    res.json(enriched);
+    res.json(takte);
   },
 );
-
-function mapDelegationStatus(status: string): string {
-  return status === "CANCELLED" ? "UNDELEGATED" : status;
-}
 
 // POST /projects/:projectId/takte
 router.post(
@@ -72,10 +55,10 @@ router.post(
 
     const [takt] = await db
       .insert(takteTable)
-      .values({ ...parsed.data, projectId: (req.params.projectId as string) })
+      .values({ ...parsed.data, projectId: req.params.projectId as string, status: "GEPLANT" })
       .returning();
 
-    res.status(201).json({ ...takt, delegationStatus: "UNDELEGATED" });
+    res.status(201).json(takt);
   },
 );
 
@@ -89,8 +72,8 @@ router.get(
       .from(takteTable)
       .where(
         and(
-          eq(takteTable.id, (req.params.taktId as string)),
-          eq(takteTable.projectId, (req.params.projectId as string)),
+          eq(takteTable.id, req.params.taktId as string),
+          eq(takteTable.projectId, req.params.projectId as string),
         ),
       )
       .limit(1);
@@ -100,7 +83,7 @@ router.get(
       return;
     }
 
-    res.json({ ...takt, delegationStatus: "UNDELEGATED" });
+    res.json(takt);
   },
 );
 
@@ -109,11 +92,31 @@ router.patch(
   "/projects/:projectId/takte/:taktId",
   requireAuth,
   async (req, res): Promise<void> => {
+    // Load takt to check editability
+    const [existing] = await db
+      .select()
+      .from(takteTable)
+      .where(eq(takteTable.id, req.params.taktId as string))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Takt not found" });
+      return;
+    }
+
+    if (!isTaktEditable(existing.status)) {
+      res.status(409).json({
+        error: "Takt cannot be edited in its current status",
+        status: existing.status,
+      });
+      return;
+    }
+
     const schema = z.object({
       taktBezeichnung: z.string().min(1).optional(),
       zone: z.string().min(1).optional(),
       gewerk: z.string().min(1).optional(),
-      description: z.string().optional(),
+      description: z.string().optional().nullable(),
       plannedStart: z.string().optional(),
       plannedEnd: z.string().optional(),
       earliestStart: z.string().optional().nullable(),
@@ -132,15 +135,10 @@ router.patch(
     const [takt] = await db
       .update(takteTable)
       .set(parsed.data)
-      .where(eq(takteTable.id, (req.params.taktId as string)))
+      .where(eq(takteTable.id, req.params.taktId as string))
       .returning();
 
-    if (!takt) {
-      res.status(404).json({ error: "Takt not found" });
-      return;
-    }
-
-    res.json({ ...takt, delegationStatus: "UNDELEGATED" });
+    res.json(takt);
   },
 );
 
@@ -151,7 +149,7 @@ router.delete(
   async (req, res): Promise<void> => {
     await db
       .delete(takteTable)
-      .where(eq(takteTable.id, (req.params.taktId as string)));
+      .where(eq(takteTable.id, req.params.taktId as string));
     res.status(204).send();
   },
 );

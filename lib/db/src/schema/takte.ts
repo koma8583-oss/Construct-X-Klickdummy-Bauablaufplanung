@@ -1,7 +1,16 @@
-import { pgTable, text, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
+
+export const taktStatusEnum = pgEnum("takt_status", [
+  "GEPLANT",
+  "VERGEBEN",
+  "ALTERNATIV",
+  "BESTAETIGT",
+  "ABGELEHNT",
+  "STORNIERT",
+]);
 
 export const takteTable = pgTable("takte", {
   id: text("id")
@@ -21,6 +30,7 @@ export const takteTable = pgTable("takte", {
   lvReference: text("lv_reference"),
   bimReference: text("bim_reference"),
   requiredResources: text("required_resources"),
+  status: taktStatusEnum("status").notNull().default("GEPLANT"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
