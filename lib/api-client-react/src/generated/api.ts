@@ -30,6 +30,7 @@ import type {
   CreateProjectRequest,
   CreateResourceAssignmentRequest,
   CreateResourceRequest,
+  CreateTaktDependencyRequest,
   CreateTaktRequest,
   CreateWebhookRequest,
   Delegation,
@@ -48,6 +49,10 @@ import type {
   Resource,
   ResourceAssignment,
   Takt,
+  TaktDependency,
+  TaktDependencyCreateResult,
+  TaktDependencyDeleteResult,
+  TaktUpdateResult,
   UpdateDelegationRequest,
   UpdateDelegationResponseDecisionRequest,
   UpdateOrganizationRequest,
@@ -1759,9 +1764,9 @@ export const getUpdateTaktUrl = (projectId: string,
  */
 export const updateTakt = async (projectId: string,
     taktId: string,
-    updateTaktRequest: UpdateTaktRequest, options?: RequestInit): Promise<Takt> => {
+    updateTaktRequest: UpdateTaktRequest, options?: RequestInit): Promise<TaktUpdateResult> => {
 
-  return customFetch<Takt>(getUpdateTaktUrl(projectId,taktId),
+  return customFetch<TaktUpdateResult>(getUpdateTaktUrl(projectId,taktId),
   {
     ...options,
     method: 'PATCH',
@@ -3615,3 +3620,195 @@ export function useGetAnDashboard<TData = Awaited<ReturnType<typeof getAnDashboa
 
 
 
+
+// ── Takt Dependencies ──────────────────────────────────────────────────────
+
+export const getListTaktDependenciesUrl = (projectId: string) =>
+  `/api/projects/${projectId}/takt-dependencies`;
+
+export const listTaktDependencies = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<TaktDependency[]> =>
+  customFetch<TaktDependency[]>(getListTaktDependenciesUrl(projectId), {
+    ...options,
+    method: 'GET',
+  });
+
+export const getListTaktDependenciesQueryKey = (projectId: string) =>
+  [`/api/projects/${projectId}/takt-dependencies`] as const;
+
+export const getListTaktDependenciesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTaktDependencies>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listTaktDependencies>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getListTaktDependenciesQueryKey(projectId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTaktDependencies>>> = ({ signal }) =>
+    listTaktDependencies(projectId, { signal, ...requestOptions });
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof listTaktDependencies>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export function useListTaktDependencies<
+  TData = Awaited<ReturnType<typeof listTaktDependencies>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listTaktDependencies>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTaktDependenciesQueryOptions(projectId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// POST
+export const getCreateTaktDependencyUrl = (projectId: string) =>
+  `/api/projects/${projectId}/takt-dependencies`;
+
+export const createTaktDependency = async (
+  projectId: string,
+  createTaktDependencyRequest: CreateTaktDependencyRequest,
+  options?: RequestInit,
+): Promise<TaktDependencyCreateResult> =>
+  customFetch<TaktDependencyCreateResult>(getCreateTaktDependencyUrl(projectId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTaktDependencyRequest),
+  });
+
+export const getCreateTaktDependencyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof createTaktDependency>>,
+      TError,
+      { projectId: string; data: BodyType<CreateTaktDependencyRequest> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseMutationOptions<
+  Awaited<ReturnType<typeof createTaktDependency>>,
+  TError,
+  { projectId: string; data: BodyType<CreateTaktDependencyRequest> },
+  TContext
+> => {
+  const mutationKey = ['createTaktDependency'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTaktDependency>>,
+    { projectId: string; data: BodyType<CreateTaktDependencyRequest> }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
+    return createTaktDependency(projectId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export const useCreateTaktDependency = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof createTaktDependency>>,
+      TError,
+      { projectId: string; data: BodyType<CreateTaktDependencyRequest> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseMutationResult<
+  Awaited<ReturnType<typeof createTaktDependency>>,
+  TError,
+  { projectId: string; data: BodyType<CreateTaktDependencyRequest> },
+  TContext
+> => useMutation(getCreateTaktDependencyMutationOptions(options));
+
+// DELETE
+export const getDeleteTaktDependencyUrl = (projectId: string, depId: string) =>
+  `/api/projects/${projectId}/takt-dependencies/${depId}`;
+
+export const deleteTaktDependency = async (
+  projectId: string,
+  depId: string,
+  options?: RequestInit,
+): Promise<TaktDependencyDeleteResult> =>
+  customFetch<TaktDependencyDeleteResult>(getDeleteTaktDependencyUrl(projectId, depId), {
+    ...options,
+    method: 'DELETE',
+  });
+
+export const getDeleteTaktDependencyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteTaktDependency>>,
+      TError,
+      { projectId: string; depId: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteTaktDependency>>,
+  TError,
+  { projectId: string; depId: string },
+  TContext
+> => {
+  const mutationKey = ['deleteTaktDependency'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteTaktDependency>>,
+    { projectId: string; depId: string }
+  > = (props) => {
+    const { projectId, depId } = props ?? {};
+    return deleteTaktDependency(projectId, depId, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export const useDeleteTaktDependency = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteTaktDependency>>,
+      TError,
+      { projectId: string; depId: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteTaktDependency>>,
+  TError,
+  { projectId: string; depId: string },
+  TContext
+> => useMutation(getDeleteTaktDependencyMutationOptions(options));

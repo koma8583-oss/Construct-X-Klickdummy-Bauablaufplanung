@@ -11,12 +11,18 @@ import {
   useCreateDelegation,
   useUpdateDelegation,
   useListDelegations,
+  useListTaktDependencies,
+  useCreateTaktDependency,
+  useDeleteTaktDependency,
   getListTakteQueryKey,
   getListDelegationsQueryKey,
   getGetProjectQueryKey,
   getListProjectContractorsQueryKey,
+  getListTaktDependenciesQueryKey,
   TaktStatus,
+  TaktDependencyType,
 } from '@workspace/api-client-react';
+import type { TaktUpdateResult } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -40,6 +46,7 @@ interface TaskListTableProps {
 import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
+  Link2, Trash2, AlertTriangle,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -75,12 +82,12 @@ function isTaktEditable(status?: TaktStatus): boolean {
 }
 
 const STATUS_COLOR: Record<TaktStatus, string> = {
-  GEPLANT:    '#64748b', // slate-500
-  VERGEBEN:   '#f59e0b', // amber-500
-  ALTERNATIV: '#3b82f6', // blue-500
-  BESTAETIGT: '#10b981', // emerald-500
-  ABGELEHNT:  '#ef4444', // red-500
-  STORNIERT:  '#94a3b8', // slate-400
+  GEPLANT:    '#64748b',
+  VERGEBEN:   '#f59e0b',
+  ALTERNATIV: '#3b82f6',
+  BESTAETIGT: '#10b981',
+  ABGELEHNT:  '#ef4444',
+  STORNIERT:  '#94a3b8',
 };
 
 const STATUS_LABEL: Record<TaktStatus, string> = {
@@ -92,22 +99,26 @@ const STATUS_LABEL: Record<TaktStatus, string> = {
   STORNIERT:  'Storniert',
 };
 
+const DEP_TYPE_LABEL: Record<TaktDependencyType, string> = {
+  EA: 'Ende → Anfang',
+  AA: 'Anfang → Anfang',
+  EE: 'Ende → Ende',
+};
+
 function getTaktColor(status?: TaktStatus | null): string {
   return status ? (STATUS_COLOR[status] ?? '#64748b') : '#64748b';
 }
 
-// ── Custom Gantt task list (compact, no From/To columns) ──────────────────────
+// ── Custom Gantt task list ──────────────────────────────────────────────────
 
 const GanttListHeader: React.FC<TaskListHeaderProps> = ({ headerHeight, rowWidth, fontFamily, fontSize }) => (
-  <div
-    style={{
-      fontFamily, fontSize, height: headerHeight, width: rowWidth,
-      display: 'flex', alignItems: 'center', padding: '0 12px',
-      borderBottom: '1px solid hsl(var(--border))', borderRight: '1px solid hsl(var(--border))',
-      color: 'hsl(var(--muted-foreground))', fontWeight: 600, letterSpacing: '0.07em',
-      textTransform: 'uppercase', background: 'hsl(var(--background))',
-    }}
-  >
+  <div style={{
+    fontFamily, fontSize, height: headerHeight, width: rowWidth,
+    display: 'flex', alignItems: 'center', padding: '0 12px',
+    borderBottom: '1px solid hsl(var(--border))', borderRight: '1px solid hsl(var(--border))',
+    color: 'hsl(var(--muted-foreground))', fontWeight: 600, letterSpacing: '0.07em',
+    textTransform: 'uppercase', background: 'hsl(var(--background))',
+  }}>
     Bezeichnung
   </div>
 );
@@ -153,6 +164,11 @@ export default function ProjectDetail() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
 
+  // Dependency form state
+  const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
+  const [newDepType, setNewDepType] = useState<TaktDependencyType>('EA');
+  const [newDepLag, setNewDepLag] = useState(0);
+
   // Queries
   const { data: project, isLoading: projectLoading } = useGetProject(projectId, {
     query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) },
@@ -166,18 +182,27 @@ export default function ProjectDetail() {
   const { data: delegations } = useListDelegations({ projectId }, {
     query: { enabled: !!projectId, queryKey: getListDelegationsQueryKey({ projectId }) },
   });
+  const { data: deps } = useListTaktDependencies(projectId, {
+    query: { enabled: !!projectId, queryKey: getListTaktDependenciesQueryKey(projectId) },
+  });
 
   // Mutations
   const createTakt = useCreateTakt();
   const updateTakt = useUpdateTakt();
   const createDelegation = useCreateDelegation();
   const updateDelegation = useUpdateDelegation();
+  const createDep = useCreateTaktDependency();
+  const deleteDep = useDeleteTaktDependency();
 
-  // Derived
+  // Gantt tasks with dependency arrows
   const ganttTasks: Task[] = useMemo(() => {
     if (!takte || takte.length === 0) return [];
     return takte.map(takt => {
       const color = getTaktColor(takt.status);
+      // predecessorIds for this takt (gantt-task-react draws arrows from predecessor → this)
+      const predecessorIds = deps
+        ?.filter(d => d.successorId === takt.id)
+        .map(d => d.predecessorId) ?? [];
       return {
         id: takt.id,
         name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
@@ -186,6 +211,7 @@ export default function ProjectDetail() {
         type: 'task' as const,
         progress: 100,
         isDisabled: false,
+        dependencies: predecessorIds,
         styles: {
           progressColor: color,
           progressSelectedColor: color,
@@ -194,7 +220,7 @@ export default function ProjectDetail() {
         },
       };
     }).sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [takte]);
+  }, [takte, deps]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
@@ -204,19 +230,21 @@ export default function ProjectDetail() {
     [delegations, selectedTaktId],
   );
 
+  // Deps for the currently-selected takt (as predecessor ← successors)
+  const selectedTaktPredecessors = useMemo(
+    () => deps?.filter(d => d.successorId === selectedTaktId) ?? [],
+    [deps, selectedTaktId],
+  );
+
   // Any click opens the info Sheet; editing is started via the button inside the Sheet
   function handleGanttClick(taktId: string) {
-    setSelectedTaktId(taktId);
-  }
-
-  function handleTaktRowClick(taktId: string) {
     setSelectedTaktId(taktId);
   }
 
   function handleOpenEdit() {
     if (!selectedTaktId) return;
     setEditTargetId(selectedTaktId);
-    setSelectedTaktId(null); // close Sheet so Edit Dialog has full focus
+    setSelectedTaktId(null);
     setIsEditOpen(true);
   }
 
@@ -224,7 +252,25 @@ export default function ProjectDetail() {
     queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(projectId) });
     queryClient.invalidateQueries({ queryKey: getListDelegationsQueryKey({ projectId }) });
     queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+    queryClient.invalidateQueries({ queryKey: getListTaktDependenciesQueryKey(projectId) });
   };
+
+  /** Show toast feedback from a reschedule result */
+  function showRescheduleToasts(moved: TaktUpdateResult['moved'], conflicts: TaktUpdateResult['conflicts']) {
+    if (moved.length > 0) {
+      toast({
+        title: `${moved.length} Takt${moved.length > 1 ? 'e' : ''} automatisch verschoben`,
+        description: moved.map(t => t.taktBezeichnung).join(', '),
+      });
+    }
+    if (conflicts.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: `${conflicts.length} Takt${conflicts.length > 1 ? 'e' : ''} konnten nicht verschoben werden`,
+        description: conflicts.map(c => `${c.takt.taktBezeichnung} (${STATUS_LABEL[c.takt.status as TaktStatus]}): erforderlich ab ${format(new Date(c.requiredStart), 'dd.MM.yyyy')}`).join(' · '),
+      });
+    }
+  }
 
   const handleCreateTakt = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -269,9 +315,10 @@ export default function ProjectDetail() {
         latestEnd: (fd.get('latestEnd') as string) || undefined,
       },
     }, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         toast({ title: 'Takt gespeichert' });
         invalidateTakte();
+        showRescheduleToasts(result.moved, result.conflicts);
         setIsEditOpen(false);
         setEditTargetId(null);
       },
@@ -321,10 +368,53 @@ export default function ProjectDetail() {
     });
   };
 
+  const handleAddDependency = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTaktId || !newDepPredecessorId) return;
+    createDep.mutate({
+      projectId,
+      data: {
+        predecessorId: newDepPredecessorId,
+        successorId: selectedTaktId,
+        type: newDepType,
+        lagDays: newDepLag,
+      },
+    }, {
+      onSuccess: (result) => {
+        toast({ title: 'Abhängigkeit angelegt' });
+        invalidateTakte();
+        showRescheduleToasts(result.moved, result.conflicts);
+        setNewDepPredecessorId('');
+        setNewDepLag(0);
+      },
+      onError: (err) => {
+        toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
+      },
+    });
+  };
+
+  const handleDeleteDependency = (depId: string) => {
+    deleteDep.mutate({ projectId, depId }, {
+      onSuccess: (result) => {
+        toast({ title: 'Abhängigkeit gelöscht' });
+        invalidateTakte();
+        showRescheduleToasts(result.moved, result.conflicts);
+      },
+      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+    });
+  };
+
   if (projectLoading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-1/3" /><Skeleton className="h-64 w-full" /></div>;
   }
   if (!project) return <div>Projekt nicht gefunden</div>;
+
+  // Other takte usable as predecessors in the dep form (excluding the currently-selected takt
+  // and takte already set as predecessors for this takt)
+  const availablePredecessors = takte?.filter(
+    t => t.id !== selectedTaktId &&
+      !selectedTaktPredecessors.some(d => d.predecessorId === t.id),
+  ) ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
@@ -383,7 +473,7 @@ export default function ProjectDetail() {
         ))}
       </div>
 
-      {/* Takt table + Gantt */}
+      {/* Gantt */}
       <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
         <div className="border-b border-border p-4 bg-background flex items-center justify-between">
           <h2 className="font-semibold text-lg flex items-center">
@@ -450,7 +540,7 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* ── Delegation / Status Side Panel ──────────────────────────────────── */}
+      {/* ── Info / Delegation Side Panel ────────────────────────────────────── */}
       <Sheet open={!!selectedTaktId} onOpenChange={(open) => !open && setSelectedTaktId(null)}>
         <SheetContent className="sm:max-w-md overflow-y-auto border-l-border">
           {selectedTakt && (
@@ -520,7 +610,117 @@ export default function ProjectDetail() {
                   </CardContent>
                 </Card>
 
-                {/* Delegation section — shown for delegated takte */}
+                {/* ── Anordnungsbeziehungen ──────────────────────────────── */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-primary" />
+                    Anordnungsbeziehungen
+                    {selectedTaktPredecessors.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px] ml-1">{selectedTaktPredecessors.length}</Badge>
+                    )}
+                  </h3>
+
+                  {/* Existing predecessors */}
+                  {selectedTaktPredecessors.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      {selectedTaktPredecessors.map((dep) => {
+                        const pred = takte?.find(t => t.id === dep.predecessorId);
+                        return (
+                          <div
+                            key={dep.id}
+                            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 text-sm"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="inline-block w-2 h-2 rounded-full shrink-0"
+                                style={{ background: getTaktColor(pred?.status) }}
+                              />
+                              <span className="truncate font-medium">{pred?.taktBezeichnung ?? '…'}</span>
+                              <span className="text-muted-foreground shrink-0 text-[11px]">{DEP_TYPE_LABEL[dep.type as TaktDependencyType]}</span>
+                              {dep.lagDays > 0 && (
+                                <span className="text-muted-foreground shrink-0 text-[11px]">+{dep.lagDays}d</span>
+                              )}
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={() => handleDeleteDependency(dep.id)}
+                              disabled={deleteDep.isPending}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Add new predecessor form */}
+                  {availablePredecessors.length > 0 ? (
+                    <form onSubmit={handleAddDependency} className="space-y-2 p-3 rounded-lg border border-dashed border-border/60 bg-muted/10">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2">Neuer Vorgänger</p>
+                      <Select
+                        value={newDepPredecessorId}
+                        onValueChange={setNewDepPredecessorId}
+                        required
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Vorgänger-Takt…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availablePredecessors.map(t => (
+                            <SelectItem key={t.id} value={t.id}>
+                              <span className="flex items-center gap-2">
+                                <span
+                                  className="inline-block w-2 h-2 rounded-full"
+                                  style={{ background: getTaktColor(t.status) }}
+                                />
+                                {t.taktBezeichnung} · {t.gewerk}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2">
+                        <Select value={newDepType} onValueChange={(v) => setNewDepType(v as TaktDependencyType)}>
+                          <SelectTrigger className="h-8 text-xs flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.entries(DEP_TYPE_LABEL) as [TaktDependencyType, string][]).map(([v, label]) => (
+                              <SelectItem key={v} value={v}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={newDepLag}
+                            onChange={e => setNewDepLag(Number(e.target.value))}
+                            className="h-8 w-16 text-xs"
+                          />
+                          <span className="text-xs text-muted-foreground">Tage</span>
+                        </div>
+                      </div>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        disabled={createDep.isPending || !newDepPredecessorId}
+                      >
+                        <Link2 className="w-3.5 h-3.5 mr-2" />
+                        {createDep.isPending ? 'Anlege…' : 'Abhängigkeit anlegen'}
+                      </Button>
+                    </form>
+                  ) : selectedTaktPredecessors.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Keine anderen Takte verfügbar.</p>
+                  ) : null}
+                </div>
+
+                {/* ── Delegation section ─────────────────────────────────── */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4 flex items-center">
                     <Send className="w-4 h-4 mr-2 text-primary" />
@@ -544,7 +744,6 @@ export default function ProjectDetail() {
                             <div className="text-sm">{format(new Date(taktDelegation.requestedEnd), 'dd.MM.yyyy')}</div>
                           </div>
                         </div>
-
                         {taktDelegation.status === 'PENDING' && (
                           <div className="flex items-center justify-center p-3 rounded bg-amber-500/10 text-amber-500 text-sm font-medium">
                             <Clock className="w-4 h-4 mr-2" /> Warte auf Antwort
@@ -570,8 +769,6 @@ export default function ProjectDetail() {
                           </div>
                         )}
                       </div>
-
-                      {/* Cancel button — only for PENDING or ALTERNATIVE_PROPOSED */}
                       {(taktDelegation.status === 'PENDING' || taktDelegation.status === 'ALTERNATIVE_PROPOSED') && (
                         <Button
                           variant="outline"
@@ -611,7 +808,6 @@ export default function ProjectDetail() {
 
           {editTakt && (
             <div className="space-y-6">
-              {/* Edit form */}
               <form id="edit-takt-form" onSubmit={handleEditTakt} className="space-y-4 pt-2">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -653,7 +849,15 @@ export default function ProjectDetail() {
                 </div>
               </form>
 
-              {/* Vergabe-Form — only shown for GEPLANT / ABGELEHNT / STORNIERT */}
+              {/* Reschedule hint */}
+              {deps && deps.some(d => d.predecessorId === editTakt.id || d.successorId === editTakt.id) && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Dieser Takt ist in Anordnungsbeziehungen eingebunden. Beim Speichern werden abhängige Takte automatisch verschoben.</span>
+                </div>
+              )}
+
+              {/* Vergabe-Form */}
               <div className="border-t border-border/50 pt-4">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <Send className="w-3.5 h-3.5 text-primary" /> Direkt vergeben

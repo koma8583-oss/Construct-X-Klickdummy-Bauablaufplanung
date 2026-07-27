@@ -35,18 +35,18 @@ export default function Settings() {
   const { data: profile } = useGetMyProfile();
   const updateProfile = useUpdateMyProfile();
   const [name, setName] = useState(profile?.name || "");
-  const [lang, setLang] = useState(profile?.preferredLanguage || "de");
+  const [lang, setLang] = useState<string>(profile?.preferredLanguage || "de");
   
   // Org
   const { data: orgs } = useGetMyOrganizations();
   const myOrgId = user?.orgId;
-  const { data: members } = useListOrganizationMembers(myOrgId || "", { query: { enabled: !!myOrgId }});
+  const { data: members } = useListOrganizationMembers(myOrgId || "", { query: { enabled: !!myOrgId, queryKey: getListOrganizationMembersQueryKey(myOrgId || "") }});
   const addMember = useAddOrganizationMember();
   const removeMember = useRemoveOrganizationMember();
   const [newMemberEmail, setNewMemberEmail] = useState("");
 
   // Webhooks
-  const { data: webhooks } = useListWebhooks({ query: { enabled: !!myOrgId }});
+  const { data: webhooks } = useListWebhooks({ query: { enabled: !!myOrgId, queryKey: getListWebhooksQueryKey() }});
   const createWebhook = useCreateWebhook();
   const updateWebhook = useUpdateWebhook();
   const deleteWebhook = useDeleteWebhook();

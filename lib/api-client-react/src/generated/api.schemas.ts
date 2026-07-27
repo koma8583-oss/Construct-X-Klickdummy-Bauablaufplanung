@@ -515,6 +515,57 @@ export interface AnDashboard {
   recentRequests: Delegation[];
 }
 
+// ── Takt Dependencies ──────────────────────────────────────────────────────
+
+export type TaktDependencyType = typeof TaktDependencyType[keyof typeof TaktDependencyType];
+
+export const TaktDependencyType = {
+  EA: 'EA', // Ende-Anfang (Finish-Start)
+  AA: 'AA', // Anfang-Anfang (Start-Start)
+  EE: 'EE', // Ende-Ende (Finish-Finish)
+} as const;
+
+export interface TaktDependency {
+  id: string;
+  projectId: string;
+  predecessorId: string;
+  successorId: string;
+  type: TaktDependencyType;
+  lagDays: number;
+  predecessor?: Takt;
+  successor?: Takt;
+}
+
+export interface CreateTaktDependencyRequest {
+  predecessorId: string;
+  successorId: string;
+  type?: TaktDependencyType;
+  lagDays?: number;
+}
+
+export interface RescheduledTakt {
+  takt: Takt;
+  requiredStart: string;
+  requiredEnd: string;
+}
+
+export interface TaktDependencyCreateResult {
+  dependency: TaktDependency;
+  moved: Takt[];
+  conflicts: RescheduledTakt[];
+}
+
+export interface TaktUpdateResult {
+  takt: Takt;
+  moved: Takt[];
+  conflicts: RescheduledTakt[];
+}
+
+export interface TaktDependencyDeleteResult {
+  moved: Takt[];
+  conflicts: RescheduledTakt[];
+}
+
 export type ListOrganizationsParams = {
 type?: ListOrganizationsType;
 search?: string;

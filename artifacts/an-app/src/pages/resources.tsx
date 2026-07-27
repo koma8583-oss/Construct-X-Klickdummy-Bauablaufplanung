@@ -49,9 +49,9 @@ export default function Resources() {
       resourceId: editingId,
       data: {
         name: editForm.name,
-        qualification: editForm.qualification,
-        dailyCapacityHours: editForm.dailyCapacityHours,
-        color: editForm.color,
+        qualification: editForm.qualification ?? undefined,
+        dailyCapacityHours: editForm.dailyCapacityHours ?? undefined,
+        color: editForm.color ?? undefined,
       }
     });
     setEditingId(null);

@@ -47,15 +47,15 @@ export default function GanttPage() {
           start: new Date(a.fromDate),
           end: new Date(a.toDate),
           progress: 100,
-          project: `res_${a.resource.id}`,
+          project: `res_${a.resource?.id}`,
           styles: { 
-            backgroundColor: a.resource.color || '#10b981',
-            progressColor: a.resource.color || '#10b981'
+            backgroundColor: a.resource?.color || '#10b981',
+            progressColor: a.resource?.color || '#10b981'
           }
         });
         
         // Update resource project dates to encompass all its tasks
-        const proj = taskList.find(t => t.id === `res_${a.resource.id}`);
+        const proj = taskList.find(t => t.id === `res_${a.resource?.id}`);
         if (proj) {
           const start = new Date(a.fromDate);
           const end = new Date(a.toDate);

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { takteTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { rescheduleTakte } from "../lib/reschedule";
 import { z } from "zod";
 
 const router = Router();
@@ -92,11 +93,19 @@ router.patch(
   "/projects/:projectId/takte/:taktId",
   requireAuth,
   async (req, res): Promise<void> => {
-    // Load takt to check editability
+    const projectId = req.params.projectId as string;
+    const taktId = req.params.taktId as string;
+
+    // Load takt constrained to BOTH taktId AND projectId to prevent cross-project access
     const [existing] = await db
       .select()
       .from(takteTable)
-      .where(eq(takteTable.id, req.params.taktId as string))
+      .where(
+        and(
+          eq(takteTable.id, taktId),
+          eq(takteTable.projectId, projectId),
+        ),
+      )
       .limit(1);
 
     if (!existing) {
@@ -132,13 +141,24 @@ router.patch(
       return;
     }
 
-    const [takt] = await db
-      .update(takteTable)
-      .set(parsed.data)
-      .where(eq(takteTable.id, req.params.taktId as string))
-      .returning();
+    // Update takt + cascade-reschedule inside a single transaction
+    const result = await db.transaction(async (tx) => {
+      const [takt] = await tx
+        .update(takteTable)
+        .set(parsed.data)
+        .where(
+          and(
+            eq(takteTable.id, taktId),
+            eq(takteTable.projectId, projectId),
+          ),
+        )
+        .returning();
 
-    res.json(takt);
+      const { moved, conflicts } = await rescheduleTakte(projectId, tx);
+      return { takt, moved, conflicts };
+    });
+
+    res.json(result);
   },
 );
 
@@ -149,7 +169,12 @@ router.delete(
   async (req, res): Promise<void> => {
     await db
       .delete(takteTable)
-      .where(eq(takteTable.id, req.params.taktId as string));
+      .where(
+        and(
+          eq(takteTable.id, req.params.taktId as string),
+          eq(takteTable.projectId, req.params.projectId as string),
+        ),
+      );
     res.status(204).send();
   },
 );
