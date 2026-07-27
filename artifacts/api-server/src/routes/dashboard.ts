@@ -5,6 +5,7 @@ import {
   delegationsTable,
   delegationResponsesTable,
   takteTable,
+  organizationsTable,
   resourcesTable,
   resourceAssignmentsTable,
 } from "@workspace/db";
@@ -162,9 +163,15 @@ router.get("/dashboard/an", requireAuth, async (req, res): Promise<void> => {
     .toISOString()
     .split("T")[0]!;
 
-  const upcomingDeadlines = await db
-    .select()
+  const upcomingDeadlinesRaw = await db
+    .select({
+      delegation: delegationsTable,
+      takt: takteTable,
+      agOrganization: organizationsTable,
+    })
     .from(delegationsTable)
+    .leftJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
+    .leftJoin(organizationsTable, eq(delegationsTable.agOrgId, organizationsTable.id))
     .where(
       and(
         eq(delegationsTable.anOrgId, orgId),
@@ -174,6 +181,12 @@ router.get("/dashboard/an", requireAuth, async (req, res): Promise<void> => {
       ),
     )
     .limit(10);
+
+  const upcomingDeadlines = upcomingDeadlinesRaw.map(({ delegation, takt, agOrganization }) => ({
+    ...delegation,
+    takt,
+    agOrganization,
+  }));
 
   const resources = await db
     .select()
@@ -207,12 +220,24 @@ router.get("/dashboard/an", requireAuth, async (req, res): Promise<void> => {
     }),
   );
 
-  const recentRequests = await db
-    .select()
+  const recentRequestsRaw = await db
+    .select({
+      delegation: delegationsTable,
+      takt: takteTable,
+      agOrganization: organizationsTable,
+    })
     .from(delegationsTable)
+    .leftJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
+    .leftJoin(organizationsTable, eq(delegationsTable.agOrgId, organizationsTable.id))
     .where(eq(delegationsTable.anOrgId, orgId))
     .orderBy(delegationsTable.createdAt)
     .limit(10);
+
+  const recentRequests = recentRequestsRaw.map(({ delegation, takt, agOrganization }) => ({
+    ...delegation,
+    takt,
+    agOrganization,
+  }));
 
   res.json({
     pendingRequests: pendingRow?.count ?? 0,
