@@ -7,7 +7,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   login: (data: { email: string; password: string }) => Promise<void>;
-  register: (data: { name: string; email: string; password: string; companyName: string; orgType?: string }) => Promise<void>;
+  register: (data: { name: string; email: string; password: string; companyName: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -31,7 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchMe = async () => {
     try {
-      const data = await apiFetch<AuthUser>('/api/auth/me');
+      // /api/an-auth/me only succeeds for AN-type accounts
+      const data = await apiFetch<AuthUser>('/api/an-auth/me');
       setUser(data);
     } catch {
       setUser(null);
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (data: { email: string; password: string }) => {
-    await apiFetch('/api/auth/login', {
+    await apiFetch('/api/an-auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -53,17 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchMe();
   };
 
-  const register = async (data: { name: string; email: string; password: string; companyName: string; orgType?: string }) => {
-    await apiFetch('/api/auth/register', {
+  const register = async (data: { name: string; email: string; password: string; companyName: string }) => {
+    await apiFetch('/api/an-auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, orgType: 'AN' }),
+      body: JSON.stringify(data),
     });
     await fetchMe();
   };
 
   const logout = async () => {
-    await apiFetch('/api/auth/logout', { method: 'POST' });
+    await apiFetch('/api/an-auth/logout', { method: 'POST' });
     setUser(null);
   };
 

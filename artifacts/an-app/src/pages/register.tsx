@@ -36,7 +36,7 @@ export default function Register() {
     setLoading(true);
     setError("");
     try {
-      await register({ name, email, password, companyName, orgType: "AN" });
+      await register({ name, email, password, companyName });
       setLocation("/");
     } catch (err: any) {
       setError(err.message || "Registration failed");
