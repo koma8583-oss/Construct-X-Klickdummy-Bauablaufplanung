@@ -742,6 +742,15 @@ export default function ProjectDetail() {
                     Vergabe
                   </h3>
 
+                  {selectedTakt.status === 'STORNIERT' && !taktDelegation && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-600 mb-4">
+                      <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Dieser Takt wurde storniert. Sie können ihn erneut vergeben – wählen Sie dazu einen Nachunternehmer aus dem Formular unten.
+                      </span>
+                    </div>
+                  )}
+
                   {taktDelegation ? (
                     <div className="space-y-4">
                       <div className="p-4 rounded-lg border border-border bg-card">

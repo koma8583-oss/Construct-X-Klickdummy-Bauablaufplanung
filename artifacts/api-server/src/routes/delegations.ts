@@ -280,12 +280,13 @@ router.patch(
 
         if (!updatedDelegation) return null;
 
-        await tx
+        const [updatedTakt] = await tx
           .update(takteTable)
           .set({ status: "STORNIERT" })
-          .where(eq(takteTable.id, existing.taktId));
+          .where(eq(takteTable.id, existing.taktId))
+          .returning();
 
-        return updatedDelegation;
+        return { delegation: updatedDelegation, takt: updatedTakt };
       });
 
       if (!result) {
@@ -293,11 +294,14 @@ router.patch(
         return;
       }
 
-      delegation = result;
+      delegation = result.delegation;
 
       await dispatchWebhookEvent(existing.anOrgId, "delegation.cancelled", {
         delegationId: existing.id,
       });
+
+      res.json({ ...delegation, takt: result.takt });
+      return;
     } else if (parsed.data.message !== undefined) {
       const [updated] = await db
         .update(delegationsTable)

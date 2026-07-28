@@ -183,6 +183,21 @@ export default function RequestDetail() {
             </CardContent>
           </Card>
 
+          {/* Cancelled Banner */}
+          {delegation.status === 'CANCELLED' && (
+            <Card className="bg-card border-border border-l-4 border-l-slate-400">
+              <CardContent className="flex items-center gap-3 p-4">
+                <XCircle className="h-5 w-5 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Vergabe storniert</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Der Auftraggeber hat diese Vergabe zurückgezogen. Es ist keine weitere Aktion erforderlich.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Response Panel */}
           {delegation.status === 'PENDING' && !isProposing && !isRejecting && (
             <Card className="bg-card border-border border-l-4 border-l-amber-500">
