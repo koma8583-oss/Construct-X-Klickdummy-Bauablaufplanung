@@ -6,12 +6,14 @@ import connectPgSimple from "connect-pg-simple";
 import { pool } from "@workspace/db";
 import agRouter from "./routes";
 import anRouter from "./routes/an";
+import hubRouter from "./routes/hub";
 import { logger } from "./lib/logger";
 
 declare module "express-session" {
   interface SessionData {
     userId: string;
     orgId: string;
+    hubRole?: "ADMIN" | "AG" | "AN";
   }
 }
 
@@ -81,6 +83,23 @@ const anSession = session({
     maxAge: 7 * 24 * 60 * 60 * 1000,
   },
 });
+
+/** Hub session — separate cookie for the central message broker / monitoring app */
+const hubSession = session({
+  store: new PgSession(sessionStoreOptions),
+  name: "tk_hub_sid",
+  secret: process.env.SESSION_SECRET ?? "taktkoord-dev-secret",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
+});
+
+// Hub routes under /api/hub/ with their own isolated session cookie (most-specific first)
+app.use("/api/hub", hubSession, hubRouter);
 
 // AN routes under /api/an/ with their own isolated session cookie
 app.use("/api/an", anSession, anRouter);

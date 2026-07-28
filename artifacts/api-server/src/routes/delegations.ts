@@ -10,6 +10,7 @@ import {
 import { eq, and, SQL } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { dispatchWebhookEvent } from "../lib/webhookDispatcher";
+import { writeHubMessage } from "../lib/hubMessageWriter";
 import { z } from "zod";
 
 const router = Router();
@@ -163,6 +164,14 @@ router.post("/delegations", requireAuth, async (req, res): Promise<void> => {
     agOrgId: orgId,
   });
 
+  await writeHubMessage(
+    "DELEGATION_CREATED",
+    orgId,
+    parsed.data.anOrgId,
+    result.delegation.id,
+    { taktId: takt.id, requestedStart: parsed.data.requestedStart, requestedEnd: parsed.data.requestedEnd, message: parsed.data.message ?? null },
+  );
+
   const [anOrg] = await db
     .select()
     .from(organizationsTable)
@@ -299,6 +308,14 @@ router.patch(
       await dispatchWebhookEvent(existing.anOrgId, "delegation.cancelled", {
         delegationId: existing.id,
       });
+
+      await writeHubMessage(
+        "DELEGATION_CANCELLED",
+        orgId,
+        existing.anOrgId,
+        existing.id,
+        {},
+      );
 
       res.json({ ...delegation, takt: result.takt });
       return;
@@ -498,6 +515,20 @@ router.post(
       isWithinBuffer: withinBuffer,
     });
 
+    const hubMsgType =
+      parsed.data.type === "CONFIRMED"
+        ? "DELEGATION_CONFIRMED" as const
+        : parsed.data.type === "REJECTED"
+          ? "DELEGATION_REJECTED" as const
+          : "DELEGATION_ALTERNATIVE" as const;
+    await writeHubMessage(
+      hubMsgType,
+      orgId,
+      delegation.agOrgId,
+      delegation.id,
+      { responseId: response?.id, type: parsed.data.type, isWithinBuffer: withinBuffer },
+    );
+
     res.status(201).json(response);
   },
 );
@@ -609,6 +640,14 @@ router.patch(
       responseId: response?.id,
       agDecision: parsed.data.agDecision,
     });
+
+    await writeHubMessage(
+      parsed.data.agDecision === "ACCEPTED" ? "AG_ACCEPTED_ALTERNATIVE" : "AG_REJECTED_ALTERNATIVE",
+      orgId,
+      delegation.anOrgId,
+      delegation.id,
+      { responseId: response?.id, agDecision: parsed.data.agDecision },
+    );
 
     res.json(response);
   },

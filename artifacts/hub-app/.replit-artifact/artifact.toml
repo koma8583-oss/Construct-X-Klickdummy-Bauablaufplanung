@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/hub/"
+title = "TaktKoord – Hub"
+version = "1.0.0"
+id = "artifacts/hub-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/hub/" ]
+localPort = 20240
+
+[services.development]
+run = "pnpm --filter @workspace/hub-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hub-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/hub-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20240"
+BASE_PATH = "/hub/"

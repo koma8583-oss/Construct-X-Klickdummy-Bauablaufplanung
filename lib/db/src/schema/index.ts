@@ -6,3 +6,4 @@ export * from "./takt-dependencies";
 export * from "./delegations";
 export * from "./resources";
 export * from "./webhooks";
+export * from "./hub";
