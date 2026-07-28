@@ -32,7 +32,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       {/* Sidebar */}
       <aside
-        className={`${collapsed ? "w-14" : "w-64"} border-r border-sidebar-border bg-sidebar flex flex-col transition-all duration-200 hidden md:flex flex-shrink-0`}
+        className={`${collapsed ? "w-14" : "w-64"} border-r border-sidebar-border bg-sidebar flex flex-col transition-all duration-200 flex-shrink-0`}
       >
         {/* Header */}
         <div className="h-14 flex items-center border-b border-sidebar-border flex-shrink-0 px-3 gap-2">
