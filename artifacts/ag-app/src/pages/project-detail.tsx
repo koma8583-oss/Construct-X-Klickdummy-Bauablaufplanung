@@ -23,7 +23,7 @@ import {
   TaktStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktUpdateResult } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -106,6 +106,75 @@ const DEP_TYPE_LABEL: Record<TaktDependencyType, string> = {
   AA: 'Anfang → Anfang',
   EE: 'Ende → Ende',
 };
+
+// Colour + dash style per dep type for the tooltip badge
+const DEP_TYPE_COLOR: Record<TaktDependencyType, string> = {
+  EA: '#10b981',
+  AA: '#3b82f6',
+  EE: '#f59e0b',
+};
+
+/** Build a memoisation-safe TooltipContent component that closes over dep data. */
+function makeGanttTooltip(
+  depsBySuccessor: Map<string, TaktDependency[]>,
+  taktNameById: Map<string, string>,
+): React.FC<{ task: Task; fontSize: string; fontFamily: string }> {
+  return function GanttTooltip({ task, fontSize, fontFamily }) {
+    const inDeps = depsBySuccessor.get(task.id) ?? [];
+    return (
+      <div
+        style={{
+          fontFamily,
+          fontSize,
+          background: 'hsl(var(--popover))',
+          color: 'hsl(var(--popover-foreground))',
+          border: '1px solid hsl(var(--border))',
+          borderRadius: 8,
+          padding: '10px 14px',
+          minWidth: 200,
+          maxWidth: 280,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '12px' }}>{task.name}</div>
+        <div style={{ color: 'hsl(var(--muted-foreground))', fontSize: '11px', marginBottom: inDeps.length ? 8 : 0 }}>
+          {format(task.start, 'dd.MM.yyyy')} – {format(task.end, 'dd.MM.yyyy')}
+        </div>
+        {inDeps.length > 0 && (
+          <>
+            <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}>
+              Vorgänger
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {inDeps.map(dep => (
+                <div key={dep.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '11px' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: DEP_TYPE_COLOR[dep.type as TaktDependencyType] + '22',
+                    color: DEP_TYPE_COLOR[dep.type as TaktDependencyType],
+                    borderRadius: 4, padding: '1px 5px', fontWeight: 700, fontSize: '10px',
+                    border: `1px solid ${DEP_TYPE_COLOR[dep.type as TaktDependencyType]}44`,
+                    minWidth: 28,
+                  }}>
+                    {dep.type}
+                  </span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {taktNameById.get(dep.predecessorId) ?? dep.predecessorId}
+                  </span>
+                  {dep.lagDays > 0 && (
+                    <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '10px', whiteSpace: 'nowrap' }}>
+                      +{dep.lagDays}d
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+}
 
 function getTaktColor(status?: TaktStatus | null): string {
   return status ? (STATUS_COLOR[status] ?? '#64748b') : '#64748b';
@@ -201,14 +270,40 @@ export default function ProjectDetail() {
   const createDep = useCreateTaktDependency();
   const deleteDep = useDeleteTaktDependency();
 
+  // Index: successorId → list of full TaktDependency objects
+  const depsBySuccessor = useMemo(() => {
+    const map = new Map<string, TaktDependency[]>();
+    for (const dep of deps ?? []) {
+      const list = map.get(dep.successorId) ?? [];
+      list.push(dep);
+      map.set(dep.successorId, list);
+    }
+    return map;
+  }, [deps]);
+
+  // Index: taktId → display name (for the tooltip)
+  const taktNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of takte ?? []) {
+      map.set(t.id, `${t.taktBezeichnung} · ${t.gewerk}`);
+    }
+    return map;
+  }, [takte]);
+
+  // Stable tooltip component (recreated only when dep data changes)
+  const GanttTooltip = useMemo(
+    () => makeGanttTooltip(depsBySuccessor, taktNameById),
+    [depsBySuccessor, taktNameById],
+  );
+
   // Gantt tasks with dependency arrows
   const ganttTasks: Task[] = useMemo(() => {
     if (!takte || takte.length === 0) return [];
     return takte.map(takt => {
       const color = getTaktColor(takt.status);
-      const predecessorIds = deps
-        ?.filter(d => d.successorId === takt.id)
-        .map(d => d.predecessorId) ?? [];
+      // All predecessor IDs — the library renders finish-to-start arrows for these;
+      // dep type (EA/AA/EE) and lag are shown in the custom TooltipContent.
+      const predecessorIds = (depsBySuccessor.get(takt.id) ?? []).map(d => d.predecessorId);
       return {
         id: takt.id,
         name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
@@ -226,7 +321,7 @@ export default function ProjectDetail() {
         },
       };
     }).sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [takte, deps]);
+  }, [takte, depsBySuccessor]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
@@ -493,13 +588,36 @@ export default function ProjectDetail() {
       </div>
 
       {/* Status legend */}
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        {(Object.entries(STATUS_LABEL) as [TaktStatus, string][]).map(([s, label]) => (
-          <span key={s} className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLOR[s] }} />
-            {label}
-          </span>
-        ))}
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap gap-3">
+          {(Object.entries(STATUS_LABEL) as [TaktStatus, string][]).map(([s, label]) => (
+            <span key={s} className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLOR[s] }} />
+              {label}
+            </span>
+          ))}
+        </div>
+        {/* Dependency type legend — only shown when deps exist */}
+        {deps && deps.length > 0 && (
+          <div className="flex items-center gap-3 border-l border-border/50 pl-4">
+            <span className="text-muted-foreground/60 font-medium uppercase tracking-wider text-[10px]">Abhängigkeit</span>
+            {(Object.entries(DEP_TYPE_LABEL) as [TaktDependencyType, string][]).map(([type, label]) => (
+              <span key={type} className="flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center justify-center rounded px-1 py-0.5 font-bold text-[9px] leading-none"
+                  style={{
+                    background: DEP_TYPE_COLOR[type] + '22',
+                    color: DEP_TYPE_COLOR[type],
+                    border: `1px solid ${DEP_TYPE_COLOR[type]}44`,
+                  }}
+                >
+                  {type}
+                </span>
+                <span>{label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Gantt */}
@@ -547,8 +665,11 @@ export default function ProjectDetail() {
                 headerHeight={48}
                 fontSize="11"
                 fontFamily="inherit"
+                arrowColor="hsl(var(--primary))"
+                arrowIndent={12}
                 TaskListHeader={GanttListHeader}
                 TaskListTable={GanttListTable}
+                TooltipContent={GanttTooltip}
               />
             </div>
           ) : (
