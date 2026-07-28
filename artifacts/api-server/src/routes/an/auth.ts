@@ -1,10 +1,8 @@
 /**
- * AN-App specific auth routes: /api/an-auth/*
+ * AN authentication routes (mounted at /api/an/auth/*)
  *
- * These routes ONLY accept AN (Nachunternehmen) accounts.
- * This provides full session isolation from the AG-App:
- *   - AG users cannot log into the AN-App
- *   - /an-auth/me returns 401 when the active session belongs to an AG org
+ * Uses the separate "tk_an_sid" session cookie.
+ * Only AN-type organization accounts are accepted.
  */
 import { Router } from "express";
 import bcrypt from "bcryptjs";
@@ -31,14 +29,13 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-// GET /an-auth/me
-router.get("/an-auth/me", async (req, res): Promise<void> => {
+// GET /auth/me
+router.get("/auth/me", async (req, res): Promise<void> => {
   if (!req.session?.userId || !req.session?.orgId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  // Verify the active session is an AN account
   const [membership] = await db
     .select({
       orgId: userOrganizationsTable.orgId,
@@ -55,7 +52,6 @@ router.get("/an-auth/me", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!membership || membership.orgType !== "AN") {
-    // Session exists but belongs to an AG org — treat as unauthenticated for AN-App
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -83,8 +79,8 @@ router.get("/an-auth/me", async (req, res): Promise<void> => {
   });
 });
 
-// POST /an-auth/login
-router.post("/an-auth/login", async (req, res): Promise<void> => {
+// POST /auth/login  — only accepts AN accounts
+router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -133,7 +129,7 @@ router.post("/an-auth/login", async (req, res): Promise<void> => {
   if (membership.orgType !== "AN") {
     res.status(403).json({
       error:
-        "Dieses Konto ist ein Auftraggeber-Konto. Bitte verwenden Sie die AG-Anmeldung.",
+        "Dieses Konto ist ein Auftraggeber-Konto. Bitte melden Sie sich in der Auftraggeber-App an.",
     });
     return;
   }
@@ -158,8 +154,8 @@ router.post("/an-auth/login", async (req, res): Promise<void> => {
   });
 });
 
-// POST /an-auth/register (always registers as AN)
-router.post("/an-auth/register", async (req, res): Promise<void> => {
+// POST /auth/register  — always creates AN org
+router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -226,10 +222,10 @@ router.post("/an-auth/register", async (req, res): Promise<void> => {
   });
 });
 
-// POST /an-auth/logout
-router.post("/an-auth/logout", (req, res): void => {
+// POST /auth/logout
+router.post("/auth/logout", (req, res): void => {
   req.session.destroy(() => {
-    res.clearCookie("connect.sid");
+    res.clearCookie("tk_an_sid");
     res.json({ ok: true });
   });
 });

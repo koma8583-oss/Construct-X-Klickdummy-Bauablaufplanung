@@ -13,6 +13,11 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Direct fetch to the AN auth endpoints (/api/an/auth/*).
+ * These are NOT rewritten by the globalThis.fetch interceptor in main.tsx
+ * because they already start with /api/an/.
+ */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',
@@ -31,8 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchMe = async () => {
     try {
-      // /api/an-auth/me only succeeds for AN-type accounts
-      const data = await apiFetch<AuthUser>('/api/an-auth/me');
+      const data = await apiFetch<AuthUser>('/api/an/auth/me');
       setUser(data);
     } catch {
       setUser(null);
@@ -46,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (data: { email: string; password: string }) => {
-    await apiFetch('/api/an-auth/login', {
+    await apiFetch('/api/an/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -55,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (data: { name: string; email: string; password: string; companyName: string }) => {
-    await apiFetch('/api/an-auth/register', {
+    await apiFetch('/api/an/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -64,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await apiFetch('/api/an-auth/logout', { method: 'POST' });
+    await apiFetch('/api/an/auth/logout', { method: 'POST' });
     setUser(null);
   };
 
