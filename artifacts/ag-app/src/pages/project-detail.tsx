@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'wouter';
+import NetzplanView from '@/components/NetzplanView';
 import { format } from 'date-fns';
 import {
   useGetProject,
@@ -51,7 +52,7 @@ interface TaskListTableProps {
 import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
-  Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search,
+  Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -233,6 +234,7 @@ export default function ProjectDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan'>('gantt');
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
   const [selectedTaktId, setSelectedTaktId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -663,74 +665,113 @@ export default function ProjectDetail() {
         )}
       </div>
 
-      {/* Gantt */}
+      {/* Chart area — Gantt / Netzplan tabs */}
       <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
-        <div className="border-b border-border p-4 bg-background flex items-center justify-between">
-          <h2 className="font-semibold text-lg flex items-center">
-            <AlignLeft className="w-5 h-5 mr-2 text-primary" />
-            {t('projects.gantt')}
-          </h2>
-          <Select value={viewMode} onValueChange={(val) => setViewMode(val as ViewMode)}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
-              <SelectValue placeholder="Ansicht" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ViewMode.Day}>Tag</SelectItem>
-              <SelectItem value={ViewMode.Week}>Woche</SelectItem>
-              <SelectItem value={ViewMode.Month}>Monat</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Tab header */}
+        <div className="border-b border-border px-4 bg-background flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1 h-12">
+            <button
+              onClick={() => setActiveChartTab('gantt')}
+              className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
+                activeChartTab === 'gantt'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <AlignLeft className="w-4 h-4" />
+              {t('projects.gantt')}
+            </button>
+            <button
+              onClick={() => setActiveChartTab('netzplan')}
+              className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
+                activeChartTab === 'netzplan'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Network className="w-4 h-4" />
+              Netzplan
+            </button>
+          </div>
 
-        <div className="flex-1 overflow-auto p-4 custom-gantt-container bg-background">
-          {takteLoading ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
-          ) : ganttTasks.length > 0 ? (
-            <div className="rounded-lg border border-border overflow-hidden bg-card text-card-foreground">
-              <style dangerouslySetInnerHTML={{__html: `
-                .gantt { font-family: inherit !important; }
-                ._CZjuD { background: hsl(var(--background)) !important; }
-                ._3zlnZ { fill: hsl(var(--card)) !important; }
-                ._3wXGj { fill: hsl(var(--foreground)) !important; }
-                ._3r-f2 { stroke: hsl(var(--border)) !important; }
-                ._3vWJ5 { fill: hsl(var(--muted)) !important; }
-                ._2k9Ys { fill: hsl(var(--border)) !important; }
-                ._9w8d5 { fill: hsl(var(--muted-foreground)) !important; }
-                ._2q1Ar { fill: hsl(var(--muted-foreground)) !important; }
-              `}} />
-              <Gantt
-                tasks={ganttTasks}
-                viewMode={viewMode}
-                onClick={(task) => handleGanttClick(task.id)}
-                listCellWidth="190px"
-                columnWidth={viewMode === ViewMode.Day ? 38 : viewMode === ViewMode.Week ? 120 : 180}
-                rowHeight={40}
-                headerHeight={48}
-                fontSize="11"
-                fontFamily="inherit"
-                arrowColor="hsl(var(--primary))"
-                arrowIndent={12}
-                TaskListHeader={GanttListHeader}
-                TaskListTable={GanttListTable}
-                TooltipContent={GanttTooltip}
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                <Calendar className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-medium text-lg">Noch keine Takte geplant</h3>
-              <p className="text-muted-foreground text-sm max-w-sm mt-1">
-                Legen Sie Takte an, um Ihren Projektablauf zu strukturieren.
-              </p>
-              <Button onClick={() => setIsCreateOpen(true)} className="mt-6">
-                <Plus className="w-4 h-4 mr-2" />
-                Ersten Takt anlegen
-              </Button>
-            </div>
+          {/* Gantt view-mode selector — only shown on Gantt tab */}
+          {activeChartTab === 'gantt' && (
+            <Select value={viewMode} onValueChange={(val) => setViewMode(val as ViewMode)}>
+              <SelectTrigger className="w-[120px] h-8 text-xs">
+                <SelectValue placeholder="Ansicht" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ViewMode.Day}>Tag</SelectItem>
+                <SelectItem value={ViewMode.Week}>Woche</SelectItem>
+                <SelectItem value={ViewMode.Month}>Monat</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </div>
+
+        {/* ── Gantt panel ──────────────────────────────────────────────── */}
+        {activeChartTab === 'gantt' && (
+          <div className="flex-1 overflow-auto p-4 custom-gantt-container bg-background">
+            {takteLoading ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
+            ) : ganttTasks.length > 0 ? (
+              <div className="rounded-lg border border-border overflow-hidden bg-card text-card-foreground">
+                <style dangerouslySetInnerHTML={{__html: `
+                  .gantt { font-family: inherit !important; }
+                  ._CZjuD { background: hsl(var(--background)) !important; }
+                  ._3zlnZ { fill: hsl(var(--card)) !important; }
+                  ._3wXGj { fill: hsl(var(--foreground)) !important; }
+                  ._3r-f2 { stroke: hsl(var(--border)) !important; }
+                  ._3vWJ5 { fill: hsl(var(--muted)) !important; }
+                  ._2k9Ys { fill: hsl(var(--border)) !important; }
+                  ._9w8d5 { fill: hsl(var(--muted-foreground)) !important; }
+                  ._2q1Ar { fill: hsl(var(--muted-foreground)) !important; }
+                `}} />
+                <Gantt
+                  tasks={ganttTasks}
+                  viewMode={viewMode}
+                  onClick={(task) => handleGanttClick(task.id)}
+                  listCellWidth="190px"
+                  columnWidth={viewMode === ViewMode.Day ? 38 : viewMode === ViewMode.Week ? 120 : 180}
+                  rowHeight={40}
+                  headerHeight={48}
+                  fontSize="11"
+                  fontFamily="inherit"
+                  arrowColor="hsl(var(--primary))"
+                  arrowIndent={12}
+                  TaskListHeader={GanttListHeader}
+                  TaskListTable={GanttListTable}
+                  TooltipContent={GanttTooltip}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <Calendar className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium text-lg">Noch keine Takte geplant</h3>
+                <p className="text-muted-foreground text-sm max-w-sm mt-1">
+                  Legen Sie Takte an, um Ihren Projektablauf zu strukturieren.
+                </p>
+                <Button onClick={() => setIsCreateOpen(true)} className="mt-6">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Ersten Takt anlegen
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Netzplan panel ────────────────────────────────────────────── */}
+        {activeChartTab === 'netzplan' && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {takteLoading ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
+            ) : (
+              <NetzplanView takte={takte ?? []} deps={deps ?? []} />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Info Side Panel ─────────────────────────────────────────────────── */}
