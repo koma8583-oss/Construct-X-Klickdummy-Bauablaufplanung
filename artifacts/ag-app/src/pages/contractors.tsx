@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
+import { ChevronLeft } from 'lucide-react';
 import {
   useListOrganizations,
   useListDelegations,
@@ -278,9 +279,9 @@ export default function Contractors() {
   );
 
   return (
-    <div className="-m-8 h-[calc(100vh-3.5rem)] flex overflow-hidden">
+    <div className="-m-4 sm:-m-8 h-full flex flex-col md:flex-row overflow-hidden">
       {/* ── Left sidebar ───────────────────────────────────────────────── */}
-      <aside className="w-72 shrink-0 border-r border-border flex flex-col bg-sidebar overflow-hidden">
+      <aside className={`${selectedId ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-72 shrink-0 border-r border-border bg-sidebar overflow-hidden`}>
         {/* Header */}
         <div className="px-4 pt-5 pb-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 mb-3">
@@ -326,9 +327,21 @@ export default function Contractors() {
       </aside>
 
       {/* ── Right detail panel ─────────────────────────────────────────── */}
-      <main className="flex-1 overflow-hidden bg-background">
+      <main className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-col flex-1 overflow-hidden bg-background`}>
         {selectedContractor ? (
-          <ContractorDetail contractor={selectedContractor} />
+          <>
+            {/* Mobile back button */}
+            <button
+              onClick={() => setSelectedId(null)}
+              className="md:hidden flex items-center gap-1.5 px-4 py-3 text-sm text-muted-foreground hover:text-foreground border-b border-border bg-background shrink-0 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Zurück zur Liste
+            </button>
+            <div className="flex-1 overflow-hidden">
+              <ContractorDetail contractor={selectedContractor} />
+            </div>
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">

@@ -105,6 +105,7 @@ export default function Resources() {
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border hover:bg-transparent">
@@ -198,6 +199,7 @@ export default function Resources() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>

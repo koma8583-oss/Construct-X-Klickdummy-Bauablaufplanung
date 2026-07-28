@@ -63,6 +63,7 @@ export default function Requests() {
 
       <Card className="bg-card border-border">
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
@@ -144,6 +145,7 @@ export default function Requests() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

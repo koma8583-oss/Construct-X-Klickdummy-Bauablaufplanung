@@ -9,6 +9,9 @@ import {
   useUpdateTakt,
   useDeleteTakt,
   useListProjectContractors,
+  useAddProjectContractor,
+  useRemoveProjectContractor,
+  useListOrganizations,
   useCreateDelegation,
   useUpdateDelegation,
   useListDelegations,
@@ -19,6 +22,7 @@ import {
   getListDelegationsQueryKey,
   getGetProjectQueryKey,
   getListProjectContractorsQueryKey,
+  getListOrganizationsQueryKey,
   getListTaktDependenciesQueryKey,
   TaktStatus,
   TaktDependencyType,
@@ -47,7 +51,7 @@ interface TaskListTableProps {
 import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
-  Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users,
+  Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -239,6 +243,10 @@ export default function ProjectDetail() {
   // Inline Vergabe state in the info panel
   const [isVergabeOpen, setIsVergabeOpen] = useState(false);
 
+  // Contractor management dialog
+  const [isContractorMgmtOpen, setIsContractorMgmtOpen] = useState(false);
+  const [contractorSearch, setContractorSearch] = useState('');
+
   // Dependency form state (shared between info panel read and edit dialog write)
   const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
   const [newDepType, setNewDepType] = useState<TaktDependencyType>('EA');
@@ -254,6 +262,10 @@ export default function ProjectDetail() {
   const { data: contractors } = useListProjectContractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectContractorsQueryKey(projectId) },
   });
+  const { data: allAnOrgs } = useListOrganizations(
+    { type: 'AN' },
+    { query: { queryKey: getListOrganizationsQueryKey({ type: 'AN' }) } },
+  );
   const { data: delegations } = useListDelegations({ projectId }, {
     query: { enabled: !!projectId, queryKey: getListDelegationsQueryKey({ projectId }) },
   });
@@ -267,6 +279,8 @@ export default function ProjectDetail() {
   const deleteTakt = useDeleteTakt();
   const createDelegation = useCreateDelegation();
   const updateDelegation = useUpdateDelegation();
+  const addContractor = useAddProjectContractor();
+  const removeContractor = useRemoveProjectContractor();
   const createDep = useCreateTaktDependency();
   const deleteDep = useDeleteTaktDependency();
 
@@ -484,6 +498,26 @@ export default function ProjectDetail() {
     });
   };
 
+  const handleAddContractor = (anOrgId: string) => {
+    addContractor.mutate({ projectId, data: { anOrgId } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
+        toast({ title: 'Nachunternehmer verknüpft' });
+      },
+      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+    });
+  };
+
+  const handleRemoveContractor = (anOrgId: string) => {
+    removeContractor.mutate({ projectId, anOrgId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
+        toast({ title: 'Nachunternehmer entfernt' });
+      },
+      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+    });
+  };
+
   const handleCancelDelegation = () => {
     if (!taktDelegation) return;
     updateDelegation.mutate({
@@ -580,6 +614,15 @@ export default function ProjectDetail() {
               {t('projects.proposals')}
             </Button>
           </Link>
+          <Button variant="outline" onClick={() => setIsContractorMgmtOpen(true)}>
+            <Users className="w-4 h-4 mr-2" />
+            Nachunternehmer
+            {contractors && contractors.length > 0 && (
+              <span className="ml-1.5 text-xs bg-primary/15 text-primary rounded-full px-1.5 py-0.5 font-semibold">
+                {contractors.length}
+              </span>
+            )}
+          </Button>
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Neuer Takt
@@ -871,7 +914,16 @@ export default function ProjectDetail() {
                       {!contractors?.length ? (
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
                           <Users className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>Noch kein Nachunternehmer verknüpft. Fügen Sie einen unter <span className="font-medium text-foreground">Nachunternehmer</span> hinzu.</span>
+                          <span>
+                            Noch kein Nachunternehmer verknüpft.{' '}
+                            <button
+                              type="button"
+                              className="font-medium text-primary hover:underline"
+                              onClick={() => setIsContractorMgmtOpen(true)}
+                            >
+                              Jetzt verknüpfen
+                            </button>
+                          </span>
                         </div>
                       ) : (
                         <>
@@ -1203,6 +1255,108 @@ export default function ProjectDetail() {
               <Button type="submit" disabled={createTakt.isPending}>Takt anlegen</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Nachunternehmer verwalten ──────────────────────────────────────────── */}
+      <Dialog open={isContractorMgmtOpen} onOpenChange={setIsContractorMgmtOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Nachunternehmer — {project?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Verknüpfte Nachunternehmer */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Verknüpft ({contractors?.length ?? 0})
+            </p>
+            {!contractors?.length ? (
+              <p className="text-sm text-muted-foreground italic py-2">Noch keine Nachunternehmer verknüpft.</p>
+            ) : (
+              <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                {contractors.map(c => (
+                  <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{c.name}</div>
+                        {c.contactEmail && <div className="text-[11px] text-muted-foreground truncate">{c.contactEmail}</div>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveContractor(c.id)}
+                      disabled={removeContractor.isPending}
+                      className="ml-3 p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
+                      title="Entfernen"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Hinzufügen aus globalem AN-Pool */}
+          {(() => {
+            const linkedIds = new Set(contractors?.map(c => c.id) ?? []);
+            const available = (allAnOrgs ?? []).filter(
+              org => !linkedIds.has(org.id) &&
+                (!contractorSearch || org.name.toLowerCase().includes(contractorSearch.toLowerCase()))
+            );
+            return (
+              <div className="space-y-2 border-t border-border pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Hinzufügen
+                </p>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Nachunternehmer suchen…"
+                    value={contractorSearch}
+                    onChange={e => setContractorSearch(e.target.value)}
+                    className="pl-8 h-8 text-sm"
+                  />
+                </div>
+                {available.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic py-2">
+                    {contractorSearch ? 'Kein Treffer.' : allAnOrgs?.length === 0 ? 'Noch keine Nachunternehmer im System.' : 'Alle verfügbaren Nachunternehmer bereits verknüpft.'}
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                    {available.map(org => (
+                      <div key={org.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border/60 hover:border-border bg-card/50 hover:bg-card transition-colors">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-xs shrink-0">
+                            {org.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{org.name}</div>
+                            {org.contactEmail && <div className="text-[11px] text-muted-foreground truncate">{org.contactEmail}</div>}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="ml-3 h-7 text-xs shrink-0"
+                          onClick={() => handleAddContractor(org.id)}
+                          disabled={addContractor.isPending}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Verknüpfen
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
