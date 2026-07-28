@@ -47,7 +47,7 @@ interface TaskListTableProps {
 import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
-  Link2, Trash2, AlertTriangle,
+  Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -68,6 +68,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -164,8 +165,12 @@ export default function ProjectDetail() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [editTab, setEditTab] = useState<'details' | 'deps'>('details');
 
-  // Dependency form state
+  // Inline Vergabe state in the info panel
+  const [isVergabeOpen, setIsVergabeOpen] = useState(false);
+
+  // Dependency form state (shared between info panel read and edit dialog write)
   const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
   const [newDepType, setNewDepType] = useState<TaktDependencyType>('EA');
   const [newDepLag, setNewDepLag] = useState(0);
@@ -201,7 +206,6 @@ export default function ProjectDetail() {
     if (!takte || takte.length === 0) return [];
     return takte.map(takt => {
       const color = getTaktColor(takt.status);
-      // predecessorIds for this takt (gantt-task-react draws arrows from predecessor → this)
       const predecessorIds = deps
         ?.filter(d => d.successorId === takt.id)
         .map(d => d.predecessorId) ?? [];
@@ -227,26 +231,46 @@ export default function ProjectDetail() {
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
 
+  // Active delegation for the selected takt (info panel)
   const taktDelegation = useMemo(
     () => delegations?.find(d => d.taktId === selectedTaktId && d.status !== 'CANCELLED'),
     [delegations, selectedTaktId],
   );
 
-  // Deps for the currently-selected takt (as predecessor ← successors)
+  // Predecessors for the info panel (read-only display)
   const selectedTaktPredecessors = useMemo(
     () => deps?.filter(d => d.successorId === selectedTaktId) ?? [],
     [deps, selectedTaktId],
   );
 
-  // Any click opens the info Sheet; editing is started via the button inside the Sheet
+  // Predecessors for the edit dialog (with write controls)
+  const editTaktPredecessors = useMemo(
+    () => deps?.filter(d => d.successorId === editTargetId) ?? [],
+    [deps, editTargetId],
+  );
+
+  // Available predecessors for the edit dialog dep form
+  const availableEditPredecessors = useMemo(
+    () => takte?.filter(
+      t => t.id !== editTargetId &&
+        !editTaktPredecessors.some(d => d.predecessorId === t.id),
+    ) ?? [],
+    [takte, editTargetId, editTaktPredecessors],
+  );
+
   function handleGanttClick(taktId: string) {
     setSelectedTaktId(taktId);
+    setIsVergabeOpen(false);
   }
 
   function handleOpenEdit() {
     if (!selectedTaktId) return;
     setEditTargetId(selectedTaktId);
     setSelectedTaktId(null);
+    setIsVergabeOpen(false);
+    setEditTab('details');
+    setNewDepPredecessorId('');
+    setNewDepLag(0);
     setIsEditOpen(true);
   }
 
@@ -257,7 +281,6 @@ export default function ProjectDetail() {
     queryClient.invalidateQueries({ queryKey: getListTaktDependenciesQueryKey(projectId) });
   };
 
-  /** Show toast feedback from a reschedule result */
   function showRescheduleToasts(moved: TaktUpdateResult['moved'], conflicts: TaktUpdateResult['conflicts']) {
     if (moved.length > 0) {
       toast({
@@ -328,28 +351,26 @@ export default function ProjectDetail() {
     });
   };
 
+  // Delegation is now initiated from the info panel only
   const handleDelegateTakt = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editTakt && !selectedTakt) return;
-    const takt = editTakt ?? selectedTakt!;
+    if (!selectedTakt) return;
     const fd = new FormData(e.currentTarget);
     createDelegation.mutate({
       data: {
-        taktId: takt.id,
+        taktId: selectedTakt.id,
         anOrgId: fd.get('anOrgId') as string,
         requestedStart: fd.get('requestedStart') as string,
         requestedEnd: fd.get('requestedEnd') as string,
-        earliestStart: takt.earliestStart || undefined,
-        latestEnd: takt.latestEnd || undefined,
+        earliestStart: selectedTakt.earliestStart || undefined,
+        latestEnd: selectedTakt.latestEnd || undefined,
         message: (fd.get('message') as string) || undefined,
       },
     }, {
       onSuccess: () => {
         toast({ title: 'Takt vergeben' });
         invalidateTakte();
-        setIsEditOpen(false);
-        setEditTargetId(null);
-        setSelectedTaktId(null);
+        setIsVergabeOpen(false);
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
@@ -377,20 +398,20 @@ export default function ProjectDetail() {
       onSuccess: () => {
         toast({ title: 'Vergabe storniert' });
         invalidateTakte();
-        setSelectedTaktId(null);
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
   };
 
+  // Add dependency — only callable from the edit dialog
   const handleAddDependency = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedTaktId || !newDepPredecessorId) return;
+    if (!editTargetId || !newDepPredecessorId) return;
     createDep.mutate({
       projectId,
       data: {
         predecessorId: newDepPredecessorId,
-        successorId: selectedTaktId,
+        successorId: editTargetId,
         type: newDepType,
         lagDays: newDepLag,
       },
@@ -423,13 +444,6 @@ export default function ProjectDetail() {
     return <div className="space-y-4"><Skeleton className="h-12 w-1/3" /><Skeleton className="h-64 w-full" /></div>;
   }
   if (!project) return <div>Projekt nicht gefunden</div>;
-
-  // Other takte usable as predecessors in the dep form (excluding the currently-selected takt
-  // and takte already set as predecessors for this takt)
-  const availablePredecessors = takte?.filter(
-    t => t.id !== selectedTaktId &&
-      !selectedTaktPredecessors.some(d => d.predecessorId === t.id),
-  ) ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
@@ -555,8 +569,8 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* ── Info / Delegation Side Panel ────────────────────────────────────── */}
-      <Sheet open={!!selectedTaktId} onOpenChange={(open) => !open && setSelectedTaktId(null)}>
+      {/* ── Info Side Panel ─────────────────────────────────────────────────── */}
+      <Sheet open={!!selectedTaktId} onOpenChange={(open) => { if (!open) { setSelectedTaktId(null); setIsVergabeOpen(false); } }}>
         <SheetContent className="sm:max-w-md overflow-y-auto border-l-border">
           {selectedTakt && (
             <>
@@ -625,7 +639,7 @@ export default function ProjectDetail() {
                   </CardContent>
                 </Card>
 
-                {/* ── Anordnungsbeziehungen ──────────────────────────────── */}
+                {/* ── Anordnungsbeziehungen — read-only ─────────────────── */}
                 <div>
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                     <Link2 className="w-4 h-4 text-primary" />
@@ -635,124 +649,48 @@ export default function ProjectDetail() {
                     )}
                   </h3>
 
-                  {/* Existing predecessors */}
-                  {selectedTaktPredecessors.length > 0 && (
-                    <div className="space-y-2 mb-4">
+                  {selectedTaktPredecessors.length > 0 ? (
+                    <div className="space-y-2">
                       {selectedTaktPredecessors.map((dep) => {
                         const pred = takte?.find(t => t.id === dep.predecessorId);
                         return (
                           <div
                             key={dep.id}
-                            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 text-sm"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 text-sm"
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className="inline-block w-2 h-2 rounded-full shrink-0"
-                                style={{ background: getTaktColor(pred?.status) }}
-                              />
-                              <span className="truncate font-medium">{pred?.taktBezeichnung ?? '…'}</span>
-                              <span className="text-muted-foreground shrink-0 text-[11px]">{DEP_TYPE_LABEL[dep.type as TaktDependencyType]}</span>
-                              {dep.lagDays > 0 && (
-                                <span className="text-muted-foreground shrink-0 text-[11px]">+{dep.lagDays}d</span>
-                              )}
-                            </div>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
-                              onClick={() => handleDeleteDependency(dep.id)}
-                              disabled={deleteDep.isPending}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            <span
+                              className="inline-block w-2 h-2 rounded-full shrink-0"
+                              style={{ background: getTaktColor(pred?.status) }}
+                            />
+                            <span className="truncate font-medium">{pred?.taktBezeichnung ?? '…'}</span>
+                            <span className="text-muted-foreground shrink-0 text-[11px]">{DEP_TYPE_LABEL[dep.type as TaktDependencyType]}</span>
+                            {dep.lagDays > 0 && (
+                              <span className="text-muted-foreground shrink-0 text-[11px]">+{dep.lagDays}d</span>
+                            )}
                           </div>
                         );
                       })}
                     </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">
+                      Keine Abhängigkeiten definiert.
+                      {isTaktEditable(selectedTakt.status) && (
+                        <> Über <span className="font-medium not-italic">Bearbeiten → Abhängigkeiten</span> hinzufügen.</>
+                      )}
+                    </p>
                   )}
-
-                  {/* Add new predecessor form */}
-                  {availablePredecessors.length > 0 ? (
-                    <form onSubmit={handleAddDependency} className="space-y-2 p-3 rounded-lg border border-dashed border-border/60 bg-muted/10">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2">Neuer Vorgänger</p>
-                      <Select
-                        value={newDepPredecessorId}
-                        onValueChange={setNewDepPredecessorId}
-                        required
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Vorgänger-Takt…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availablePredecessors.map(t => (
-                            <SelectItem key={t.id} value={t.id}>
-                              <span className="flex items-center gap-2">
-                                <span
-                                  className="inline-block w-2 h-2 rounded-full"
-                                  style={{ background: getTaktColor(t.status) }}
-                                />
-                                {t.taktBezeichnung} · {t.gewerk}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex gap-2">
-                        <Select value={newDepType} onValueChange={(v) => setNewDepType(v as TaktDependencyType)}>
-                          <SelectTrigger className="h-8 text-xs flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(Object.entries(DEP_TYPE_LABEL) as [TaktDependencyType, string][]).map(([v, label]) => (
-                              <SelectItem key={v} value={v}>{label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Input
-                            type="number"
-                            min={0}
-                            value={newDepLag}
-                            onChange={e => setNewDepLag(Number(e.target.value))}
-                            className="h-8 w-16 text-xs"
-                          />
-                          <span className="text-xs text-muted-foreground">Tage</span>
-                        </div>
-                      </div>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        variant="outline"
-                        className="w-full"
-                        disabled={createDep.isPending || !newDepPredecessorId}
-                      >
-                        <Link2 className="w-3.5 h-3.5 mr-2" />
-                        {createDep.isPending ? 'Anlege…' : 'Abhängigkeit anlegen'}
-                      </Button>
-                    </form>
-                  ) : selectedTaktPredecessors.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">Keine anderen Takte verfügbar.</p>
-                  ) : null}
                 </div>
 
-                {/* ── Delegation section ─────────────────────────────────── */}
+                {/* ── Vergabe ────────────────────────────────────────────── */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <Send className="w-4 h-4 mr-2 text-primary" />
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Send className="w-4 h-4 text-primary" />
                     Vergabe
                   </h3>
 
-                  {selectedTakt.status === 'STORNIERT' && !taktDelegation && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-600 mb-4">
-                      <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>
-                        Dieser Takt wurde storniert. Sie können ihn erneut vergeben – wählen Sie dazu einen Nachunternehmer aus dem Formular unten.
-                      </span>
-                    </div>
-                  )}
-
                   {taktDelegation ? (
-                    <div className="space-y-4">
+                    /* Existing delegation — show status */
+                    <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-card">
                         <div className="text-sm font-medium mb-1">Aktuelle Vergabe</div>
                         <div className="text-sm text-muted-foreground mb-4">
@@ -793,6 +731,7 @@ export default function ProjectDetail() {
                           </div>
                         )}
                       </div>
+
                       {(taktDelegation.status === 'PENDING' || taktDelegation.status === 'ALTERNATIVE_PROPOSED') && (
                         <Button
                           variant="outline"
@@ -806,7 +745,81 @@ export default function ProjectDetail() {
                       )}
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground italic">Keine aktive Vergabe.</div>
+                    /* No active delegation — offer inline form */
+                    <div>
+                      {!contractors?.length ? (
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
+                          <Users className="w-4 h-4 mt-0.5 shrink-0" />
+                          <span>Noch kein Nachunternehmer verknüpft. Fügen Sie einen unter <span className="font-medium text-foreground">Nachunternehmer</span> hinzu.</span>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setIsVergabeOpen(v => !v)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-sm font-medium text-primary"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Send className="w-3.5 h-3.5" />
+                              Takt vergeben
+                            </span>
+                            {isVergabeOpen
+                              ? <ChevronUp className="w-4 h-4" />
+                              : <ChevronDown className="w-4 h-4" />
+                            }
+                          </button>
+
+                          {isVergabeOpen && (
+                            <form onSubmit={handleDelegateTakt} className="mt-3 space-y-3 p-3 rounded-lg border border-border/60 bg-muted/10">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Nachunternehmer</Label>
+                                <Select name="anOrgId" required>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Auswählen…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {contractors.map(c => (
+                                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Anfrage-Start</Label>
+                                  <Input type="date" name="requestedStart" defaultValue={selectedTakt.plannedStart} required />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Anfrage-Ende</Label>
+                                  <Input type="date" name="requestedEnd" defaultValue={selectedTakt.plannedEnd} required />
+                                </div>
+                              </div>
+                              <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={() => setIsVergabeOpen(false)}
+                                >
+                                  Abbrechen
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={createDelegation.isPending}
+                                >
+                                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                                  {createDelegation.isPending ? 'Vergabe läuft…' : 'Vergeben'}
+                                </Button>
+                              </div>
+                            </form>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -817,7 +830,7 @@ export default function ProjectDetail() {
 
       {/* ── Edit Takt Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) { setIsEditOpen(false); setEditTargetId(null); } }}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent className="sm:max-w-[580px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4 text-primary" />
@@ -831,110 +844,190 @@ export default function ProjectDetail() {
           </DialogHeader>
 
           {editTakt && (
-            <div className="space-y-6">
-              <form id="edit-takt-form" onSubmit={handleEditTakt} className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Takt-Bezeichnung</Label>
-                    <Input name="taktBezeichnung" required defaultValue={editTakt.taktBezeichnung} placeholder="z.B. T1, Rohbau-A" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Zone</Label>
-                    <Input name="zone" required defaultValue={editTakt.zone} placeholder="z.B. OG 1, Abschnitt A" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Gewerk</Label>
-                  <Input name="gewerk" required defaultValue={editTakt.gewerk} placeholder="z.B. Trockenbau, Elektro" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Beschreibung</Label>
-                  <Input name="description" defaultValue={editTakt.description ?? ''} />
-                </div>
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="space-y-2">
-                    <Label>Plan-Start</Label>
-                    <Input name="plannedStart" type="date" required defaultValue={editTakt.plannedStart} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Plan-Ende</Label>
-                    <Input name="plannedEnd" type="date" required defaultValue={editTakt.plannedEnd} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
-                    <Input name="earliestStart" type="date" defaultValue={editTakt.earliestStart ?? ''} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground flex items-center gap-1">Spätestes Ende <span className="text-[10px]">(Puffer)</span></Label>
-                    <Input name="latestEnd" type="date" defaultValue={editTakt.latestEnd ?? ''} />
-                  </div>
-                </div>
-              </form>
+            <Tabs value={editTab} onValueChange={(v) => setEditTab(v as 'details' | 'deps')} className="mt-1">
+              <TabsList className="w-full">
+                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                <TabsTrigger value="deps" className="flex-1">
+                  Abhängigkeiten
+                  {editTaktPredecessors.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 text-[10px]">{editTaktPredecessors.length}</Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
 
-              {/* Reschedule hint */}
-              {deps && deps.some(d => d.predecessorId === editTakt.id || d.successorId === editTakt.id) && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>Dieser Takt ist in Anordnungsbeziehungen eingebunden. Beim Speichern werden abhängige Takte automatisch verschoben.</span>
-                </div>
-              )}
-
-              {/* Vergabe-Form */}
-              <div className="border-t border-border/50 pt-4">
-                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Send className="w-3.5 h-3.5 text-primary" /> Direkt vergeben
-                </h4>
-                <form onSubmit={handleDelegateTakt} className="space-y-3">
-                  <Select name="anOrgId" required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Nachunternehmer auswählen…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {contractors?.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Anfrage-Start</Label>
-                      <Input type="date" name="requestedStart" defaultValue={editTakt.plannedStart} required />
+              {/* ── Tab: Details ────────────────────────────────────────── */}
+              <TabsContent value="details" className="mt-4 space-y-4">
+                <form id="edit-takt-form" onSubmit={handleEditTakt} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Takt-Bezeichnung</Label>
+                      <Input name="taktBezeichnung" required defaultValue={editTakt.taktBezeichnung} placeholder="z.B. T1, Rohbau-A" />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Anfrage-Ende</Label>
-                      <Input type="date" name="requestedEnd" defaultValue={editTakt.plannedEnd} required />
+                    <div className="space-y-2">
+                      <Label>Zone</Label>
+                      <Input name="zone" required defaultValue={editTakt.zone} placeholder="z.B. OG 1, Abschnitt A" />
                     </div>
                   </div>
-                  <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
-                  <Button type="submit" variant="outline" className="w-full" disabled={createDelegation.isPending || !contractors?.length}>
-                    <Send className="w-3.5 h-3.5 mr-2" />
-                    {createDelegation.isPending ? 'Vergabe läuft…' : 'Takt vergeben'}
-                  </Button>
+                  <div className="space-y-2">
+                    <Label>Gewerk</Label>
+                    <Input name="gewerk" required defaultValue={editTakt.gewerk} placeholder="z.B. Trockenbau, Elektro" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Beschreibung</Label>
+                    <Input name="description" defaultValue={editTakt.description ?? ''} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-2">
+                      <Label>Plan-Start</Label>
+                      <Input name="plannedStart" type="date" required defaultValue={editTakt.plannedStart} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Plan-Ende</Label>
+                      <Input name="plannedEnd" type="date" required defaultValue={editTakt.plannedEnd} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
+                      <Input name="earliestStart" type="date" defaultValue={editTakt.earliestStart ?? ''} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground flex items-center gap-1">Spätestes Ende <span className="text-[10px]">(Puffer)</span></Label>
+                      <Input name="latestEnd" type="date" defaultValue={editTakt.latestEnd ?? ''} />
+                    </div>
+                  </div>
                 </form>
-              </div>
 
-              <DialogFooter className="flex-row justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-red-500/50 text-red-500 hover:bg-red-500/10"
-                  onClick={handleDeleteTakt}
-                  disabled={deleteTakt.isPending}
-                >
-                  {deleteTakt.isPending ? 'Löscht…' : 'Takt löschen'}
-                </Button>
-                <div className="flex gap-2">
+                {deps && deps.some(d => d.predecessorId === editTakt.id || d.successorId === editTakt.id) && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <span>Dieser Takt ist in Anordnungsbeziehungen eingebunden. Beim Speichern werden abhängige Takte automatisch verschoben.</span>
+                  </div>
+                )}
+
+                <DialogFooter className="flex-row justify-between pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                    onClick={handleDeleteTakt}
+                    disabled={deleteTakt.isPending}
+                  >
+                    {deleteTakt.isPending ? 'Löscht…' : 'Takt löschen'}
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditTargetId(null); }}>
+                      Abbrechen
+                    </Button>
+                    <Button type="submit" form="edit-takt-form" disabled={updateTakt.isPending}>
+                      {updateTakt.isPending ? 'Speichert…' : 'Speichern'}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </TabsContent>
+
+              {/* ── Tab: Abhängigkeiten ──────────────────────────────────── */}
+              <TabsContent value="deps" className="mt-4 space-y-4">
+                {/* Existing predecessors with delete */}
+                {editTaktPredecessors.length > 0 ? (
+                  <div className="space-y-2">
+                    {editTaktPredecessors.map((dep) => {
+                      const pred = takte?.find(t => t.id === dep.predecessorId);
+                      return (
+                        <div
+                          key={dep.id}
+                          className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 text-sm"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="inline-block w-2 h-2 rounded-full shrink-0"
+                              style={{ background: getTaktColor(pred?.status) }}
+                            />
+                            <span className="truncate font-medium">{pred?.taktBezeichnung ?? '…'}</span>
+                            <span className="text-muted-foreground shrink-0 text-[11px]">{DEP_TYPE_LABEL[dep.type as TaktDependencyType]}</span>
+                            {dep.lagDays > 0 && (
+                              <span className="text-muted-foreground shrink-0 text-[11px]">+{dep.lagDays}d</span>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+                            onClick={() => handleDeleteDependency(dep.id)}
+                            disabled={deleteDep.isPending}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Noch keine Vorgänger definiert.</p>
+                )}
+
+                {/* Add new predecessor form */}
+                {availableEditPredecessors.length > 0 ? (
+                  <form onSubmit={handleAddDependency} className="space-y-3 p-3 rounded-lg border border-dashed border-border/60 bg-muted/10">
+                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Neuer Vorgänger</p>
+                    <Select value={newDepPredecessorId} onValueChange={setNewDepPredecessorId} required>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Vorgänger-Takt…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableEditPredecessors.map(t => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: getTaktColor(t.status) }} />
+                              {t.taktBezeichnung} · {t.gewerk}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-2">
+                      <Select value={newDepType} onValueChange={(v) => setNewDepType(v as TaktDependencyType)}>
+                        <SelectTrigger className="h-9 text-sm flex-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.entries(DEP_TYPE_LABEL) as [TaktDependencyType, string][]).map(([v, label]) => (
+                            <SelectItem key={v} value={v}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={newDepLag}
+                          onChange={e => setNewDepLag(Number(e.target.value))}
+                          className="h-9 w-20 text-sm"
+                        />
+                        <span className="text-sm text-muted-foreground">Tage</span>
+                      </div>
+                    </div>
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      className="w-full"
+                      disabled={createDep.isPending || !newDepPredecessorId}
+                    >
+                      <Link2 className="w-3.5 h-3.5 mr-2" />
+                      {createDep.isPending ? 'Anlege…' : 'Abhängigkeit anlegen'}
+                    </Button>
+                  </form>
+                ) : editTaktPredecessors.length > 0 ? null : (
+                  <p className="text-sm text-muted-foreground italic">Keine weiteren Takte als Vorgänger verfügbar.</p>
+                )}
+
+                <DialogFooter className="flex-row justify-end pt-2">
                   <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditTargetId(null); }}>
-                    Abbrechen
+                    Schließen
                   </Button>
-                  <Button type="submit" form="edit-takt-form" disabled={updateTakt.isPending}>
-                    {updateTakt.isPending ? 'Speichert…' : 'Speichern'}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </div>
+                </DialogFooter>
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
