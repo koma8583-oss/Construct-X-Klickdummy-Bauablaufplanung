@@ -1,4 +1,5 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { UserProfile } from '@workspace/api-client-react';
 
 type AuthUser = UserProfile & { orgId: string; orgName: string; orgType: string };
@@ -33,6 +34,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const fetchMe = async () => {
     try {
@@ -68,8 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await apiFetch('/api/an/auth/logout', { method: 'POST' });
-    setUser(null);
+    try {
+      await apiFetch('/api/an/auth/logout', { method: 'POST' });
+    } catch {
+      // session may already be invalid — clear local state regardless
+    } finally {
+      queryClient.clear();
+      setUser(null);
+    }
   };
 
   return (

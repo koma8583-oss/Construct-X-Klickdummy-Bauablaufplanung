@@ -224,8 +224,12 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
 // POST /auth/logout
 router.post("/auth/logout", (req, res): void => {
-  req.session.destroy(() => {
-    res.clearCookie("tk_an_sid");
+  req.session.destroy((err) => {
+    if (err) {
+      // Session may already be gone — still clear the cookie and return ok
+      console.warn("session destroy error:", err);
+    }
+    res.clearCookie("tk_an_sid", { httpOnly: true, path: "/" });
     res.json({ ok: true });
   });
 });
