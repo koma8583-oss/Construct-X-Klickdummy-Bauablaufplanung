@@ -192,6 +192,8 @@ router.get(
   async (req, res): Promise<void> => {
     const orgId = req.session!.orgId!;
 
+    const anOrgAlias = organizationsTable;
+
     const [row] = await db
       .select({
         delegation: delegationsTable,
@@ -201,7 +203,7 @@ router.get(
       .from(delegationsTable)
       .innerJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
       .innerJoin(
-        organizationsTable,
+        anOrgAlias,
         eq(delegationsTable.anOrgId, organizationsTable.id),
       )
       .where(eq(delegationsTable.id, req.params.delegationId as string))
@@ -218,10 +220,18 @@ router.get(
       return;
     }
 
+    // Fetch AG org separately (can't alias the same table in one drizzle select)
+    const [agOrg] = await db
+      .select()
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, row.delegation.agOrgId))
+      .limit(1);
+
     res.json({
       ...row.delegation,
       takt: row.takt,
       anOrganization: row.anOrg,
+      agOrganization: agOrg ?? null,
     });
   },
 );
