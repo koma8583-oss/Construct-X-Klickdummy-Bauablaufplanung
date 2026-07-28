@@ -21,6 +21,7 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TaktStatusBadge } from "@/components/takt-status-badge";
 
 export default function Requests() {
   const { t } = useTranslation();
@@ -114,21 +115,28 @@ export default function Requests() {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block flex items-center gap-2">
-                        <Badge variant="outline" className={`
-                          ${del.status === 'PENDING' ? 'border-amber-500/50 text-amber-500' : ''}
-                          ${del.status === 'CONFIRMED' ? 'border-emerald-500/50 text-emerald-500' : ''}
-                          ${del.status === 'ALTERNATIVE_PROPOSED' ? 'border-blue-500/50 text-blue-500' : ''}
-                          ${del.status === 'REJECTED' ? 'border-red-500/50 text-red-500' : ''}
-                        `}>
-                          {t(`common.status.${del.status}`)}
-                        </Badge>
-                        {del.isWithinBuffer !== null && del.isWithinBuffer !== undefined && (
-                          <div 
-                            className={`w-2 h-2 rounded-full ${del.isWithinBuffer ? 'bg-emerald-500' : 'bg-red-500'}`} 
-                            title={del.isWithinBuffer ? t("requests.withinBuffer") : t("requests.outsideBuffer")}
-                          />
-                        )}
+                      <Link href={`/requests/${del.id}`} className="block">
+                        <div className="flex flex-col gap-1">
+                          {del.takt?.status && (
+                            <TaktStatusBadge status={del.takt.status} />
+                          )}
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={`
+                              ${del.status === 'PENDING' ? 'border-amber-500/50 text-amber-500' : ''}
+                              ${del.status === 'CONFIRMED' ? 'border-emerald-500/50 text-emerald-500' : ''}
+                              ${del.status === 'ALTERNATIVE_PROPOSED' ? 'border-blue-500/50 text-blue-500' : ''}
+                              ${del.status === 'REJECTED' ? 'border-red-500/50 text-red-500' : ''}
+                            `}>
+                              {t(`common.status.${del.status}`)}
+                            </Badge>
+                            {del.isWithinBuffer !== null && del.isWithinBuffer !== undefined && (
+                              <div 
+                                className={`w-2 h-2 rounded-full ${del.isWithinBuffer ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                                title={del.isWithinBuffer ? t("requests.withinBuffer") : t("requests.outsideBuffer")}
+                              />
+                            )}
+                          </div>
+                        </div>
                       </Link>
                     </TableCell>
                   </TableRow>

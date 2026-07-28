@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { format, differenceInDays, isWithinInterval } from "date-fns";
+import { TaktStatusBadge } from "@/components/takt-status-badge";
 
 export default function RequestDetail() {
   const { delegationId } = useParams<{ delegationId: string }>();
@@ -111,6 +112,12 @@ export default function RequestDetail() {
             <CardTitle>{t("requests.detail.taktInfo")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {delegation.takt?.status && (
+              <div>
+                <div className="text-sm font-medium text-muted-foreground mb-1">Takt-Status</div>
+                <TaktStatusBadge status={delegation.takt.status} />
+              </div>
+            )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.ag")}</div>
               <div className="text-foreground">{delegation.agOrganization?.name}</div>

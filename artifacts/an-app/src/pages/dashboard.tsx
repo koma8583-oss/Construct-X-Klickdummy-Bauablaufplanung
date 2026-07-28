@@ -5,6 +5,7 @@ import { Loader2, Inbox, CheckCircle2, AlertTriangle, Users, RefreshCw } from "l
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import { TaktStatusBadge } from "@/components/takt-status-badge";
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -115,7 +116,10 @@ export default function Dashboard() {
                         {req.agOrganization?.name ?? "Auftraggeber"}
                       </div>
                     </div>
-                    <div className="text-xs">
+                    <div className="flex flex-col items-end gap-1">
+                      {req.takt?.status && (
+                        <TaktStatusBadge status={req.takt.status} />
+                      )}
                       <span
                         className={`px-2 py-1 rounded text-[10px] font-semibold tracking-wide ${
                           req.status === "PENDING"
