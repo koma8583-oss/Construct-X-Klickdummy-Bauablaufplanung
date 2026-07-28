@@ -38,11 +38,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Logo + toggle */}
         <div className="h-14 flex items-center border-b border-sidebar-border flex-shrink-0 px-3 gap-2">
           {!collapsed && (
-            <div className="flex items-center gap-2 flex-1 min-w-0 pl-1">
+            <div className="flex items-center gap-2.5 flex-1 min-w-0 pl-1">
               <Hexagon className="w-5 h-5 text-primary fill-primary/20 flex-shrink-0" />
-              <span className="font-bold text-base tracking-tight text-sidebar-foreground truncate">
-                TaktKoord<span className="text-primary">.</span>
-              </span>
+              <div className="min-w-0">
+                <div className="font-bold text-sm text-sidebar-foreground leading-tight tracking-tight truncate">
+                  TaktKoord
+                </div>
+                <div className="text-[9px] text-primary uppercase font-bold tracking-wider">
+                  Planung
+                </div>
+              </div>
             </div>
           )}
           <button

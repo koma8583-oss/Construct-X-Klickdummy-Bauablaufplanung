@@ -53,7 +53,7 @@ export default function Login() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">TaktKoord</h1>
           <p className="text-sm text-primary uppercase font-bold tracking-widest mt-1">
-            Operations
+            Ausführung
           </p>
         </div>
 

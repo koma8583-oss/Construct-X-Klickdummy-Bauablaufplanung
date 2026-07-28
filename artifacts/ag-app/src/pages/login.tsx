@@ -63,9 +63,14 @@ export default function Login() {
         <div className="mx-auto w-full max-w-sm lg:w-96">
           <div className="flex items-center gap-3 mb-8">
             <Hexagon className="w-8 h-8 text-primary fill-primary/20" />
-            <span className="font-bold text-2xl tracking-tight text-foreground">
-              TaktKoord<span className="text-primary">.</span>
-            </span>
+            <div>
+              <div className="font-bold text-2xl tracking-tight text-foreground leading-tight">
+                TaktKoord
+              </div>
+              <div className="text-[10px] text-primary uppercase font-bold tracking-widest">
+                Planung
+              </div>
+            </div>
           </div>
 
           <h2 className="mt-8 text-2xl font-bold tracking-tight text-foreground">
@@ -123,8 +128,8 @@ export default function Login() {
         <div className="absolute inset-0 h-full w-full object-cover bg-[url('https://images.unsplash.com/photo-1541888086925-eb2c1f4e1987?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent"></div>
         <div className="absolute bottom-12 left-12 right-12 text-foreground">
-          <h3 className="text-2xl font-bold mb-2">Precision Schedule Coordination</h3>
-          <p className="text-muted-foreground max-w-lg">Manage your construction timelines with uncompromised clarity and direct subcontractor integration.</p>
+          <h3 className="text-2xl font-bold mb-2">Taktplanung für Auftraggeber</h3>
+          <p className="text-muted-foreground max-w-lg">Erstellen Sie Projekte, vergeben Sie Takte und koordinieren Sie Ihre Nachunternehmer an einem Ort.</p>
         </div>
       </div>
     </div>
