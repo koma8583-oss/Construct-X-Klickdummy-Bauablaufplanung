@@ -8,14 +8,14 @@ import {
   delegationResponsesTable,
 } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
 const router = Router();
 
 // GET /projects
-router.get("/projects", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.get("/projects", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
   const status = req.query.status as string | undefined;
 
   let query = db
@@ -72,7 +72,7 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /projects
-router.post("/projects", requireAuth, async (req, res): Promise<void> => {
+router.post("/projects", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
@@ -89,7 +89,7 @@ router.post("/projects", requireAuth, async (req, res): Promise<void> => {
 
   const [project] = await db
     .insert(projectsTable)
-    .values({ ...parsed.data, agOrgId: req.session!.orgId! })
+    .values({ ...parsed.data, agOrgId: req.user!.orgId! })
     .returning();
 
   res.status(201).json({ ...project, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
@@ -98,7 +98,7 @@ router.post("/projects", requireAuth, async (req, res): Promise<void> => {
 // GET /projects/:projectId
 router.get(
   "/projects/:projectId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const [project] = await db
       .select()
@@ -142,7 +142,7 @@ router.get(
 // PATCH /projects/:projectId
 router.patch(
   "/projects/:projectId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -177,7 +177,7 @@ router.patch(
 // DELETE /projects/:projectId
 router.delete(
   "/projects/:projectId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(projectsTable)
@@ -189,7 +189,7 @@ router.delete(
 // GET /projects/:projectId/contractors
 router.get(
   "/projects/:projectId/contractors",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const contractors = await db
       .select({ org: organizationsTable })
@@ -207,7 +207,7 @@ router.get(
 // POST /projects/:projectId/contractors
 router.post(
   "/projects/:projectId/contractors",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const { anOrgId } = req.body as { anOrgId: string };
 
@@ -228,7 +228,7 @@ router.post(
 // DELETE /projects/:projectId/contractors/:anOrgId
 router.delete(
   "/projects/:projectId/contractors/:anOrgId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(projectContractorsTable)

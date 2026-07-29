@@ -6,7 +6,7 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { wouldCreateCycle, rescheduleTakte } from "../lib/reschedule";
 import { z } from "zod";
 
@@ -15,7 +15,7 @@ const router = Router();
 // ── GET /projects/:projectId/takt-dependencies ──────────────────────────────
 router.get(
   "/projects/:projectId/takt-dependencies",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const projectId = req.params.projectId as string;
 
@@ -29,7 +29,7 @@ router.get(
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    if (project.agOrgId !== req.session!.orgId!) {
+    if (project.agOrgId !== req.user!.orgId!) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
@@ -67,7 +67,7 @@ router.get(
 // ── POST /projects/:projectId/takt-dependencies ─────────────────────────────
 router.post(
   "/projects/:projectId/takt-dependencies",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const projectId = req.params.projectId as string;
 
@@ -97,7 +97,7 @@ router.post(
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    if (project.agOrgId !== req.session!.orgId!) {
+    if (project.agOrgId !== req.user!.orgId!) {
       res.status(403).json({ error: "Only the AG organisation may manage dependencies" });
       return;
     }
@@ -152,7 +152,7 @@ router.post(
 // ── DELETE /projects/:projectId/takt-dependencies/:depId ─────────────────────
 router.delete(
   "/projects/:projectId/takt-dependencies/:depId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const projectId = req.params.projectId as string;
     const depId = req.params.depId as string;
@@ -163,7 +163,7 @@ router.delete(
       .where(eq(projectsTable.id, projectId))
       .limit(1);
 
-    if (!project || project.agOrgId !== req.session!.orgId!) {
+    if (!project || project.agOrgId !== req.user!.orgId!) {
       res.status(403).json({ error: "Access denied" });
       return;
     }

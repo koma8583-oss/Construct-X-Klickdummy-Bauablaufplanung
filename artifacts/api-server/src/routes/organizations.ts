@@ -6,13 +6,13 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, ilike, or } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
 const router = Router();
 
 // GET /organizations
-router.get("/organizations", requireAuth, async (req, res): Promise<void> => {
+router.get("/organizations", requireJwt, async (req, res): Promise<void> => {
   const type = req.query.type as "AG" | "AN" | undefined;
   const search = req.query.search as string | undefined;
 
@@ -30,7 +30,7 @@ router.get("/organizations", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /organizations
-router.post("/organizations", requireAuth, async (req, res): Promise<void> => {
+router.post("/organizations", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     name: z.string().min(1),
     type: z.enum(["AG", "AN"]),
@@ -49,9 +49,9 @@ router.post("/organizations", requireAuth, async (req, res): Promise<void> => {
     .values(parsed.data)
     .returning();
 
-  if (org && req.session!.userId) {
+  if (org && req.user!.userId) {
     await db.insert(userOrganizationsTable).values({
-      userId: req.session!.userId,
+      userId: req.user!.userId,
       orgId: org.id,
       role: "ADMIN",
     });
@@ -63,7 +63,7 @@ router.post("/organizations", requireAuth, async (req, res): Promise<void> => {
 // GET /organizations/me
 router.get(
   "/organizations/me",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const memberships = await db
       .select({
@@ -76,7 +76,7 @@ router.get(
         organizationsTable,
         eq(userOrganizationsTable.orgId, organizationsTable.id),
       )
-      .where(eq(userOrganizationsTable.userId, req.session!.userId!));
+      .where(eq(userOrganizationsTable.userId, req.user!.userId!));
 
     res.json(
       memberships.map((m) => ({
@@ -91,7 +91,7 @@ router.get(
 // GET /organizations/:orgId
 router.get(
   "/organizations/:orgId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const [org] = await db
       .select()
@@ -111,7 +111,7 @@ router.get(
 // PATCH /organizations/:orgId
 router.patch(
   "/organizations/:orgId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -143,7 +143,7 @@ router.patch(
 // GET /organizations/:orgId/members
 router.get(
   "/organizations/:orgId/members",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const members = await db
       .select({
@@ -167,7 +167,7 @@ router.get(
 // POST /organizations/:orgId/members
 router.post(
   "/organizations/:orgId/members",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       email: z.string().email(),
@@ -219,7 +219,7 @@ router.post(
 // DELETE /organizations/:orgId/members/:userId
 router.delete(
   "/organizations/:orgId/members/:userId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(userOrganizationsTable)
@@ -235,11 +235,11 @@ router.delete(
 );
 
 // GET /users/me
-router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
+router.get("/users/me", requireJwt, async (req, res): Promise<void> => {
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.id, req.session!.userId!))
+    .where(eq(usersTable.id, req.user!.userId!))
     .limit(1);
 
   if (!user) {
@@ -257,7 +257,7 @@ router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
 });
 
 // PATCH /users/me
-router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
+router.patch("/users/me", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     name: z.string().min(1).optional(),
     preferredLanguage: z.enum(["de", "en"]).optional(),
@@ -272,7 +272,7 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
   const [user] = await db
     .update(usersTable)
     .set(parsed.data)
-    .where(eq(usersTable.id, req.session!.userId!))
+    .where(eq(usersTable.id, req.user!.userId!))
     .returning();
 
   res.json({

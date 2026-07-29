@@ -1,6 +1,9 @@
 /**
  * Hub API client — direct fetch wrapper for /api/hub/* endpoints.
  * No generated hooks: hub routes are separate from the main OpenAPI spec.
+ *
+ * Auth is handled via the global fetch interceptor in main.tsx — the Bearer
+ * token is injected automatically. This client no longer manages credentials.
  */
 
 const BASE = '/api/hub';
@@ -20,10 +23,12 @@ export interface HubUser {
   id: string;
   name: string;
   email: string;
+  preferredLanguage: string;
   hubRole: HubRole;
   orgId: string | null;
   orgName: string | null;
   orgType: 'AG' | 'AN' | null;
+  hubAdmin: boolean;
 }
 
 export interface HubOrg {
@@ -76,7 +81,6 @@ export interface HubAdminUser {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
@@ -88,27 +92,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const hubApi = {
-  auth: {
-    me: () => apiFetch<HubUser>('/auth/me'),
-    login: (email: string, password: string) =>
-      apiFetch<HubUser>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      }),
-    register: (data: {
-      name: string;
-      email: string;
-      password: string;
-      role: HubRole;
-      companyName?: string;
-    }) =>
-      apiFetch<HubUser>('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    logout: () =>
-      apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
-  },
   messages: {
     list: (params?: {
       type?: HubMessageType;

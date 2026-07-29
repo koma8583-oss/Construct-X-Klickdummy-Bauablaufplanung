@@ -8,7 +8,7 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { eq, and, SQL } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { dispatchWebhookEvent } from "../lib/webhookDispatcher";
 import { writeHubMessage } from "../lib/hubMessageWriter";
 import { z } from "zod";
@@ -27,8 +27,8 @@ function isWithinBuffer(
 }
 
 // GET /delegations
-router.get("/delegations", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.get("/delegations", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
   const { projectId, status, anOrgId } = req.query as Record<string, string>;
 
   const conditions: SQL[] = [];
@@ -85,8 +85,8 @@ router.get("/delegations", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /delegations
-router.post("/delegations", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.post("/delegations", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
 
   const schema = z.object({
     taktId: z.string(),
@@ -188,9 +188,9 @@ router.post("/delegations", requireAuth, async (req, res): Promise<void> => {
 // GET /delegations/:delegationId
 router.get(
   "/delegations/:delegationId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     const anOrgAlias = organizationsTable;
 
@@ -239,9 +239,9 @@ router.get(
 // PATCH /delegations/:delegationId  (AG cancels)
 router.patch(
   "/delegations/:delegationId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     const schema = z.object({
       status: z.enum(["CANCELLED"]).optional(),
@@ -345,9 +345,9 @@ router.patch(
 // DELETE /delegations/:delegationId
 router.delete(
   "/delegations/:delegationId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     const [existing] = await db
       .select()
@@ -376,9 +376,9 @@ router.delete(
 // GET /delegations/:delegationId/responses
 router.get(
   "/delegations/:delegationId/responses",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     // Authorization: verify the caller belongs to this delegation (AG or AN side)
     const [delegation] = await db
@@ -412,9 +412,9 @@ router.get(
 // POST /delegations/:delegationId/responses  (AN responds)
 router.post(
   "/delegations/:delegationId/responses",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     const schema = z.object({
       type: z.enum(["CONFIRMED", "ALTERNATIVE", "REJECTED"]),
@@ -546,9 +546,9 @@ router.post(
 // PATCH /delegations/:delegationId/responses/:responseId  (AG decides on alternative)
 router.patch(
   "/delegations/:delegationId/responses/:responseId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
 
     const schema = z.object({
       agDecision: z.enum(["ACCEPTED", "REJECTED"]),

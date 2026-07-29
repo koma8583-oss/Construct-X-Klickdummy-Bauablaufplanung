@@ -12,12 +12,12 @@ import {
   resourceAssignmentsTable,
 } from "@workspace/db";
 import { eq, and, count, gte, lte } from "drizzle-orm";
-import { requireAuth } from "../../middlewares/requireAuth";
+import { requireJwt } from "../../middlewares/requireJwt";
 
 const router = Router();
 
-router.get("/dashboard/an", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
 
   const [pendingRow] = await db
     .select({ count: count() })

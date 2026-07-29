@@ -8,14 +8,14 @@ import {
   organizationsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
 const router = Router();
 
 // GET /resources
-router.get("/resources", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.get("/resources", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
   const type = req.query.type as string | undefined;
 
   let query = db
@@ -41,7 +41,7 @@ router.get("/resources", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /resources
-router.post("/resources", requireAuth, async (req, res): Promise<void> => {
+router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     type: z.enum(["EMPLOYEE", "EQUIPMENT", "MACHINE", "OTHER"]),
     name: z.string().min(1),
@@ -58,7 +58,7 @@ router.post("/resources", requireAuth, async (req, res): Promise<void> => {
 
   const [resource] = await db
     .insert(resourcesTable)
-    .values({ ...parsed.data, anOrgId: req.session!.orgId! })
+    .values({ ...parsed.data, anOrgId: req.user!.orgId! })
     .returning();
 
   res.status(201).json(resource);
@@ -67,7 +67,7 @@ router.post("/resources", requireAuth, async (req, res): Promise<void> => {
 // PATCH /resources/:resourceId
 router.patch(
   "/resources/:resourceId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       type: z.enum(["EMPLOYEE", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
@@ -101,7 +101,7 @@ router.patch(
 // DELETE /resources/:resourceId
 router.delete(
   "/resources/:resourceId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(resourcesTable)
@@ -113,7 +113,7 @@ router.delete(
 // GET /resource-assignments
 router.get(
   "/resource-assignments",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const { delegationId, resourceId, from, to } = req.query as Record<
       string,
@@ -161,7 +161,7 @@ router.get(
 // POST /resource-assignments
 router.post(
   "/resource-assignments",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       resourceId: z.string(),
@@ -189,7 +189,7 @@ router.post(
 // PATCH /resource-assignments/:assignmentId
 router.patch(
   "/resource-assignments/:assignmentId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       fromDate: z.string().optional(),
@@ -221,7 +221,7 @@ router.patch(
 // DELETE /resource-assignments/:assignmentId
 router.delete(
   "/resource-assignments/:assignmentId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(resourceAssignmentsTable)

@@ -1,9 +1,19 @@
-// Override express-serve-static-core ParamsDictionary to narrow to string only.
-// At runtime, route params are always strings; the v5 types over-broadened this.
-import "express-serve-static-core";
+// Make this a module so `declare global` is valid.
+export {};
 
-declare module "express-serve-static-core" {
-  export interface ParamsDictionary {
-    [key: string]: string;
+// express-serve-static-core declares:
+//   export interface Request<...> extends http.IncomingMessage, Express.Request {}
+// Augmenting global Express.Request therefore adds user? to every req object.
+declare global {
+  namespace Express {
+    interface Request {
+      /** Populated by requireJwt middleware after successful Bearer token verification */
+      user?: {
+        userId: string;
+        orgId: string | null;
+        orgType: "AG" | "AN" | null;
+        hubAdmin: boolean;
+      };
+    }
   }
 }

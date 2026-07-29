@@ -1,2 +1,3 @@
 - [Express v5 params typing](express-v5-params.md) — ParamsDictionary in @types/express-serve-static-core@5.1.2 is `string | string[]`; add `as string` casts to all req.params access in drizzle eq() calls.
-- [DB schema & backend routes](taktkoord-backend.md) — TaktKoord backend: session auth (bcryptjs + express-session + connect-pg-simple), 7 schema files, full route set; zod v4 in schema files, plain zod in route files.
+- [DB schema & backend routes](taktkoord-backend.md) — TaktKoord backend: JWT auth (bcryptjs + jsonwebtoken), 8 schema files (added refresh_tokens), full route set; zod v4 in schema files, plain zod in route files.
+- [JWT Auth Service](jwt-auth-service.md) — centralized auth at /auth-service; Express.Request global namespace is the correct req.user extension point; lib/db needs tsc rebuild after schema changes.

@@ -7,7 +7,6 @@
  * Provides AN-specific auth and dashboard routes.
  */
 import { Router, type IRouter } from "express";
-import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import delegationsRouter from "../delegations";
 import resourcesRouter from "../resources";
@@ -20,11 +19,7 @@ const router: IRouter = Router();
 // Health check reachable at /api/an/health
 router.use(healthRouter);
 
-// AN-specific auth at /api/an/auth/*
-router.use(authRouter);
-
-// Reused route handlers — req.session.orgId is the AN org's ID
-// (set during AN login), so all orgId-based filtering works correctly.
+// Reused route handlers — req.user.orgId is set by requireJwt middleware.
 router.use(delegationsRouter);
 router.use(resourcesRouter);
 router.use(organizationsRouter);

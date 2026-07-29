@@ -1,8 +1,17 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { UserProfile } from '@workspace/api-client-react';
+import { setToken } from '@/lib/auth-token';
 
-type AuthUser = UserProfile & { orgId: string; orgName: string; orgType: string };
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  preferredLanguage: string;
+  orgId: string | null;
+  orgName: string | null;
+  orgType: 'AG' | 'AN' | null;
+  hubAdmin: boolean;
+};
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -14,19 +23,14 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * Direct fetch to the AN auth endpoints (/api/an/auth/*).
- * These are NOT rewritten by the globalThis.fetch interceptor in main.tsx
- * because they already start with /api/an/.
- */
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: 'include',
-    ...init,
-  });
+async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { credentials: 'include', ...init });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw Object.assign(new Error(err.error ?? res.statusText), { status: res.status });
+    throw Object.assign(
+      new Error((err as { error?: string }).error ?? res.statusText),
+      { status: res.status },
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -36,45 +40,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  const fetchMe = async () => {
+  useEffect(() => {
+    initAuth();
+  }, []);
+
+  async function initAuth() {
     try {
-      const data = await apiFetch<AuthUser>('/api/an/auth/me');
-      setUser(data);
+      const { accessToken, user: userData } = await authFetch<{
+        accessToken: string;
+        user: AuthUser;
+      }>('/auth-service/refresh', { method: 'POST' });
+
+      // AN-App only accepts AN accounts
+      if (userData.orgType !== 'AN') {
+        setUser(null);
+        return;
+      }
+      setToken(accessToken);
+      setUser(userData);
     } catch {
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchMe();
-  }, []);
+  }
 
   const login = async (data: { email: string; password: string }) => {
-    await apiFetch('/api/an/auth/login', {
+    const { accessToken, user: userData } = await authFetch<{
+      accessToken: string;
+      user: AuthUser;
+    }>('/auth-service/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await fetchMe();
+
+    // Reject non-AN accounts with a clear error message
+    if (userData.orgType !== 'AN') {
+      await authFetch('/auth-service/logout', { method: 'POST' }).catch(() => {});
+      throw new Error(
+        'Dieses Konto ist ein Auftraggeber-Konto. Bitte melden Sie sich in der Auftraggeber-App an.',
+      );
+    }
+
+    setToken(accessToken);
+    setUser(userData);
   };
 
-  const register = async (data: { name: string; email: string; password: string; companyName: string }) => {
-    await apiFetch('/api/an/auth/register', {
+  const register = async (data: {
+    name: string;
+    email: string;
+    password: string;
+    companyName: string;
+  }) => {
+    const { accessToken, user: userData } = await authFetch<{
+      accessToken: string;
+      user: AuthUser;
+    }>('/auth-service/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, orgType: 'AN' }),
     });
-    await fetchMe();
+    setToken(accessToken);
+    setUser(userData);
   };
 
   const logout = async () => {
     try {
-      await apiFetch('/api/an/auth/logout', { method: 'POST' });
+      await authFetch('/auth-service/logout', { method: 'POST' });
     } catch {
       // session may already be invalid — clear local state regardless
     } finally {
+      setToken(null);
       queryClient.clear();
       setUser(null);
     }

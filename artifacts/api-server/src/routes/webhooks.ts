@@ -2,14 +2,14 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { webhookSubscriptionsTable, webhookEventsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
 const router = Router();
 
 // GET /webhooks
-router.get("/webhooks", requireAuth, async (req, res): Promise<void> => {
-  const orgId = req.session!.orgId!;
+router.get("/webhooks", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
   const subscriptions = await db
     .select()
     .from(webhookSubscriptionsTable)
@@ -19,7 +19,7 @@ router.get("/webhooks", requireAuth, async (req, res): Promise<void> => {
 });
 
 // POST /webhooks
-router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
+router.post("/webhooks", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     url: z.string().url(),
     events: z.array(z.string()).min(1),
@@ -34,7 +34,7 @@ router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
 
   const [sub] = await db
     .insert(webhookSubscriptionsTable)
-    .values({ ...parsed.data, orgId: req.session!.orgId! })
+    .values({ ...parsed.data, orgId: req.user!.orgId! })
     .returning();
 
   res.status(201).json(sub);
@@ -43,7 +43,7 @@ router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
 // PATCH /webhooks/:webhookId
 router.patch(
   "/webhooks/:webhookId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       url: z.string().url().optional(),
@@ -64,7 +64,7 @@ router.patch(
       .where(
         and(
           eq(webhookSubscriptionsTable.id, (req.params.webhookId as string)),
-          eq(webhookSubscriptionsTable.orgId, req.session!.orgId!),
+          eq(webhookSubscriptionsTable.orgId, req.user!.orgId!),
         ),
       )
       .returning();
@@ -81,14 +81,14 @@ router.patch(
 // DELETE /webhooks/:webhookId
 router.delete(
   "/webhooks/:webhookId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     await db
       .delete(webhookSubscriptionsTable)
       .where(
         and(
           eq(webhookSubscriptionsTable.id, (req.params.webhookId as string)),
-          eq(webhookSubscriptionsTable.orgId, req.session!.orgId!),
+          eq(webhookSubscriptionsTable.orgId, req.user!.orgId!),
         ),
       );
     res.status(204).send();
@@ -98,9 +98,9 @@ router.delete(
 // GET /webhooks/events
 router.get(
   "/webhooks/events",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
-    const orgId = req.session!.orgId!;
+    const orgId = req.user!.orgId!;
     const status = req.query.status as string | undefined;
 
     const subscriptions = await db

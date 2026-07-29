@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useLocation } from 'wouter';
+import { useAuth } from '@/contexts/auth-context';
 import { useTranslation } from 'react-i18next';
 import { Hexagon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { register: registerAccount } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
@@ -32,22 +34,12 @@ export default function Register() {
   const onSubmit = async (data: RegisterForm) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        throw new Error('Registration failed');
-      }
-
+      await registerAccount(data);
       toast({
         title: 'Account created',
-        description: 'You can now log in with your credentials.',
+        description: 'You are now logged in.',
       });
-      setLocation('/login');
+      setLocation('/');
     } catch (error) {
       toast({
         title: t('common.error'),

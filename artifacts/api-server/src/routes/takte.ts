@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { takteTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireJwt } from "../middlewares/requireJwt";
 import { rescheduleTakte } from "../lib/reschedule";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ function isTaktEditable(status: string): boolean {
 // GET /projects/:projectId/takte
 router.get(
   "/projects/:projectId/takte",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const takte = await db
       .select()
@@ -32,7 +32,7 @@ router.get(
 // POST /projects/:projectId/takte
 router.post(
   "/projects/:projectId/takte",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
       taktBezeichnung: z.string().min(1),
@@ -66,7 +66,7 @@ router.post(
 // GET /projects/:projectId/takte/:taktId
 router.get(
   "/projects/:projectId/takte/:taktId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const [takt] = await db
       .select()
@@ -91,7 +91,7 @@ router.get(
 // PATCH /projects/:projectId/takte/:taktId
 router.patch(
   "/projects/:projectId/takte/:taktId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const projectId = req.params.projectId as string;
     const taktId = req.params.taktId as string;
@@ -165,7 +165,7 @@ router.patch(
 // DELETE /projects/:projectId/takte/:taktId
 router.delete(
   "/projects/:projectId/takte/:taktId",
-  requireAuth,
+  requireJwt,
   async (req, res): Promise<void> => {
     const [existing] = await db
       .select()

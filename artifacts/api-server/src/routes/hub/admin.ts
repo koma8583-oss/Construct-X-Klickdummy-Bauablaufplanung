@@ -1,6 +1,6 @@
 /**
  * Hub admin routes — mounted at /api/hub/admin/*
- * Requires hub admin role.
+ * Requires hub admin role (hubAdmin: true in JWT).
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
@@ -11,28 +11,17 @@ import {
   hubAdminsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireJwt } from "../../middlewares/requireJwt";
 
 const router = Router();
 
-async function requireAdmin(req: any, res: any, next: any) {
-  if (!req.session?.userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  const [row] = await db
-    .select()
-    .from(hubAdminsTable)
-    .where(eq(hubAdminsTable.userId, req.session.userId))
-    .limit(1);
-  if (!row) {
+// GET /admin/users — list all users with their org and hub role
+router.get("/users", requireJwt, async (req, res): Promise<void> => {
+  if (!req.user?.hubAdmin) {
     res.status(403).json({ error: "Admin access required" });
     return;
   }
-  next();
-}
 
-// GET /admin/users — list all users with their org and hub role
-router.get("/users", requireAdmin, async (req, res): Promise<void> => {
   const users = await db
     .select({
       user: usersTable,
@@ -80,7 +69,12 @@ router.get("/users", requireAdmin, async (req, res): Promise<void> => {
 });
 
 // GET /admin/orgs — list all organisations
-router.get("/orgs", requireAdmin, async (req, res): Promise<void> => {
+router.get("/orgs", requireJwt, async (req, res): Promise<void> => {
+  if (!req.user?.hubAdmin) {
+    res.status(403).json({ error: "Admin access required" });
+    return;
+  }
+
   const orgs = await db
     .select()
     .from(organizationsTable)
