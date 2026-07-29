@@ -19,13 +19,11 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   ) {
     const token = getToken();
     if (token) {
-      init = {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(init?.headers ?? {}),
-        },
-      };
+      // Use new Headers() so existing headers (e.g. Content-Type set by
+      // customFetch as a Headers instance) are preserved, not silently dropped.
+      const merged = new Headers(init?.headers);
+      merged.set('Authorization', `Bearer ${token}`);
+      init = { ...init, headers: merged };
     }
   }
   return _nativeFetch(input, init);

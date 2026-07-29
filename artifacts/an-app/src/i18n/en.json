@@ -20,8 +20,8 @@
   "nav": {
     "dashboard": "Dashboard",
     "requests": "Requests",
-    "gantt": "Gantt Chart",
-    "resources": "Resources",
+    "gantt": "Resources",
+    "resources": "Management",
     "settings": "Settings",
     "logout": "Log out"
   },

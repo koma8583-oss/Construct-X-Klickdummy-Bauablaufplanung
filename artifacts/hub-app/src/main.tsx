@@ -17,13 +17,9 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   ) {
     const token = getToken();
     if (token) {
-      init = {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(init?.headers ?? {}),
-        },
-      };
+      const merged = new Headers(init?.headers);
+      merged.set('Authorization', `Bearer ${token}`);
+      init = { ...init, headers: merged };
     }
   }
   return _nativeFetch(input, init);

@@ -24,13 +24,9 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     if (input.startsWith('/api/') && !input.startsWith('/auth-service/')) {
       const token = getToken();
       if (token) {
-        init = {
-          ...init,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(init?.headers ?? {}),
-          },
-        };
+        const merged = new Headers(init?.headers);
+        merged.set('Authorization', `Bearer ${token}`);
+        init = { ...init, headers: merged };
       }
     }
   }

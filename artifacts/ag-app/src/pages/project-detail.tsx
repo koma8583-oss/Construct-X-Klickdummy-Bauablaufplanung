@@ -235,7 +235,7 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient();
 
   const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan'>('gantt');
-  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
+  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
   const [selectedTaktId, setSelectedTaktId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
