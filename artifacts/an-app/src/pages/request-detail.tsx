@@ -25,8 +25,16 @@ export default function RequestDetail() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  const { data: delegation, isLoading: isDelegationLoading } = useGetDelegation(delegationId!);
-  const { data: responses, isLoading: isResponsesLoading } = useListDelegationResponses(delegationId!);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: delegation, isLoading: isDelegationLoading } = useGetDelegation(
+    delegationId!,
+    { query: { refetchInterval: 5_000 } as any }
+  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: responses, isLoading: isResponsesLoading } = useListDelegationResponses(
+    delegationId!,
+    { query: { refetchInterval: 5_000 } as any }
+  );
   const createResponse = useCreateDelegationResponse();
 
   const [proposedStart, setProposedStart] = useState("");

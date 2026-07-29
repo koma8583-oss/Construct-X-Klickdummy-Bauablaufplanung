@@ -27,9 +27,11 @@ export default function Requests() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   
-  const { data: delegations, isLoading } = useListDelegations({
-    status: statusFilter === "ALL" ? undefined : (statusFilter as DelegationStatus)
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: delegations, isLoading } = useListDelegations(
+    { status: statusFilter === "ALL" ? undefined : (statusFilter as DelegationStatus) },
+    { query: { refetchInterval: 5_000 } as any }
+  );
 
   if (isLoading) {
     return (
@@ -56,6 +58,7 @@ export default function Requests() {
               <SelectItem value="CONFIRMED">{t("common.status.CONFIRMED")}</SelectItem>
               <SelectItem value="ALTERNATIVE_PROPOSED">{t("common.status.ALTERNATIVE_PROPOSED")}</SelectItem>
               <SelectItem value="REJECTED">{t("common.status.REJECTED")}</SelectItem>
+              <SelectItem value="CANCELLED">{t("common.status.CANCELLED")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -135,6 +138,7 @@ export default function Requests() {
                               ${del.status === 'CONFIRMED' ? 'border-emerald-500/50 text-emerald-500' : ''}
                               ${del.status === 'ALTERNATIVE_PROPOSED' ? 'border-blue-500/50 text-blue-500' : ''}
                               ${del.status === 'REJECTED' ? 'border-red-500/50 text-red-500' : ''}
+                              ${del.status === 'CANCELLED' ? 'border-slate-400/50 text-slate-400' : ''}
                             `}>
                               {t(`common.status.${del.status}`)}
                             </Badge>
