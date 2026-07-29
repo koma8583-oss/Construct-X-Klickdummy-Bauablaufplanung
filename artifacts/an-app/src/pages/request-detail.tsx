@@ -99,9 +99,14 @@ export default function RequestDetail() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold text-foreground">
-            {delegation.takt?.gewerk} - {delegation.takt?.zone}
+            {delegation.takt?.gewerk} – {delegation.takt?.zone}
           </h1>
-          <p className="text-sm text-muted-foreground">{delegation.takt?.taktBezeichnung}</p>
+          <p className="text-sm text-muted-foreground">
+            {delegation.project?.name && (
+              <span className="font-medium text-foreground/70">{delegation.project.name} · </span>
+            )}
+            {delegation.takt?.taktBezeichnung}
+          </p>
         </div>
       </div>
 
@@ -118,14 +123,42 @@ export default function RequestDetail() {
                 <TaktStatusBadge status={delegation.takt.status} />
               </div>
             )}
+            {delegation.project?.name && (
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.project")}</div>
+                <div className="text-foreground">{delegation.project.name}</div>
+              </div>
+            )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.ag")}</div>
               <div className="text-foreground">{delegation.agOrganization?.name}</div>
             </div>
+            {delegation.takt && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.gewerk")}</div>
+                  <div className="text-foreground">{delegation.takt.gewerk}</div>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.zone")}</div>
+                  <div className="text-foreground">{delegation.takt.zone}</div>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.taktNumber")}</div>
+                  <div className="text-foreground">{delegation.takt.taktBezeichnung}</div>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.plannedDates")}</div>
+                  <div className="text-foreground text-sm">
+                    {format(new Date(delegation.takt.plannedStart), 'dd.MM.yyyy')} – {format(new Date(delegation.takt.plannedEnd), 'dd.MM.yyyy')}
+                  </div>
+                </div>
+              </div>
+            )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.requestedDates")}</div>
               <div className="text-foreground">
-                {format(new Date(delegation.requestedStart), 'dd.MM.yyyy')} - {format(new Date(delegation.requestedEnd), 'dd.MM.yyyy')}
+                {format(new Date(delegation.requestedStart), 'dd.MM.yyyy')} – {format(new Date(delegation.requestedEnd), 'dd.MM.yyyy')}
               </div>
             </div>
             {(delegation.earliestStart || delegation.latestEnd) && (
@@ -137,9 +170,17 @@ export default function RequestDetail() {
                 </div>
               </div>
             )}
+            {delegation.message && (
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.agMessage")}</div>
+                <div className="text-sm text-foreground mt-1 p-2 bg-sidebar-accent/50 rounded border border-border whitespace-pre-wrap">
+                  {delegation.message}
+                </div>
+              </div>
+            )}
             {delegation.takt?.description && (
               <div>
-                <div className="text-sm font-medium text-muted-foreground">Beschreibung</div>
+                <div className="text-sm font-medium text-muted-foreground">{t("requests.detail.description")}</div>
                 <div className="text-sm text-foreground mt-1 whitespace-pre-wrap">{delegation.takt.description}</div>
               </div>
             )}

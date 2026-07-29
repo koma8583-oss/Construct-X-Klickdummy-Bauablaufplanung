@@ -67,6 +67,7 @@ export default function Requests() {
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
+                <TableHead>{t("requests.detail.project")}</TableHead>
                 <TableHead>{t("requests.detail.gewerk")} / {t("requests.detail.zone")}</TableHead>
                 <TableHead>{t("requests.detail.ag")}</TableHead>
                 <TableHead>{t("requests.detail.requestedDates")}</TableHead>
@@ -77,7 +78,7 @@ export default function Requests() {
             <TableBody>
               {!delegations || delegations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     {t("requests.empty")}
                   </TableCell>
                 </TableRow>
@@ -87,10 +88,17 @@ export default function Requests() {
                     <TableCell>
                       <Link href={`/requests/${del.id}`} className="block">
                         <div className="font-medium text-foreground">
+                          {del.project?.name ?? '-'}
+                        </div>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/requests/${del.id}`} className="block">
+                        <div className="font-medium text-foreground">
                           {del.takt?.gewerk}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {del.takt?.zone}{del.takt?.taktBezeichnung ? ` (${del.takt.taktBezeichnung})` : ''}
+                          {del.takt?.zone}{del.takt?.taktBezeichnung ? ` · ${del.takt.taktBezeichnung}` : ''}
                         </div>
                       </Link>
                     </TableCell>

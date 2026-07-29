@@ -249,6 +249,7 @@ export interface Delegation {
   takt?: Takt;
   anOrganization?: Organization;
   agOrganization?: Organization;
+  project?: Project;
   requestedStart: string;
   requestedEnd: string;
   earliestStart?: string | null;

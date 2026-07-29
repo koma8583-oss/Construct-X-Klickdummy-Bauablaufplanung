@@ -49,6 +49,7 @@ router.get("/delegations", requireJwt, async (req, res): Promise<void> => {
       delegation: delegationsTable,
       takt: takteTable,
       anOrg: organizationsTable,
+      project: projectsTable,
     })
     .from(delegationsTable)
     .innerJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
@@ -56,6 +57,7 @@ router.get("/delegations", requireJwt, async (req, res): Promise<void> => {
       organizationsTable,
       eq(delegationsTable.anOrgId, organizationsTable.id),
     )
+    .innerJoin(projectsTable, eq(delegationsTable.projectId, projectsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined);
 
   // Only show delegations where the session org is either AG or AN side
@@ -75,11 +77,12 @@ router.get("/delegations", requireJwt, async (req, res): Promise<void> => {
   }
 
   res.json(
-    filtered.map(({ delegation, takt, anOrg }) => ({
+    filtered.map(({ delegation, takt, anOrg, project }) => ({
       ...delegation,
       takt,
       anOrganization: anOrg,
       agOrganization: agOrgMap.get(delegation.agOrgId),
+      project,
     })),
   );
 });
@@ -199,6 +202,7 @@ router.get(
         delegation: delegationsTable,
         takt: takteTable,
         anOrg: organizationsTable,
+        project: projectsTable,
       })
       .from(delegationsTable)
       .innerJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
@@ -206,6 +210,7 @@ router.get(
         anOrgAlias,
         eq(delegationsTable.anOrgId, organizationsTable.id),
       )
+      .innerJoin(projectsTable, eq(delegationsTable.projectId, projectsTable.id))
       .where(eq(delegationsTable.id, req.params.delegationId as string))
       .limit(1);
 
@@ -232,6 +237,7 @@ router.get(
       takt: row.takt,
       anOrganization: row.anOrg,
       agOrganization: agOrg ?? null,
+      project: row.project,
     });
   },
 );
