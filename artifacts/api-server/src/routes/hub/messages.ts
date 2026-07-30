@@ -122,4 +122,27 @@ router.get("/timeline/:delegationId", requireJwt, async (req, res): Promise<void
   });
 });
 
+// DELETE /messages/:messageId — hub admin only
+router.delete("/:messageId", requireJwt, async (req, res): Promise<void> => {
+  const admin = req.user!.hubAdmin;
+  if (!admin) {
+    res.status(403).json({ error: "Nur Hub-Admins können Nachrichten löschen" });
+    return;
+  }
+
+  const { messageId } = req.params as { messageId: string };
+
+  const [deleted] = await db
+    .delete(hubMessagesTable)
+    .where(eq(hubMessagesTable.id, messageId))
+    .returning({ id: hubMessagesTable.id });
+
+  if (!deleted) {
+    res.status(404).json({ error: "Nachricht nicht gefunden" });
+    return;
+  }
+
+  res.status(204).send();
+});
+
 export default router;

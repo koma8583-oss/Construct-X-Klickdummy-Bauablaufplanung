@@ -1,45 +1,69 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { hubApi, type HubMessage, type HubMessageType } from '@/lib/api';
+import { useAuth } from '@/contexts/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Clock, CheckCircle2, XCircle, Ban, AlertCircle, Copy, Check } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Ban, AlertCircle, Copy, Check, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 const messageTypeConfig = {
-  DELEGATION_CREATED: { label: 'Vergabe erstellt', color: 'bg-blue-500 text-white', icon: Clock },
-  DELEGATION_CONFIRMED: { label: 'Bestätigt', color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  DELEGATION_REJECTED: { label: 'Abgelehnt', color: 'bg-red-500 text-white', icon: XCircle },
-  DELEGATION_ALTERNATIVE: { label: 'Gegenvorschlag', color: 'bg-amber-500 text-white', icon: AlertCircle },
-  DELEGATION_CANCELLED: { label: 'Storniert', color: 'bg-gray-500 text-white', icon: Ban },
-  AG_ACCEPTED_ALTERNATIVE: { label: 'Gegenvorschlag angenommen', color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  AG_REJECTED_ALTERNATIVE: { label: 'Gegenvorschlag abgelehnt', color: 'bg-red-500 text-white', icon: XCircle },
+  DELEGATION_CREATED:       { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',    icon: Clock },
+  DELEGATION_CONFIRMED:     { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
+  DELEGATION_REJECTED:      { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',     icon: XCircle },
+  DELEGATION_ALTERNATIVE:   { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',   icon: AlertCircle },
+  DELEGATION_CANCELLED:     { label: 'Storniert',                  color: 'bg-gray-500 text-white',    icon: Ban },
+  AG_ACCEPTED_ALTERNATIVE:  { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
+  AG_REJECTED_ALTERNATIVE:  { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',     icon: XCircle },
 };
 
 export default function MessagesPage() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const [filterType, setFilterType] = useState<HubMessageType | 'ALL'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<HubMessage | null>(null);
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ['hub-messages', filterType],
-    queryFn: () =>
-      hubApi.messages.list({
-        type: filterType === 'ALL' ? undefined : filterType,
-        limit: 100,
-      }),
+    queryFn: () => hubApi.messages.list({ type: filterType === 'ALL' ? undefined : filterType, limit: 100 }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (messageId: string) => hubApi.messages.delete(messageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hub-messages'] });
+      toast({ title: 'Nachricht gelöscht' });
+      setPendingDelete(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Fehler', description: err.message, variant: 'destructive' });
+      setPendingDelete(null);
+    },
   });
 
   const handleRowClick = (message: HubMessage) => {
-    if (message.delegationId) {
-      setLocation(`/messages/${message.delegationId}`);
-    }
+    if (message.delegationId) setLocation(`/messages/${message.delegationId}`);
   };
 
   const handleCopyId = (e: React.MouseEvent, delegationId: string) => {
@@ -47,6 +71,11 @@ export default function MessagesPage() {
     navigator.clipboard.writeText(delegationId);
     setCopiedId(delegationId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, message: HubMessage) => {
+    e.stopPropagation();
+    setPendingDelete(message);
   };
 
   return (
@@ -89,14 +118,10 @@ export default function MessagesPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">
-              {[1, 2, 3, 4, 5].map(i => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : messages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Keine Nachrichten gefunden
-            </div>
+            <div className="text-center py-12 text-muted-foreground">Keine Nachrichten gefunden</div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -107,6 +132,7 @@ export default function MessagesPage() {
                     <TableHead>An Org</TableHead>
                     <TableHead className="hidden lg:table-cell">Vergabe-ID</TableHead>
                     <TableHead className="text-right">Zeitpunkt</TableHead>
+                    {user?.hubAdmin && <TableHead className="w-10" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -159,6 +185,19 @@ export default function MessagesPage() {
                         <TableCell className="text-right text-sm tabular-nums">
                           {format(new Date(message.createdAt), 'dd.MM.yyyy HH:mm', { locale: de })}
                         </TableCell>
+                        {user?.hubAdmin && (
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => handleDeleteClick(e, message)}
+                              data-testid={`button-delete-${message.id}`}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
@@ -168,6 +207,28 @@ export default function MessagesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirm delete dialog */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Nachricht löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Diese Aktion kann nicht rückgängig gemacht werden. Die Nachricht wird dauerhaft aus dem System entfernt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              disabled={deleteMutation.isPending}
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

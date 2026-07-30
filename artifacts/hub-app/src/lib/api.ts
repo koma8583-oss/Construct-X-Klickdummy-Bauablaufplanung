@@ -107,6 +107,8 @@ export const hubApi = {
     },
     timeline: (delegationId: string) =>
       apiFetch<HubTimeline>(`/messages/timeline/${delegationId}`),
+    delete: (messageId: string) =>
+      apiFetch<void>(`/messages/${messageId}`, { method: 'DELETE' }),
   },
   admin: {
     users: () => apiFetch<HubAdminUser[]>('/admin/users'),
