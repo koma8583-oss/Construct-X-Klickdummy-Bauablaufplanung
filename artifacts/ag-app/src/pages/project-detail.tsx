@@ -28,7 +28,7 @@ import {
   TaktStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -254,6 +254,9 @@ export default function ProjectDetail() {
   const [newDepType, setNewDepType] = useState<TaktDependencyType>('EA');
   const [newDepLag, setNewDepLag] = useState(0);
 
+  // Persistent conflict state — populated from the latest reschedule result
+  const [activeConflicts, setActiveConflicts] = useState<RescheduledTakt[]>([]);
+
   // Queries
   const { data: project, isLoading: projectLoading } = useGetProject(projectId, {
     query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) },
@@ -312,6 +315,12 @@ export default function ProjectDetail() {
     [depsBySuccessor, taktNameById],
   );
 
+  // Set of takt IDs that are currently in conflict
+  const conflictTaktIdSet = useMemo(
+    () => new Set(activeConflicts.map(c => c.takt.id)),
+    [activeConflicts],
+  );
+
   // Gantt tasks with dependency arrows
   const ganttTasks: Task[] = useMemo(() => {
     if (!takte || takte.length === 0) return [];
@@ -320,6 +329,7 @@ export default function ProjectDetail() {
       // All predecessor IDs — the library renders finish-to-start arrows for these;
       // dep type (EA/AA/EE) and lag are shown in the custom TooltipContent.
       const predecessorIds = (depsBySuccessor.get(takt.id) ?? []).map(d => d.predecessorId);
+      const isConflict = conflictTaktIdSet.has(takt.id);
       return {
         id: takt.id,
         name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
@@ -329,15 +339,22 @@ export default function ProjectDetail() {
         progress: 100,
         isDisabled: false,
         dependencies: predecessorIds,
-        styles: {
-          progressColor: color,
-          progressSelectedColor: color,
-          backgroundColor: color + '80',
-          backgroundSelectedColor: color + 'aa',
-        },
+        styles: isConflict
+          ? {
+              progressColor: '#ef4444',
+              progressSelectedColor: '#dc2626',
+              backgroundColor: '#ef444430',
+              backgroundSelectedColor: '#ef444450',
+            }
+          : {
+              progressColor: color,
+              progressSelectedColor: color,
+              backgroundColor: color + '80',
+              backgroundSelectedColor: color + 'aa',
+            },
       };
     }).sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [takte, depsBySuccessor]);
+  }, [takte, depsBySuccessor, conflictTaktIdSet]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
@@ -406,6 +423,8 @@ export default function ProjectDetail() {
         description: conflicts.map(c => `${c.takt.taktBezeichnung} (${STATUS_LABEL[c.takt.status as TaktStatus]}): erforderlich ab ${format(new Date(c.requiredStart), 'dd.MM.yyyy')}`).join(' · '),
       });
     }
+    // Always update persistent conflict state (replace with latest result)
+    setActiveConflicts(conflicts);
   }
 
   const handleCreateTakt = (e: React.FormEvent<HTMLFormElement>) => {
@@ -711,7 +730,35 @@ export default function ProjectDetail() {
 
         {/* ── Gantt panel ──────────────────────────────────────────────── */}
         {activeChartTab === 'gantt' && (
-          <div className="flex-1 overflow-auto p-4 custom-gantt-container bg-background">
+          <div className="flex-1 overflow-auto p-4 custom-gantt-container bg-background flex flex-col gap-3">
+            {/* Persistent conflict banner */}
+            {activeConflicts.length > 0 && (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-red-500/40 bg-red-500/8 text-sm shrink-0">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-red-600 dark:text-red-400 mb-1">
+                    {activeConflicts.length} Terminkonflikt{activeConflicts.length > 1 ? 'e' : ''} — manuelle Anpassung erforderlich
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {activeConflicts.map(c => (
+                      <span key={c.takt.id} className="text-xs text-red-700 dark:text-red-300">
+                        <span className="font-medium">{c.takt.taktBezeichnung}</span>
+                        {' '}({STATUS_LABEL[c.takt.status as TaktStatus]}) — benötigt ab{' '}
+                        {format(new Date(c.requiredStart), 'dd.MM.yyyy')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveConflicts([])}
+                  className="shrink-0 p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                  title="Hinweis schließen"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             {takteLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
             ) : ganttTasks.length > 0 ? (
