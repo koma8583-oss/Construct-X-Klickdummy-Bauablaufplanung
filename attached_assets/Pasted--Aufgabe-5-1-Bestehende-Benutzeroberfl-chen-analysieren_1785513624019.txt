@@ -1,0 +1,563 @@
+# Aufgabe 5.1 – Bestehende Benutzeroberflächen analysieren und Zielnavigation dokumentieren
+
+Analysiere die vorhandenen GU-, NU- und Hub-Anwendungen im Repository.
+
+Untersuche insbesondere:
+
+* vorhandene Routen
+* bestehende Navigation
+* vorhandene Projekt- und Taktseiten
+* Delegation-Seiten
+* Ressourcen- und Gantt-Ansichten
+* Hub-Nachrichtenansicht
+* verwendete UI-Komponenten
+* Formulare und Dialoge
+* React-Query-Struktur
+* vorhandene API-Hooks
+* Rollen- und Organisationsprüfung im Frontend
+* Lade-, Leer- und Fehlerzustände
+* Responsive-Verhalten
+
+Erstelle anschließend ausschließlich:
+
+`docs/frontend-concept.md`
+
+Nimm in diesem Schritt keine Änderungen an Benutzeroberflächen, API, Datenbank oder Services vor.
+
+## Ziel
+
+Dokumentiere die zukünftigen Hauptabläufe für:
+
+* Generalunternehmer und Generalplaner
+* Nachunternehmer
+* Hub-Administrator
+
+## GU-Zielnavigation
+
+Dokumentiere mindestens:
+
+```text
+Dashboard
+Projekte
+Taktplan
+Taktanfragen
+Antworten
+Nachunternehmer
+```
+
+## NU-Zielnavigation
+
+Dokumentiere mindestens:
+
+```text
+Dashboard
+Taktanfragen
+Lokale Projekte
+Ressourcen
+Ressourcenplanung
+Machbarkeitsprüfungen
+```
+
+## Hub-Zielnavigation
+
+Dokumentiere mindestens:
+
+```text
+Nachrichten
+Prozessketten
+Fehlgeschlagene Zustellungen
+Systemstatus
+```
+
+## GU-Hauptprozess
+
+```text
+Takt auswählen
+→ Taktanfrage vorbereiten
+→ freigegebene Daten prüfen
+→ Anfrage senden
+→ Status verfolgen
+→ Antwort erhalten
+→ Alternativen vergleichen
+→ Entscheidung treffen
+```
+
+## NU-Hauptprozess
+
+```text
+Notification empfangen
+→ Taktdetails abrufen
+→ Anfrage im lokalen Planungskontext prüfen
+→ Machbarkeitsprüfung starten
+→ Ergebnis bewerten
+→ Antwort bearbeiten
+→ Antwort senden
+```
+
+## Hub-Hauptprozess
+
+```text
+Nachricht sehen
+→ technische Zustellung prüfen
+→ Request und Response korrelieren
+→ Fehler erkennen
+→ Zustellung erneut auslösen
+```
+
+## UI-Grundsätze
+
+Dokumentiere:
+
+1. GU und NU sehen fachlich unterschiedliche Daten.
+2. Der Hub zeigt keine vollständigen Takt- oder Ressourcendaten.
+3. Notification und Takt-Snapshot werden getrennt dargestellt.
+4. Technischer Status und fachlicher Status werden getrennt dargestellt.
+5. Interne NU-Konflikte dürfen nur in der NU-Anwendung sichtbar sein.
+6. Der GU sieht ausschließlich die freigegebene Antwort.
+7. Bestehende Komponenten sollen wiederverwendet werden.
+8. Keine vollständige Neugestaltung ohne Notwendigkeit.
+9. Alte Delegation-Seiten bleiben zunächst erreichbar.
+10. Neue TaktRequest-Seiten werden parallel ergänzt.
+
+## Statusdarstellung
+
+Dokumentiere unterschiedliche Darstellungen für:
+
+### Technische Nachrichtenstatus
+
+```text
+PENDING
+SENT
+DELIVERED
+READ
+FAILED
+```
+
+### Fachliche Requeststatus
+
+```text
+DRAFT
+SENT
+DELIVERED
+DETAILS_RETRIEVED
+UNDER_REVIEW
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+REVISION_REQUIRED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+`DELIVERED` darf nicht als fachliche Zustimmung dargestellt werden.
+
+## Responsive-Anforderungen
+
+Dokumentiere:
+
+* Desktop als primärer Anwendungsfall
+* Tabellen müssen auf kleineren Ansichten nutzbar bleiben
+* komplexe Vergleichsansichten dürfen horizontal scrollbar sein
+* Dialoge dürfen auf kleineren Bildschirmen als Vollbild erscheinen
+* keine kritische Aktion darf nur per Hover erreichbar sein
+
+## Abschlussbericht
+
+Berichte:
+
+* welche Anwendungen und Seiten analysiert wurden
+* welche Komponenten wiederverwendet werden können
+* welche neuen Seiten benötigt werden
+* welche Navigationsänderungen empfohlen werden
+* welche UX-Risiken festgestellt wurden
+
+======================================================================
+
+# Aufgabe 5.2 – GU-Übersicht für Taktanfragen implementieren
+
+Implementiere in der bestehenden GU-Anwendung eine neue Übersicht für Taktanfragen.
+
+Verwende vorhandene Layouts, Tabellen, Komponenten, API-Hooks und Designkonventionen.
+
+Bestehende Delegation-Seiten dürfen nicht entfernt werden.
+
+## Neue Route
+
+Implementiere sinngemäß:
+
+```text
+/takt-requests
+```
+
+Passe den Pfad an die vorhandene Routingstruktur an.
+
+## Navigation
+
+Ergänze einen Eintrag:
+
+```text
+Taktanfragen
+```
+
+Nur berechtigte GU-Benutzer beziehungsweise Generalplaner dürfen die Seite sehen.
+
+## Datenquelle
+
+Verwende vorhandene oder ergänze benötigte GU-Listenendpunkte für TaktRequests.
+
+Die Liste muss nach der Organisation des angemeldeten GU gefiltert sein.
+
+## Tabellenspalten
+
+Zeige mindestens:
+
+```text
+Anfragenummer
+Projekt
+Takt
+Taktversion
+Nachunternehmer
+Antwortfrist
+Requeststatus
+Nachrichtenstatus
+Erstellt am
+Letzte Änderung
+Aktionen
+```
+
+## Filter
+
+Unterstütze mindestens:
+
+```text
+Projekt
+Nachunternehmer
+Requeststatus
+Takt
+Antwortfrist
+offen / abgeschlossen
+```
+
+## Sortierung
+
+Standardmäßig:
+
+* offene Anfragen zuerst
+* anschließend neueste Anfragen zuerst
+
+## Statusdarstellung
+
+Zeige getrennt:
+
+### Fachlicher Status
+
+Beispielsweise:
+
+```text
+Entwurf
+Versendet
+Zugestellt
+Details abgerufen
+In Prüfung
+Bestätigt
+Alternativen vorgeschlagen
+Abgelehnt
+Überarbeitung erforderlich
+```
+
+### Technischer Nachrichtenstatus
+
+Beispielsweise:
+
+```text
+Ausstehend
+Gesendet
+Zugestellt
+Gelesen
+Fehlgeschlagen
+```
+
+Die Status dürfen visuell nicht verwechselt werden.
+
+## Aktionen
+
+Je nach Status:
+
+```text
+Öffnen
+Entwurf bearbeiten
+Senden
+Erneut zustellen
+Stornieren
+Antwort anzeigen
+```
+
+Nur zulässige Aktionen anzeigen.
+
+## Lade- und Fehlerzustände
+
+Implementiere:
+
+* Ladeanzeige
+* leere Liste mit verständlicher Erklärung
+* Fehleranzeige
+* erneutes Laden
+* keine technischen Stacktraces im UI
+
+## Polling
+
+Offene Anfragen dürfen über React Query regelmäßig aktualisiert werden.
+
+Empfehlung:
+
+```text
+5 bis 10 Sekunden
+```
+
+Kein Polling für dauerhaft abgeschlossene Anfragen erforderlich.
+
+## Berechtigungen
+
+* GU sieht nur eigene Taktanfragen.
+* Generalplaner sieht nur Anfragen seiner GU-Organisation.
+* NU-Benutzer erhalten keinen Zugriff.
+* Hub-Benutzer erhalten keinen Zugriff.
+
+## Tests
+
+Ergänze Frontend- beziehungsweise Integrationstests:
+
+* Liste wird geladen
+* offene und abgeschlossene Anfragen werden dargestellt
+* Filter funktionieren
+* fachlicher und technischer Status werden getrennt angezeigt
+* NU kann die Route nicht aufrufen
+* leere Liste wird sinnvoll dargestellt
+* API-Fehler wird abgefangen
+* bestehende Delegation-Seiten funktionieren weiterhin
+
+## Einschränkungen
+
+* Noch kein Dialog zum Erstellen einer Anfrage.
+* Noch keine Antwortvergleichsansicht.
+* Keine Entfernung bestehender Seiten.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Route
+* neue Navigationspunkte
+* Tabellenspalten und Filter
+* Statusdarstellung
+* Berechtigungsprüfung
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 5.3 – GU-Dialog zum Erstellen und Versenden einer Taktanfrage implementieren
+
+Implementiere in der GU-Anwendung einen Ablauf zum Erstellen und Versenden einer Taktanfrage.
+
+Verwende die vorhandenen Endpunkte:
+
+```http
+POST /takt-requests
+POST /takt-requests/{requestId}/send
+```
+
+Passe die API-Nutzung an die tatsächliche Implementierung an.
+
+## Einstieg
+
+Der Dialog soll mindestens von folgenden Stellen geöffnet werden können:
+
+* Taktplan beziehungsweise Takt-Detailansicht
+* Taktanfragen-Übersicht
+* gegebenenfalls Projektansicht
+
+## Dialogschritte
+
+Implementiere vorzugsweise einen mehrstufigen Dialog.
+
+### Schritt 1 – Takt auswählen
+
+Zeige:
+
+* Projekt
+* Takt
+* aktuelle Taktversion
+* Gewerk
+* geplanter Zeitraum
+* Status des Takts
+
+### Schritt 2 – Nachunternehmer auswählen
+
+Zeige ausschließlich:
+
+* bereits beauftragte
+* projektbezogen zulässige
+* dem Gewerk passende Nachunternehmer
+
+Keine beliebige freie Organisations-ID eingeben lassen.
+
+### Schritt 3 – Anfrage konfigurieren
+
+Eingaben:
+
+```text
+Antwortfrist
+Betreff
+Nachricht
+```
+
+Optional:
+
+```text
+Pufferzeitraum
+interne GU-Notiz
+```
+
+Interne GU-Notizen dürfen nicht Bestandteil der Notification sein.
+
+### Schritt 4 – Datenfreigabe prüfen
+
+Zeige zwei klar getrennte Bereiche:
+
+```text
+Wird als Notification übertragen
+```
+
+und:
+
+```text
+Kann der NU anschließend als Snapshot abrufen
+```
+
+## Notification-Vorschau
+
+Zeige nur:
+
+```text
+TaktRequest-ID nach Erstellung
+Projekt-Referenz
+Takt-Referenz
+Taktversion
+Antwortfrist
+Detailreferenz
+Betreff
+Nachricht
+```
+
+## Snapshot-Vorschau
+
+Zeige ausschließlich die freigegebenen Taktdaten.
+
+Keine Darstellung oder Übertragung von:
+
+* vollständigem Gesamtplan
+* anderen Taktzuordnungen
+* internen Kommentaren
+* interner Kalkulation
+* Daten anderer Nachunternehmer
+
+## Aktionen
+
+Unterstütze:
+
+```text
+Als Entwurf speichern
+Speichern und senden
+Abbrechen
+```
+
+## Ablauf „Als Entwurf speichern“
+
+1. `POST /takt-requests`
+2. Requeststatus `DRAFT`
+3. Rückleitung zur Detailseite
+4. Erfolgsmeldung
+
+## Ablauf „Speichern und senden“
+
+1. Request als Entwurf erstellen
+2. Request-ID erhalten
+3. Send-Endpunkt aufrufen
+4. technischen Versandstatus anzeigen
+5. zur Request-Detailseite wechseln
+
+## Fehlerbehandlung
+
+Behandle getrennt:
+
+* Fehler beim Erstellen
+* Fehler beim Snapshot
+* Fehler beim Senden
+* fehlende Berechtigung
+* ungültige Antwortfrist
+* nicht mehr aktuelle Taktversion
+* bereits offene Anfrage für denselben Kontext, sofern dies fachlich verhindert wird
+
+Wenn das Erstellen erfolgreich war, aber das Senden fehlschlägt:
+
+* Entwurf nicht verlieren
+* Request als erneut sendbar anzeigen
+* keine zweite Anfrage erzeugen
+
+## Validierung
+
+* Antwortfrist liegt in der Zukunft.
+* NU ist ausgewählt.
+* Takt ist gültig.
+* Taktversion ist mindestens 1.
+* Betreff und Nachricht halten definierte Längen ein.
+* keine vertraulichen internen Felder in der Notification.
+
+## Tests
+
+Ergänze:
+
+* Dialog kann aus Taktansicht geöffnet werden
+* zulässige NU werden angezeigt
+* ungültige Antwortfrist wird abgelehnt
+* Entwurf kann gespeichert werden
+* Entwurf kann gesendet werden
+* Notification-Vorschau enthält keinen Snapshot
+* Snapshot-Vorschau enthält keine verbotenen Daten
+* Sendefehler erzeugt keine zweite Anfrage
+* nicht berechtigter Benutzer kann nicht senden
+* erfolgreicher Versand aktualisiert die Übersicht
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Einstiegspunkte
+* Dialogschritte
+* Vorschau der Datenfreigabe
+* Fehler- und Retry-Verhalten
+* Testergebnisse
+* Ergebnis von Typecheck und Build

@@ -1,0 +1,183 @@
+# Aufgabe 3.8 – REST-Endpunkt zum Abruf des freigegebenen Takt-Snapshots implementieren
+
+Implementiere den Pull der für einen Nachunternehmer freigegebenen Taktdetails.
+
+Der Endpunkt liefert ausschließlich den bei Erstellung der Taktanfrage erzeugten unveränderlichen Snapshot.
+
+Er darf nicht den aktuell veränderlichen Takt direkt aus der Takt-Tabelle zurückgeben.
+
+## Endpunkt
+
+Implementiere sinngemäß:
+
+```http
+GET /takt-requests/{requestId}/details
+```
+
+## Berechtigungen
+
+Zugriff erhalten:
+
+* der adressierte NU
+* die GU-Organisation, die den Request erstellt hat, für Kontroll- und Vorschauzwecke
+
+Keinen Zugriff erhalten:
+
+* andere NU
+* andere GU
+* der Hub als fachlicher Datenkonsument
+* nicht authentifizierte Benutzer
+
+## Verarbeitung für den adressierten NU
+
+1. Authentifizierten Benutzer und Organisation bestimmen.
+2. Request laden.
+3. Prüfen, ob `nuOrgId` der Organisation entspricht.
+4. Prüfen, ob Request in einem abrufbaren Zustand ist.
+5. Snapshot laden.
+6. Snapshot unverändert zurückgeben.
+7. `detailsRetrievedAt` setzen, falls noch nicht gesetzt.
+8. Status über gültigen Übergang auf `DETAILS_RETRIEVED` setzen.
+9. Optional eine technische Nachricht `TAKT_DETAILS_RETRIEVED` erzeugen, sofern dies bereits zum Konzept gehört.
+10. Wiederholter Abruf bleibt idempotent.
+
+## Abrufbare Request-Zustände
+
+Mindestens:
+
+```text
+DELIVERED
+DETAILS_RETRIEVED
+UNDER_REVIEW
+```
+
+Bei `DELIVERED`:
+
+```text
+DELIVERED → DETAILS_RETRIEVED
+```
+
+Bei erneutem Abruf aus `DETAILS_RETRIEVED`:
+
+* Status unverändert lassen
+* bestehenden Zeitstempel nicht unnötig überschreiben
+
+Bei terminalen oder nicht geeigneten Zuständen:
+
+* klare fachliche Fehlerantwort liefern
+* bestehende Regeln aus `TaktRequestStatus` beachten
+
+## Response
+
+Die Response enthält:
+
+* `taktRequestId`
+* `schemaVersion`
+* `taktVersion`
+* Snapshot-Payload
+* gegebenenfalls Request-Metadaten wie Antwortfrist
+
+Nicht enthalten:
+
+* vollständiger GU-Taktplan
+* aktuelle Taktwerte, falls diese vom Snapshot abweichen
+* andere Requests
+* Daten anderer NU
+* interne GU-Daten
+* NU-Ressourcendaten
+
+## Wichtiger Testfall zur Versionierung
+
+1. Request und Snapshot für Taktversion 1 erzeugen.
+2. Ursprungstakt anschließend verändern.
+3. Ursprungstakt gegebenenfalls auf Version 2 setzen.
+4. Details des alten Requests abrufen.
+5. Response muss weiterhin den Snapshot der Version 1 liefern.
+
+## Audit
+
+Protokolliere mindestens:
+
+* welcher Benutzer die Details abgerufen hat
+* zu welcher Organisation er gehört
+* Zeitpunkt des ersten Abrufs
+
+Verwende bestehende Audit-Mechanismen, falls vorhanden.
+
+Falls noch kein Audit-System vorhanden ist, genügen zunächst:
+
+* `detailsRetrievedAt`
+* vorhandene Benutzerinformationen im Anwendungslog
+
+Keine sensiblen Inhalte vollständig in Logs schreiben.
+
+## Optionaler Nachrichtentyp `TAKT_DETAILS_RETRIEVED`
+
+Falls bereits in Aufgabe 1 definiert, kann bei erstem Abruf eine kleine Nachricht erzeugt werden:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "retrievedAt": "2026-08-01T08:30:00Z"
+}
+```
+
+Diese Nachricht darf den Snapshot nicht enthalten.
+
+Wenn dies den Umfang unnötig erhöht, dokumentiere es als späteren Schritt. Der Statusübergang ist verpflichtend, die zusätzliche Nachricht optional.
+
+## OpenAPI
+
+Ergänze:
+
+* Detail-Response-Schema
+* Endpunkt
+* Authentifizierungsregeln
+* Fehlerantworten
+* Hinweis auf unveränderlichen Snapshot
+
+## Tests
+
+Ergänze:
+
+* adressierter NU kann Details abrufen
+* GU kann eigenen Snapshot kontrollieren
+* fremder NU erhält keinen Zugriff
+* fremder GU erhält keinen Zugriff
+* Hub erhält keinen Zugriff
+* erster Abruf setzt `DETAILS_RETRIEVED`
+* wiederholter Abruf ist idempotent
+* Snapshot bleibt trotz Änderung des Ursprungstakts unverändert
+* Snapshot enthält keine verbotenen Daten
+* Notification und Snapshot bleiben getrennt
+
+## Einschränkungen
+
+* keine lokale Ressourcenprüfung
+* keine Taktantwort
+* keine GU-Entscheidung über Alternativen
+* keine UI-Anpassung
+* kein EDC
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* Statusübergangstests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neuer Detail-Endpunkt
+* Berechtigungsregeln
+* Statusänderung beim ersten Abruf
+* Idempotenz bei wiederholtem Abruf
+* Nachweis der Snapshot-Unveränderlichkeit
+* Testergebnisse
+* Ergebnis von Codegenerierung, Typecheck und Build

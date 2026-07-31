@@ -5,17 +5,37 @@ import {
   date,
   doublePrecision,
   pgEnum,
+  jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { organizationsTable } from "./organizations";
 import { delegationsTable } from "./delegations";
 
+/**
+ * Resource types — CREW added in Task 4.3.
+ * Existing values (EMPLOYEE, EQUIPMENT, MACHINE, OTHER) are retained for
+ * backward compatibility with existing resource_assignments and AN-app views.
+ */
 export const resourceTypeEnum = pgEnum("resource_type", [
   "EMPLOYEE",
+  "CREW",
   "EQUIPMENT",
   "MACHINE",
   "OTHER",
+]);
+
+/**
+ * Unit of capacity for a resource.
+ * PERSONS: crew headcount; UNITS: equipment count; HOURS_PER_DAY: time-based;
+ * PERCENT: percentage of a larger pool.
+ */
+export const capacityUnitEnum = pgEnum("capacity_unit", [
+  "PERSONS",
+  "UNITS",
+  "HOURS_PER_DAY",
+  "PERCENT",
 ]);
 
 export const resourcesTable = pgTable("resources", {
@@ -27,12 +47,67 @@ export const resourcesTable = pgTable("resources", {
     .references(() => organizationsTable.id, { onDelete: "cascade" }),
   type: resourceTypeEnum("type").notNull(),
   name: text("name").notNull(),
+
+  // ── Legacy fields (retained for backward compatibility) ───────────────────
+  /** Free-text qualification string — retained; superseded by qualifications[] */
   qualification: text("qualification"),
+  /** Daily capacity in hours — retained; superseded by capacity + capacityUnit */
   dailyCapacityHours: doublePrecision("daily_capacity_hours"),
+  /** UI display colour */
   color: text("color"),
+
+  // ── New fields added in Task 4.3 ─────────────────────────────────────────
+  /**
+   * Trade / Gewerk — standardised string (e.g. DRYWALL, MEP, CONCRETE).
+   * Nullable — not required for all resource types.
+   */
+  trade: text("trade"),
+
+  /**
+   * List of skills (deduplicated, no empty strings).
+   * Stored as JSONB string array; default empty list.
+   */
+  skills: jsonb("skills").$type<string[]>().notNull().default([]),
+
+  /**
+   * List of qualifications or certificates (deduplicated, no empty strings).
+   * Long-term replacement for the free-text `qualification` column.
+   */
+  qualifications: jsonb("qualifications").$type<string[]>().notNull().default([]),
+
+  /**
+   * Quantitative capacity of this resource.
+   * Interpretation depends on capacityUnit.
+   * Must be > 0 when set (enforced in application layer).
+   */
+  capacity: doublePrecision("capacity"),
+
+  /**
+   * Unit for the capacity field.
+   * Convention: CREW → PERSONS, EQUIPMENT/MACHINE → UNITS.
+   */
+  capacityUnit: capacityUnitEnum("capacity_unit"),
+
+  /**
+   * Optional calendar ID for future shift-pattern integration.
+   * No calendar engine is implemented — placeholder for future use.
+   */
+  calendarId: text("calendar_id"),
+
+  /**
+   * Whether this resource is active and available for new bookings.
+   * Inactive resources are excluded from automatic availability suggestions.
+   */
+  active: boolean("active").notNull().default(true),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const resourceAssignmentsTable = pgTable("resource_assignments", {

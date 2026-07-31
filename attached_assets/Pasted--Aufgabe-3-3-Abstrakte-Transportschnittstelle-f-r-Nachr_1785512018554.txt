@@ -1,0 +1,152 @@
+# Aufgabe 3.3 – Abstrakte Transportschnittstelle für Nachrichten implementieren
+
+Implementiere eine vom fachlichen Anwendungsfall unabhängige Transportschnittstelle.
+
+Nutze die bestehende Projektstruktur und den vorhandenen Stil für Interfaces, Services und Domain-Typen.
+
+Es sollen noch keine öffentlichen REST-Endpunkte ergänzt werden.
+
+## Ziel
+
+Die Fachlogik soll nicht wissen, ob eine Nachricht über:
+
+* den lokalen Hub
+* eine Datenbank
+* HTTP
+* oder später EDC
+
+transportiert wird.
+
+## Interface `MessageTransport`
+
+Implementiere sinngemäß:
+
+```ts
+interface MessageTransport {
+  send(message: MessageEnvelope): Promise<TransportResult>;
+
+  getInbox(
+    recipientOrgId: string,
+    options?: InboxQueryOptions
+  ): Promise<InboxMessage[]>;
+
+  markAsRead(
+    messageId: string,
+    recipientOrgId: string
+  ): Promise<void>;
+
+  retry(messageId: string): Promise<TransportResult>;
+}
+```
+
+Passe Namen und Rückgabetypen an den vorhandenen Projektstil an.
+
+## Typ `TransportResult`
+
+Der Rückgabewert soll mindestens enthalten:
+
+```text
+messageId
+status
+sentAt
+deliveredAt
+attemptCount
+error
+```
+
+`error` ist nur bei fehlgeschlagener Zustellung gesetzt.
+
+## Typ `InboxQueryOptions`
+
+Unterstütze mindestens optionale Filter:
+
+```text
+status
+messageType
+correlationId
+limit
+offset
+```
+
+## Fachliche Anforderungen
+
+### `send`
+
+* akzeptiert ausschließlich einen validierten `MessageEnvelope`
+* speichert die Nachricht nicht selbst zwingend dauerhaft, wenn dies durch den aufrufenden Outbox-Service erfolgt
+* liefert einen klaren technischen Status zurück
+* darf keine fachlichen Statusänderungen direkt durchführen
+
+### `getInbox`
+
+* liefert ausschließlich Nachrichten für `recipientOrgId`
+* keine ungefilterte globale Inbox zurückgeben
+* unterstützt Pagination oder bestehende Listenmechanismen
+
+### `markAsRead`
+
+* nur der adressierte Empfänger darf eine Nachricht als gelesen markieren
+* technischer Status wird auf `READ` gesetzt
+* der fachliche TaktRequest-Status wird dadurch nicht geändert
+
+### `retry`
+
+* wiederholt ausschließlich technisch fehlgeschlagene Nachrichten
+* darf keine neue fachliche Nachricht mit neuer Bedeutung erzeugen
+* behält dieselbe `messageId`
+
+## Vorbereitung für EDC
+
+Dokumentiere im Code:
+
+* `MessageTransport` ist der spätere Integrationspunkt für EDC.
+* `LocalHubTransport` wird die PoC-Implementierung.
+* Ein zukünftiger `EdcTransport` darf die Fachservices nicht verändern müssen.
+
+## Domain-Fehler
+
+Ergänze oder verwende vorhandene Fehlerklassen für:
+
+* ungültiges Nachrichtenformat
+* Nachricht nicht gefunden
+* Empfänger nicht berechtigt
+* Nachricht nicht erneut zustellbar
+* Transportfehler
+
+## Tests
+
+Ergänze Unit-Tests mit einer kleinen Test- oder Mock-Implementierung:
+
+* gültige Nachricht kann gesendet werden
+* Inbox wird nach Empfänger gefiltert
+* fremde Organisation kann Nachricht nicht als gelesen markieren
+* Retry verwendet dieselbe `messageId`
+* technische Zustellung ändert keinen fachlichen TaktRequest-Status
+
+## Einschränkungen
+
+* Noch keine produktive `LocalHubTransport`-Implementierung.
+* Keine neuen API-Endpunkte.
+* Keine Änderungen an bestehenden Delegation-Endpunkten.
+* Keine UI.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* neue Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Interface- und Typdateien
+* Methoden des Transportinterfaces
+* neue Domain-Fehler
+* Vorbereitung auf eine spätere EDC-Implementierung
+* Testergebnisse
+* Ergebnis von Typecheck und Build

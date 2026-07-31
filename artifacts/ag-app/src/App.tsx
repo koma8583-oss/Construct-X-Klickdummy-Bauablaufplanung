@@ -15,6 +15,8 @@ import Dashboard from '@/pages/dashboard';
 import Projects from '@/pages/projects';
 import ProjectDetail from '@/pages/project-detail';
 import ProjectProposals from '@/pages/project-proposals';
+import TaktRequests from '@/pages/takt-requests';
+import TaktRequestDetail from '@/pages/takt-request-detail';
 import Proposals from '@/pages/proposals';
 import Contractors from '@/pages/contractors';
 import Settings from '@/pages/settings';
@@ -38,6 +40,8 @@ function AuthenticatedApp() {
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:projectId" component={ProjectDetail} />
           <Route path="/projects/:projectId/proposals" component={ProjectProposals} />
+          <Route path="/takt-requests" component={TaktRequests} />
+          <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
           <Route path="/proposals" component={Proposals} />
           <Route path="/contractors" component={Contractors} />
           <Route path="/settings" component={Settings} />

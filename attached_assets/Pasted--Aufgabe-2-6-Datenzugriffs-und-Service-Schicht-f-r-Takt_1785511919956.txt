@@ -1,0 +1,195 @@
+# Aufgabe 2.6 – Datenzugriffs- und Service-Schicht für Taktanfragen implementieren
+
+Implementiere eine interne Repository- und Service-Schicht für die in Aufgabe 2.4 und 2.5 angelegten Tabellen.
+
+Es sollen noch keine öffentlichen REST-Endpunkte ergänzt werden.
+
+Nutze die bestehende Architektur, Fehlerbehandlung, Datenbankstruktur und den vorhandenen Stil für Services und Repositories.
+
+## Ziel
+
+Zukünftige Routes sollen nicht direkt auf die neuen Drizzle-Tabellen zugreifen.
+
+Trenne:
+
+* reinen Datenbankzugriff
+* fachliche Validierung
+* Statusübergänge
+
+## Repository-Funktionen für Taktanfragen
+
+Implementiere sinngemäß:
+
+```ts
+createTaktRequestDraft(...)
+getTaktRequestById(...)
+getTaktRequestWithSnapshot(...)
+listTaktRequestsForGu(...)
+listTaktRequestsForNu(...)
+updateTaktRequestStatus(...)
+markTaktRequestSuperseded(...)
+```
+
+Passe Namen, Parameter und Rückgabetypen an den bestehenden Projektstil an.
+
+## Organisationsbezogene Abfragen
+
+`listTaktRequestsForGu` muss mindestens nach `guOrgId` filtern.
+
+`listTaktRequestsForNu` muss mindestens nach `nuOrgId` filtern.
+
+Vermeide öffentliche Funktionen, die ungefiltert alle Taktanfragen zurückgeben.
+
+Zukünftige Routes müssen die Organisationseinschränkung nicht selbst nachträglich auf eine ungefilterte Ergebnismenge anwenden.
+
+## Snapshot-Funktionen
+
+Implementiere:
+
+```ts
+createTaktRequestSnapshot(...)
+getTaktRequestSnapshot(...)
+```
+
+Regeln:
+
+* pro Anfrage genau ein Snapshot
+* ein vorhandener Snapshot darf nicht überschrieben werden
+* keine allgemeine `updateSnapshot`-Funktion
+* Snapshot-Payload muss ein Objekt sein
+* Erzeugung soll in einer Transaktion mit der späteren Request-Erstellung nutzbar sein
+
+## Antwortfunktionen
+
+Implementiere sinngemäß:
+
+```ts
+createTaktResponse(...)
+getTaktResponseByRequestId(...)
+getTaktResponseWithAlternatives(...)
+```
+
+Eine Antwort mit Alternativen soll innerhalb einer Datenbanktransaktion gespeichert werden.
+
+Falls die Speicherung einer Alternative fehlschlägt, darf auch die Antwort nicht dauerhaft gespeichert werden.
+
+## Validierung `ACCEPTED`
+
+Bei `decision = ACCEPTED`:
+
+* `acceptedStart` erforderlich
+* `acceptedEnd` erforderlich
+* `acceptedEnd` muss nach `acceptedStart` liegen
+* Alternativen dürfen leer sein
+* optional vorhandene Alternativen sollen abgelehnt werden, um Mehrdeutigkeit zu vermeiden
+
+## Validierung `ALTERNATIVES_PROPOSED`
+
+Bei `decision = ALTERNATIVES_PROPOSED`:
+
+* mindestens eine Alternative
+* maximal drei Alternativen
+* jede Alternative besitzt ein gültiges Zeitfenster
+* `proposedEnd` liegt nach `proposedStart`
+* `crewSize` mindestens 1, falls gesetzt
+* `alternativeId` innerhalb der Antwort eindeutig
+* `rank` innerhalb der Antwort eindeutig
+
+## Validierung `REJECTED`
+
+Bei `decision = REJECTED`:
+
+* keine Alternativen zulassen
+* kein angenommenes Zeitfenster zulassen
+* `reasonCode` fachlich empfohlen
+* `nextAvailableDate` darf gesetzt werden
+
+## Statusänderung
+
+`updateTaktRequestStatus` muss die in Aufgabe 2.2 eingeführte Übergangsprüfung verwenden.
+
+Bei einem ungültigen Übergang:
+
+* keine Datenbankänderung durchführen
+* einen klaren Domain-Fehler auslösen
+* aktuellen und angeforderten Status im Fehlerkontext nennen
+
+## Funktion `markTaktRequestSuperseded`
+
+Anforderungen:
+
+* nur zulässige Ausgangszustände akzeptieren
+* Übergangsfunktion verwenden
+* Status auf `SUPERSEDED` setzen
+* vorhandene historische Daten nicht verändern
+* optional die neue Nachfolgeanfrage referenzierbar machen, falls das Schema dies unterstützt
+
+## Fehlerklassen
+
+Verwende vorhandene Fehlerklassen oder ergänze kleine Domain-Fehler für:
+
+* Request nicht gefunden
+* Snapshot bereits vorhanden
+* Response bereits vorhanden
+* ungültiger Statusübergang
+* ungültige Taktantwort
+* ungültige Alternative
+* Organisationszugriff nicht zulässig
+
+Keine HTTP-spezifischen Fehler in der reinen Repository-Schicht verwenden.
+
+## Keine Transportlogik
+
+Nicht implementieren:
+
+* Hub-Nachrichten
+* Outbox
+* Inbox
+* Webhooks
+* Notification Push
+* Details Pull
+* Antwort Push
+* EDC
+
+## Tests
+
+Ergänze Tests für:
+
+* Erstellung eines Requests im Status `DRAFT`
+* organisationsgefilterte GU-Liste
+* organisationsgefilterte NU-Liste
+* genau einen Snapshot pro Anfrage
+* Snapshot kann nicht überschrieben werden
+* gültige Bestätigung
+* Bestätigung ohne angenommenes Zeitfenster wird abgelehnt
+* gültige Antwort mit zwei Alternativen
+* mehr als drei Alternativen wird abgelehnt
+* doppelter Rang wird abgelehnt
+* doppelte `alternativeId` wird abgelehnt
+* ungültiges Zeitfenster wird abgelehnt
+* gültige Ablehnung ohne Alternativen
+* zweite Antwort für denselben Request wird abgelehnt
+* ungültiger Statusübergang wird abgelehnt
+* gültiger Übergang wird gespeichert
+
+## Prüfungen
+
+Führe aus:
+
+* neue Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Repository-Dateien
+* neue Service-Dateien
+* implementierte Funktionen
+* verwendete Transaktionen
+* implementierte Validierungsregeln
+* neue Domain-Fehler
+* Testergebnisse
+* Ergebnis von Typecheck und Build

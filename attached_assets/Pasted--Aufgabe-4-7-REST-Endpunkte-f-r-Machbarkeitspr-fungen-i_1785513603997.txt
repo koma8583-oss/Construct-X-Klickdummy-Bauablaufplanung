@@ -1,0 +1,667 @@
+# Aufgabe 4.7 – REST-Endpunkte für Machbarkeitsprüfungen implementieren
+
+Implementiere NU-interne REST-Endpunkte zum Starten und Abrufen einer Machbarkeitsprüfung.
+
+## Prüfung starten
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests/{requestId}/availability-checks
+```
+
+## Berechtigungen
+
+* nur der adressierte NU
+* nur berechtigte Rollen wie `NU_ADMIN` oder `NU_DISPATCHER`
+* andere NU erhalten keinen Zugriff
+* GU erhält keinen Zugriff
+* Hub erhält keinen Zugriff
+
+## Verarbeitung
+
+1. Benutzer und NU-Organisation bestimmen.
+2. TaktRequest laden.
+3. Adressierung prüfen.
+4. Snapshot laden.
+5. zulässigen Requeststatus prüfen.
+6. Request gegebenenfalls auf `UNDER_REVIEW` setzen.
+7. regelbasierte Prüfung ausführen.
+8. Alternativen erzeugen.
+9. internes Ergebnis speichern.
+10. öffentliches Ergebnis speichern.
+11. Ergebnis an die NU-Anwendung zurückgeben.
+
+## Response
+
+Die NU-Anwendung darf interne und öffentliche Ergebnisse sehen:
+
+```json
+{
+  "checkId": "CHECK-001",
+  "status": "COMPLETED",
+  "result": "FEASIBLE_WITH_ALTERNATIVES",
+  "internalResult": {
+    "conflicts": [
+      {
+        "resourceId": "CREW-04",
+        "conflictType": "OVERLAP",
+        "localProjectId": "LOCAL-17"
+      }
+    ]
+  },
+  "publicResult": {
+    "recommendedDecision": "ALTERNATIVES_PROPOSED",
+    "reasonCode": "RESOURCE_CONFLICT",
+    "alternatives": [
+      {
+        "alternativeId": "ALT-01",
+        "rank": 1,
+        "timeWindow": {
+          "start": "2026-09-16T05:00:00Z",
+          "end": "2026-09-22T14:00:00Z"
+        },
+        "crewSize": 6,
+        "conditions": []
+      }
+    ]
+  }
+}
+```
+
+## Letzte Prüfung abrufen
+
+Implementiere sinngemäß:
+
+```http
+GET /takt-requests/{requestId}/availability-checks/latest
+```
+
+Nur der adressierte NU darf das Ergebnis lesen.
+
+## Prüfverlauf
+
+Bevorzuge einen neuen Datensatz je Prüflauf.
+
+Der Endpunkt `/latest` liefert den neuesten erfolgreich oder zuletzt ausgeführten Check gemäß dokumentierter Regel.
+
+## Datenschutz
+
+* interne Ergebnisse nur an den adressierten NU liefern
+* keine Availability-API für GU bereitstellen
+* keine internen Payloads an Hub senden
+* keine internen Konflikte vollständig loggen
+* fremde NU-Daten niemals zurückgeben
+
+## OpenAPI
+
+Ergänze:
+
+* beide Endpunkte
+* interne und öffentliche Result-Schemas
+* Fehlerantworten
+* Berechtigungen
+* Beschreibung der Historien- beziehungsweise Latest-Logik
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze:
+
+* adressierter NU kann Prüfung starten
+* fremder NU wird abgelehnt
+* GU wird abgelehnt
+* Ergebnis wird gespeichert
+* öffentliches Ergebnis enthält keine internen IDs
+* erneute Prüfung berücksichtigt geänderte Buchungen
+* `DETAILS_RETRIEVED → UNDER_REVIEW`
+* technischer Fehler führt zu `FAILED`
+* technischer Fehler erzeugt keine Taktantwort
+* Latest-Endpunkt liefert korrekten Check
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* Service-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Endpunkte
+* Berechtigungen
+* Historien- und Latest-Strategie
+* interne und öffentliche Response-Struktur
+* Statusänderungen
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 4.8 – Taktantwort erstellen und an den GU pushen
+
+Implementiere die NU-seitige Erstellung und Übertragung einer fachlichen Taktantwort.
+
+Verwende:
+
+* `takt_responses`
+* `takt_response_alternatives`
+* `MessageTransport`
+* `LocalHubTransport`
+* `TaktResponseMessage`
+
+## Endpunkt
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests/{requestId}/responses
+```
+
+## Berechtigungen
+
+* nur der adressierte NU
+* nur berechtigte NU-Rollen
+* GU darf keine NU-Antwort erstellen
+* anderer NU darf keine Antwort erstellen
+* Hub darf keine Antwort erstellen
+
+## Bestätigung
+
+```json
+{
+  "decision": "ACCEPTED",
+  "acceptedTimeWindow": {
+    "start": "2026-09-14T05:00:00Z",
+    "end": "2026-09-18T14:00:00Z"
+  },
+  "comment": "Der Zeitraum kann bestätigt werden."
+}
+```
+
+## Alternativen
+
+```json
+{
+  "decision": "ALTERNATIVES_PROPOSED",
+  "reasonCode": "RESOURCE_CONFLICT",
+  "comment": "Der ursprüngliche Zeitraum ist nicht vollständig verfügbar.",
+  "alternatives": [
+    {
+      "alternativeId": "ALT-01",
+      "rank": 1,
+      "timeWindow": {
+        "start": "2026-09-16T05:00:00Z",
+        "end": "2026-09-22T14:00:00Z"
+      },
+      "crewSize": 6,
+      "conditions": []
+    }
+  ]
+}
+```
+
+## Ablehnung
+
+```json
+{
+  "decision": "REJECTED",
+  "reasonCode": "NO_CAPACITY",
+  "comment": "Im angefragten Zeitraum ist keine ausreichende Kapazität verfügbar.",
+  "nextAvailableDate": "2026-10-05"
+}
+```
+
+## Verarbeitung
+
+1. Benutzer und NU-Organisation prüfen.
+2. TaktRequest laden.
+3. Adressierung prüfen.
+4. prüfen, ob der Request beantwortbar ist.
+5. Payload gegen OpenAPI und Zod validieren.
+6. Datenschutzfilter ausführen.
+7. Antwort und Alternativen transaktional speichern.
+8. `TaktResponseMessage` erzeugen.
+9. Antwort über `MessageTransport` an den GU übertragen.
+10. Requeststatus aktualisieren.
+
+## Statusänderungen
+
+### Bestätigung
+
+```text
+UNDER_REVIEW → ACCEPTED
+```
+
+### Alternativen
+
+```text
+UNDER_REVIEW → ALTERNATIVES_PROPOSED
+```
+
+### Ablehnung
+
+```text
+UNDER_REVIEW → REJECTED
+```
+
+Weitere bereits definierte zulässige Ausgangszustände dürfen unterstützt werden.
+
+## Datenschutzfilter
+
+Folgende Felder dürfen nicht extern gespeichert oder versendet werden:
+
+```text
+localProjectId
+localProjectCode
+customerAlias
+customerName
+resourceId
+resourceName
+employeeId
+employeeName
+internalCost
+internalPriority
+internalConflicts
+conflicts
+internalResultPayload
+```
+
+Unbekannte zusätzliche Felder im externen Payload strikt ablehnen.
+
+## Nutzung des Availability-Ergebnisses
+
+* öffentliches Ergebnis kann als Vorlage verwendet werden
+* NU-Benutzer darf die externe Antwort bearbeiten
+* interne Konflikte werden niemals übernommen
+* bewusste Abweichung von der Empfehlung ist zulässig
+* Abweichung kann intern protokolliert werden
+
+## Nachricht an den GU
+
+Die Nachricht enthält nur:
+
+```text
+taktRequestId
+decision
+reasonCode
+comment
+acceptedTimeWindow
+alternatives
+nextAvailableDate
+```
+
+Nicht enthalten:
+
+```text
+availabilityCheckId
+resourceId
+localProjectId
+internal conflicts
+andere Kunden oder Projekte
+```
+
+## Idempotenz
+
+* Unterstütze `Idempotency-Key` oder eine bestehende äquivalente Lösung.
+* Wiederholte identische Anfrage erzeugt keine zweite Response.
+* Pro TaktRequest maximal eine fachliche Antwort.
+* Gleicher Key mit anderem Inhalt wird abgelehnt.
+* Bei Transportfehler bleibt die fachliche Antwort gespeichert.
+* Retry verwendet dieselbe fachliche Antwort und Nachricht.
+* Retry legt keine zweite Response an.
+
+## GU-Inbox
+
+Die Antwort wird als:
+
+```text
+TAKT_RESPONSE_SUBMITTED
+```
+
+an die GU-Organisation zugestellt.
+
+Falls die Inbox bisher nur NU-Nachrichten unterstützt:
+
+* organisationsneutral erweitern
+* weiterhin streng nach Empfängerorganisation filtern
+* Rollen- und Organisationszugriffe absichern
+
+## OpenAPI
+
+Ergänze:
+
+* Endpunkt
+* Request- und Response-Schemas
+* Fehlerantworten
+* Idempotenzbeschreibung
+* Datenschutzbeschreibung
+
+## Tests
+
+Ergänze:
+
+* gültige Bestätigung
+* Antwort mit zwei Alternativen
+* gültige Ablehnung
+* mehr als drei Alternativen wird abgelehnt
+* interne Felder werden abgelehnt
+* fremder NU wird abgelehnt
+* GU kann keine Antwort erstellen
+* Antwort wird in GU-Inbox zugestellt
+* Requeststatus wird korrekt aktualisiert
+* identischer Retry erzeugt keine zweite Antwort
+* Transportfehler erzeugt keine zweite fachliche Antwort
+* Retry stellt vorhandene Nachricht zu
+* GU sieht keine internen NU-Daten
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* Transporttests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neuer Endpunkt
+* unterstützte Entscheidungen
+* Datenschutzfilter
+* Statusänderungen
+* Idempotenz- und Retry-Verhalten
+* Zustellung an die GU-Inbox
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 4.9 – Backend-Prozess abschließend prüfen
+
+Prüfe alle Änderungen aus Aufgabe 4 und korrigiere nur festgestellte Inkonsistenzen.
+
+Noch keine umfassenden UI-Anpassungen implementieren.
+
+## Zielablauf
+
+```text
+1. NU erhält Taktanfrage in der Inbox.
+2. NU ruft den unveränderlichen Snapshot ab.
+3. Request erhält DETAILS_RETRIEVED.
+4. NU besitzt lokale Projekte und Ressourcenbuchungen.
+5. NU startet die Machbarkeitsprüfung.
+6. Request erhält UNDER_REVIEW.
+7. Lokale Konflikte werden intern ausgewertet.
+8. Bis zu drei Alternativen werden erzeugt.
+9. NU erstellt eine reduzierte Antwort.
+10. Antwort wird über LocalHubTransport an den GU übertragen.
+11. GU erhält die Antwort in seiner Inbox.
+12. Interne NU-Daten bleiben lokal.
+```
+
+## Datenbankmodelle prüfen
+
+Prüfe:
+
+```text
+nu_local_projects
+resource_bookings
+availability_checks
+takt_responses
+takt_response_alternatives
+message_outbox
+message_inbox
+```
+
+## Datenhoheit prüfen
+
+Die an den GU übertragene Antwort darf nicht enthalten:
+
+```text
+localProjectId
+localProjectCode
+displayName eines lokalen Projekts
+customerAlias
+resourceId
+resourceName
+employeeId
+employeeName
+internalResultPayload
+internalConflicts
+internalCost
+internalPriority
+```
+
+## Szenario A – Bestätigung
+
+* passende Kolonne verfügbar
+* erforderliches Gerät verfügbar
+* keine Überschneidung
+* Ergebnis `FEASIBLE`
+* Antwort `ACCEPTED`
+
+Erwartete Statusfolge:
+
+```text
+DELIVERED
+→ DETAILS_RETRIEVED
+→ UNDER_REVIEW
+→ ACCEPTED
+```
+
+## Szenario B – Alternativen
+
+* ursprünglicher Zeitraum kollidiert
+* späterer Zeitraum verfügbar
+* mindestens zwei Alternativen
+* Ergebnis `FEASIBLE_WITH_ALTERNATIVES`
+* Antwort `ALTERNATIVES_PROPOSED`
+
+Erwartete Statusfolge:
+
+```text
+DELIVERED
+→ DETAILS_RETRIEVED
+→ UNDER_REVIEW
+→ ALTERNATIVES_PROPOSED
+```
+
+## Szenario C – Ablehnung
+
+* keine Kapazität im Suchhorizont
+* keine geeignete Alternative
+* Ergebnis `NOT_FEASIBLE`
+* Antwort `REJECTED`
+
+Erwartete Statusfolge:
+
+```text
+DELIVERED
+→ DETAILS_RETRIEVED
+→ UNDER_REVIEW
+→ REJECTED
+```
+
+## Idempotenz prüfen
+
+Teste:
+
+* wiederholten Snapshot-Abruf
+* erneute Machbarkeitsprüfung
+* erneutes Absenden derselben Antwort
+* erneute Zustellung derselben `messageId`
+* Retry nach Transportfehler
+* gleicher Idempotency-Key mit geändertem Payload
+
+## Berechtigungen prüfen
+
+* NU sieht nur eigene lokale Projekte.
+* NU sieht nur eigene Ressourcen.
+* NU sieht nur eigene Buchungen.
+* NU kann nur adressierte Requests prüfen.
+* GU kann keine lokalen NU-Daten lesen.
+* Hub kann keine lokalen NU-Daten lesen.
+* anderer NU kann Check und Antwort nicht lesen.
+* GU sieht nur die reduzierte Antwort.
+
+## End-to-End-Test
+
+Implementiere mindestens einen vollständigen Integrationstest:
+
+1. GU erstellt und versendet einen TaktRequest.
+2. NU liest die Notification.
+3. NU ruft den Snapshot ab.
+4. NU besitzt eine kollidierende lokale Buchung.
+5. NU startet die Prüfung.
+6. System erzeugt Alternativen.
+7. NU sendet eine Antwort mit Alternativen.
+8. GU liest die Response-Nachricht.
+9. Response enthält nur öffentliche Daten.
+10. Interne Konflikte bleiben ausschließlich beim NU.
+11. Wiederholtes Senden erzeugt keine zweite Antwort.
+12. Ursprungstakt und NU-Ressourcen bleiben getrennt.
+
+## Seed-Daten
+
+Ergänze beziehungsweise prüfe Seed-Daten für:
+
+* verfügbare Kolonne
+* teilweise belegte Kolonne
+* verfügbares Gerät
+* belegtes oder gewartetes Gerät
+* Projekt eines anderen GU
+* Abwesenheit
+* Fall `ACCEPTED`
+* Fall `ALTERNATIVES_PROPOSED`
+* Fall `REJECTED`
+
+Andere GU-Projekte dürfen nur in NU-internen Daten erscheinen.
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* bestehende Delegation-Endpunkte bleiben vorhanden
+* bestehende Ressourcenzuweisungen bleiben vorhanden
+* GU-, NU- und Hub-Anwendungen starten weiterhin
+* bestehende Demo-Daten bleiben verfügbar
+* generierte Dateien wurden nicht manuell bearbeitet
+* kein EDC wurde implementiert
+
+## Dokumentation
+
+Aktualisiere bei Bedarf:
+
+* `docs/resource-planning.md`
+* `docs/data-ownership.md`
+* `docs/message-flow.md`
+* `docs/transport-architecture.md`
+* `docs/state-model.md`
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Seed
+* OpenAPI-Codegenerierung
+* Datenbanktests
+* Ressourcen-Service-Tests
+* Availability-Tests
+* Transporttests
+* API-Tests
+* Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+### Neue Datenbankobjekte
+
+Liste mindestens:
+
+```text
+nu_local_projects
+resource_bookings
+availability_checks
+```
+
+### Erweiterte Modelle
+
+Nenne:
+
+* Ressourcenmodell
+* Taktantworten
+* Alternativen
+* Outbox und Inbox, sofern angepasst
+
+### Neue Services
+
+Liste sinngemäß:
+
+```text
+LocalProjectService
+ResourceBookingService
+AvailabilityCheckService
+AlternativeGenerationService
+TaktResponseService
+```
+
+### Neue Endpunkte
+
+Liste mindestens:
+
+```text
+GET /nu/local-projects
+POST /nu/local-projects
+GET /nu/resource-bookings
+POST /nu/resource-bookings
+POST /takt-requests/{requestId}/availability-checks
+GET /takt-requests/{requestId}/availability-checks/latest
+POST /takt-requests/{requestId}/responses
+```
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Datenbankmigration
+* Seed
+* Codegenerierung
+* Datenbanktests
+* Availability-Tests
+* API-Tests
+* Datenschutztests
+* Integrationstests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne nur:
+
+* GU-Oberfläche für Taktanfragen und Antworten
+* NU-Inbox und Snapshot-Ansicht
+* NU-Gantt für die Mehrprojektplanung
+* UI für Machbarkeitsprüfung
+* UI zum Bearbeiten und Absenden von Alternativen
+* GU-Vergleich und Auswahl einer Alternative
+* Hub-Prozessansicht
+* Demo-Reset
+* spätere EDC-Anbindung

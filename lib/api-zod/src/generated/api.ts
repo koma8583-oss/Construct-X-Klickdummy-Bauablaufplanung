@@ -1973,3 +1973,749 @@ export const GetAnDashboardResponse = zod.object({
 })
 
 
+/**
+ * Returns messages delivered to the authenticated NU organisation. recipientOrgId is always derived from the bearer token — clients cannot query another organisation's inbox. GU users and hub admins are rejected.
+ * @summary NU lists their inbox messages (newest first)
+ */
+export const listInboxMessagesQueryLimitDefault = 50;
+export const listInboxMessagesQueryLimitMax = 100;
+
+export const listInboxMessagesQueryOffsetDefault = 0;
+export const listInboxMessagesQueryOffsetMin = 0;
+
+
+
+export const ListInboxMessagesQueryParams = zod.object({
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).optional(),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).optional(),
+  "correlationId": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().min(1).max(listInboxMessagesQueryLimitMax).default(listInboxMessagesQueryLimitDefault),
+  "offset": zod.coerce.number().min(listInboxMessagesQueryOffsetMin).default(listInboxMessagesQueryOffsetDefault)
+})
+
+export const ListInboxMessagesResponseItem = zod.object({
+  "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
+  "messageId": zod.string().describe('Globally unique message identifier'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "senderOrgId": zod.string().describe('Organisation that sent the message'),
+  "recipientOrgId": zod.string().describe('Organisation that received the message'),
+  "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a message envelope. DELIVERED means the message arrived — it is NOT a business confirmation. Business outcomes are expressed in TaktDecision, not here.\n'),
+  "payload": zod.record(zod.string(), zod.unknown()).describe('Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId, projectReference, taktReference, taktVersion, responseRequiredBy, detailsRef, subject, message. No full Takt data.\n'),
+  "receivedAt": zod.coerce.date().describe('When the message was delivered to this inbox'),
+  "readAt": zod.coerce.date().nullish().describe('When the recipient marked the message as read; null if unread'),
+  "createdAt": zod.coerce.date()
+}).describe('A single message in the NU inbox. Contains only the notification metadata and the minimal payload as delivered — no full Takt snapshot is included.\n')
+export const ListInboxMessagesResponse = zod.array(ListInboxMessagesResponseItem)
+
+
+/**
+ * @summary NU retrieves a single inbox message by messageId
+ */
+export const GetInboxMessageParams = zod.object({
+  "messageId": zod.coerce.string()
+})
+
+export const GetInboxMessageResponse = zod.object({
+  "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
+  "messageId": zod.string().describe('Globally unique message identifier'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "senderOrgId": zod.string().describe('Organisation that sent the message'),
+  "recipientOrgId": zod.string().describe('Organisation that received the message'),
+  "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a message envelope. DELIVERED means the message arrived — it is NOT a business confirmation. Business outcomes are expressed in TaktDecision, not here.\n'),
+  "payload": zod.record(zod.string(), zod.unknown()).describe('Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId, projectReference, taktReference, taktVersion, responseRequiredBy, detailsRef, subject, message. No full Takt data.\n'),
+  "receivedAt": zod.coerce.date().describe('When the message was delivered to this inbox'),
+  "readAt": zod.coerce.date().nullish().describe('When the recipient marked the message as read; null if unread'),
+  "createdAt": zod.coerce.date()
+}).describe('A single message in the NU inbox. Contains only the notification metadata and the minimal payload as delivered — no full Takt snapshot is included.\n')
+
+
+/**
+ * Sets the inbox status to READ and records readAt. Idempotent — calling this endpoint multiple times on the same message is safe. Does NOT change the TaktRequest status.
+ * @summary NU marks a message as READ
+ */
+export const MarkInboxMessageReadParams = zod.object({
+  "messageId": zod.coerce.string()
+})
+
+export const MarkInboxMessageReadResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a message envelope. DELIVERED means the message arrived — it is NOT a business confirmation. Business outcomes are expressed in TaktDecision, not here.\n'),
+  "readAt": zod.coerce.date().nullish()
+}).describe('Response from POST \/messages\/inbox\/{messageId}\/read.')
+
+
+/**
+ * Returns all TaktRequests for the authenticated GU organisation, joined with Takt name, project name, NU organisation name, and the transport delivery status of the notification message.
+ * Access: GU users only. NU users pass role=nu instead; hub admins → 403.
+ * @summary GU lists their own TaktRequests (enriched with Takt, project, NU, transport status)
+ */
+export const ListTaktRequestsQueryParams = zod.object({
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).optional().describe('Filter by request status'),
+  "taktId": zod.coerce.string().optional().describe('Filter by Takt ID'),
+  "nuOrgId": zod.coerce.string().optional().describe('Filter by NU organisation ID')
+})
+
+
+
+
+export const ListTaktRequestsResponseItem = zod.object({
+  "id": zod.string(),
+  "requestNumber": zod.string().describe('Human-readable unique reference (e.g. TKR-2026-0042)'),
+  "taktId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Display name of the Takt'),
+  "taktVersion": zod.number().min(1),
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "nuOrgName": zod.string().describe('Display name of the addressed NU organisation'),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "outboxStatus": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message').nullish().describe('Transport delivery status of the notification message. Null if not yet sent.'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond'),
+  "sentAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Enriched TaktRequest row for the GU overview list. Includes Takt name, project name, NU org name, and transport status. Never contains internal NU data.\n')
+export const ListTaktRequestsResponse = zod.array(ListTaktRequestsResponseItem)
+
+
+/**
+ * Creates a TaktRequest in DRAFT status and atomically persists an immutable whitelist-scoped snapshot of the current Takt. No message is sent; call /takt-requests/{requestId}/send to deliver the notification.
+ * @summary GU creates a TaktRequest draft with an immutable Takt snapshot
+ */
+
+
+export const createTaktRequestWithSnapshotBodySubjectMax = 255;
+
+export const createTaktRequestWithSnapshotBodyMessageMax = 2000;
+
+
+
+export const CreateTaktRequestWithSnapshotBody = zod.object({
+  "taktId": zod.string().min(1).describe('ID of the Takt to coordinate'),
+  "nuOrgId": zod.string().min(1).describe('ID of the NU organisation to address'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('ISO 8601 deadline by which the NU must respond'),
+  "subject": zod.string().max(createTaktRequestWithSnapshotBodySubjectMax).optional().describe('Optional human-readable subject line for the coordination message'),
+  "message": zod.string().max(createTaktRequestWithSnapshotBodyMessageMax).optional().describe('Optional free-text message from GU to NU')
+}).describe('Body for POST \/takt-requests — GU creates a TaktRequest draft with snapshot.')
+
+
+
+
+export const CreateTaktRequestWithSnapshotResponse = zod.object({
+  "id": zod.string().describe('TaktRequest ID'),
+  "taktId": zod.string(),
+  "taktVersion": zod.number().min(1).describe('Takt version at the time of request creation'),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "snapshotId": zod.string().describe('ID of the immutable snapshot created atomically with this request'),
+  "createdAt": zod.coerce.date()
+}).describe('Response from POST \/takt-requests — the newly created DRAFT request.')
+
+
+/**
+ * Returns the complete detail record for a single TaktRequest. Includes: enriched metadata (Takt name, project name, NU org name), all process timestamps for the timeline, transport/outbox information (status, failure reason, attempt count), the immutable snapshot, the notification payload actually sent to the NU, and the NU's response with any proposed alternatives.
+ * Access: the creating GU organisation only. Other GU, NU, hub admins and unauthenticated callers receive 403 or 404.
+ * @summary GU detail view — full metadata, timeline, snapshot, notification, and response
+ */
+export const GetTaktRequestDetailParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const GetTaktRequestDetailResponse = zod.object({
+  "id": zod.string(),
+  "requestNumber": zod.string(),
+  "taktId": zod.string(),
+  "taktBezeichnung": zod.string(),
+  "taktVersion": zod.number(),
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "nuOrgName": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "supersedesRequestId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "transport": zod.object({
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message').nullish().describe('Outbox delivery status; null if not yet queued'),
+  "notificationPayload": zod.record(zod.string(), zod.unknown()).nullish().describe('Payload that was actually delivered to the NU'),
+  "attemptCount": zod.number().nullish(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "inboxReadAt": zod.coerce.date().nullish().describe('When the NU\'s inbox row was marked as read')
+}).describe('Transport\/outbox information for the notification sent to the NU'),
+  "snapshot": zod.object({
+  "id": zod.string(),
+  "schemaVersion": zod.string(),
+  "snapshotPayload": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "response": zod.object({
+  "id": zod.string(),
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "acceptedStart": zod.coerce.date().nullish(),
+  "acceptedEnd": zod.coerce.date().nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string(),
+  "rank": zod.number(),
+  "proposedStart": zod.coerce.date(),
+  "proposedEnd": zod.coerce.date(),
+  "crewSize": zod.number().nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}))
+}).nullish(),
+  "timeline": zod.object({
+  "requestCreatedAt": zod.coerce.date(),
+  "snapshotCreatedAt": zod.coerce.date().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "inboxReadAt": zod.coerce.date().nullish(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "checkedAt": zod.coerce.date().nullish().describe('Not tracked from the GU side — always null'),
+  "responseCreatedAt": zod.coerce.date().nullish()
+}).describe('All process timestamps in one flat object. Null = not yet occurred or not tracked.')
+}).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
+
+
+/**
+ * Returns the immutable point-in-time Takt snapshot that was created when the request was sent. The response NEVER contains the live Takt row — only the snapshot data released by the GU.
+ * Access:
+ *   - The addressed NU organisation: may access when status is DELIVERED,
+ *     DETAILS_RETRIEVED, or UNDER_REVIEW. First access transitions
+ *     DELIVERED → DETAILS_RETRIEVED and records detailsRetrievedAt.
+ *     Subsequent access (DETAILS_RETRIEVED, UNDER_REVIEW) is idempotent.
+ *   - The creating GU organisation: always has read access for
+ *     control/preview purposes. Does NOT trigger any status transition.
+ *
+ * Forbidden for all other callers (other NU, other GU, hub admins, unauthenticated users).
+ * @summary Pull the immutable Takt snapshot released for a TaktRequest
+ */
+export const GetTaktRequestDetailsParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const GetTaktRequestDetailsResponse = zod.object({
+  "taktRequestId": zod.string().describe('ID of the TaktRequest this snapshot belongs to'),
+  "requestNumber": zod.string().describe('Human-readable request reference (e.g. TKR-2026-0042)'),
+  "schemaVersion": zod.string().describe('Snapshot payload schema version (e.g. \"1.0\")'),
+  "taktVersion": zod.number().describe('Takt version at the time the snapshot was created'),
+  "status": zod.string().describe('Current TaktRequest status'),
+  "guOrgId": zod.string().describe('GU organisation that created this request'),
+  "nuOrgId": zod.string().describe('NU organisation addressed by this request'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond'),
+  "detailsRetrievedAt": zod.coerce.date().nullish().describe('When the NU first retrieved these details; null until first access'),
+  "snapshotPayload": zod.record(zod.string(), zod.unknown()).describe('The released Takt data. Shape defined in docs\/json-contracts.md. Does NOT contain full project plan, current live Takt values, other NU data, or internal GU data.\n'),
+  "createdAt": zod.coerce.date().describe('When the snapshot was created (same as request send time)')
+}).describe('Immutable snapshot payload returned by GET \/takt-requests\/{requestId}\/details. Contains only the data the GU released at the time of sending — never the live Takt row or any NU-private data.\n')
+
+
+/**
+ * Builds a TaktRequestNotificationPayload (no full Takt data), delivers it via MessageTransport, and transitions the request DRAFT → SENT → DELIVERED. Also sets the Takt lifecycle status to IN_COORDINATION. Idempotent: if already DELIVERED, returns the existing result without creating a second message.
+ * @summary GU sends a DRAFT TaktRequest as a notification to the NU
+ */
+export const SendTaktRequestParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const SendTaktRequestResponse = zod.object({
+  "requestId": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "messageId": zod.string().describe('Outbox message ID — deterministic; use for traceability and retry'),
+  "taktLifecycleStatus": zod.string().optional().describe('Updated Takt lifecycle status after delivery (IN_COORDINATION on success)')
+}).describe('Response from POST \/takt-requests\/{requestId}\/send.')
+
+
+/**
+ * The addressed NU organisation triggers an availability check for the given TaktRequest. The service inspects the NU's resources and existing bookings against the planned time window from the snapshot.
+ * On success the TaktRequest transitions to UNDER_REVIEW (if it was DETAILS_RETRIEVED). Repeated calls are allowed (UNDER_REVIEW stays).
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU runs a feasibility check against their own resource calendar
+ */
+export const RunAvailabilityCheckParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+
+
+
+
+export const RunAvailabilityCheckResponse = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string(),
+  "nuOrgId": zod.string(),
+  "status": zod.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).optional().describe('Overall result of an availability check'),
+  "internalResult": zod.record(zod.string(), zod.unknown()).nullish().describe('NU-only internal result payload (not forwarded to GU)'),
+  "publicResult": zod.object({
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).describe('Overall result of an availability check'),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().describe('Unique ID for this alternative within the check result'),
+  "rank": zod.number().min(1).describe('Preference rank — 1 is most preferred'),
+  "timeWindow": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}).describe('Proposed alternative window (date-only strings YYYY-MM-DD)'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A public alternative time window generated by the availability check')).describe('Empty when result is FEASIBLE'),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).optional().describe('Public-facing check result — no NU-internal resource IDs, employee names, or internal conflict details.\n'),
+  "checkedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Availability check row returned by the API (Task 4.7)')
+
+
+/**
+ * Returns the most recently completed availability check for the given TaktRequest. Prefers COMPLETED checks; falls back to any latest check.
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU retrieves the latest feasibility check result
+ */
+export const GetLatestAvailabilityCheckParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+
+
+
+
+export const GetLatestAvailabilityCheckResponse = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string(),
+  "nuOrgId": zod.string(),
+  "status": zod.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).optional().describe('Overall result of an availability check'),
+  "internalResult": zod.record(zod.string(), zod.unknown()).nullish().describe('NU-only internal result payload (not forwarded to GU)'),
+  "publicResult": zod.object({
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).describe('Overall result of an availability check'),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().describe('Unique ID for this alternative within the check result'),
+  "rank": zod.number().min(1).describe('Preference rank — 1 is most preferred'),
+  "timeWindow": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}).describe('Proposed alternative window (date-only strings YYYY-MM-DD)'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A public alternative time window generated by the availability check')).describe('Empty when result is FEASIBLE'),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).optional().describe('Public-facing check result — no NU-internal resource IDs, employee names, or internal conflict details.\n'),
+  "checkedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Availability check row returned by the API (Task 4.7)')
+
+
+/**
+ * The addressed NU organisation submits their coordination response for the TaktRequest. Allowed starting statuses: DETAILS_RETRIEVED, UNDER_REVIEW.
+ * Privacy rules (enforced server-side):
+ *   - Forbidden fields: resourceId, localProjectId, internalResultPayload,
+ *     localProjectCode, customerAlias, resourceName, employeeId, etc.
+ *   - Only generic reason codes and time windows may be transmitted.
+ *
+ * Idempotency: repeated calls with the same decision return 200 (no second row created). A different decision returns 409.
+ * On success, a TAKT_RESPONSE_SUBMITTED message is delivered to the GU's inbox. The message payload contains only public data.
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU submits a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
+ */
+export const SubmitNuResponseParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+
+
+export const submitNuResponseBodyCommentMax = 2000;
+
+
+
+
+
+
+export const submitNuResponseBodyAlternativesMax = 3;
+
+
+
+export const SubmitNuResponseBody = zod.object({
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']).describe('Business decision made by the NU in response to a TaktRequest'),
+  "acceptedTimeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).optional().describe('Required when decision is ACCEPTED'),
+  "reasonCode": zod.enum(['RESOURCE_CONFLICT', 'NO_CAPACITY', 'EQUIPMENT_UNAVAILABLE', 'QUALIFICATION_MISSING', 'TIME_WINDOW_TOO_SHORT', 'OUTSIDE_PLANNING_HORIZON', 'OTHER']).optional().describe('Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.\n'),
+  "comment": zod.string().max(submitNuResponseBodyCommentMax).nullish(),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().min(1),
+  "rank": zod.number().min(1),
+  "timeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).describe('Start and end accept ISO date (YYYY-MM-DD) or datetime strings'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A ranked alternative time window submitted by the NU')).max(submitNuResponseBodyAlternativesMax).nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).describe('Body for POST \/takt-requests\/{requestId}\/responses. Only generic, public fields are permitted — forbidden fields (resourceId, localProjectId, internalResultPayload, etc.) return 400.\n')
+
+
+
+
+
+
+
+
+export const SubmitNuResponseResponse = zod.object({
+  "responseId": zod.string(),
+  "taktRequestId": zod.string(),
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']).describe('Business decision made by the NU in response to a TaktRequest'),
+  "reasonCode": zod.enum(['RESOURCE_CONFLICT', 'NO_CAPACITY', 'EQUIPMENT_UNAVAILABLE', 'QUALIFICATION_MISSING', 'TIME_WINDOW_TOO_SHORT', 'OUTSIDE_PLANNING_HORIZON', 'OTHER']).describe('Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.\n').nullish(),
+  "comment": zod.string().nullish(),
+  "acceptedTimeWindow": zod.object({
+  "start": zod.string().optional(),
+  "end": zod.string().optional()
+}).nullish(),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().min(1),
+  "rank": zod.number().min(1),
+  "timeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).describe('Start and end accept ISO date (YYYY-MM-DD) or datetime strings'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A ranked alternative time window submitted by the NU')).nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish(),
+  "transportStatus": zod.string().optional(),
+  "transportMessageId": zod.string().optional(),
+  "requestStatus": zod.string(),
+  "createdAt": zod.coerce.date()
+}).describe('Result returned by POST \/takt-requests\/{requestId}\/responses')
+
+
+/**
+ * Returns all local projects owned by the authenticated NU organisation. GU and hub-admin users receive 403.
+ * @summary List NU's internal local projects
+ */
+export const listNuLocalProjectsQueryLimitDefault = 50;
+export const listNuLocalProjectsQueryLimitMax = 100;
+
+export const listNuLocalProjectsQueryOffsetDefault = 0;
+export const listNuLocalProjectsQueryOffsetMin = 0;
+
+
+
+export const ListNuLocalProjectsQueryParams = zod.object({
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+  "limit": zod.coerce.number().min(1).max(listNuLocalProjectsQueryLimitMax).default(listNuLocalProjectsQueryLimitDefault),
+  "offset": zod.coerce.number().min(listNuLocalProjectsQueryOffsetMin).default(listNuLocalProjectsQueryOffsetDefault)
+})
+
+export const ListNuLocalProjectsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "localProjectCode": zod.string(),
+  "displayName": zod.string(),
+  "customerAlias": zod.string().nullish(),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('An NU-internal local project record. Never exposed to GU or Hub. customerAlias anonymises the GU identity and must not be transmitted externally.\n')),
+  "limit": zod.number(),
+  "offset": zod.number(),
+  "count": zod.number()
+})
+
+
+/**
+ * Creates an internal local project for the authenticated NU. nuOrgId is derived from the JWT — clients cannot supply it. Physical deletion is not supported; use status CANCELLED.
+ * @summary Create a NU internal local project
+ */
+
+
+
+
+export const CreateNuLocalProjectBody = zod.object({
+  "localProjectCode": zod.string().min(1),
+  "displayName": zod.string().min(1),
+  "customerAlias": zod.string().optional(),
+  "startDate": zod.coerce.date().optional(),
+  "endDate": zod.coerce.date().optional(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional()
+}).describe('Body for POST \/nu\/local-projects')
+
+export const CreateNuLocalProjectResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "localProjectCode": zod.string(),
+  "displayName": zod.string(),
+  "customerAlias": zod.string().nullish(),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('An NU-internal local project record. Never exposed to GU or Hub. customerAlias anonymises the GU identity and must not be transmitted externally.\n')
+
+
+/**
+ * @summary Get a single NU local project
+ */
+export const GetNuLocalProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const GetNuLocalProjectResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "localProjectCode": zod.string(),
+  "displayName": zod.string(),
+  "customerAlias": zod.string().nullish(),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('An NU-internal local project record. Never exposed to GU or Hub. customerAlias anonymises the GU identity and must not be transmitted externally.\n')
+
+
+/**
+ * All fields are optional. To cancel a project set status to CANCELLED. Physical deletion is not supported.
+ * @summary Update a NU local project
+ */
+export const UpdateNuLocalProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+
+
+
+export const UpdateNuLocalProjectBody = zod.object({
+  "displayName": zod.string().min(1).optional(),
+  "customerAlias": zod.string().optional(),
+  "startDate": zod.coerce.date().optional(),
+  "endDate": zod.coerce.date().optional(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional()
+}).describe('Body for PATCH \/nu\/local-projects\/{projectId}. All fields optional.')
+
+export const UpdateNuLocalProjectResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "localProjectCode": zod.string(),
+  "displayName": zod.string(),
+  "customerAlias": zod.string().nullish(),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "status": zod.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('An NU-internal local project record. Never exposed to GU or Hub. customerAlias anonymises the GU identity and must not be transmitted externally.\n')
+
+
+/**
+ * Returns bookings owned by the authenticated NU organisation. Overlap filter: booking.startAt < endTo AND booking.endAt > startFrom. GU and hub-admin users receive 403.
+ * @summary List NU resource bookings with optional overlap filter
+ */
+export const listNuResourceBookingsQueryLimitDefault = 50;
+export const listNuResourceBookingsQueryLimitMax = 100;
+
+export const listNuResourceBookingsQueryOffsetDefault = 0;
+export const listNuResourceBookingsQueryOffsetMin = 0;
+
+
+
+export const ListNuResourceBookingsQueryParams = zod.object({
+  "resourceId": zod.coerce.string().optional(),
+  "localProjectId": zod.coerce.string().optional(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']).optional(),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).optional(),
+  "startFrom": zod.date().optional().describe('ISO 8601 datetime. Returns bookings where endAt > startFrom (overlap).\n'),
+  "endTo": zod.date().optional().describe('ISO 8601 datetime. Returns bookings where startAt < endTo (overlap).\n'),
+  "limit": zod.coerce.number().min(1).max(listNuResourceBookingsQueryLimitMax).default(listNuResourceBookingsQueryLimitDefault),
+  "offset": zod.coerce.number().min(listNuResourceBookingsQueryOffsetMin).default(listNuResourceBookingsQueryOffsetDefault)
+})
+
+export const listNuResourceBookingsResponseItemsItemUtilizationPercentMax = 100;
+
+
+
+export const ListNuResourceBookingsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "resourceId": zod.string(),
+  "localProjectId": zod.string().nullish(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().nullish(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(listNuResourceBookingsResponseItemsItemUtilizationPercentMax),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')),
+  "limit": zod.number(),
+  "offset": zod.number(),
+  "count": zod.number()
+})
+
+
+/**
+ * Creates a booking for a resource belonging to the authenticated NU. nuOrgId is derived from the JWT — clients cannot supply it. The resource must belong to the caller's organisation. endAt must be after startAt. utilizationPercent must be 1–100.
+ * @summary Create a NU resource booking
+ */
+
+export const createNuResourceBookingBodyUtilizationPercentDefault = 100;
+export const createNuResourceBookingBodyUtilizationPercentMax = 100;
+
+export const createNuResourceBookingBodyStatusDefault = `TENTATIVE`;
+
+export const CreateNuResourceBookingBody = zod.object({
+  "resourceId": zod.string().min(1),
+  "localProjectId": zod.string().optional(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().optional(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(createNuResourceBookingBodyUtilizationPercentMax).default(createNuResourceBookingBodyUtilizationPercentDefault),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).default(createNuResourceBookingBodyStatusDefault),
+  "note": zod.string().optional()
+}).describe('Body for POST \/nu\/resource-bookings')
+
+export const createNuResourceBookingResponseUtilizationPercentMax = 100;
+
+
+
+export const CreateNuResourceBookingResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "resourceId": zod.string(),
+  "localProjectId": zod.string().nullish(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().nullish(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(createNuResourceBookingResponseUtilizationPercentMax),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+
+
+/**
+ * @summary Get a single NU resource booking
+ */
+export const GetNuResourceBookingParams = zod.object({
+  "bookingId": zod.coerce.string()
+})
+
+export const getNuResourceBookingResponseUtilizationPercentMax = 100;
+
+
+
+export const GetNuResourceBookingResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "resourceId": zod.string(),
+  "localProjectId": zod.string().nullish(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().nullish(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(getNuResourceBookingResponseUtilizationPercentMax),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+
+
+/**
+ * All fields are optional. Cannot update a CANCELLED booking (409). endAt must remain after startAt.
+ * @summary Update a NU resource booking
+ */
+export const UpdateNuResourceBookingParams = zod.object({
+  "bookingId": zod.coerce.string()
+})
+
+export const updateNuResourceBookingBodyUtilizationPercentMax = 100;
+
+
+
+export const UpdateNuResourceBookingBody = zod.object({
+  "localProjectId": zod.string().nullish(),
+  "sourceReferenceId": zod.string().optional(),
+  "startAt": zod.coerce.date().optional(),
+  "endAt": zod.coerce.date().optional(),
+  "utilizationPercent": zod.number().min(1).max(updateNuResourceBookingBodyUtilizationPercentMax).optional(),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).optional(),
+  "note": zod.string().optional()
+}).describe('Body for PATCH \/nu\/resource-bookings\/{bookingId}. All fields optional.')
+
+export const updateNuResourceBookingResponseUtilizationPercentMax = 100;
+
+
+
+export const UpdateNuResourceBookingResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "resourceId": zod.string(),
+  "localProjectId": zod.string().nullish(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().nullish(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(updateNuResourceBookingResponseUtilizationPercentMax),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+
+
+/**
+ * Sets the booking status to CANCELLED. Idempotent — cancelling an already-cancelled booking returns 200. The booking row is preserved for historical audit purposes.
+ * @summary Cancel a NU resource booking
+ */
+export const CancelNuResourceBookingParams = zod.object({
+  "bookingId": zod.coerce.string()
+})
+
+export const cancelNuResourceBookingResponseUtilizationPercentMax = 100;
+
+
+
+export const CancelNuResourceBookingResponse = zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "resourceId": zod.string(),
+  "localProjectId": zod.string().nullish(),
+  "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
+  "sourceReferenceId": zod.string().nullish(),
+  "startAt": zod.coerce.date(),
+  "endAt": zod.coerce.date(),
+  "utilizationPercent": zod.number().min(1).max(cancelNuResourceBookingResponseUtilizationPercentMax),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+
+

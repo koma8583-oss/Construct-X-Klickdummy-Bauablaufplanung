@@ -1,0 +1,552 @@
+# Aufgabe 4.1 – Bestehende Ressourcenplanung analysieren
+
+Analysiere die aktuelle Ressourcenplanung im Repository. Untersuche insbesondere:
+
+* bestehende Ressourcenmodelle
+* bestehende Ressourcenzuweisungen
+* Beziehungen zwischen Ressourcen, Delegationen, Projekten und Organisationen
+* vorhandene Ressourcen-API-Endpunkte
+* aktuelle Gantt- oder Kalenderdaten
+* bestehende Konflikt- und Überschneidungslogik
+* vorhandene Seed-Daten
+* Berechtigungen für GU- und NU-Benutzer
+* vorhandene Ressourcenansichten in der NU-Anwendung
+
+Erstelle anschließend ausschließlich:
+
+`docs/resource-planning.md`
+
+Nimm keine Änderungen an Datenbank, OpenAPI, Services, Routes oder Benutzeroberflächen vor.
+
+## Zielbild
+
+Die vollständige Ressourcenplanung des Nachunternehmers verbleibt ausschließlich beim NU.
+
+Der NU plant lokal:
+
+* Mitarbeiter
+* Kolonnen
+* Geräte und Maschinen
+* Abwesenheiten
+* Wartungszeiten
+* Projekte für unterschiedliche Generalunternehmer
+* manuelle Reservierungen und Sperrzeiten
+
+Der GU erhält später ausschließlich ein reduziertes Ergebnis:
+
+* `ACCEPTED`
+* `ALTERNATIVES_PROPOSED`
+* `REJECTED`
+* generischer `reasonCode`
+* freigegebene Zeitfenster
+* gegebenenfalls Kolonnenstärke
+* allgemeine Bedingungen
+
+## Zielmodelle dokumentieren
+
+Dokumentiere:
+
+* `NuLocalProject`
+* `Resource`
+* `ResourceBooking`
+* `AvailabilityCheck`
+* `AvailabilityConflict`
+* `AvailabilityAlternative`
+
+### `NuLocalProject`
+
+Geplante Felder:
+
+```text
+id
+nuOrgId
+localProjectCode
+displayName
+customerAlias
+startDate
+endDate
+status
+createdAt
+updatedAt
+```
+
+### `Resource`
+
+Geplante Felder:
+
+```text
+id
+nuOrgId
+resourceType
+name
+trade
+skills
+qualifications
+capacity
+capacityUnit
+active
+createdAt
+updatedAt
+```
+
+### `ResourceBooking`
+
+Geplante Felder:
+
+```text
+id
+nuOrgId
+resourceId
+localProjectId
+sourceType
+sourceReferenceId
+startAt
+endAt
+utilizationPercent
+status
+note
+createdAt
+updatedAt
+```
+
+Mögliche `sourceType`-Werte:
+
+```text
+LOCAL_PROJECT
+TAKT_REQUEST
+MANUAL_BLOCK
+ABSENCE
+MAINTENANCE
+```
+
+### `AvailabilityCheck`
+
+Geplante Felder:
+
+```text
+id
+nuOrgId
+taktRequestId
+status
+result
+internalResultPayload
+publicResultPayload
+checkedAt
+createdByUserId
+createdAt
+```
+
+## Bestehendes Modell bewerten
+
+Dokumentiere:
+
+* welche Tabellen weiterverwendet werden können
+* welche Felder ergänzt werden müssen
+* ob Ressourcenzuweisungen aktuell zwingend an Delegationen gebunden sind
+* wie lokale Projekte anderer GU abgebildet werden können
+* welche bestehenden Endpunkte kompatibel bleiben müssen
+* welche aktuelle Logik unzulässige GU-Zugriffe auf NU-Daten erlauben könnte
+* welche Bestandteile später ersetzt oder erweitert werden sollten
+
+## Datenhoheit
+
+Dokumentiere verbindlich:
+
+1. NU-Ressourcen sind nur innerhalb der jeweiligen NU-Organisation sichtbar.
+2. GU-Benutzer erhalten auf NU-Ressourcenendpunkte `403`.
+3. Hub-Benutzer erhalten auf NU-Ressourcenendpunkte `403`.
+4. Ressourcen anderer NU-Organisationen sind nicht sichtbar.
+5. Interne Konflikte werden nicht in Taktantworten übertragen.
+6. Andere Projekte des NU werden nicht namentlich offengelegt.
+7. Interne Kosten und Prioritäten bleiben lokal.
+8. Nur ausdrücklich freigegebene Ergebnisse werden extern übertragen.
+
+## Einschränkungen
+
+* Nur `docs/resource-planning.md` erstellen oder ändern.
+* Keine Datenbankänderungen.
+* Keine OpenAPI-Änderungen.
+* Keine neuen Endpunkte.
+* Keine Machbarkeitsprüfung.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche bestehenden Ressourcenmodelle analysiert wurden
+* welche Einschränkungen festgestellt wurden
+* welche Modelle weiterverwendet werden können
+* welche Datenschutzrisiken bestehen
+* welche Zielarchitektur dokumentiert wurde
+
+======================================================================
+
+# Aufgabe 4.2 – Lokale NU-Projekte und Ressourcenbuchungen anlegen
+
+Ergänze das bestehende Drizzle-Datenbankschema um:
+
+* `nu_local_projects`
+* `resource_bookings`
+
+Verwende die vorhandene ID-Strategie, Zeitstempel- und Benennungskonventionen.
+
+Ändere noch keine öffentlichen REST-Endpunkte oder Benutzeroberflächen.
+
+## Tabelle `nu_local_projects`
+
+Felder:
+
+```text
+id
+nuOrgId
+localProjectCode
+displayName
+customerAlias
+startDate
+endDate
+status
+createdAt
+updatedAt
+```
+
+## Anforderungen
+
+### Organisation
+
+* `nuOrgId` ist ein nicht-nullbarer Foreign Key.
+* Ein lokales Projekt gehört genau einer NU-Organisation.
+
+### Projektcode
+
+* `localProjectCode` ist nicht nullable.
+* Der Code ist innerhalb einer NU-Organisation eindeutig.
+* Unique Constraint auf `nuOrgId + localProjectCode`.
+
+### Projektinformationen
+
+* `displayName` ist nicht nullable.
+* `customerAlias` ist nullable.
+* `customerAlias` kann anonymisierte Werte wie `Kunde A` enthalten.
+* `customerAlias` darf später nicht in externen Taktantworten erscheinen.
+
+### Zeitraum
+
+* `startDate` und `endDate` verwenden einen zur bestehenden Architektur passenden Datumstyp.
+* `endDate` muss nach oder auf `startDate` liegen.
+
+### Status
+
+Definiere beispielsweise:
+
+```text
+PLANNED
+ACTIVE
+COMPLETED
+CANCELLED
+```
+
+## Tabelle `resource_bookings`
+
+Felder:
+
+```text
+id
+nuOrgId
+resourceId
+localProjectId
+sourceType
+sourceReferenceId
+startAt
+endAt
+utilizationPercent
+status
+note
+createdAt
+updatedAt
+```
+
+## Enum `ResourceBookingSourceType`
+
+```text
+LOCAL_PROJECT
+TAKT_REQUEST
+MANUAL_BLOCK
+ABSENCE
+MAINTENANCE
+```
+
+## Enum `ResourceBookingStatus`
+
+```text
+TENTATIVE
+CONFIRMED
+CANCELLED
+```
+
+## Buchungsanforderungen
+
+### Ressource
+
+* `resourceId` ist ein nicht-nullbarer Foreign Key.
+* Ressource und Buchung müssen zur gleichen NU-Organisation gehören.
+
+### Lokales Projekt
+
+* `localProjectId` ist nullable.
+* Bei `sourceType = LOCAL_PROJECT` ist es fachlich erforderlich.
+* Bei Abwesenheit oder Wartung ist kein Projekt erforderlich.
+
+### Quellreferenz
+
+* `sourceReferenceId` ist nullable.
+* Kann beispielsweise eine TaktRequest-ID enthalten.
+* Keine zwingende Foreign-Key-Beziehung, wenn mehrere Quelltypen unterstützt werden.
+
+### Zeitraum
+
+* `startAt` und `endAt` sind nicht nullable.
+* `endAt` muss nach `startAt` liegen.
+
+### Auslastung
+
+* `utilizationPercent` hat den Standardwert `100`.
+* Zulässiger Bereich größer als `0` bis einschließlich `100`.
+
+## Bestehende Ressourcenzuweisungen
+
+Falls eine bestehende Tabelle wie `resource_assignments` vorhanden ist:
+
+* nicht löschen
+* bestehende Endpunkte nicht beschädigen
+* Verhältnis zu `resource_bookings` dokumentieren
+* neue Mehrprojektplanung soll künftig `resource_bookings` verwenden
+* noch keine vollständige Migration durchführen
+
+## Indizes
+
+Ergänze sinnvolle Indizes für:
+
+```text
+nuOrgId
+resourceId
+localProjectId
+sourceType
+status
+startAt
+endAt
+```
+
+Prüfe kombinierte Indizes für:
+
+```text
+resourceId + startAt + endAt
+nuOrgId + startAt + endAt
+nuOrgId + status
+localProjectId + status
+```
+
+## Datenhoheit
+
+Die Tabellen dürfen nicht:
+
+* über Hub-Nachrichten übertragen werden
+* in Takt-Snapshots erscheinen
+* über GU-Endpunkte abrufbar sein
+* über ungefilterte globale Listen zugänglich sein
+
+## Tests
+
+Ergänze Tests:
+
+* lokales Projekt kann gespeichert werden
+* Projektcode ist innerhalb einer NU eindeutig
+* gleicher Projektcode bei anderem NU ist zulässig
+* gültige Buchung kann gespeichert werden
+* ungültiger Zeitraum wird abgelehnt
+* Auslastung über 100 wird abgelehnt
+* Ressource und Buchung müssen zur gleichen NU gehören
+* Buchung ohne vorhandene Ressource wird abgelehnt
+* bestehende Ressourcenzuweisungen bleiben erhalten
+
+## Einschränkungen
+
+* Keine neuen REST-Endpunkte.
+* Keine Machbarkeitsprüfung.
+* Keine Taktantwort.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Datenbanktests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Tabellen und Enums
+* Feldtypen
+* Unique Constraints
+* Foreign Keys
+* Indizes
+* Umgang mit bestehenden Ressourcenzuweisungen
+* Ergebnisse von Migration, Tests, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 4.3 – Ressourcenmodell um Kolonnen und Qualifikationen erweitern
+
+Erweitere das bestehende Ressourcenmodell nicht brechend für die lokale NU-Ressourcenplanung.
+
+Bestehende Ressourcen und Endpunkte müssen weiterhin funktionieren.
+
+## Ressourcentypen
+
+Definiere oder erweitere ein Enum:
+
+```text
+EMPLOYEE
+CREW
+EQUIPMENT
+MACHINE
+OTHER
+```
+
+Bestehende Werte dürfen aus Kompatibilitätsgründen erhalten bleiben.
+
+## Neue Ressourcenfelder
+
+Ergänze, soweit noch nicht vorhanden:
+
+```text
+trade
+skills
+qualifications
+capacity
+capacityUnit
+calendarId
+active
+updatedAt
+```
+
+## Anforderungen
+
+### `trade`
+
+* Nullable.
+* Standardisierte technische Zeichenkette oder vorhandenes Gewerkemodell verwenden.
+* Beispiele: `DRYWALL`, `MEP`, `CONCRETE`.
+
+### `skills`
+
+* Liste von Fähigkeiten.
+* Speicherung als JSONB oder vorhandener geeigneter Typ.
+* Standardwert leere Liste.
+
+### `qualifications`
+
+* Liste von Qualifikationen oder Zertifikaten.
+* Speicherung als JSONB oder geeigneter Typ.
+* Standardwert leere Liste.
+
+### `capacity`
+
+* Positive Zahl.
+* Bei Kolonnen beispielsweise Anzahl verfügbarer Personen.
+* Bei einzelnen Geräten normalerweise `1`.
+
+### `capacityUnit`
+
+Mögliche Werte:
+
+```text
+PERSONS
+UNITS
+HOURS_PER_DAY
+PERCENT
+```
+
+### `calendarId`
+
+* Optional.
+* Noch keine komplexe Kalenderintegration implementieren.
+
+### `active`
+
+* Nicht nullable.
+* Standardwert `true`.
+
+## Fachliche Validierung
+
+Implementiere:
+
+* `capacity > 0`
+* bei `CREW` vorzugsweise `capacityUnit = PERSONS`
+* bei `EQUIPMENT` oder `MACHINE` vorzugsweise `capacityUnit = UNITS`
+* doppelte und leere Skills bereinigen
+* doppelte und leere Qualifikationen bereinigen
+* deaktivierte Ressourcen später nicht für automatische Vorschläge verwenden
+
+## Organisationsabgrenzung
+
+* Jede Ressource gehört genau einer Organisation.
+* NU A darf keine Ressourcen von NU B lesen.
+* GU darf keine NU-Ressourcen lesen.
+* Hub darf keine NU-Ressourcen lesen.
+
+## Bestehende APIs
+
+* Bestehende Resource-Responses rückwärtskompatibel erweitern.
+* Neue Felder dürfen zunächst optional sein.
+* Bestehende Pflichtfelder nicht entfernen.
+* Bestehende Create-Requests nicht unnötig brechen.
+
+## Tests
+
+Ergänze:
+
+* Kolonne mit Kapazität kann gespeichert werden
+* Gerät kann gespeichert werden
+* ungültige Kapazität wird abgelehnt
+* Skills und Qualifikationen werden gespeichert
+* bestehende Ressource bleibt lesbar
+* bestehende Ressourcen-API bleibt kompatibel
+* GU kann NU-Ressourcen nicht lesen
+* NU kann Ressourcen anderer NU nicht lesen
+
+## Einschränkungen
+
+* Keine neue Ressourcen-UI.
+* Keine Machbarkeitsprüfung.
+* Keine Kalenderlogik.
+* Keine Taktantwort.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* OpenAPI-Codegenerierung, falls erforderlich
+* Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* ergänzte Felder und Enums
+* Datenbankänderungen
+* API-Kompatibilität
+* Berechtigungsregeln
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build

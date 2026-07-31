@@ -1,0 +1,129 @@
+# Aufgabe 2.3 – Bestehendes Taktmodell nicht brechend um Versionierung erweitern
+
+Erweitere das bestehende Takt-Datenmodell um:
+
+* eine fachliche Versionsnummer
+* einen neuen getrennten Lebenszyklusstatus
+* einen Aktualisierungszeitstempel, falls dieser noch nicht vorhanden ist
+
+Bestehende Funktionen und bestehende API-Endpunkte müssen weiter funktionieren.
+
+## Neue Felder
+
+Ergänze am bestehenden Taktmodell sinngemäß:
+
+```text
+version
+lifecycleStatus
+updatedAt
+```
+
+Verwende die im Repository vorhandenen Benennungs-, Tabellen- und Typkonventionen.
+
+## Feld `version`
+
+Anforderungen:
+
+* Ganzzahl
+* nicht nullable
+* Standardwert `1`
+* fachliches Minimum `1`
+* bestehende Takte erhalten automatisch Version `1`
+
+In diesem Schritt wird die Version noch nicht automatisch erhöht.
+
+## Feld `lifecycleStatus`
+
+Verwende das in Aufgabe 2.2 definierte Enum `TaktLifecycleStatus`.
+
+Anforderungen:
+
+* nicht nullable
+* sinnvoller Standardwert für bestehende Datensätze
+* bevorzugter Standardwert `PLANNED`
+* bei bestehenden Entwürfen kann anhand vorhandener Daten ein anderer sinnvoller Wert verwendet werden
+
+## Bestehendes Statusfeld
+
+Falls das Taktmodell bereits ein Feld `status` besitzt:
+
+* nicht löschen
+* nicht global umbenennen
+* bestehende API-Antworten nicht brechen
+* neues Feld `lifecycleStatus` parallel ergänzen
+* bestehende Funktionen weiterhin mit dem alten Feld arbeiten lassen, soweit erforderlich
+
+Ergänze in `docs/database-model.md` ein Mapping der tatsächlich vorhandenen alten Statuswerte.
+
+Beispielstruktur:
+
+| Bestehender Statuswert | Neuer `TaktLifecycleStatus` | Begründung        |
+| ---------------------- | --------------------------- | ----------------- |
+| tatsächlicher Wert     | passender Zielwert          | kurze Erläuterung |
+
+Verwende ausschließlich die im Repository tatsächlich vorhandenen Werte.
+
+## OpenAPI
+
+Ergänze die neuen Felder an den geeigneten Takt-Schemas.
+
+Achte auf Rückwärtskompatibilität:
+
+* bestehende Pflichtfelder nicht verändern
+* neue Response-Felder dürfen bestehende Clients nicht brechen
+* bestehende Request-Schemas nur erweitern, wenn dies erforderlich und kompatibel ist
+* `version` fachlich mit Minimum 1 dokumentieren
+
+## Datenbankänderung
+
+Erstelle die erforderliche Drizzle-Schemaänderung beziehungsweise Migration.
+
+Anforderungen:
+
+* keine bestehenden Takte löschen
+* keine IDs ändern
+* keine bestehenden Beziehungen verändern
+* vorhandene Datensätze mit sinnvollen Standardwerten befüllen
+* bestehende Seed-Daten weiter nutzbar halten
+
+## Noch nicht implementieren
+
+* kein automatisches Hochzählen der Version
+* keine separate Taktversionstabelle
+* kein Erstellen historischer Taktkopien
+* keine TaktRequest-Endpunkte
+* keine Snapshot-Erzeugung
+* keine UI für Versionen
+* keine Umstellung bestehender Delegation-Logik
+
+## Tests
+
+Ergänze Tests, soweit die bestehende Teststruktur dies unterstützt:
+
+* neuer Takt erhält `version = 1`
+* neuer Takt erhält einen gültigen `lifecycleStatus`
+* bestehende Takte können weiterhin gelesen werden
+* Version kleiner als 1 wird durch die geeignete Validierung abgelehnt
+* bestehende Statuswerte bleiben verfügbar
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* OpenAPI-Codegenerierung
+* Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* geänderte Tabellen und Dateien
+* ergänzte Felder
+* verwendete Standardwerte
+* Mapping der alten Statuswerte
+* Ergebnis der Datenbankänderung
+* Ergebnis der Codegenerierung
+* Ergebnis von Typecheck und Build

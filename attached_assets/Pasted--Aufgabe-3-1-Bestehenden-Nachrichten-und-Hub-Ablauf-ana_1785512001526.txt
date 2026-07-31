@@ -1,0 +1,132 @@
+# Aufgabe 3.1 – Bestehenden Nachrichten- und Hub-Ablauf analysieren
+
+Analysiere die aktuelle Implementierung des Repositorys. Untersuche insbesondere:
+
+* bestehende Hub-Nachrichten
+* vorhandene Hub-Tabellen
+* bestehende Funktionen wie `writeHubMessage` oder vergleichbare Funktionen
+* bestehende Delegation-Erstellung
+* bestehende Zustellung von Nachrichten
+* vorhandene Webhooks
+* bestehende Inbox- oder Benachrichtigungsansichten
+* Authentifizierung und Organisationsfilterung
+* aktuelle Kopplung zwischen Fachlogik und Nachrichtentransport
+
+Erstelle anschließend ausschließlich die Datei:
+
+`docs/transport-architecture.md`
+
+Nimm in diesem Schritt noch keine Änderungen an Datenbank, OpenAPI, Services, Routes oder Benutzeroberflächen vor.
+
+## Zielarchitektur
+
+Dokumentiere folgenden zukünftigen Ablauf:
+
+```text
+GU-System
+    │
+    │ erstellt TaktRequest und Snapshot
+    ▼
+Message Outbox des GU
+    │
+    │ LocalHubTransport
+    ▼
+Simulierter Hub
+    │
+    │ Zustellung
+    ▼
+Message Inbox des NU
+    │
+    │ Notification enthält nur Referenzen
+    ▼
+NU ruft TaktRequestSnapshot beim GU ab
+```
+
+## Architekturprinzipien
+
+Dokumentiere:
+
+1. Die Fachlogik darf den vorhandenen Hub nicht direkt aufrufen.
+2. Die Fachlogik verwendet eine abstrakte Transportschnittstelle.
+3. Die lokale Implementierung heißt sinngemäß `LocalHubTransport`.
+4. Ein späterer `EdcTransport` soll dieselbe Schnittstelle implementieren können.
+5. Die Outbox speichert zu versendende Nachrichten.
+6. Die Inbox beziehungsweise Delivery-Tabelle dokumentiert die Zustellung beim Empfänger.
+7. Der Hub speichert keine vollständigen Takt-Snapshots.
+8. Die Takt-Notification enthält nur Identifikatoren, Fristen und eine Detailreferenz.
+9. Der NU ruft die vollständigen freigegebenen Details separat ab.
+10. Technische Zustellung und fachliche Zustimmung bleiben getrennt.
+
+## Bestehende Implementierung dokumentieren
+
+Beschreibe anhand des tatsächlichen Codes:
+
+* wo aktuell Hub-Nachrichten erzeugt werden
+* welche Komponenten direkt miteinander gekoppelt sind
+* welche Daten aktuell in Hub-Nachrichten gespeichert werden
+* welche Tabellen bereits vorhanden sind
+* ob Nachrichtenstatus vorhanden sind
+* ob Retries oder Idempotenz vorhanden sind
+* welche bestehende Logik wiederverwendet werden kann
+* welche bestehende Logik später veraltet sein wird
+
+## Zielkomponenten
+
+Dokumentiere folgende geplante Komponenten:
+
+```text
+MessageTransport
+LocalHubTransport
+MessageOutboxRepository
+MessageInboxRepository
+MessageDeliveryService
+TaktRequestNotificationService
+TaktRequestSnapshotService
+```
+
+Die tatsächlichen Dateinamen dürfen an den bestehenden Projektstil angepasst werden.
+
+## Ziel-Nachrichtenfluss
+
+Dokumentiere die Statusfolge:
+
+```text
+TaktRequest DRAFT
+    ↓
+Nachricht in Outbox PENDING
+    ↓
+TaktRequest SENT
+    ↓
+Nachricht SENT
+    ↓
+Nachricht beim NU DELIVERED
+    ↓
+TaktRequest DELIVERED
+    ↓
+NU ruft Details ab
+    ↓
+TaktRequest DETAILS_RETRIEVED
+```
+
+## Abgrenzung
+
+Noch nicht Bestandteil dieses Schritts:
+
+* keine Datenbankänderungen
+* keine Transportimplementierung
+* keine neuen REST-Endpunkte
+* keine Snapshot-Erzeugung
+* keine UI-Anpassung
+* keine lokale Ressourcenprüfung
+* keine Antwort des NU
+* kein EDC
+
+## Abschlussbericht
+
+Berichte:
+
+* welche bestehenden Hub- und Nachrichtenkomponenten analysiert wurden
+* welche direkte Kopplung festgestellt wurde
+* welche Bestandteile wiederverwendet werden können
+* welche Zielarchitektur dokumentiert wurde
+* welche Risiken bei der schrittweisen Umstellung bestehen

@@ -1,0 +1,546 @@
+# Aufgabe 4.4 – NU-interne APIs für Projekte und Buchungen implementieren
+
+Implementiere NU-interne REST-Endpunkte für die lokale Mehrprojektplanung.
+
+Verwende bestehende Authentifizierung, Organisationsabgrenzung, OpenAPI-Struktur und Fehlerbehandlung.
+
+## Endpunkte für lokale Projekte
+
+Implementiere sinngemäß:
+
+```http
+GET /nu/local-projects
+POST /nu/local-projects
+GET /nu/local-projects/{projectId}
+PATCH /nu/local-projects/{projectId}
+```
+
+Ein physisches Löschen ist nicht erforderlich. Verwende bei Bedarf `CANCELLED`.
+
+## Endpunkte für Ressourcenbuchungen
+
+Implementiere sinngemäß:
+
+```http
+GET /nu/resource-bookings
+POST /nu/resource-bookings
+GET /nu/resource-bookings/{bookingId}
+PATCH /nu/resource-bookings/{bookingId}
+POST /nu/resource-bookings/{bookingId}/cancel
+```
+
+Passe die Pfade an den bestehenden API-Stil an.
+
+## Organisationsschutz
+
+* `nuOrgId` wird aus dem authentifizierten Benutzer abgeleitet.
+* Der Client darf keine beliebige Organisation vorgeben.
+* NU-Benutzer sehen nur Daten ihrer eigenen Organisation.
+* GU-Benutzer erhalten `403`.
+* Hub-Benutzer erhalten `403`.
+* Andere NU erhalten `403` oder das etablierte sichere Verhalten.
+
+## Beispiel lokales Projekt
+
+```json
+{
+  "localProjectCode": "LOCAL-2026-017",
+  "displayName": "Innenausbau Projekt West",
+  "customerAlias": "Kunde B",
+  "startDate": "2026-08-01",
+  "endDate": "2026-12-15",
+  "status": "ACTIVE"
+}
+```
+
+## Beispiel Ressourcenbuchung
+
+```json
+{
+  "resourceId": "RESOURCE-ID",
+  "localProjectId": "LOCAL-PROJECT-ID",
+  "sourceType": "LOCAL_PROJECT",
+  "startAt": "2026-09-14T05:00:00Z",
+  "endAt": "2026-09-18T14:00:00Z",
+  "utilizationPercent": 100,
+  "status": "CONFIRMED",
+  "note": "Interne Planung"
+}
+```
+
+## Listenfilter für Buchungen
+
+Unterstütze mindestens:
+
+```text
+resourceId
+localProjectId
+sourceType
+status
+startFrom
+endTo
+```
+
+Zeitraumfilter müssen alle überlappenden Buchungen finden:
+
+```text
+booking.startAt < requestedEnd
+AND
+booking.endAt > requestedStart
+```
+
+## Datenschutz
+
+Diese APIs dürfen nicht:
+
+* für GU-Benutzer verfügbar sein
+* interne Daten an den Hub übertragen
+* fremde NU-Daten zurückgeben
+* sensible Payloads vollständig protokollieren
+
+## OpenAPI
+
+Ergänze:
+
+* Create- und Update-Schemas
+* Listen-Responses
+* Filterparameter
+* Pagination, falls im Projekt üblich
+* Fehlerantworten
+* Authentifizierungsanforderungen
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze:
+
+* NU kann lokales Projekt anlegen
+* NU kann eigene Projekte auflisten
+* NU sieht keine Projekte anderer NU
+* GU erhält keinen Zugriff
+* Ressourcenbuchung kann angelegt werden
+* Zeitraumfilter erkennt Überschneidungen
+* Ressource einer anderen Organisation wird abgelehnt
+* Buchung kann storniert werden
+* stornierte Buchung bleibt historisch erhalten
+* bestehende Ressourcenendpunkte funktionieren weiterhin
+
+## Einschränkungen
+
+* Keine Machbarkeitsprüfung.
+* Keine Alternativgenerierung.
+* Keine Taktantwort.
+* Keine UI-Anpassung.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Endpunkte
+* unterstützte Filter
+* Organisationsabgrenzung
+* Überlappungslogik
+* Datenschutzmaßnahmen
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 4.5 – Datenmodell und Service für Machbarkeitsprüfungen implementieren
+
+Ergänze Datenbank und Service-Schicht um lokale Machbarkeitsprüfungen für Taktanfragen.
+
+Die vollständigen Ergebnisse bleiben beim NU.
+
+## Tabelle `availability_checks`
+
+Felder:
+
+```text
+id
+nuOrgId
+taktRequestId
+status
+result
+internalResultPayload
+publicResultPayload
+checkedAt
+createdByUserId
+createdAt
+updatedAt
+```
+
+## Enum `AvailabilityCheckStatus`
+
+```text
+PENDING
+RUNNING
+COMPLETED
+FAILED
+```
+
+## Enum `AvailabilityResult`
+
+```text
+FEASIBLE
+FEASIBLE_WITH_ALTERNATIVES
+NOT_FEASIBLE
+```
+
+## Historie
+
+Bevorzuge einen neuen Check-Datensatz je Prüflauf.
+
+Ergänze bei Bedarf:
+
+```text
+runNumber
+supersedesCheckId
+```
+
+oder eine andere zum Projekt passende Historienlösung.
+
+Es muss eindeutig bestimmbar sein, welcher erfolgreiche Check der neueste ist.
+
+## Internes Ergebnis
+
+`internalResultPayload` kann enthalten:
+
+```json
+{
+  "conflicts": [
+    {
+      "resourceId": "CREW-04",
+      "conflictType": "OVERLAP",
+      "localProjectId": "LOCAL-17",
+      "overlapStart": "2026-09-14T05:00:00Z",
+      "overlapEnd": "2026-09-16T14:00:00Z"
+    }
+  ],
+  "availableResources": [],
+  "missingQualifications": [],
+  "unavailableEquipment": []
+}
+```
+
+Diese Daten dürfen niemals an GU oder Hub übertragen werden.
+
+## Öffentliches Ergebnis
+
+`publicResultPayload` enthält nur freigabefähige Angaben:
+
+```json
+{
+  "recommendedDecision": "ALTERNATIVES_PROPOSED",
+  "reasonCode": "RESOURCE_CONFLICT",
+  "alternatives": []
+}
+```
+
+## Service
+
+Implementiere sinngemäß:
+
+```ts
+runAvailabilityCheck(
+  taktRequestId: string,
+  nuOrgId: string,
+  userId: string
+): Promise<AvailabilityCheck>
+```
+
+## Eingangsdaten
+
+Verwende:
+
+* unveränderlichen TaktRequest-Snapshot
+* Ressourcen der NU-Organisation
+* lokale Ressourcenbuchungen
+* lokale Projekte
+* Abwesenheiten
+* Wartungen
+* bestehende TaktRequest-Buchungen
+
+Verwende nicht den später veränderten Ursprungstakt.
+
+## Prüfregeln
+
+Prüfe mindestens:
+
+1. Request existiert.
+2. Request ist an den NU adressiert.
+3. Snapshot ist vorhanden.
+4. Request besitzt einen prüfbaren Status.
+5. Zeitfenster ist gültig.
+6. benötigte Ressourcentypen sind vorhanden.
+7. geforderte Kolonnenstärke ist verfügbar.
+8. erforderliche Qualifikationen sind verfügbar.
+9. erforderliche Geräte sind verfügbar.
+10. die neue Belegung führt nicht zu mehr als 100 Prozent Auslastung.
+
+## Überbelegung
+
+Eine Ressource ist nicht vollständig verfügbar, wenn die Summe relevanter überlappender Buchungen und der neuen Anforderung mehr als 100 Prozent beträgt.
+
+Nicht berücksichtigen:
+
+```text
+CANCELLED
+```
+
+Behandlung von `TENTATIVE`:
+
+* als Warnung und potenziellen Konflikt berücksichtigen
+* Konflikt im internen Ergebnis kennzeichnen
+* Regel dokumentieren
+
+## Statusänderung
+
+Beim Start beziehungsweise Abschluss der Prüfung:
+
+```text
+DETAILS_RETRIEVED → UNDER_REVIEW
+```
+
+Eine Wiederholung aus `UNDER_REVIEW` muss möglich sein.
+
+Noch keine Taktantwort speichern und keine Nachricht an den GU senden.
+
+## Fehlerbehandlung
+
+Bei technischen Fehlern:
+
+* Check auf `FAILED`
+* internen Fehler dokumentieren
+* keine sensiblen Details extern ausgeben
+* Request nicht automatisch ablehnen
+* keine Taktantwort erzeugen
+
+## Tests
+
+Ergänze:
+
+* verfügbare Ressourcen ergeben `FEASIBLE`
+* Überschneidung erzeugt Konflikt
+* fehlende Kolonnenkapazität erzeugt Konflikt
+* fehlende Qualifikation erzeugt Konflikt
+* fehlendes Gerät erzeugt Konflikt
+* stornierte Buchung erzeugt keinen Konflikt
+* Buchung anderer NU wird nicht berücksichtigt
+* interne Konflikte bleiben intern
+* öffentliches Ergebnis enthält keine lokalen Projekt-IDs
+* Request wechselt auf `UNDER_REVIEW`
+* technischer Fehler erzeugt keine fachliche Ablehnung
+
+## Einschränkungen
+
+* Noch keine Alternativgenerierung.
+* Noch keine Taktantwort.
+* Keine UI.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Service-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Tabelle und Enums
+* Historienstrategie
+* implementierte Prüfregeln
+* Behandlung von Tentative-Buchungen
+* Trennung interner und öffentlicher Ergebnisse
+* Statusänderungen
+* Ergebnisse von Migration, Tests, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 4.6 – Regelbasierte Alternativen erzeugen
+
+Erweitere den Availability-Service um eine deterministische Suche nach alternativen Ausführungszeiträumen.
+
+Es wird keine KI, kein LLM und kein Optimierungssolver eingesetzt.
+
+## Eingangsdaten
+
+Verwende:
+
+* geplantes Zeitfenster aus dem Snapshot
+* optionales Pufferzeitfenster
+* erforderliche Dauer
+* erforderliche Kolonnenstärke
+* Qualifikationen
+* Geräte
+* lokale Ressourcen und Buchungen
+
+## Alternativtypen
+
+### Alternative A – Zeitraum verschieben
+
+* gleiche Dauer
+* gleiche Kolonnenstärke
+* frühester vollständig verfügbarer Zeitraum
+
+### Alternative B – Kolonnenstärke reduzieren
+
+* geringere verfügbare Kolonnenstärke
+* entsprechend längere Dauer
+* nur verwenden, wenn die Dauer fachlich berechnet werden kann
+
+### Alternative C – Nächster verfügbarer Zeitraum
+
+* nächster vollständig freier Zeitraum
+* darf außerhalb des ursprünglichen Puffers liegen
+* muss entsprechend gekennzeichnet werden
+
+## Suchlogik
+
+Implementiere reproduzierbar:
+
+1. Suche tagweise ab geplantem Start.
+2. Begrenze Suche durch einen Planungshorizont.
+3. Früheste passende Alternative erhält den besten Rang.
+4. Erzeuge keine doppelten Alternativen.
+5. Erzeuge höchstens drei Alternativen.
+6. Prüfe jede Alternative vollständig gegen Ressourcen und Geräte.
+7. Berücksichtige vorhandene Arbeitszeit- und Wochenendlogik.
+8. Keine komplexe globale Optimierung.
+
+## Rangfolge
+
+```text
+Rang 1 – geringste Verschiebung bei gleicher Leistung
+Rang 2 – ursprünglicher oder naher Start mit kleinerer Kolonne
+Rang 3 – nächster vollständig freier Zeitraum
+```
+
+## Öffentliche Alternative
+
+Extern zulässige Felder:
+
+```text
+alternativeId
+rank
+timeWindow
+crewSize
+conditions
+```
+
+Nicht zulässig:
+
+```text
+resourceId
+resourceName
+employeeName
+localProjectId
+customerAlias
+conflictDetails
+internalPriority
+internalCost
+```
+
+## Ergebnisregeln
+
+### Ursprünglicher Takt möglich
+
+```text
+result = FEASIBLE
+recommendedDecision = ACCEPTED
+```
+
+### Alternativen vorhanden
+
+```text
+result = FEASIBLE_WITH_ALTERNATIVES
+recommendedDecision = ALTERNATIVES_PROPOSED
+```
+
+### Keine Alternative gefunden
+
+```text
+result = NOT_FEASIBLE
+recommendedDecision = REJECTED
+```
+
+Optional:
+
+```text
+nextAvailableDate
+```
+
+## Konfiguration
+
+Zentral konfigurieren:
+
+```text
+maximumAlternatives = 3
+searchHorizonDays = 60
+searchStepDays = 1
+```
+
+Keine mehrfach verteilten Magic Numbers.
+
+## Tests
+
+Ergänze:
+
+* ursprünglicher Zeitraum ist möglich
+* nächster freier Zeitraum wird gefunden
+* Alternativen sind nach Rang sortiert
+* höchstens drei Alternativen
+* keine doppelten Alternativen
+* kleinere Kolonne führt zu längerer Dauer
+* erforderliche Geräte werden berücksichtigt
+* keine Alternative im Horizont führt zu `NOT_FEASIBLE`
+* öffentliche Alternativen enthalten keine internen IDs
+* gleiche Eingangsdaten ergeben dasselbe Ergebnis
+
+## Einschränkungen
+
+* Keine KI.
+* Kein Optimierungssolver.
+* Noch keine Antwort an den GU.
+* Keine UI.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Service-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* implementierte Alternativtypen
+* Suchhorizont und Suchschritte
+* Rangfolgeregeln
+* Berechnung bei reduzierter Kolonne
+* Datenschutzfilter
+* deterministisches Verhalten
+* Testergebnisse
+* Ergebnisse von Typecheck und Build

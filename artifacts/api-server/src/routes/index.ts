@@ -9,6 +9,8 @@ import resourcesRouter from "./resources";
 import webhooksRouter from "./webhooks";
 import dashboardRouter from "./dashboard";
 import taktRequestsRouter from "./takt-requests";
+import messagesRouter from "./messages";
+import nuRouter from "./nu";
 
 const router: IRouter = Router();
 
@@ -22,5 +24,7 @@ router.use(resourcesRouter);
 router.use(webhooksRouter);
 router.use(dashboardRouter);
 router.use(taktRequestsRouter);
+router.use(messagesRouter);
+router.use(nuRouter);
 
 export default router;

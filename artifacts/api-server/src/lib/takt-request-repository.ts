@@ -12,13 +12,292 @@ import { db } from "@workspace/db";
 import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
+  takteTable,
+  projectsTable,
+  organizationsTable,
+  messageOutboxTable,
+  messageInboxTable,
+  taktResponsesTable,
+  taktResponseAlternativesTable,
   type TaktRequest,
   type InsertTaktRequest,
   type TaktRequestSnapshot,
   type InsertTaktRequestSnapshot,
   type TaktRequestStatus,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+
+// ── Detail view types (Task 5.4) ──────────────────────────────────────────────
+
+export interface TaktRequestDetailTransport {
+  /** Transport status from the outbox; null if not yet queued */
+  status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
+  /** Notification payload actually sent to the NU; null before sending */
+  notificationPayload: Record<string, unknown> | null;
+  attemptCount: number | null;
+  lastAttemptAt: Date | null;
+  failureReason: string | null;
+  /** When the NU's inbox row was marked as read; null if not tracked or not read */
+  inboxReadAt: Date | null;
+}
+
+export interface TaktRequestDetailResponseAlt {
+  alternativeId: string;
+  rank: number;
+  proposedStart: Date;
+  proposedEnd: Date;
+  crewSize: number | null;
+  conditions: string[] | null;
+}
+
+export interface TaktRequestDetailResponse {
+  id: string;
+  decision: "ACCEPTED" | "ALTERNATIVES_PROPOSED" | "REJECTED";
+  reasonCode: string | null;
+  comment: string | null;
+  acceptedStart: Date | null;
+  acceptedEnd: Date | null;
+  nextAvailableDate: string | null;
+  createdAt: Date;
+  alternatives: TaktRequestDetailResponseAlt[];
+}
+
+/** All timeline timestamps in one flat object — null = event not yet occurred / not tracked */
+export interface TaktRequestDetailTimeline {
+  requestCreatedAt: Date;
+  snapshotCreatedAt: Date | null;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  /** When the NU's inbox row was marked read — derived from message_inbox.readAt */
+  inboxReadAt: Date | null;
+  detailsRetrievedAt: Date | null;
+  /**
+   * "Prüfung gestartet" — not stored on takt_requests; only tracked via
+   * NU-internal availability checks. Always null from the GU perspective.
+   */
+  checkedAt: null;
+  responseCreatedAt: Date | null;
+}
+
+export interface TaktRequestDetail {
+  id: string;
+  requestNumber: string;
+  taktId: string;
+  taktBezeichnung: string;
+  taktVersion: number;
+  projectId: string;
+  projectName: string;
+  guOrgId: string;
+  nuOrgId: string;
+  nuOrgName: string;
+  status: TaktRequestStatus;
+  responseRequiredBy: Date | null;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  detailsRetrievedAt: Date | null;
+  supersedesRequestId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  transport: TaktRequestDetailTransport;
+  snapshot: {
+    id: string;
+    schemaVersion: string;
+    snapshotPayload: Record<string, unknown>;
+    createdAt: Date;
+  } | null;
+  response: TaktRequestDetailResponse | null;
+  timeline: TaktRequestDetailTimeline;
+}
+
+/**
+ * Full detail view for a single TaktRequest, GU-scoped.
+ * Joins: takte, projects, organizations (NU), snapshot, outbox, inbox, response + alternatives.
+ * Returns null if not found OR if guOrgId does not match.
+ */
+export async function getTaktRequestDetailForGu(
+  requestId: string,
+  guOrgId: string,
+): Promise<TaktRequestDetail | null> {
+  const [row] = await db
+    .select({
+      // ── Request ──────────────────────────────────────────────────────────
+      id: taktRequestsTable.id,
+      requestNumber: taktRequestsTable.requestNumber,
+      taktId: taktRequestsTable.taktId,
+      taktBezeichnung: takteTable.taktBezeichnung,
+      taktVersion: taktRequestsTable.taktVersion,
+      projectId: takteTable.projectId,
+      projectName: projectsTable.name,
+      guOrgId: taktRequestsTable.guOrgId,
+      nuOrgId: taktRequestsTable.nuOrgId,
+      nuOrgName: organizationsTable.name,
+      status: taktRequestsTable.status,
+      responseRequiredBy: taktRequestsTable.responseRequiredBy,
+      sentAt: taktRequestsTable.sentAt,
+      deliveredAt: taktRequestsTable.deliveredAt,
+      detailsRetrievedAt: taktRequestsTable.detailsRetrievedAt,
+      supersedesRequestId: taktRequestsTable.supersedesRequestId,
+      createdAt: taktRequestsTable.createdAt,
+      updatedAt: taktRequestsTable.updatedAt,
+      // ── Snapshot ─────────────────────────────────────────────────────────
+      snapshotId: taktRequestSnapshotsTable.id,
+      snapshotSchemaVersion: taktRequestSnapshotsTable.schemaVersion,
+      snapshotPayload: taktRequestSnapshotsTable.snapshotPayload,
+      snapshotCreatedAt: taktRequestSnapshotsTable.createdAt,
+      // ── Outbox ───────────────────────────────────────────────────────────
+      outboxStatus: messageOutboxTable.status,
+      outboxPayload: messageOutboxTable.payload,
+      outboxAttemptCount: messageOutboxTable.attemptCount,
+      outboxLastAttemptAt: messageOutboxTable.lastAttemptAt,
+      outboxFailureReason: messageOutboxTable.failureReason,
+      // ── Inbox (readAt only) ───────────────────────────────────────────────
+      inboxReadAt: messageInboxTable.readAt,
+      // ── Response ─────────────────────────────────────────────────────────
+      responseId: taktResponsesTable.id,
+      responseDecision: taktResponsesTable.decision,
+      responseReasonCode: taktResponsesTable.reasonCode,
+      responseComment: taktResponsesTable.comment,
+      responseAcceptedStart: taktResponsesTable.acceptedStart,
+      responseAcceptedEnd: taktResponsesTable.acceptedEnd,
+      responseNextAvailableDate: taktResponsesTable.nextAvailableDate,
+      responseCreatedAt: taktResponsesTable.createdAt,
+    })
+    .from(taktRequestsTable)
+    .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
+    .innerJoin(organizationsTable, eq(taktRequestsTable.nuOrgId, organizationsTable.id))
+    .leftJoin(
+      taktRequestSnapshotsTable,
+      eq(taktRequestSnapshotsTable.taktRequestId, taktRequestsTable.id),
+    )
+    .leftJoin(
+      messageOutboxTable,
+      eq(
+        messageOutboxTable.messageId,
+        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
+      ),
+    )
+    .leftJoin(
+      messageInboxTable,
+      eq(
+        messageInboxTable.messageId,
+        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
+      ),
+    )
+    .leftJoin(
+      taktResponsesTable,
+      eq(taktResponsesTable.taktRequestId, taktRequestsTable.id),
+    )
+    .where(
+      and(
+        eq(taktRequestsTable.id, requestId),
+        eq(taktRequestsTable.guOrgId, guOrgId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  // ── Alternatives (1:many — separate query) ──────────────────────────────
+  let alternatives: TaktRequestDetailResponseAlt[] = [];
+  if (row.responseId) {
+    const altRows = await db
+      .select()
+      .from(taktResponseAlternativesTable)
+      .where(eq(taktResponseAlternativesTable.responseId, row.responseId))
+      .orderBy(taktResponseAlternativesTable.rank);
+    alternatives = altRows.map((a) => ({
+      alternativeId: a.alternativeId,
+      rank: a.rank,
+      proposedStart: a.proposedStart,
+      proposedEnd: a.proposedEnd,
+      crewSize: a.crewSize ?? null,
+      conditions: (a.conditions ?? null) as string[] | null,
+    }));
+  }
+
+  return {
+    id: row.id,
+    requestNumber: row.requestNumber,
+    taktId: row.taktId,
+    taktBezeichnung: row.taktBezeichnung,
+    taktVersion: row.taktVersion,
+    projectId: row.projectId ?? "",
+    projectName: row.projectName,
+    guOrgId: row.guOrgId,
+    nuOrgId: row.nuOrgId,
+    nuOrgName: row.nuOrgName,
+    status: row.status as TaktRequestStatus,
+    responseRequiredBy: row.responseRequiredBy ?? null,
+    sentAt: row.sentAt ?? null,
+    deliveredAt: row.deliveredAt ?? null,
+    detailsRetrievedAt: row.detailsRetrievedAt ?? null,
+    supersedesRequestId: row.supersedesRequestId ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    transport: {
+      status: (row.outboxStatus ?? null) as TaktRequestDetailTransport["status"],
+      notificationPayload: (row.outboxPayload ?? null) as Record<string, unknown> | null,
+      attemptCount: row.outboxAttemptCount ?? null,
+      lastAttemptAt: row.outboxLastAttemptAt ?? null,
+      failureReason: row.outboxFailureReason ?? null,
+      inboxReadAt: row.inboxReadAt ?? null,
+    },
+    snapshot: row.snapshotId
+      ? {
+          id: row.snapshotId,
+          schemaVersion: row.snapshotSchemaVersion!,
+          snapshotPayload: (row.snapshotPayload ?? {}) as Record<string, unknown>,
+          createdAt: row.snapshotCreatedAt!,
+        }
+      : null,
+    response: row.responseId
+      ? {
+          id: row.responseId,
+          decision: row.responseDecision as TaktRequestDetailResponse["decision"],
+          reasonCode: row.responseReasonCode ?? null,
+          comment: row.responseComment ?? null,
+          acceptedStart: row.responseAcceptedStart ?? null,
+          acceptedEnd: row.responseAcceptedEnd ?? null,
+          nextAvailableDate: row.responseNextAvailableDate ?? null,
+          createdAt: row.responseCreatedAt!,
+          alternatives,
+        }
+      : null,
+    timeline: {
+      requestCreatedAt: row.createdAt,
+      snapshotCreatedAt: row.snapshotCreatedAt ?? null,
+      sentAt: row.sentAt ?? null,
+      deliveredAt: row.deliveredAt ?? null,
+      inboxReadAt: row.inboxReadAt ?? null,
+      detailsRetrievedAt: row.detailsRetrievedAt ?? null,
+      checkedAt: null,
+      responseCreatedAt: row.responseCreatedAt ?? null,
+    },
+  };
+}
+
+// ── Enriched list types ───────────────────────────────────────────────────────
+
+export interface TaktRequestListItem {
+  id: string;
+  requestNumber: string;
+  taktId: string;
+  taktBezeichnung: string;
+  taktVersion: number;
+  projectId: string;
+  projectName: string;
+  guOrgId: string;
+  nuOrgId: string;
+  nuOrgName: string;
+  status: TaktRequestStatus;
+  /** Transport delivery status of the notification message. Null if not yet sent. */
+  outboxStatus: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
+  responseRequiredBy: Date | null;
+  sentAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 import {
   assertValidTaktRequestTransition,
 } from "./takt-request-transitions";
@@ -134,6 +413,69 @@ export async function listTaktRequestsForGu(
     .select()
     .from(taktRequestsTable)
     .where(and(...conditions));
+}
+
+/**
+ * Enriched list for the GU overview page.
+ * Joins takte, projects, organizations (NU), and message_outbox for transport status.
+ * Always filtered by guOrgId — never returns foreign GU requests.
+ */
+export async function listTaktRequestsForGuEnriched(
+  guOrgId: string,
+  filters?: { status?: TaktRequestStatus; taktId?: string; nuOrgId?: string },
+): Promise<TaktRequestListItem[]> {
+  // Alias for nu organization to avoid ambiguity
+  const nuOrg = organizationsTable;
+
+  const conditions = [eq(taktRequestsTable.guOrgId, guOrgId)];
+  if (filters?.status) {
+    conditions.push(eq(taktRequestsTable.status, filters.status));
+  }
+  if (filters?.taktId) {
+    conditions.push(eq(taktRequestsTable.taktId, filters.taktId));
+  }
+  if (filters?.nuOrgId) {
+    conditions.push(eq(taktRequestsTable.nuOrgId, filters.nuOrgId));
+  }
+
+  const rows = await db
+    .select({
+      id: taktRequestsTable.id,
+      requestNumber: taktRequestsTable.requestNumber,
+      taktId: taktRequestsTable.taktId,
+      taktBezeichnung: takteTable.taktBezeichnung,
+      taktVersion: taktRequestsTable.taktVersion,
+      projectId: takteTable.projectId,
+      projectName: projectsTable.name,
+      guOrgId: taktRequestsTable.guOrgId,
+      nuOrgId: taktRequestsTable.nuOrgId,
+      nuOrgName: nuOrg.name,
+      status: taktRequestsTable.status,
+      outboxStatus: messageOutboxTable.status,
+      responseRequiredBy: taktRequestsTable.responseRequiredBy,
+      sentAt: taktRequestsTable.sentAt,
+      createdAt: taktRequestsTable.createdAt,
+      updatedAt: taktRequestsTable.updatedAt,
+    })
+    .from(taktRequestsTable)
+    .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
+    .innerJoin(nuOrg, eq(taktRequestsTable.nuOrgId, nuOrg.id))
+    .leftJoin(
+      messageOutboxTable,
+      eq(
+        messageOutboxTable.messageId,
+        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
+      ),
+    )
+    .where(and(...conditions));
+
+  return rows.map((r) => ({
+    ...r,
+    status: r.status as TaktRequestStatus,
+    outboxStatus: (r.outboxStatus ?? null) as TaktRequestListItem["outboxStatus"],
+    projectId: r.projectId ?? "",
+  }));
 }
 
 /**

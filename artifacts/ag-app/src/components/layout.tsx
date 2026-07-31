@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
   Briefcase,
+  Send,
   Inbox,
   Users,
   Settings,
@@ -26,6 +27,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navigation = [
     { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
     { name: t('nav.projects'), href: '/projects', icon: Briefcase },
+    { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send },
     { name: t('nav.proposals'), href: '/proposals', icon: Inbox },
     { name: t('nav.contractors'), href: '/contractors', icon: Users },
     { name: t('nav.settings'), href: '/settings', icon: Settings },

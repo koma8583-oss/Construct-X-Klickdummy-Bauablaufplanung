@@ -1,0 +1,224 @@
+# Aufgabe 2.4 – Datenbanktabellen für Taktanfragen und unveränderliche Snapshots anlegen
+
+Ergänze das bestehende Drizzle-Datenbankschema um folgende Tabellen:
+
+* `takt_requests`
+* `takt_request_snapshots`
+
+Verwende die vorhandene ID-Strategie, Zeitstempelkonventionen, Tabellenstruktur und Benennungskonventionen.
+
+Ändere noch keine öffentlichen REST-Endpunkte und keine Benutzeroberflächen.
+
+## Tabelle `takt_requests`
+
+Ergänze mindestens folgende Felder:
+
+```text
+id
+taktId
+taktVersion
+guOrgId
+nuOrgId
+requestNumber
+status
+responseRequiredBy
+sentAt
+deliveredAt
+detailsRetrievedAt
+supersedesRequestId
+createdByUserId
+createdAt
+updatedAt
+```
+
+## Feldanforderungen
+
+### `id`
+
+* Verwende denselben ID-Typ wie bei vergleichbaren bestehenden Tabellen.
+* Die ID ist Primärschlüssel.
+
+### `taktId`
+
+* Foreign Key auf den bestehenden Takt.
+* Nicht nullable.
+
+### `taktVersion`
+
+* Ganzzahl.
+* Nicht nullable.
+* Fachliches Minimum `1`.
+* Speichert die Version, auf deren Grundlage die Anfrage erstellt wurde.
+
+### `guOrgId`
+
+* Foreign Key auf die Organisation des Generalunternehmers.
+* Nicht nullable.
+
+### `nuOrgId`
+
+* Foreign Key auf die adressierte Organisation des Nachunternehmers.
+* Nicht nullable.
+
+### `requestNumber`
+
+* Nicht nullable.
+* Fachlich lesbare Referenz.
+* Global oder innerhalb der vorgesehenen fachlichen Reichweite eindeutig.
+* Ergänze einen geeigneten Unique Constraint.
+
+### `status`
+
+* Verwendet `TaktRequestStatus`.
+* Nicht nullable.
+* Standardwert `DRAFT`.
+
+### Zeitfelder
+
+* `responseRequiredBy` darf nullable sein.
+* `sentAt` nullable.
+* `deliveredAt` nullable.
+* `detailsRetrievedAt` nullable.
+* `createdAt` nicht nullable.
+* `updatedAt` nicht nullable.
+
+### `supersedesRequestId`
+
+* Nullable Self-Reference auf eine ältere Taktanfrage.
+* Dient zur Verknüpfung einer überarbeiteten Anfrage mit der Vorgängerversion.
+
+### `createdByUserId`
+
+* Foreign Key auf den erstellenden Benutzer.
+* Nicht nullable, sofern dies zur bestehenden Architektur passt.
+
+## Indizes
+
+Ergänze geeignete Indizes mindestens für:
+
+```text
+taktId
+guOrgId
+nuOrgId
+status
+responseRequiredBy
+createdAt
+```
+
+Prüfe kombinierte Indizes für:
+
+```text
+nuOrgId + status
+guOrgId + status
+taktId + taktVersion
+```
+
+Verwende nur Indizes, die zur tatsächlichen Abfragestruktur sinnvoll passen.
+
+## Tabelle `takt_request_snapshots`
+
+Ergänze mindestens:
+
+```text
+id
+taktRequestId
+schemaVersion
+snapshotPayload
+createdAt
+```
+
+## Snapshot-Anforderungen
+
+### `taktRequestId`
+
+* Foreign Key auf `takt_requests`.
+* Nicht nullable.
+* Pro Taktanfrage darf genau ein Snapshot existieren.
+* Unique Constraint auf `taktRequestId`.
+
+### `schemaVersion`
+
+* Nicht nullable.
+* Standardwert `1.0` ist zulässig.
+* Verwende einen zur bestehenden Datenbank passenden Stringtyp.
+
+### `snapshotPayload`
+
+* Nicht nullable.
+* Speicherung als JSONB, sofern PostgreSQL und die bestehende Drizzle-Konfiguration dies unterstützen.
+* Der Snapshot enthält später den freigegebenen, versionierten Takt-Ausschnitt.
+
+### Unveränderlichkeit
+
+* Implementiere keine allgemeine Update-Funktion für Snapshots.
+* Ein Snapshot darf nach seiner Erstellung nicht mit Änderungen des Takts synchronisiert werden.
+* Dokumentiere diese Regel im Schema beziehungsweise in `docs/database-model.md`.
+
+## Löschverhalten
+
+Wähle ein historienfreundliches Foreign-Key-Verhalten.
+
+Bevorzugt:
+
+* Ein Takt mit bestehenden Taktanfragen darf nicht unkontrolliert physisch gelöscht werden.
+* Historische Anfragen und Snapshots sollen erhalten bleiben.
+* Kein automatisches Löschen historischer Requests durch Löschen eines Takts.
+
+Falls dies mit der aktuellen Architektur kollidiert, verwende die sicherste kompatible Lösung und dokumentiere sie.
+
+## Beziehungen
+
+Ergänze die vorhandenen Drizzle-Relations für:
+
+* Takt zu Taktanfragen
+* GU-Organisation zu Taktanfragen
+* NU-Organisation zu Taktanfragen
+* Benutzer zu erstellten Taktanfragen
+* Taktanfrage zu Snapshot
+* Taktanfrage zu Vorgänger- oder Nachfolgeanfrage
+
+## Noch nicht implementieren
+
+* keine neuen REST-Endpunkte
+* keine automatische Request-Erstellung
+* keine Snapshot-Erzeugungslogik
+* kein Push an den Hub
+* kein Detailabruf
+* keine UI-Änderungen
+* keine Migration bestehender Delegationen
+
+## Tests
+
+Ergänze Datenbanktests, soweit die aktuelle Teststruktur dies unterstützt:
+
+* Taktanfrage kann mit gültigen Referenzen gespeichert werden
+* Standardstatus ist `DRAFT`
+* Taktversion kleiner als 1 wird abgelehnt oder durch die Domain-Schicht verhindert
+* doppelte `requestNumber` wird abgelehnt
+* Snapshot kann gespeichert werden
+* zweiter Snapshot für denselben Request wird abgelehnt
+* Request ohne bestehenden Takt wird abgelehnt
+* Request ohne bestehende Organisation wird abgelehnt
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neu angelegte Tabellen
+* verwendete Feldtypen
+* Foreign Keys
+* Unique Constraints
+* Indizes
+* gewähltes Löschverhalten
+* Ergebnis der Migration
+* Testergebnisse
+* Ergebnis von Typecheck und Build

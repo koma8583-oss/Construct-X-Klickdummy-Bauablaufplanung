@@ -42,6 +42,8 @@ export interface CreateTaktResponseInput {
   nextAvailableDate?: string;
   createdByUserId: string;
   alternatives?: CreateAlternativeInput[];
+  /** Deterministic transport message ID for idempotency (optional). */
+  messageId?: string;
 }
 
 export interface TaktResponseWithAlternatives {
@@ -146,6 +148,7 @@ export async function createTaktResponse(
       .values({
         id: crypto.randomUUID(),
         taktRequestId: input.taktRequestId,
+        messageId: input.messageId ?? null,
         decision: input.decision,
         reasonCode: (input.reasonCode as TaktResponse["reasonCode"]) ?? null,
         comment: input.comment ?? null,

@@ -20,6 +20,7 @@
   "nav": {
     "dashboard": "Übersicht",
     "projects": "Projekte",
+    "taktRequests": "Taktanfragen",
     "proposals": "Vorschläge",
     "contractors": "Nachunternehmer",
     "settings": "Einstellungen",
@@ -95,6 +96,173 @@
     "language": "Sprache",
     "save": "Einstellungen speichern",
     "name": "Name"
+  },
+  "taktRequestDetail": {
+    "back": "Zurück zur Übersicht",
+    "title": "Taktanfrage",
+    "notFound": "Taktanfrage nicht gefunden.",
+    "error": "Taktanfrage konnte nicht geladen werden.",
+    "retry": "Erneut laden",
+    "header": {
+      "requestNumber": "Anfragenummer",
+      "project": "Projekt",
+      "takt": "Takt",
+      "version": "Version",
+      "contractor": "Nachunternehmer",
+      "deadline": "Antwortfrist",
+      "requestStatus": "Anfragestatus",
+      "messageStatus": "Nachrichtenstatus"
+    },
+    "timeline": {
+      "title": "Prozess-Zeitleiste",
+      "requestCreated": "Anfrage erstellt",
+      "snapshotCreated": "Snapshot erzeugt",
+      "messageSent": "Nachricht versendet",
+      "messageDelivered": "Nachricht zugestellt",
+      "messageRead": "Nachricht gelesen",
+      "detailsRetrieved": "Taktdetails abgerufen",
+      "reviewStarted": "Prüfung gestartet",
+      "responseReceived": "Antwort eingegangen",
+      "decisionMade": "Entscheidung getroffen",
+      "pending": "Ausstehend",
+      "notTracked": "Nicht erfasst"
+    },
+    "snapshot": {
+      "title": "Snapshot-Vorschau",
+      "immutableHint": "Dieser Snapshot ist unveränderlich und entspricht dem Stand beim Erstellen der Anfrage.",
+      "schemaVersion": "Schema-Version",
+      "taktVersion": "Taktversion",
+      "timeWindow": "Zeitraum",
+      "trade": "Gewerk",
+      "workPackage": "Arbeitspaket",
+      "location": "Ort",
+      "resourceRequirements": "Ressourcenanforderungen",
+      "constraints": "Randbedingungen",
+      "documentReferences": "Dokumentreferenzen",
+      "noSnapshot": "Noch kein Snapshot vorhanden."
+    },
+    "notification": {
+      "title": "Gesendete Notification",
+      "subject": "Betreff",
+      "message": "Nachricht",
+      "detailsRef": "Detailreferenz",
+      "projectRef": "Projektreferenz",
+      "taktRef": "Taktreferenz",
+      "responseRequiredBy": "Antwortfrist",
+      "noNotification": "Noch keine Notification versendet."
+    },
+    "transport": {
+      "title": "Transportdetails",
+      "failedTitle": "Zustellfehler",
+      "failureReason": "Fehlergrund",
+      "attemptCount": "Zustellversuche",
+      "lastAttempt": "Letzter Versuch",
+      "noError": "Kein Fehler."
+    },
+    "response": {
+      "title": "Antwort des Nachunternehmers",
+      "decision": "Entscheidung",
+      "reasonCode": "Begründung",
+      "comment": "Kommentar",
+      "acceptedWindow": "Bestätigtes Zeitfenster",
+      "nextAvailableDate": "Nächstmöglicher Termin",
+      "alternatives": "Vorgeschlagene Alternativen",
+      "noResponse": "Noch keine Antwort eingegangen.",
+      "decisions": {
+        "ACCEPTED": "Bestätigt",
+        "ALTERNATIVES_PROPOSED": "Alternativen vorgeschlagen",
+        "REJECTED": "Abgelehnt"
+      },
+      "reasonCodes": {
+        "RESOURCE_CONFLICT": "Ressourcenkonflikt",
+        "NO_CAPACITY": "Keine Kapazität",
+        "EQUIPMENT_UNAVAILABLE": "Gerät nicht verfügbar",
+        "QUALIFICATION_MISSING": "Qualifikation fehlt",
+        "TIME_WINDOW_TOO_SHORT": "Zeitfenster zu kurz",
+        "OUTSIDE_PLANNING_HORIZON": "Außerhalb des Planungshorizonts",
+        "OTHER": "Sonstiger Grund"
+      }
+    },
+    "actions": {
+      "send": "Senden",
+      "resend": "Erneut zustellen",
+      "cancel": "Stornieren",
+      "viewResponse": "Antwort anzeigen",
+      "newVersion": "Neue Version erstellen",
+      "newVersionHint": "Noch nicht verfügbar — Backend-Prozess in Vorbereitung.",
+      "cancelConfirm": "Möchten Sie diese Anfrage wirklich stornieren?",
+      "cancelConfirmYes": "Ja, stornieren",
+      "cancelConfirmNo": "Abbrechen"
+    },
+    "overdue": "Überfällig",
+    "noDeadline": "Keine Frist"
+  },
+  "taktRequests": {
+    "title": "Taktanfragen",
+    "description": "Übersicht aller Taktanfragen Ihrer Organisation",
+    "empty": "Keine Taktanfragen vorhanden.",
+    "emptyFiltered": "Keine Anfragen für die gewählten Filter.",
+    "emptyHint": "Erstellen Sie eine neue Taktanfrage über die Taktplanansicht.",
+    "error": "Taktanfragen konnten nicht geladen werden.",
+    "retry": "Erneut laden",
+    "columns": {
+      "requestNumber": "Anfragenummer",
+      "project": "Projekt",
+      "takt": "Takt",
+      "version": "Version",
+      "contractor": "Nachunternehmer",
+      "deadline": "Antwortfrist",
+      "requestStatus": "Anfragestatus",
+      "messageStatus": "Nachrichtenstatus",
+      "createdAt": "Erstellt am",
+      "updatedAt": "Letzte Änderung",
+      "actions": "Aktionen"
+    },
+    "filter": {
+      "all": "Alle",
+      "open": "Offen",
+      "closed": "Abgeschlossen",
+      "status": "Anfragestatus",
+      "project": "Projekt",
+      "contractor": "Nachunternehmer",
+      "takt": "Takt",
+      "deadline": "Antwortfrist",
+      "allStatuses": "Alle Status",
+      "allProjects": "Alle Projekte",
+      "allContractors": "Alle Nachunternehmer"
+    },
+    "actions": {
+      "open": "Öffnen",
+      "edit": "Entwurf bearbeiten",
+      "send": "Senden",
+      "resend": "Erneut zustellen",
+      "cancel": "Stornieren",
+      "viewResponse": "Antwort anzeigen"
+    },
+    "requestStatus": {
+      "DRAFT": "Entwurf",
+      "SENT": "Versendet",
+      "DELIVERED": "Zugestellt",
+      "DETAILS_RETRIEVED": "Details abgerufen",
+      "UNDER_REVIEW": "In Prüfung",
+      "ACCEPTED": "Bestätigt",
+      "ALTERNATIVES_PROPOSED": "Alternativen vorgeschlagen",
+      "REJECTED": "Abgelehnt",
+      "REVISION_REQUIRED": "Überarbeitung erforderlich",
+      "CANCELLED": "Storniert",
+      "EXPIRED": "Abgelaufen",
+      "SUPERSEDED": "Ersetzt"
+    },
+    "messageStatus": {
+      "PENDING": "Ausstehend",
+      "SENT": "Gesendet",
+      "DELIVERED": "Zugestellt",
+      "READ": "Gelesen",
+      "FAILED": "Fehlgeschlagen",
+      "none": "Nicht gesendet"
+    },
+    "overdue": "Überfällig",
+    "noDeadline": "Keine Frist"
   },
   "common": {
     "loading": "Lädt...",

@@ -20,6 +20,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
+    "taktRequests": "Takt Requests",
     "proposals": "Proposals",
     "contractors": "Contractors",
     "settings": "Settings",
@@ -95,6 +96,173 @@
     "language": "Language",
     "save": "Save Settings",
     "name": "Name"
+  },
+  "taktRequestDetail": {
+    "back": "Back to overview",
+    "title": "Takt Request",
+    "notFound": "Takt request not found.",
+    "error": "Could not load takt request.",
+    "retry": "Retry",
+    "header": {
+      "requestNumber": "Request No.",
+      "project": "Project",
+      "takt": "Takt",
+      "version": "Version",
+      "contractor": "Contractor",
+      "deadline": "Response Deadline",
+      "requestStatus": "Request Status",
+      "messageStatus": "Message Status"
+    },
+    "timeline": {
+      "title": "Process Timeline",
+      "requestCreated": "Request created",
+      "snapshotCreated": "Snapshot generated",
+      "messageSent": "Message sent",
+      "messageDelivered": "Message delivered",
+      "messageRead": "Message read",
+      "detailsRetrieved": "Takt details retrieved",
+      "reviewStarted": "Review started",
+      "responseReceived": "Response received",
+      "decisionMade": "Decision made",
+      "pending": "Pending",
+      "notTracked": "Not tracked"
+    },
+    "snapshot": {
+      "title": "Snapshot Preview",
+      "immutableHint": "This snapshot is immutable and reflects the state at the time the request was created.",
+      "schemaVersion": "Schema Version",
+      "taktVersion": "Takt Version",
+      "timeWindow": "Time Window",
+      "trade": "Trade",
+      "workPackage": "Work Package",
+      "location": "Location",
+      "resourceRequirements": "Resource Requirements",
+      "constraints": "Constraints",
+      "documentReferences": "Document References",
+      "noSnapshot": "No snapshot available yet."
+    },
+    "notification": {
+      "title": "Sent Notification",
+      "subject": "Subject",
+      "message": "Message",
+      "detailsRef": "Details Reference",
+      "projectRef": "Project Reference",
+      "taktRef": "Takt Reference",
+      "responseRequiredBy": "Response Required By",
+      "noNotification": "No notification sent yet."
+    },
+    "transport": {
+      "title": "Transport Details",
+      "failedTitle": "Delivery Failure",
+      "failureReason": "Failure Reason",
+      "attemptCount": "Delivery Attempts",
+      "lastAttempt": "Last Attempt",
+      "noError": "No error."
+    },
+    "response": {
+      "title": "Contractor Response",
+      "decision": "Decision",
+      "reasonCode": "Reason",
+      "comment": "Comment",
+      "acceptedWindow": "Accepted Time Window",
+      "nextAvailableDate": "Next Available Date",
+      "alternatives": "Proposed Alternatives",
+      "noResponse": "No response received yet.",
+      "decisions": {
+        "ACCEPTED": "Accepted",
+        "ALTERNATIVES_PROPOSED": "Alternatives Proposed",
+        "REJECTED": "Rejected"
+      },
+      "reasonCodes": {
+        "RESOURCE_CONFLICT": "Resource conflict",
+        "NO_CAPACITY": "No capacity",
+        "EQUIPMENT_UNAVAILABLE": "Equipment unavailable",
+        "QUALIFICATION_MISSING": "Qualification missing",
+        "TIME_WINDOW_TOO_SHORT": "Time window too short",
+        "OUTSIDE_PLANNING_HORIZON": "Outside planning horizon",
+        "OTHER": "Other reason"
+      }
+    },
+    "actions": {
+      "send": "Send",
+      "resend": "Redeliver",
+      "cancel": "Cancel",
+      "viewResponse": "View Response",
+      "newVersion": "Create New Version",
+      "newVersionHint": "Not yet available — backend process in preparation.",
+      "cancelConfirm": "Are you sure you want to cancel this request?",
+      "cancelConfirmYes": "Yes, cancel",
+      "cancelConfirmNo": "Keep request"
+    },
+    "overdue": "Overdue",
+    "noDeadline": "No deadline"
+  },
+  "taktRequests": {
+    "title": "Takt Requests",
+    "description": "Overview of all Takt requests for your organisation",
+    "empty": "No Takt requests yet.",
+    "emptyFiltered": "No requests match the selected filters.",
+    "emptyHint": "Create a new Takt request from the schedule view.",
+    "error": "Could not load Takt requests.",
+    "retry": "Retry",
+    "columns": {
+      "requestNumber": "Request No.",
+      "project": "Project",
+      "takt": "Takt",
+      "version": "Version",
+      "contractor": "Contractor",
+      "deadline": "Response Deadline",
+      "requestStatus": "Request Status",
+      "messageStatus": "Message Status",
+      "createdAt": "Created",
+      "updatedAt": "Last Changed",
+      "actions": "Actions"
+    },
+    "filter": {
+      "all": "All",
+      "open": "Open",
+      "closed": "Closed",
+      "status": "Request Status",
+      "project": "Project",
+      "contractor": "Contractor",
+      "takt": "Takt",
+      "deadline": "Deadline",
+      "allStatuses": "All statuses",
+      "allProjects": "All projects",
+      "allContractors": "All contractors"
+    },
+    "actions": {
+      "open": "Open",
+      "edit": "Edit Draft",
+      "send": "Send",
+      "resend": "Redeliver",
+      "cancel": "Cancel",
+      "viewResponse": "View Response"
+    },
+    "requestStatus": {
+      "DRAFT": "Draft",
+      "SENT": "Sent",
+      "DELIVERED": "Delivered",
+      "DETAILS_RETRIEVED": "Details Retrieved",
+      "UNDER_REVIEW": "Under Review",
+      "ACCEPTED": "Accepted",
+      "ALTERNATIVES_PROPOSED": "Alternatives Proposed",
+      "REJECTED": "Rejected",
+      "REVISION_REQUIRED": "Revision Required",
+      "CANCELLED": "Cancelled",
+      "EXPIRED": "Expired",
+      "SUPERSEDED": "Superseded"
+    },
+    "messageStatus": {
+      "PENDING": "Pending",
+      "SENT": "Sent",
+      "DELIVERED": "Delivered",
+      "READ": "Read",
+      "FAILED": "Failed",
+      "none": "Not sent"
+    },
+    "overdue": "Overdue",
+    "noDeadline": "No deadline"
   },
   "common": {
     "loading": "Loading...",

@@ -1,20 +1,23 @@
 /**
- * HTTP routes for TaktRequest coordination (Task 45).
+ * HTTP routes for TaktRequest coordination.
  *
- * GU endpoints:
- *   POST /projects/:projectId/takt-requests      — create DRAFT
- *   POST /takt-requests/:id/send                 — send (DRAFT → SENT → DELIVERED) + snapshot
- *   GET  /takt-requests                          — list (GU sees own requests, NU sees addressed requests)
+ * GU endpoints (Sprint 3):
+ *   POST /takt-requests                          — create DRAFT + snapshot (Task 3.6)
+ *   POST /takt-requests/:id/send                 — send via LocalHubTransport (Task 3.6)
+ *
+ * GU endpoints (legacy, Task 2.x):
+ *   POST /projects/:projectId/takt-requests      — create DRAFT only (no snapshot)
+ *   GET  /takt-requests                          — list (GU sees own, NU sees incoming)
  *
  * NU endpoints:
- *   GET  /takt-requests/:id/snapshot             — pull released Takt details (DELIVERED → DETAILS_RETRIEVED)
+ *   GET  /takt-requests/:id/snapshot             — pull released Takt details
  *   POST /takt-requests/:id/response             — submit ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED
  *
- * All routes use the repository layer. No direct DB queries here.
+ * Convention: no direct DB queries in route handlers; use repository or service layer.
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { takteTable, projectsTable } from "@workspace/db";
+import { takteTable, projectsTable, messageOutboxTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
@@ -22,7 +25,9 @@ import {
   createTaktRequestDraft,
   getTaktRequestById,
   getTaktRequestWithSnapshot,
+  getTaktRequestDetailForGu,
   listTaktRequestsForGu,
+  listTaktRequestsForGuEnriched,
   listTaktRequestsForNu,
   updateTaktRequestStatus,
   createTaktRequestSnapshot,
@@ -31,10 +36,36 @@ import {
   type TaktRequestStatus,
 } from "../lib/takt-request-repository";
 import {
+  createTaktRequestWithSnapshot,
+  TaktNotFoundError,
+  UnauthorizedSnapshotError,
+  NuNotContractorError,
+  InvalidTaktForSnapshotError,
+} from "../lib/takt-request-snapshot-service";
+import {
   createTaktResponse,
   getTaktResponseWithAlternatives,
   TaktResponseValidationError,
 } from "../lib/takt-response-repository";
+import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import { DataspaceMessageType } from "@workspace/api-zod";
+import {
+  runAvailabilityCheck,
+  getLatestAvailabilityCheck,
+  AvailabilityCheckError,
+} from "../services/availability-check-service";
+
+// Module-level transport singleton — stateless, safe to share across requests.
+const transport = new LocalHubTransport();
+
+/**
+ * Returns a deterministic outbox messageId for a TaktRequest notification.
+ * Using the same messageId on every /send attempt means LocalHubTransport
+ * will detect it as idempotent if the envelope content is identical.
+ */
+function notificationMessageId(requestId: string): string {
+  return `taktrequest-notification-${requestId}`;
+}
 
 const router = Router();
 
@@ -44,7 +75,7 @@ const router = Router();
 // Role is determined by the `role` query param (gu|nu); defaults to guOrgId check.
 router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
   const orgId = req.user!.orgId!;
-  const { role, status, taktId } = req.query as Record<string, string>;
+  const { role, status, taktId, nuOrgId } = req.query as Record<string, string>;
 
   const validStatuses: TaktRequestStatus[] = [
     "DRAFT",
@@ -74,10 +105,11 @@ router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
-  // Default: GU list
-  const requests = await listTaktRequestsForGu(orgId, {
+  // Default: GU enriched list (joins takt, project, NU org, outbox status)
+  const requests = await listTaktRequestsForGuEnriched(orgId, {
     status: statusFilter,
     taktId: taktId ?? undefined,
+    nuOrgId: nuOrgId ?? undefined,
   });
   res.json(requests);
 });
@@ -153,9 +185,117 @@ router.post(
   },
 );
 
+// ── GET /takt-requests/:id (Task 5.4) ────────────────────────────────────────
+// GU-only detail view: full metadata, snapshot, notification, transport, timeline, response.
+// Access: the creating GU org only. Other GU / NU / hub → 403.
+router.get(
+  "/takt-requests/:id",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const callerOrgId = req.user!.orgId;
+    const isHubAdmin  = req.user!.hubAdmin;
+    const id = req.params.id as string;
+
+    if (isHubAdmin || !callerOrgId) {
+      res.status(403).json({ error: "Hub admins may not access TaktRequest detail views." });
+      return;
+    }
+
+    const detail = await getTaktRequestDetailForGu(id, callerOrgId);
+
+    if (!detail) {
+      // Either not found, or belongs to a different GU — return 404 to avoid leaking existence.
+      res.status(404).json({ error: "TaktRequest not found." });
+      return;
+    }
+
+    res.json(detail);
+  },
+);
+
+// ── POST /takt-requests (Sprint 3) ───────────────────────────────────────────
+// GU creates a TaktRequest in DRAFT status with an immutable Takt snapshot.
+// Uses createTaktRequestWithSnapshot() — atomic, whitelist-scoped, validated.
+// No message is sent; call /takt-requests/:id/send to deliver the notification.
+router.post("/takt-requests", requireJwt, async (req, res): Promise<void> => {
+  const guOrgId = req.user!.orgId!;
+  const userId = req.user!.userId!;
+
+  const bodySchema = z.object({
+    taktId: z.string().min(1),
+    nuOrgId: z.string().min(1),
+    responseRequiredBy: z.string().datetime({ offset: true }).optional(),
+    subject: z.string().max(255).optional(),
+    message: z.string().max(2000).optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { taktId, nuOrgId, responseRequiredBy, subject, message } = parsed.data;
+
+  // Generate a unique, human-readable request number.
+  const requestNumber = `TKR-${Date.now().toString(36).toUpperCase()}`;
+
+  let result;
+  try {
+    result = await createTaktRequestWithSnapshot({
+      taktId,
+      guOrgId,
+      nuOrgId,
+      requestNumber,
+      responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
+      createdByUserId: userId,
+      subject,
+      message,
+    });
+  } catch (err) {
+    if (err instanceof TaktNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof UnauthorizedSnapshotError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof NuNotContractorError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof InvalidTaktForSnapshotError) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  res.status(201).json({
+    id: result.request.id,
+    taktId: result.request.taktId,
+    taktVersion: result.request.taktVersion,
+    guOrgId: result.request.guOrgId,
+    nuOrgId: result.request.nuOrgId,
+    requestNumber: result.request.requestNumber,
+    status: result.request.status,
+    responseRequiredBy: result.request.createdAt ?? null,
+    snapshotId: result.snapshot.id,
+    createdAt: result.request.createdAt,
+  });
+});
+
 // ── POST /takt-requests/:id/send ─────────────────────────────────────────────
-// GU sends the request: DRAFT → SENT → DELIVERED (simulated delivery).
-// Creates an immutable snapshot of the current Takt data.
+// GU sends a DRAFT TaktRequest as a TaktRequestNotification via LocalHubTransport.
+//
+// Flow: load request → verify GU ownership → idempotency check → load snapshot
+//   → build notification envelope (minimal payload, no full snapshot)
+//   → transport.send() → update status DRAFT→SENT→DELIVERED → set Takt IN_COORDINATION
+//
+// Idempotency: the messageId is deterministic (taktrequest-notification-{requestId}).
+//   Repeating /send with the same content returns the existing transport result.
+//   If already DELIVERED: returns 200 immediately (no second message created).
 router.post(
   "/takt-requests/:id/send",
   requireJwt,
@@ -163,96 +303,291 @@ router.post(
     const guOrgId = req.user!.orgId!;
     const id = req.params.id as string;
 
+    // ── 1. Load and validate request ownership ─────────────────────────────
     const existing = await getTaktRequestById(id);
     if (!existing) {
       res.status(404).json({ error: "TaktRequest not found" });
       return;
     }
     if (existing.guOrgId !== guOrgId) {
-      res
-        .status(403)
-        .json({ error: "Only the GU organisation may send this request" });
+      res.status(403).json({ error: "Only the GU organisation may send this request" });
       return;
     }
 
-    // Fetch the Takt and verify it still belongs to a project owned by the GU org
-    const [takt] = await db
-      .select({ takt: takteTable, project: projectsTable })
-      .from(takteTable)
-      .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
-      .where(eq(takteTable.id, existing.taktId))
-      .limit(1)
-      .then((rows) => rows);
+    // ── 2. Idempotency: if already DELIVERED, return existing state ─────────
+    if (existing.status === "DELIVERED") {
+      const taktRow = await db
+        .select()
+        .from(takteTable)
+        .where(eq(takteTable.id, existing.taktId))
+        .limit(1)
+        .then((r) => r[0]);
 
-    if (!takt) {
-      res.status(422).json({ error: "Referenced Takt no longer exists" });
-      return;
-    }
-    if (takt.project.agOrgId !== guOrgId) {
-      res
-        .status(403)
-        .json({ error: "You are not authorized to send requests for this Takt's project" });
-      return;
-    }
-
-    // Transition DRAFT → SENT
-    let updated;
-    try {
-      updated = await updateTaktRequestStatus(id, "SENT", {
-        sentAt: new Date(),
+      res.status(200).json({
+        requestId: existing.id,
+        status: existing.status,
+        sentAt: existing.sentAt ?? null,
+        deliveredAt: existing.deliveredAt ?? null,
+        messageId: notificationMessageId(id),
+        taktLifecycleStatus: taktRow?.lifecycleStatus ?? null,
       });
-    } catch (err) {
-      if (err instanceof TaktRequestTransitionError) {
-        res.status(409).json({ error: err.message });
+      return;
+    }
+
+    // ── 3. Status guard: only DRAFT may be sent ────────────────────────────
+    if (existing.status !== "DRAFT") {
+      res.status(409).json({
+        error: `Cannot send a TaktRequest with status "${existing.status}". Only DRAFT requests may be sent.`,
+      });
+      return;
+    }
+
+    // ── 4. Snapshot must exist ─────────────────────────────────────────────
+    const snapResult = await getTaktRequestWithSnapshot(id);
+    if (!snapResult?.snapshot) {
+      // Fallback: create snapshot from current Takt state (backward compat with
+      // requests created via legacy POST /projects/:projectId/takt-requests).
+      const [taktJoin] = await db
+        .select({ takt: takteTable, project: projectsTable })
+        .from(takteTable)
+        .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
+        .where(eq(takteTable.id, existing.taktId))
+        .limit(1);
+
+      if (!taktJoin) {
+        res.status(422).json({ error: "Referenced Takt no longer exists" });
         return;
       }
-      throw err;
+      if (taktJoin.project.agOrgId !== guOrgId) {
+        res.status(403).json({ error: "You are not authorised to send this request" });
+        return;
+      }
+
+      const fallbackPayload: Record<string, unknown> = {
+        taktId: taktJoin.takt.id,
+        taktVersion: taktJoin.takt.version,
+        taktBezeichnung: taktJoin.takt.taktBezeichnung,
+        zone: taktJoin.takt.zone,
+        gewerk: taktJoin.takt.gewerk,
+        description: taktJoin.takt.description ?? null,
+        plannedStart: taktJoin.takt.plannedStart,
+        plannedEnd: taktJoin.takt.plannedEnd,
+      };
+      try {
+        await createTaktRequestSnapshot({
+          taktRequestId: id,
+          schemaVersion: "1.0",
+          snapshotPayload: fallbackPayload,
+        });
+      } catch (err) {
+        if (!(err instanceof DuplicateSnapshotError)) throw err;
+      }
     }
 
-    // Create immutable snapshot — only released Takt data, no full project info
-    const taktRow = takt.takt;
-    const snapshotPayload: Record<string, unknown> = {
-      taktId: taktRow.id,
-      taktVersion: taktRow.version,
-      taktBezeichnung: taktRow.taktBezeichnung,
-      zone: taktRow.zone,
-      gewerk: taktRow.gewerk,
-      description: taktRow.description ?? null,
-      plannedStart: taktRow.plannedStart,
-      plannedEnd: taktRow.plannedEnd,
-      earliestStart: taktRow.earliestStart ?? null,
-      latestEnd: taktRow.latestEnd ?? null,
-      requiredResources: taktRow.requiredResources ?? null,
+    // ── 5. Build notification payload — minimal, no full Takt data ─────────
+    // Pull coordinationContext from snapshot payload if present (set via
+    // POST /takt-requests using createTaktRequestWithSnapshot).
+    const currentSnap = snapResult?.snapshot;
+    const snapPayload = (currentSnap?.snapshotPayload as Record<string, unknown> | null) ?? {};
+    const coordCtx = (snapPayload.coordinationContext as Record<string, unknown> | undefined) ?? {};
+
+    const notificationPayload = {
+      taktRequestId: id,
+      projectReference: snapPayload.projectReference ?? existing.taktId,
+      taktReference: existing.taktId,
+      taktVersion: existing.taktVersion,
+      responseRequiredBy: existing.responseRequiredBy?.toISOString() ?? null,
+      detailsRef: `/takt-requests/${id}/details`,
+      subject: (coordCtx.subject as string | undefined) ?? null,
+      message: (coordCtx.message as string | undefined) ?? null,
     };
 
-    try {
-      await createTaktRequestSnapshot({
-        taktRequestId: id,
-        schemaVersion: "1.0",
-        snapshotPayload,
+    // ── 6. Build MessageEnvelope and send via transport ────────────────────
+    const envelope = {
+      messageId: notificationMessageId(id),
+      schemaVersion: "1.0",
+      messageType: DataspaceMessageType.TAKT_REQUEST_NOTIFICATION,
+      senderOrgId: guOrgId,
+      recipientOrgId: existing.nuOrgId,
+      correlationId: id,
+      createdAt: new Date(),
+      causationId: null,
+      payload: notificationPayload,
+    };
+
+    const transportResult = await transport.send(envelope);
+
+    // ── 7. Update TaktRequest status based on transport outcome ────────────
+    const now = new Date();
+    let finalRequest;
+
+    if (transportResult.status === "DELIVERED") {
+      // Happy path: DRAFT → SENT → DELIVERED
+      try {
+        await updateTaktRequestStatus(id, "SENT", { sentAt: transportResult.sentAt ?? now });
+        finalRequest = await updateTaktRequestStatus(id, "DELIVERED", {
+          deliveredAt: transportResult.deliveredAt ?? now,
+        });
+      } catch (err) {
+        if (err instanceof TaktRequestTransitionError) {
+          // Already advanced by a concurrent call — load current state
+          finalRequest = await getTaktRequestById(id);
+        } else {
+          throw err;
+        }
+      }
+
+      // ── 8. Set Takt lifecycle to IN_COORDINATION ───────────────────────
+      await db
+        .update(takteTable)
+        .set({ lifecycleStatus: "IN_COORDINATION" })
+        .where(eq(takteTable.id, existing.taktId));
+
+      const [taktAfter] = await db
+        .select()
+        .from(takteTable)
+        .where(eq(takteTable.id, existing.taktId))
+        .limit(1);
+
+      res.status(200).json({
+        requestId: id,
+        status: finalRequest?.status ?? "DELIVERED",
+        sentAt: finalRequest?.sentAt ?? transportResult.sentAt,
+        deliveredAt: finalRequest?.deliveredAt ?? transportResult.deliveredAt,
+        messageId: transportResult.messageId,
+        taktLifecycleStatus: taktAfter?.lifecycleStatus ?? "IN_COORDINATION",
       });
-    } catch (err) {
-      if (err instanceof DuplicateSnapshotError) {
-        // Snapshot already exists — idempotent, continue
-      } else {
-        throw err;
+    } else {
+      // Transport failed — advance to SENT (we attempted delivery) but not DELIVERED
+      try {
+        finalRequest = await updateTaktRequestStatus(id, "SENT", { sentAt: now });
+      } catch (transitionErr) {
+        if (!(transitionErr instanceof TaktRequestTransitionError)) throw transitionErr;
+        finalRequest = existing;
+      }
+
+      res.status(502).json({
+        error: `Transport delivery failed: ${transportResult.error?.message ?? "unknown error"}`,
+        requestId: id,
+        status: finalRequest?.status ?? "SENT",
+        messageId: transportResult.messageId,
+      });
+    }
+  },
+);
+
+// ── GET /takt-requests/:id/details ───────────────────────────────────────────
+// Returns the immutable Takt snapshot released for a TaktRequest.
+//
+// Access:
+//   - Addressed NU: may access in DELIVERED / DETAILS_RETRIEVED / UNDER_REVIEW.
+//     First access (DELIVERED) transitions → DETAILS_RETRIEVED + sets detailsRetrievedAt.
+//     Subsequent access is idempotent (no second transition).
+//   - Creating GU: always has read access for control/preview. No status change.
+//   - All others (other NU, other GU, hub admins, unauthenticated): 403.
+//
+// Response: { taktRequestId, requestNumber, schemaVersion, taktVersion, status,
+//             guOrgId, nuOrgId, responseRequiredBy, detailsRetrievedAt,
+//             snapshotPayload, createdAt }
+// The snapshotPayload is the immutable whitelist-scoped copy from creation time —
+// never the live Takt row.
+router.get(
+  "/takt-requests/:id/details",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const callerOrgId = req.user!.orgId;
+    const isHubAdmin  = req.user!.hubAdmin;
+    const id = req.params.id as string;
+
+    // ── 1. Load request + snapshot ────────────────────────────────────────
+    const result = await getTaktRequestWithSnapshot(id);
+    if (!result) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+    const { request, snapshot } = result;
+
+    // ── 2. Determine caller role ──────────────────────────────────────────
+    const isAddressedNu = callerOrgId === request.nuOrgId;
+    const isOwnerGu     = callerOrgId === request.guOrgId;
+
+    if (isHubAdmin || (!isAddressedNu && !isOwnerGu)) {
+      res.status(403).json({
+        error:
+          "Access denied. Only the addressed NU or the creating GU organisation may retrieve these details.",
+      });
+      return;
+    }
+
+    // ── 3. Snapshot must exist ────────────────────────────────────────────
+    if (!snapshot) {
+      res.status(404).json({
+        error: "Snapshot is not yet available for this TaktRequest.",
+      });
+      return;
+    }
+
+    // ── 4. NU: enforce retrievable states ────────────────────────────────
+    // GU (preview) has no state restriction — skip the checks.
+    const RETRIEVABLE_STATUSES = new Set<string>([
+      "DELIVERED",
+      "DETAILS_RETRIEVED",
+      "UNDER_REVIEW",
+    ]);
+
+    if (isAddressedNu && !RETRIEVABLE_STATUSES.has(request.status)) {
+      res.status(409).json({
+        error:
+          `TaktRequest cannot be retrieved in status "${request.status}". ` +
+          `Details are available once the request is DELIVERED.`,
+        currentStatus: request.status,
+      });
+      return;
+    }
+
+    // ── 5. First NU access: DELIVERED → DETAILS_RETRIEVED ────────────────
+    let updatedRequest = request;
+    if (isAddressedNu && request.status === "DELIVERED") {
+      try {
+        updatedRequest = await updateTaktRequestStatus(id, "DETAILS_RETRIEVED", {
+          detailsRetrievedAt: new Date(),
+        }) ?? request;
+      } catch (err) {
+        if (!(err instanceof TaktRequestTransitionError)) throw err;
+        // Already past DELIVERED — another concurrent call beat us. Reload.
+        updatedRequest = (await getTaktRequestWithSnapshot(id))?.request ?? request;
       }
     }
 
-    // Simulate immediate delivery: SENT → DELIVERED
-    try {
-      updated = await updateTaktRequestStatus(id, "DELIVERED", {
-        deliveredAt: new Date(),
-      });
-    } catch (err) {
-      if (err instanceof TaktRequestTransitionError) {
-        res.status(409).json({ error: err.message });
-        return;
-      }
-      throw err;
-    }
+    // ── 6. Audit log (minimal — no sensitive payload content) ─────────────
+    // detailsRetrievedAt on the request row is the durable audit trail.
+    // Structured log entry is the lightweight complement.
+    req.log.info(
+      {
+        requestId: id,
+        callerOrgId,
+        callerUserId: req.user!.userId,
+        role: isAddressedNu ? "NU" : "GU",
+        requestStatus: updatedRequest.status,
+        firstAccess: request.status === "DELIVERED" && isAddressedNu,
+      },
+      "takt-request details retrieved",
+    );
 
-    res.json(updated);
+    // ── 7. Build response — snapshot payload, never live Takt data ────────
+    res.json({
+      taktRequestId: id,
+      requestNumber: updatedRequest.requestNumber,
+      schemaVersion: snapshot.schemaVersion,
+      taktVersion: updatedRequest.taktVersion,
+      status: updatedRequest.status,
+      guOrgId: updatedRequest.guOrgId,
+      nuOrgId: updatedRequest.nuOrgId,
+      responseRequiredBy: updatedRequest.responseRequiredBy?.toISOString() ?? null,
+      detailsRetrievedAt: updatedRequest.detailsRetrievedAt?.toISOString() ?? null,
+      snapshotPayload: snapshot.snapshotPayload,
+      createdAt: snapshot.createdAt.toISOString(),
+    });
   },
 );
 
@@ -425,5 +760,414 @@ router.post(
     res.status(201).json(result);
   },
 );
+
+// ── POST /takt-requests/:id/availability-checks ──────────────────────────────
+// NU triggers a feasibility check. Only the addressed NU may call this.
+//
+// Flow: validate NU access → call runAvailabilityCheck() service →
+//   return full NU-visible result (internalResult + publicResult).
+//
+// Status transition (inside service): DETAILS_RETRIEVED → UNDER_REVIEW (first run).
+// Subsequent runs from UNDER_REVIEW are allowed (produces a new history row).
+//
+// Permissions: NU (AN) only, must be the addressed NU. GU, Hub → 403.
+router.post(
+  "/takt-requests/:id/availability-checks",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id = req.params.id as string;
+
+    // ── 1. NU-only guard ──────────────────────────────────────────────────────
+    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
+      res.status(403).json({ error: "Only NU (AN) organisations may run availability checks" });
+      return;
+    }
+    const nuOrgId = user.orgId;
+    const userId  = user.userId!;
+
+    try {
+      const check = await runAvailabilityCheck(id, nuOrgId, userId);
+      res.status(201).json(formatCheckResponse(check));
+    } catch (err) {
+      if (err instanceof AvailabilityCheckError) {
+        const status =
+          err.code === "REQUEST_NOT_FOUND"  ? 404 :
+          err.code === "SNAPSHOT_MISSING"   ? 404 :
+          err.code === "WRONG_NU_ORG"       ? 403 :
+          err.code === "INVALID_STATUS"     ? 409 :
+          err.code === "INVALID_TIME_WINDOW"? 422 : 400;
+        res.status(status).json({ error: err.message, code: err.code });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// ── GET /takt-requests/:id/availability-checks/latest ────────────────────────
+// Returns the latest availability check for this TaktRequest.
+//
+// "Latest" strategy: prefer the COMPLETED check with the highest runNumber;
+// fall back to the most recent check of any status if no COMPLETED exists.
+//
+// Only the addressed NU may retrieve checks (privacy — internalResult included).
+// GU, Hub → 403.
+router.get(
+  "/takt-requests/:id/availability-checks/latest",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id = req.params.id as string;
+
+    // ── 1. NU-only guard ──────────────────────────────────────────────────────
+    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
+      res.status(403).json({ error: "Only NU (AN) organisations may access availability checks" });
+      return;
+    }
+    const nuOrgId = user.orgId;
+
+    // ── 2. Load request to verify NU addressing ───────────────────────────────
+    const request = await getTaktRequestById(id);
+    if (!request) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+    if (request.nuOrgId !== nuOrgId) {
+      res.status(403).json({ error: "Only the addressed NU organisation may access these checks" });
+      return;
+    }
+
+    // ── 3. Return latest check ────────────────────────────────────────────────
+    const check = await getLatestAvailabilityCheck(id, nuOrgId);
+    if (!check) {
+      res.status(404).json({ error: "No availability checks found for this TaktRequest" });
+      return;
+    }
+
+    res.json(formatCheckResponse(check));
+  },
+);
+
+// ── POST /takt-requests/:id/responses ────────────────────────────────────────
+// NU creates a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
+// and delivers it to the GU's inbox via LocalHubTransport.
+//
+// Request body format (NEW — uses timeWindow objects, not flat dates):
+//   { decision, acceptedTimeWindow?, reasonCode?, comment?,
+//     alternatives?: [{alternativeId, rank, timeWindow, crewSize, conditions}],
+//     nextAvailableDate? }
+//
+// Privacy:
+//   - Strict allowlist — unknown fields are rejected with 400.
+//   - Forbidden fields (localProjectId, resourceId, etc.) → 400.
+//   - Only public fields are transmitted to the GU's inbox.
+//
+// Idempotency:
+//   - messageId = deterministic `taktresponse-{requestId}`.
+//   - If a response already exists with the same decision → transport retried, 200.
+//   - If a response exists with a different decision → 409.
+//   - On transport failure: business response is saved; retry re-delivers.
+//
+// Status: UNDER_REVIEW → ACCEPTED | ALTERNATIVES_PROPOSED | REJECTED.
+//         DETAILS_RETRIEVED is also accepted as starting state.
+//
+// Permissions: NU (AN), addressed NU only. GU, Hub → 403.
+router.post(
+  "/takt-requests/:id/responses",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id   = req.params.id as string;
+
+    // ── 1. NU-only guard ──────────────────────────────────────────────────────
+    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
+      res.status(403).json({ error: "Only NU (AN) organisations may submit a TaktResponse" });
+      return;
+    }
+    const nuOrgId = user.orgId;
+    const userId  = user.userId!;
+
+    // ── 2. Privacy filter (run before Zod parse) ──────────────────────────────
+    const privacyError = checkResponsePrivacy(req.body);
+    if (privacyError) {
+      res.status(400).json({ error: privacyError });
+      return;
+    }
+
+    // ── 3. Parse + validate body ──────────────────────────────────────────────
+    const alternativeSchema = z.object({
+      alternativeId: z.string().min(1),
+      rank: z.number().int().min(1),
+      // timeWindow.start/end accept ISO date ("YYYY-MM-DD") or datetime strings
+      timeWindow: z.object({
+        start: z.string().min(1),
+        end:   z.string().min(1),
+      }),
+      crewSize:   z.number().int().min(1).optional(),
+      conditions: z.array(z.string()).optional(),
+    });
+
+    const bodySchema = z.object({
+      decision: z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
+      // acceptedTimeWindow accepts ISO date or datetime strings
+      acceptedTimeWindow: z.object({
+        start: z.string().min(1),
+        end:   z.string().min(1),
+      }).optional(),
+      reasonCode: z
+        .enum([
+          "RESOURCE_CONFLICT",
+          "NO_CAPACITY",
+          "EQUIPMENT_UNAVAILABLE",
+          "QUALIFICATION_MISSING",
+          "TIME_WINDOW_TOO_SHORT",
+          "OUTSIDE_PLANNING_HORIZON",
+          "OTHER",
+        ])
+        .optional(),
+      comment:           z.string().max(2000).optional(),
+      alternatives:      z.array(alternativeSchema).max(3).optional(),
+      nextAvailableDate: z.string().optional(),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const {
+      decision, acceptedTimeWindow, reasonCode, comment, alternatives, nextAvailableDate,
+    } = parsed.data;
+
+    // ── 4. Load TaktRequest ────────────────────────────────────────────────────
+    const request = await getTaktRequestById(id);
+    if (!request) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+    if (request.nuOrgId !== nuOrgId) {
+      res.status(403).json({ error: "Only the addressed NU organisation may respond" });
+      return;
+    }
+
+    // ── 5. Answerable status check ─────────────────────────────────────────────
+    const ANSWERABLE_STATUSES = new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED"]);
+
+    // ── 6. Idempotency: check existing response ───────────────────────────────
+    const msgId = `taktresponse-${id}`;
+    const existing = await getTaktResponseWithAlternatives(id);
+    if (existing) {
+      if (existing.response.decision !== decision) {
+        res.status(409).json({
+          error: `A response with decision "${existing.response.decision}" already exists. ` +
+                 `Cannot replace it with "${decision}" for the same TaktRequest.`,
+        });
+        return;
+      }
+      // Same decision: idempotent — look up the existing outbox entry directly
+      // (avoids re-sending with a reconstructed payload that may not match the stored one,
+      //  which would cause InvalidEnvelopeError due to date format differences)
+      const [existingOutbox] = await db
+        .select()
+        .from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, msgId))
+        .limit(1);
+
+      const transportStatus = existingOutbox?.status ?? "DELIVERED";
+      const transportMessageId = existingOutbox?.messageId ?? msgId;
+
+      res.status(200).json({
+        responseId: existing.response.id,
+        taktRequestId: id,
+        decision: existing.response.decision,
+        reasonCode: existing.response.reasonCode ?? null,
+        comment: existing.response.comment ?? null,
+        acceptedTimeWindow: existing.response.acceptedStart
+          ? { start: existing.response.acceptedStart.toISOString(), end: existing.response.acceptedEnd!.toISOString() }
+          : null,
+        alternatives: existing.alternatives.map(a => ({
+          alternativeId: a.alternativeId,
+          rank: a.rank,
+          timeWindow: { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
+          crewSize: a.crewSize ?? null,
+          conditions: a.conditions ?? null,
+        })),
+        nextAvailableDate: existing.response.nextAvailableDate ?? null,
+        transportStatus: transportStatus,
+        transportMessageId: transportMessageId,
+        requestStatus: request.status,
+        createdAt: existing.response.createdAt.toISOString(),
+      });
+      return;
+    }
+
+    // ── 7. Status guard (first-time response) ─────────────────────────────────
+    if (!ANSWERABLE_STATUSES.has(request.status)) {
+      res.status(409).json({
+        error: `TaktRequest cannot be answered in status "${request.status}". ` +
+               `Expected: ${[...ANSWERABLE_STATUSES].join(", ")}`,
+        currentStatus: request.status,
+      });
+      return;
+    }
+
+    // ── 8. Save response transactionally (business response first) ────────────
+    let result;
+    try {
+      result = await createTaktResponse({
+        taktRequestId: id,
+        decision,
+        reasonCode,
+        comment,
+        acceptedStart:  acceptedTimeWindow ? new Date(acceptedTimeWindow.start) : undefined,
+        acceptedEnd:    acceptedTimeWindow ? new Date(acceptedTimeWindow.end)   : undefined,
+        nextAvailableDate,
+        createdByUserId: userId,
+        messageId: msgId,
+        alternatives: alternatives?.map(alt => ({
+          alternativeId: alt.alternativeId,
+          rank:          alt.rank,
+          proposedStart: new Date(alt.timeWindow.start),
+          proposedEnd:   new Date(alt.timeWindow.end),
+          crewSize:      alt.crewSize,
+          conditions:    alt.conditions,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof TaktResponseValidationError) {
+        res.status(422).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+
+    // ── 9. Send TaktResponseMessage to GU inbox ───────────────────────────────
+    const guPayload = buildGuPayload(
+      id, decision, reasonCode, comment, acceptedTimeWindow, alternatives, nextAvailableDate,
+    );
+    const envelope = {
+      messageId: msgId,
+      schemaVersion: "1.0",
+      messageType: DataspaceMessageType.TAKT_RESPONSE_SUBMITTED,
+      senderOrgId: nuOrgId,
+      recipientOrgId: request.guOrgId,
+      correlationId: id,
+      createdAt: new Date(),
+      causationId: null,
+      payload: guPayload,
+    };
+
+    const transportResult = await transport.send(envelope);
+
+    // ── 10. Update TaktRequest status ─────────────────────────────────────────
+    const nextStatus: TaktRequestStatus =
+      decision === "ACCEPTED"              ? "ACCEPTED" :
+      decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
+                                             "REJECTED";
+    try {
+      await updateTaktRequestStatus(id, nextStatus);
+    } catch (err) {
+      if (!(err instanceof TaktRequestTransitionError)) throw err;
+      // Non-fatal: response and message already saved — status may have advanced
+    }
+
+    res.status(201).json({
+      responseId:       result.response.id,
+      taktRequestId:    id,
+      decision:         result.response.decision,
+      reasonCode:       result.response.reasonCode ?? null,
+      comment:          result.response.comment ?? null,
+      acceptedTimeWindow: result.response.acceptedStart
+        ? { start: result.response.acceptedStart.toISOString(), end: result.response.acceptedEnd!.toISOString() }
+        : null,
+      alternatives: result.alternatives.map(a => ({
+        alternativeId: a.alternativeId,
+        rank:          a.rank,
+        timeWindow:    { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
+        crewSize:      a.crewSize ?? null,
+        conditions:    a.conditions ?? null,
+      })),
+      nextAvailableDate:   result.response.nextAvailableDate ?? null,
+      transportStatus:     transportResult.status,
+      transportMessageId:  transportResult.messageId,
+      requestStatus:       nextStatus,
+      createdAt:           result.response.createdAt.toISOString(),
+    });
+  },
+);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Formats a check row for NU-facing API responses (includes both internal + public results). */
+function formatCheckResponse(check: import("@workspace/db").AvailabilityCheck) {
+  return {
+    checkId:        check.id,
+    status:         check.status,
+    result:         check.result,
+    runNumber:      check.runNumber,
+    internalResult: check.internalResultPayload,
+    publicResult:   check.publicResultPayload,
+    checkedAt:      check.checkedAt?.toISOString() ?? null,
+    createdAt:      check.createdAt.toISOString(),
+  };
+}
+
+/** Strict privacy filter for the new /responses endpoint body.
+ *  Returns an error string on failure, null on pass. */
+const FORBIDDEN_RESPONSE_FIELDS = new Set([
+  "localProjectId", "localProjectCode", "customerAlias", "customerName",
+  "resourceId", "resourceName", "employeeId", "employeeName",
+  "internalCost", "internalPriority", "internalConflicts", "conflicts",
+  "internalResultPayload", "availabilityCheckId",
+]);
+const ALLOWED_RESPONSE_FIELDS = new Set([
+  "decision", "acceptedTimeWindow", "reasonCode", "comment",
+  "alternatives", "nextAvailableDate",
+]);
+
+function checkResponsePrivacy(body: unknown): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return "Request body must be a JSON object";
+  }
+  const b = body as Record<string, unknown>;
+  for (const key of Object.keys(b)) {
+    if (FORBIDDEN_RESPONSE_FIELDS.has(key)) {
+      return `Forbidden field in response body: "${key}". Internal NU data must not be included.`;
+    }
+    if (!ALLOWED_RESPONSE_FIELDS.has(key)) {
+      return `Unknown field not permitted in response body: "${key}". Allowed: ${[...ALLOWED_RESPONSE_FIELDS].join(", ")}.`;
+    }
+  }
+  return null;
+}
+
+/** Builds the GU-facing message payload — public fields only, no internal NU data. */
+function buildGuPayload(
+  taktRequestId: string,
+  decision: string,
+  reasonCode?: string,
+  comment?: string,
+  acceptedTimeWindow?: { start: string; end: string },
+  alternatives?: Array<{ alternativeId: string; rank: number; timeWindow: { start: string; end: string }; crewSize?: number; conditions?: string[] }>,
+  nextAvailableDate?: string,
+): Record<string, unknown> {
+  return {
+    taktRequestId,
+    decision,
+    reasonCode:         reasonCode         ?? null,
+    comment:            comment            ?? null,
+    acceptedTimeWindow: acceptedTimeWindow ?? null,
+    alternatives: alternatives?.map(a => ({
+      alternativeId: a.alternativeId,
+      rank:          a.rank,
+      timeWindow:    a.timeWindow,
+      crewSize:      a.crewSize ?? null,
+      conditions:    a.conditions ?? null,
+    })) ?? null,
+    nextAvailableDate: nextAvailableDate ?? null,
+  };
+}
 
 export default router;

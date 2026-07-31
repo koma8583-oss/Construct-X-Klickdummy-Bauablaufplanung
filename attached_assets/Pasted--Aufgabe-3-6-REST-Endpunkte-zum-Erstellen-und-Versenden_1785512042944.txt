@@ -1,0 +1,182 @@
+# Aufgabe 3.6 – REST-Endpunkte zum Erstellen und Versenden einer Taktanfrage implementieren
+
+Implementiere neue GU-seitige REST-Endpunkte für:
+
+1. Erstellen einer Taktanfrage als Entwurf
+2. Versenden der Taktanfrage als Notification
+
+Verwende die bestehenden Authentifizierungs-, Organisations- und Routingkonventionen.
+
+Bestehende Delegation-Endpunkte bleiben unverändert.
+
+## Endpunkt 1 – Taktanfrage als Entwurf erstellen
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests
+```
+
+## Request-Body
+
+Mindestens:
+
+```json
+{
+  "taktId": "TAKT-ID",
+  "nuOrgId": "NU-ORG-ID",
+  "responseRequiredBy": "2026-08-07T10:00:00Z",
+  "subject": "Neue Taktanfrage",
+  "message": "Bitte prüfen Sie den vorgeschlagenen Zeitraum."
+}
+```
+
+## Verarbeitung
+
+1. Authentifizierten Benutzer bestimmen.
+2. GU-Organisation des Benutzers bestimmen.
+3. Berechtigung zur Taktplanung prüfen.
+4. Takt laden.
+5. Prüfen, ob der Takt zur GU-Organisation gehört.
+6. Prüfen, ob der NU bereits als Partner beziehungsweise Projektbeteiligter existiert.
+7. Aktuelle Taktversion übernehmen.
+8. Eindeutige `requestNumber` erzeugen.
+9. `TaktRequest` mit Status `DRAFT` erstellen.
+10. Unveränderlichen Snapshot erzeugen.
+11. Request und Snapshot in einer Transaktion speichern.
+12. Noch keine Nachricht versenden.
+
+## Response
+
+Liefere:
+
+* TaktRequest-Metadaten
+* Status `DRAFT`
+* Taktversion
+* GU- und NU-Referenz
+* Antwortfrist
+* keine vollständigen Snapshot-Daten, sofern dies nicht für die GU-Vorschau benötigt wird
+
+## Endpunkt 2 – Taktanfrage versenden
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests/{requestId}/send
+```
+
+## Verarbeitung
+
+1. Request laden.
+2. GU-Organisation prüfen.
+3. Prüfen, ob Status `DRAFT` ist.
+4. Snapshot muss vorhanden sein.
+5. `TaktRequestNotificationMessage` erzeugen.
+6. Nachricht über `MessageTransport` versenden.
+7. Keine direkte Nutzung von `writeHubMessage` in der Route.
+8. Bei erfolgreichem Versand Statusübergänge durchführen:
+
+   * Request `DRAFT → SENT`
+   * nach bestätigter lokaler Zustellung `SENT → DELIVERED`
+9. `sentAt` und `deliveredAt` setzen.
+10. Takt auf `IN_COORDINATION` setzen, sofern dies mit dem neuen Taktmodell möglich ist.
+
+## Notification-Payload
+
+Die Notification enthält nur:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014",
+  "taktVersion": 1,
+  "responseRequiredBy": "2026-08-07T10:00:00Z",
+  "detailsRef": "/takt-requests/REQ-001/details",
+  "subject": "Neue Taktanfrage",
+  "message": "Bitte prüfen Sie den vorgeschlagenen Zeitraum."
+}
+```
+
+Nicht enthalten:
+
+* vollständiger Snapshot
+* vollständiger Takt
+* andere Takte
+* NU-Ressourcen
+* interne GU-Daten
+
+## Idempotenz
+
+Wiederholter Aufruf von `/send`:
+
+* darf keine zweite Notification erzeugen
+* darf keine neue `messageId` erzeugen
+* gibt das vorhandene Zustellergebnis zurück, wenn bereits zugestellt
+* bei Status `FAILED` darf die vorhandene Nachricht über Retry erneut zugestellt werden
+* bei Status `DELIVERED` keine erneute Zustellung
+
+## Fehlerfälle
+
+Mindestens:
+
+* Takt nicht gefunden
+* Request nicht gefunden
+* fremde GU-Organisation
+* Benutzer nicht berechtigt
+* NU nicht zulässig
+* Snapshot fehlt
+* Request bereits versendet
+* Request bereits storniert
+* ungültiger Statusübergang
+* Transportfehler
+
+## OpenAPI
+
+Ergänze:
+
+* Request- und Response-Schemas
+* Endpunktdokumentation
+* mögliche Fehlerantworten
+* Authentifizierungsanforderungen
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze Tests:
+
+* GU erstellt gültigen Entwurf
+* Snapshot wird gleichzeitig erstellt
+* fremder GU kann keinen Request erstellen
+* nicht berechtigter Benutzer wird abgelehnt
+* Request wird erfolgreich versendet
+* Notification enthält keinen Snapshot
+* Status endet nach lokaler Zustellung auf `DELIVERED`
+* Takt wird auf `IN_COORDINATION` gesetzt
+* wiederholtes Senden ist idempotent
+* Transportfehler hinterlässt nachvollziehbaren Status
+* bestehende Delegation-Endpunkte funktionieren weiterhin
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* Transporttests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Endpunkte
+* Request- und Response-Schemas
+* erzeugte Notification-Struktur
+* Statusänderungen
+* Idempotenzverhalten
+* Testergebnisse
+* Ergebnis von Codegenerierung, Typecheck und Build

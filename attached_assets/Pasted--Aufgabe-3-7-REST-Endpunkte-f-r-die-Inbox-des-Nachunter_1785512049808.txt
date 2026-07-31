@@ -1,0 +1,161 @@
+# Aufgabe 3.7 – REST-Endpunkte für die Inbox des Nachunternehmers implementieren
+
+Implementiere NU-seitige REST-Endpunkte zum Lesen der zugestellten Nachrichten.
+
+Verwende die bestehende Authentifizierung und Organisationsabgrenzung.
+
+Die Inbox liefert zunächst nur Notifications und keine vollständigen Taktdetails.
+
+## Endpunkt – Inbox auflisten
+
+Implementiere sinngemäß:
+
+```http
+GET /messages/inbox
+```
+
+oder einen zum bestehenden API-Stil passenden Pfad.
+
+## Filter
+
+Unterstütze mindestens:
+
+```text
+status
+messageType
+correlationId
+limit
+offset
+```
+
+Standardmäßig sollen die neuesten Nachrichten zuerst geliefert werden.
+
+## Organisationsfilterung
+
+* `recipientOrgId` wird aus dem authentifizierten Benutzer abgeleitet.
+* Der Client darf nicht frei eine beliebige `recipientOrgId` angeben.
+* Ein NU sieht ausschließlich Nachrichten seiner eigenen Organisation.
+* GU-Benutzer dürfen nicht die NU-Inbox lesen.
+* Hub-Benutzer dürfen nicht fachlich als NU auftreten.
+
+## Response
+
+Liefere je Nachricht mindestens:
+
+```text
+messageId
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+createdAt
+receivedAt
+status
+payload
+```
+
+Bei `TAKT_REQUEST_NOTIFICATION` enthält `payload` nur:
+
+* TaktRequest-ID
+* Projekt- und Taktreferenz
+* Taktversion
+* Antwortfrist
+* Detailreferenz
+* Betreff
+* Nachricht
+
+Keine Snapshot-Daten liefern.
+
+## Endpunkt – Einzelne Nachricht lesen
+
+Implementiere sinngemäß:
+
+```http
+GET /messages/inbox/{messageId}
+```
+
+Anforderungen:
+
+* nur adressierter Empfänger
+* Nachricht nicht gefunden ergibt `404`
+* fremde Organisation erhält `403` oder das im Projekt etablierte sichere Verhalten
+
+## Endpunkt – Als gelesen markieren
+
+Implementiere sinngemäß:
+
+```http
+POST /messages/inbox/{messageId}/read
+```
+
+oder:
+
+```http
+PATCH /messages/inbox/{messageId}
+```
+
+Verhalten:
+
+* Inbox-Status auf `READ`
+* `readAt` setzen
+* idempotent
+* keine Änderung am TaktRequest-Status
+* insbesondere kein Wechsel zu `DETAILS_RETRIEVED`
+
+## OpenAPI
+
+Ergänze:
+
+* Inbox-Listenschema
+* Einzelansicht
+* Filterparameter
+* Pagination
+* Read-Aktion
+* Fehlerantworten
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze:
+
+* NU sieht eigene Nachrichten
+* NU sieht keine Nachrichten anderer NU
+* GU kann NU-Inbox nicht lesen
+* Notification enthält keinen vollständigen Snapshot
+* Filter nach Nachrichtentyp
+* Filter nach Status
+* Filter nach `correlationId`
+* Pagination
+* Nachricht als gelesen markieren
+* wiederholtes Lesen bleibt idempotent
+* Lesen verändert keinen TaktRequest-Status
+
+## Einschränkungen
+
+* noch kein Detailabruf
+* keine Ressourcenprüfung
+* keine Antwort des NU
+* keine UI-Anpassung
+* kein EDC
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Inbox-Endpunkte
+* unterstützte Filter
+* Organisationsschutz
+* Read-Verhalten
+* Testergebnisse
+* Ergebnis von Codegenerierung, Typecheck und Build

@@ -1,0 +1,215 @@
+# Aufgabe 2.8 – Datenbankmodelle, Statusregeln und Rückwärtskompatibilität abschließend prüfen
+
+Prüfe alle im Rahmen von Aufgabe 2 vorgenommenen Änderungen.
+
+Führe nur notwendige Korrekturen durch.
+
+Implementiere keine neuen öffentlichen TaktRequest-Endpunkte, keine Transportlogik und keine Benutzeroberflächen.
+
+## 1. Taktmodell prüfen
+
+Prüfe:
+
+* Feld `version`
+* Feld `lifecycleStatus`
+* Feld `updatedAt`, falls ergänzt
+* Standardwerte
+* Rückwärtskompatibilität mit dem bestehenden Statusfeld
+* vorhandene Takte besitzen gültige Werte
+* bestehende API-Antworten bleiben kompatibel
+
+## 2. Taktanfragen prüfen
+
+Prüfe:
+
+* Tabelle `takt_requests`
+* Tabelle `takt_request_snapshots`
+* Beziehungen zu Takt, GU, NU und Benutzer
+* Self-Reference über `supersedesRequestId`
+* Statusenum
+* Standardstatus `DRAFT`
+* genau ein Snapshot pro Anfrage
+* eindeutige `requestNumber`
+* sinnvolle Indizes
+* historienfreundliches Löschverhalten
+
+## 3. Taktantworten prüfen
+
+Prüfe:
+
+* Tabelle `takt_responses`
+* Tabelle `takt_response_alternatives`
+* maximal eine Antwort pro Anfrage
+* eindeutige `messageId`, sofern gesetzt
+* eindeutige Alternative-IDs innerhalb einer Antwort
+* eindeutige Rangfolge innerhalb einer Antwort
+* gültige Zeitfenster
+* maximal drei Alternativen in der Service-Schicht
+* konsistente Decision-Validierung
+
+## 4. Statusregeln prüfen
+
+Prüfe insbesondere:
+
+* `DELIVERED` ist keine fachliche Zustimmung.
+* `REJECTED` lehnt nicht automatisch den gesamten Takt ab.
+* `ALTERNATIVES_PROPOSED` bestätigt den Takt noch nicht.
+* `ACCEPTED` kann später zur Bestätigung des Takts führen.
+* `SUPERSEDED` markiert eine ersetzte Anfrage.
+* Terminale Zustände können nicht regulär verändert werden.
+* Ungültige Übergänge erzeugen einen Domain-Fehler.
+* Der Taktstatus wird noch nicht automatisch aus dem Requeststatus abgeleitet.
+
+## 5. Datenintegrität prüfen
+
+Teste:
+
+* Request referenziert einen existierenden Takt.
+* Request referenziert existierende Organisationen.
+* Snapshot ohne Request ist nicht möglich.
+* Zweiter Snapshot für denselben Request wird abgelehnt.
+* Zweite Antwort für denselben Request wird abgelehnt.
+* Alternative ohne Antwort ist nicht möglich.
+* Doppelte `requestNumber` wird abgelehnt.
+* Doppelte gesetzte `messageId` wird abgelehnt.
+* Doppelter Rang wird abgelehnt.
+* Doppelte Alternative-ID wird abgelehnt.
+* Ungültige Zeitfenster werden abgelehnt.
+* Mehr als drei Alternativen werden abgelehnt.
+* GU-Listen sind nach `guOrgId` gefiltert.
+* NU-Listen sind nach `nuOrgId` gefiltert.
+
+## 6. Seed-Daten prüfen
+
+Prüfe das Vorhandensein folgender Fälle:
+
+* offene und zugestellte Anfrage
+* bestätigte Anfrage
+* Anfrage mit zwei Alternativen
+* abgelehnte Anfrage
+
+Prüfe:
+
+* jeder Request besitzt genau einen Snapshot
+* Entscheidungen und Status sind konsistent
+* keine vertraulichen NU-Daten in Snapshots oder Antworten
+* bestehende Seed-Daten bleiben erhalten
+
+## 7. Rückwärtskompatibilität prüfen
+
+Bestätige:
+
+* bestehende Delegation-Tabellen wurden nicht entfernt
+* bestehende Delegation-Endpunkte wurden nicht entfernt
+* bestehende Delegation-Schemas wurden nicht entfernt
+* bestehende GU-, NU- und Hub-Anwendungen bleiben startfähig
+* bestehende Clients funktionieren weiterhin
+* bestehende Demo-Daten sind weiterhin vorhanden
+* generierte Dateien wurden nicht manuell bearbeitet
+
+## 8. Dokumentation prüfen
+
+Prüfe und aktualisiere bei Bedarf:
+
+* `docs/database-model.md`
+* `docs/state-model.md`
+* `docs/data-ownership.md`
+
+Dokumentation und tatsächliche Implementierung müssen übereinstimmen.
+
+## 9. Nicht implementieren
+
+* keine neuen öffentlichen `/takt-requests`-Endpunkte
+* keine Outbox
+* keine Inbox
+* keine Hub-Zustellung
+* kein Push der Notification
+* kein Pull der Details
+* keine Ressourcenprüfung
+* kein Push der Antwort
+* keine UI-Anpassung
+* kein EDC
+* kein DSP
+* keine Wallet
+* keine Policy- oder Vertragslogik
+
+## 10. Prüfungen
+
+Führe die tatsächlich vorhandenen Befehle aus für:
+
+* Datenbankmigration oder Schema-Push
+* OpenAPI-Codegenerierung
+* neue Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+### Geänderte Dateien
+
+Liste alle während Aufgabe 2 geänderten Dateien mit kurzer Beschreibung.
+
+### Neue Datenbankobjekte
+
+Liste:
+
+```text
+takt_requests
+takt_request_snapshots
+takt_responses
+takt_response_alternatives
+```
+
+### Erweiterte Datenbankobjekte
+
+Liste die am Taktmodell ergänzten Felder.
+
+### Neue Statusmodelle
+
+Liste:
+
+```text
+TaktLifecycleStatus
+TaktRequestStatus
+```
+
+### Constraints und Indizes
+
+Liste mindestens:
+
+* Unique Constraint für `requestNumber`
+* Unique Constraint für einen Snapshot je Request
+* Unique Constraint für eine Response je Request
+* Unique Constraint für `messageId`, sofern gesetzt
+* Unique Constraint für Alternative-ID je Response
+* Unique Constraint für Rang je Response
+* Foreign Keys
+* Organisationsindizes
+* Statusindizes
+
+### Prüfungsergebnisse
+
+Nenne das Ergebnis von:
+
+* Datenbankmigration
+* Seed
+* Datenbanktests
+* Service-Tests
+* bestehenden Tests
+* OpenAPI-Codegenerierung
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* Transportabstraktion
+* Outbox und Inbox
+* Push der Taktanfrage
+* Pull der Takt-Snapshots
+* lokale Ressourcenprüfung
+* Push der Taktantwort
+* GU-Entscheidung über Alternativen
+* Anpassung der GU-, NU- und Hub-Oberflächen

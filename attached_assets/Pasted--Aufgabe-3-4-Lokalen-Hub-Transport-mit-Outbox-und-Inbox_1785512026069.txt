@@ -1,0 +1,176 @@
+# Aufgabe 3.4 – Lokalen Hub-Transport mit Outbox- und Inbox-Zustellung implementieren
+
+Implementiere die PoC-Transportimplementierung:
+
+`LocalHubTransport`
+
+Sie muss das in Aufgabe 3.3 definierte `MessageTransport`-Interface implementieren.
+
+Verwende die in Aufgabe 3.2 angelegten Outbox- und Inbox-Tabellen.
+
+Es sollen noch keine TaktRequest-spezifischen REST-Endpunkte implementiert werden.
+
+## Ziel
+
+Eine Nachricht wird lokal folgendermaßen verarbeitet:
+
+```text
+MessageEnvelope
+    ↓
+message_outbox PENDING
+    ↓
+Zustellversuch
+    ↓
+message_outbox SENT
+    ↓
+message_inbox DELIVERED
+    ↓
+message_outbox DELIVERED
+```
+
+## Versandlogik
+
+Implementiere:
+
+1. Validierung des `MessageEnvelope`.
+2. Prüfung, ob `messageId` bereits existiert.
+3. Speicherung in `message_outbox` mit `PENDING`.
+4. Erhöhung von `attemptCount`.
+5. Setzen von `lastAttemptAt`.
+6. Erzeugen eines Inbox-Datensatzes für den Empfänger.
+7. Setzen des Inbox-Status auf `DELIVERED`.
+8. Setzen des Outbox-Status auf `DELIVERED`.
+9. Setzen von `sentAt` und `deliveredAt`.
+10. Rückgabe eines `TransportResult`.
+
+## Transaktion
+
+Outbox-Update und Inbox-Erstellung sollen möglichst in einer Datenbanktransaktion erfolgen.
+
+Wenn die Inbox-Erstellung fehlschlägt:
+
+* keine irreführende erfolgreiche Zustellung speichern
+* Outbox auf `FAILED` setzen
+* `failureReason` speichern
+* `attemptCount` beibehalten
+* `nextAttemptAt` setzen, falls Retry unterstützt wird
+
+## Idempotenz
+
+### Gleiche `messageId`, gleicher Inhalt
+
+Wenn dieselbe Nachricht erneut gesendet wird:
+
+* keine zweite Outbox-Nachricht anlegen
+* keine zweite Inbox-Nachricht anlegen
+* vorhandenes Zustellergebnis zurückgeben
+
+### Gleiche `messageId`, anderer Inhalt
+
+Wenn eine Nachricht mit gleicher `messageId`, aber verändertem Inhalt gesendet wird:
+
+* Vorgang ablehnen
+* klaren Idempotenz- oder Konfliktfehler auslösen
+* vorhandene Nachricht nicht überschreiben
+
+Vergleiche mindestens:
+
+```text
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+payload
+```
+
+## Inbox-Abfrage
+
+Implementiere:
+
+* Filterung nach `recipientOrgId`
+* Filter nach Status
+* Filter nach Nachrichtentyp
+* Filter nach `correlationId`
+* Pagination
+* Sortierung nach `receivedAt`, neueste zuerst
+
+## Als gelesen markieren
+
+Implementiere:
+
+* Prüfung des Empfängers
+* Setzen von `status = READ`
+* Setzen von `readAt`
+* wiederholter Aufruf bleibt idempotent
+
+Das Lesen einer Notification darf den TaktRequest nicht auf `DETAILS_RETRIEVED` setzen.
+
+## Retry
+
+Implementiere Retry nur für Nachrichten mit Status `FAILED`.
+
+Regeln:
+
+* gleiche `messageId`
+* `attemptCount` erhöhen
+* `lastAttemptAt` aktualisieren
+* bei Erfolg Inbox erstellen und Status auf `DELIVERED` setzen
+* bei erneutem Fehler `failureReason` aktualisieren
+* keine unbegrenzte automatische Retry-Schleife implementieren
+* manueller Retry genügt zunächst
+
+## Bestehenden Hub-Code behandeln
+
+Falls bereits eine Funktion wie `writeHubMessage` existiert:
+
+* nicht sofort entfernen
+* `LocalHubTransport` darf sie intern verwenden, wenn sie geeignet ist
+* direkte Aufrufe aus neuer Fachlogik vermeiden
+* bestehende Delegation-Funktionen nicht brechen
+* veraltete direkte Nutzung dokumentieren
+
+## Tests
+
+Ergänze Tests für:
+
+* erfolgreiche Zustellung
+* Outbox-Statusfolge
+* Inbox-Erstellung
+* gleicher Versand ist idempotent
+* gleiche `messageId` mit anderem Payload wird abgelehnt
+* fremder Empfänger kann Nachricht nicht lesen
+* Nachricht kann als gelesen markiert werden
+* Lesen verändert keinen TaktRequest-Status
+* fehlgeschlagene Zustellung wird als `FAILED` gespeichert
+* Retry einer fehlgeschlagenen Nachricht
+* Retry einer bereits zugestellten Nachricht wird nicht erneut ausgeführt
+
+## Einschränkungen
+
+* keine TaktRequest-Erstellung
+* keine Snapshot-Erzeugung
+* keine neuen GU- oder NU-Routes
+* keine UI
+* kein EDC
+
+## Prüfungen
+
+Führe aus:
+
+* Transporttests
+* Datenbanktests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Transportdateien
+* verwendete Transaktionen
+* Idempotenzverhalten
+* Retry-Verhalten
+* Umgang mit bestehendem Hub-Code
+* Testergebnisse
+* Ergebnis von Typecheck und Build

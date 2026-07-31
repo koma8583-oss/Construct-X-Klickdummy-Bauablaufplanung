@@ -24,6 +24,7 @@ import type {
   AddProjectContractorRequest,
   AgDashboard,
   AnDashboard,
+  AvailabilityCheckResponse,
   CreateDelegationRequest,
   CreateDelegationResponseRequest,
   CreateOrganizationRequest,
@@ -32,16 +33,34 @@ import type {
   CreateResourceRequest,
   CreateTaktDependencyRequest,
   CreateTaktRequest,
+  CreateTaktRequestBody,
   CreateWebhookRequest,
   Delegation,
   DelegationResponse,
+  ErrorResponse,
   HealthStatus,
+  InboxMarkReadResponse,
+  InboxMessageItem,
   ListDelegationsParams,
+  ListInboxMessagesParams,
+  ListNuLocalProjectsParams,
+  ListNuResourceBookingsParams,
   ListOrganizationsParams,
   ListProjectsParams,
   ListResourceAssignmentsParams,
   ListResourcesParams,
+  ListTaktRequestsParams,
   ListWebhookEventsParams,
+  NuLocalProject,
+  NuLocalProjectCreate,
+  NuLocalProjectListResponse,
+  NuLocalProjectUpdate,
+  NuResourceBooking,
+  NuResourceBookingCreate,
+  NuResourceBookingListResponse,
+  NuResourceBookingUpdate,
+  NuResponseCreate,
+  NuResponseResult,
   Organization,
   OrganizationMember,
   OrganizationMembership,
@@ -52,6 +71,11 @@ import type {
   TaktDependency,
   TaktDependencyCreateResult,
   TaktDependencyDeleteResult,
+  TaktRequestDetail,
+  TaktRequestDetailsResponse,
+  TaktRequestDraftResponse,
+  TaktRequestListItem,
+  TaktRequestSendResult,
   TaktUpdateResult,
   UpdateDelegationRequest,
   UpdateDelegationResponseDecisionRequest,
@@ -3841,4 +3865,1554 @@ export function useGetAnDashboard<TData = Awaited<ReturnType<typeof getAnDashboa
 
 
 
+
+export const getListInboxMessagesUrl = (params?: ListInboxMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/messages/inbox?${stringifiedParams}` : `/api/messages/inbox`
+}
+
+/**
+ * Returns messages delivered to the authenticated NU organisation. recipientOrgId is always derived from the bearer token — clients cannot query another organisation's inbox. GU users and hub admins are rejected.
+ * @summary NU lists their inbox messages (newest first)
+ */
+export const listInboxMessages = async (params?: ListInboxMessagesParams, options?: RequestInit): Promise<InboxMessageItem[]> => {
+
+  return customFetch<InboxMessageItem[]>(getListInboxMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInboxMessagesQueryKey = (params?: ListInboxMessagesParams,) => {
+    return [
+    `/api/messages/inbox`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListInboxMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listInboxMessages>>, TError = ErrorType<ErrorResponse>>(params?: ListInboxMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInboxMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInboxMessagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInboxMessages>>> = ({ signal }) => listInboxMessages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInboxMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInboxMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listInboxMessages>>>
+export type ListInboxMessagesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary NU lists their inbox messages (newest first)
+ */
+
+export function useListInboxMessages<TData = Awaited<ReturnType<typeof listInboxMessages>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListInboxMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInboxMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInboxMessagesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetInboxMessageUrl = (messageId: string,) => {
+
+
+
+
+  return `/api/messages/inbox/${messageId}`
+}
+
+/**
+ * @summary NU retrieves a single inbox message by messageId
+ */
+export const getInboxMessage = async (messageId: string, options?: RequestInit): Promise<InboxMessageItem> => {
+
+  return customFetch<InboxMessageItem>(getGetInboxMessageUrl(messageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInboxMessageQueryKey = (messageId: string,) => {
+    return [
+    `/api/messages/inbox/${messageId}`
+    ] as const;
+    }
+
+
+export const getGetInboxMessageQueryOptions = <TData = Awaited<ReturnType<typeof getInboxMessage>>, TError = ErrorType<ErrorResponse>>(messageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInboxMessage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInboxMessageQueryKey(messageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInboxMessage>>> = ({ signal }) => getInboxMessage(messageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: messageId !== null && messageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInboxMessage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInboxMessageQueryResult = NonNullable<Awaited<ReturnType<typeof getInboxMessage>>>
+export type GetInboxMessageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary NU retrieves a single inbox message by messageId
+ */
+
+export function useGetInboxMessage<TData = Awaited<ReturnType<typeof getInboxMessage>>, TError = ErrorType<ErrorResponse>>(
+ messageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInboxMessage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInboxMessageQueryOptions(messageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMarkInboxMessageReadUrl = (messageId: string,) => {
+
+
+
+
+  return `/api/messages/inbox/${messageId}/read`
+}
+
+/**
+ * Sets the inbox status to READ and records readAt. Idempotent — calling this endpoint multiple times on the same message is safe. Does NOT change the TaktRequest status.
+ * @summary NU marks a message as READ
+ */
+export const markInboxMessageRead = async (messageId: string, options?: RequestInit): Promise<InboxMarkReadResponse> => {
+
+  return customFetch<InboxMarkReadResponse>(getMarkInboxMessageReadUrl(messageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkInboxMessageReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markInboxMessageRead>>, TError,{messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markInboxMessageRead>>, TError,{messageId: string}, TContext> => {
+
+const mutationKey = ['markInboxMessageRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markInboxMessageRead>>, {messageId: string}> = (props) => {
+          const {messageId} = props ?? {};
+
+          return  markInboxMessageRead(messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkInboxMessageReadMutationResult = NonNullable<Awaited<ReturnType<typeof markInboxMessageRead>>>
+
+    export type MarkInboxMessageReadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary NU marks a message as READ
+ */
+export const useMarkInboxMessageRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markInboxMessageRead>>, TError,{messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markInboxMessageRead>>,
+        TError,
+        {messageId: string},
+        TContext
+      > => {
+      return useMutation(getMarkInboxMessageReadMutationOptions(options));
+    }
+
+export const getListTaktRequestsUrl = (params?: ListTaktRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/takt-requests?${stringifiedParams}` : `/api/takt-requests`
+}
+
+/**
+ * Returns all TaktRequests for the authenticated GU organisation, joined with Takt name, project name, NU organisation name, and the transport delivery status of the notification message.
+ * Access: GU users only. NU users pass role=nu instead; hub admins → 403.
+ * @summary GU lists their own TaktRequests (enriched with Takt, project, NU, transport status)
+ */
+export const listTaktRequests = async (params?: ListTaktRequestsParams, options?: RequestInit): Promise<TaktRequestListItem[]> => {
+
+  return customFetch<TaktRequestListItem[]>(getListTaktRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTaktRequestsQueryKey = (params?: ListTaktRequestsParams,) => {
+    return [
+    `/api/takt-requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListTaktRequestsQueryOptions = <TData = Awaited<ReturnType<typeof listTaktRequests>>, TError = ErrorType<ErrorResponse>>(params?: ListTaktRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaktRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTaktRequestsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTaktRequests>>> = ({ signal }) => listTaktRequests(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTaktRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTaktRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof listTaktRequests>>>
+export type ListTaktRequestsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary GU lists their own TaktRequests (enriched with Takt, project, NU, transport status)
+ */
+
+export function useListTaktRequests<TData = Awaited<ReturnType<typeof listTaktRequests>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListTaktRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaktRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTaktRequestsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTaktRequestWithSnapshotUrl = () => {
+
+
+
+
+  return `/api/takt-requests`
+}
+
+/**
+ * Creates a TaktRequest in DRAFT status and atomically persists an immutable whitelist-scoped snapshot of the current Takt. No message is sent; call /takt-requests/{requestId}/send to deliver the notification.
+ * @summary GU creates a TaktRequest draft with an immutable Takt snapshot
+ */
+export const createTaktRequestWithSnapshot = async (createTaktRequestBody: CreateTaktRequestBody, options?: RequestInit): Promise<TaktRequestDraftResponse> => {
+
+  return customFetch<TaktRequestDraftResponse>(getCreateTaktRequestWithSnapshotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTaktRequestBody)
+  }
+);}
+
+
+
+
+
+export const getCreateTaktRequestWithSnapshotMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>, TError,{data: BodyType<CreateTaktRequestBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>, TError,{data: BodyType<CreateTaktRequestBody>}, TContext> => {
+
+const mutationKey = ['createTaktRequestWithSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>, {data: BodyType<CreateTaktRequestBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTaktRequestWithSnapshot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTaktRequestWithSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>>
+    export type CreateTaktRequestWithSnapshotMutationBody = BodyType<CreateTaktRequestBody>
+    export type CreateTaktRequestWithSnapshotMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary GU creates a TaktRequest draft with an immutable Takt snapshot
+ */
+export const useCreateTaktRequestWithSnapshot = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>, TError,{data: BodyType<CreateTaktRequestBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTaktRequestWithSnapshot>>,
+        TError,
+        {data: BodyType<CreateTaktRequestBody>},
+        TContext
+      > => {
+      return useMutation(getCreateTaktRequestWithSnapshotMutationOptions(options));
+    }
+
+export const getGetTaktRequestDetailUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}`
+}
+
+/**
+ * Returns the complete detail record for a single TaktRequest. Includes: enriched metadata (Takt name, project name, NU org name), all process timestamps for the timeline, transport/outbox information (status, failure reason, attempt count), the immutable snapshot, the notification payload actually sent to the NU, and the NU's response with any proposed alternatives.
+ * Access: the creating GU organisation only. Other GU, NU, hub admins and unauthenticated callers receive 403 or 404.
+ * @summary GU detail view — full metadata, timeline, snapshot, notification, and response
+ */
+export const getTaktRequestDetail = async (requestId: string, options?: RequestInit): Promise<TaktRequestDetail> => {
+
+  return customFetch<TaktRequestDetail>(getGetTaktRequestDetailUrl(requestId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTaktRequestDetailQueryKey = (requestId: string,) => {
+    return [
+    `/api/takt-requests/${requestId}`
+    ] as const;
+    }
+
+
+export const getGetTaktRequestDetailQueryOptions = <TData = Awaited<ReturnType<typeof getTaktRequestDetail>>, TError = ErrorType<ErrorResponse>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTaktRequestDetailQueryKey(requestId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTaktRequestDetail>>> = ({ signal }) => getTaktRequestDetail(requestId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: requestId !== null && requestId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTaktRequestDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getTaktRequestDetail>>>
+export type GetTaktRequestDetailQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary GU detail view — full metadata, timeline, snapshot, notification, and response
+ */
+
+export function useGetTaktRequestDetail<TData = Awaited<ReturnType<typeof getTaktRequestDetail>>, TError = ErrorType<ErrorResponse>>(
+ requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTaktRequestDetailQueryOptions(requestId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTaktRequestDetailsUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/details`
+}
+
+/**
+ * Returns the immutable point-in-time Takt snapshot that was created when the request was sent. The response NEVER contains the live Takt row — only the snapshot data released by the GU.
+ * Access:
+ *   - The addressed NU organisation: may access when status is DELIVERED,
+ *     DETAILS_RETRIEVED, or UNDER_REVIEW. First access transitions
+ *     DELIVERED → DETAILS_RETRIEVED and records detailsRetrievedAt.
+ *     Subsequent access (DETAILS_RETRIEVED, UNDER_REVIEW) is idempotent.
+ *   - The creating GU organisation: always has read access for
+ *     control/preview purposes. Does NOT trigger any status transition.
+ *
+ * Forbidden for all other callers (other NU, other GU, hub admins, unauthenticated users).
+ * @summary Pull the immutable Takt snapshot released for a TaktRequest
+ */
+export const getTaktRequestDetails = async (requestId: string, options?: RequestInit): Promise<TaktRequestDetailsResponse> => {
+
+  return customFetch<TaktRequestDetailsResponse>(getGetTaktRequestDetailsUrl(requestId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTaktRequestDetailsQueryKey = (requestId: string,) => {
+    return [
+    `/api/takt-requests/${requestId}/details`
+    ] as const;
+    }
+
+
+export const getGetTaktRequestDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getTaktRequestDetails>>, TError = ErrorType<ErrorResponse>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTaktRequestDetailsQueryKey(requestId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTaktRequestDetails>>> = ({ signal }) => getTaktRequestDetails(requestId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: requestId !== null && requestId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTaktRequestDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getTaktRequestDetails>>>
+export type GetTaktRequestDetailsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Pull the immutable Takt snapshot released for a TaktRequest
+ */
+
+export function useGetTaktRequestDetails<TData = Awaited<ReturnType<typeof getTaktRequestDetails>>, TError = ErrorType<ErrorResponse>>(
+ requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaktRequestDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTaktRequestDetailsQueryOptions(requestId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendTaktRequestUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/send`
+}
+
+/**
+ * Builds a TaktRequestNotificationPayload (no full Takt data), delivers it via MessageTransport, and transitions the request DRAFT → SENT → DELIVERED. Also sets the Takt lifecycle status to IN_COORDINATION. Idempotent: if already DELIVERED, returns the existing result without creating a second message.
+ * @summary GU sends a DRAFT TaktRequest as a notification to the NU
+ */
+export const sendTaktRequest = async (requestId: string, options?: RequestInit): Promise<TaktRequestSendResult> => {
+
+  return customFetch<TaktRequestSendResult>(getSendTaktRequestUrl(requestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendTaktRequestMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendTaktRequest>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendTaktRequest>>, TError,{requestId: string}, TContext> => {
+
+const mutationKey = ['sendTaktRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendTaktRequest>>, {requestId: string}> = (props) => {
+          const {requestId} = props ?? {};
+
+          return  sendTaktRequest(requestId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendTaktRequestMutationResult = NonNullable<Awaited<ReturnType<typeof sendTaktRequest>>>
+
+    export type SendTaktRequestMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary GU sends a DRAFT TaktRequest as a notification to the NU
+ */
+export const useSendTaktRequest = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendTaktRequest>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendTaktRequest>>,
+        TError,
+        {requestId: string},
+        TContext
+      > => {
+      return useMutation(getSendTaktRequestMutationOptions(options));
+    }
+
+export const getRunAvailabilityCheckUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/availability-checks`
+}
+
+/**
+ * The addressed NU organisation triggers an availability check for the given TaktRequest. The service inspects the NU's resources and existing bookings against the planned time window from the snapshot.
+ * On success the TaktRequest transitions to UNDER_REVIEW (if it was DETAILS_RETRIEVED). Repeated calls are allowed (UNDER_REVIEW stays).
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU runs a feasibility check against their own resource calendar
+ */
+export const runAvailabilityCheck = async (requestId: string, options?: RequestInit): Promise<AvailabilityCheckResponse> => {
+
+  return customFetch<AvailabilityCheckResponse>(getRunAvailabilityCheckUrl(requestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRunAvailabilityCheckMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAvailabilityCheck>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAvailabilityCheck>>, TError,{requestId: string}, TContext> => {
+
+const mutationKey = ['runAvailabilityCheck'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAvailabilityCheck>>, {requestId: string}> = (props) => {
+          const {requestId} = props ?? {};
+
+          return  runAvailabilityCheck(requestId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAvailabilityCheckMutationResult = NonNullable<Awaited<ReturnType<typeof runAvailabilityCheck>>>
+
+    export type RunAvailabilityCheckMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary NU runs a feasibility check against their own resource calendar
+ */
+export const useRunAvailabilityCheck = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAvailabilityCheck>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAvailabilityCheck>>,
+        TError,
+        {requestId: string},
+        TContext
+      > => {
+      return useMutation(getRunAvailabilityCheckMutationOptions(options));
+    }
+
+export const getGetLatestAvailabilityCheckUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/availability-checks/latest`
+}
+
+/**
+ * Returns the most recently completed availability check for the given TaktRequest. Prefers COMPLETED checks; falls back to any latest check.
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU retrieves the latest feasibility check result
+ */
+export const getLatestAvailabilityCheck = async (requestId: string, options?: RequestInit): Promise<AvailabilityCheckResponse> => {
+
+  return customFetch<AvailabilityCheckResponse>(getGetLatestAvailabilityCheckUrl(requestId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestAvailabilityCheckQueryKey = (requestId: string,) => {
+    return [
+    `/api/takt-requests/${requestId}/availability-checks/latest`
+    ] as const;
+    }
+
+
+export const getGetLatestAvailabilityCheckQueryOptions = <TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestAvailabilityCheckQueryKey(requestId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>> = ({ signal }) => getLatestAvailabilityCheck(requestId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: requestId !== null && requestId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestAvailabilityCheckQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>>
+export type GetLatestAvailabilityCheckQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary NU retrieves the latest feasibility check result
+ */
+
+export function useGetLatestAvailabilityCheck<TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse>>(
+ requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestAvailabilityCheckQueryOptions(requestId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubmitNuResponseUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/responses`
+}
+
+/**
+ * The addressed NU organisation submits their coordination response for the TaktRequest. Allowed starting statuses: DETAILS_RETRIEVED, UNDER_REVIEW.
+ * Privacy rules (enforced server-side):
+ *   - Forbidden fields: resourceId, localProjectId, internalResultPayload,
+ *     localProjectCode, customerAlias, resourceName, employeeId, etc.
+ *   - Only generic reason codes and time windows may be transmitted.
+ *
+ * Idempotency: repeated calls with the same decision return 200 (no second row created). A different decision returns 409.
+ * On success, a TAKT_RESPONSE_SUBMITTED message is delivered to the GU's inbox. The message payload contains only public data.
+ * Access: addressed NU only. GU, hub-admin → 403.
+ * @summary NU submits a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
+ */
+export const submitNuResponse = async (requestId: string,
+    nuResponseCreate: NuResponseCreate, options?: RequestInit): Promise<NuResponseResult> => {
+
+  return customFetch<NuResponseResult>(getSubmitNuResponseUrl(requestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuResponseCreate)
+  }
+);}
+
+
+
+
+
+export const getSubmitNuResponseMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitNuResponse>>, TError,{requestId: string;data: BodyType<NuResponseCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitNuResponse>>, TError,{requestId: string;data: BodyType<NuResponseCreate>}, TContext> => {
+
+const mutationKey = ['submitNuResponse'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitNuResponse>>, {requestId: string;data: BodyType<NuResponseCreate>}> = (props) => {
+          const {requestId,data} = props ?? {};
+
+          return  submitNuResponse(requestId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitNuResponseMutationResult = NonNullable<Awaited<ReturnType<typeof submitNuResponse>>>
+    export type SubmitNuResponseMutationBody = BodyType<NuResponseCreate>
+    export type SubmitNuResponseMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary NU submits a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
+ */
+export const useSubmitNuResponse = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitNuResponse>>, TError,{requestId: string;data: BodyType<NuResponseCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitNuResponse>>,
+        TError,
+        {requestId: string;data: BodyType<NuResponseCreate>},
+        TContext
+      > => {
+      return useMutation(getSubmitNuResponseMutationOptions(options));
+    }
+
+export const getListNuLocalProjectsUrl = (params?: ListNuLocalProjectsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/nu/local-projects?${stringifiedParams}` : `/api/nu/local-projects`
+}
+
+/**
+ * Returns all local projects owned by the authenticated NU organisation. GU and hub-admin users receive 403.
+ * @summary List NU's internal local projects
+ */
+export const listNuLocalProjects = async (params?: ListNuLocalProjectsParams, options?: RequestInit): Promise<NuLocalProjectListResponse> => {
+
+  return customFetch<NuLocalProjectListResponse>(getListNuLocalProjectsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListNuLocalProjectsQueryKey = (params?: ListNuLocalProjectsParams,) => {
+    return [
+    `/api/nu/local-projects`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListNuLocalProjectsQueryOptions = <TData = Awaited<ReturnType<typeof listNuLocalProjects>>, TError = ErrorType<ErrorResponse>>(params?: ListNuLocalProjectsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listNuLocalProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListNuLocalProjectsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listNuLocalProjects>>> = ({ signal }) => listNuLocalProjects(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listNuLocalProjects>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListNuLocalProjectsQueryResult = NonNullable<Awaited<ReturnType<typeof listNuLocalProjects>>>
+export type ListNuLocalProjectsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List NU's internal local projects
+ */
+
+export function useListNuLocalProjects<TData = Awaited<ReturnType<typeof listNuLocalProjects>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListNuLocalProjectsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listNuLocalProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListNuLocalProjectsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateNuLocalProjectUrl = () => {
+
+
+
+
+  return `/api/nu/local-projects`
+}
+
+/**
+ * Creates an internal local project for the authenticated NU. nuOrgId is derived from the JWT — clients cannot supply it. Physical deletion is not supported; use status CANCELLED.
+ * @summary Create a NU internal local project
+ */
+export const createNuLocalProject = async (nuLocalProjectCreate: NuLocalProjectCreate, options?: RequestInit): Promise<NuLocalProject> => {
+
+  return customFetch<NuLocalProject>(getCreateNuLocalProjectUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuLocalProjectCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateNuLocalProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNuLocalProject>>, TError,{data: BodyType<NuLocalProjectCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createNuLocalProject>>, TError,{data: BodyType<NuLocalProjectCreate>}, TContext> => {
+
+const mutationKey = ['createNuLocalProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createNuLocalProject>>, {data: BodyType<NuLocalProjectCreate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createNuLocalProject(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateNuLocalProjectMutationResult = NonNullable<Awaited<ReturnType<typeof createNuLocalProject>>>
+    export type CreateNuLocalProjectMutationBody = BodyType<NuLocalProjectCreate>
+    export type CreateNuLocalProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a NU internal local project
+ */
+export const useCreateNuLocalProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNuLocalProject>>, TError,{data: BodyType<NuLocalProjectCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createNuLocalProject>>,
+        TError,
+        {data: BodyType<NuLocalProjectCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateNuLocalProjectMutationOptions(options));
+    }
+
+export const getGetNuLocalProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/nu/local-projects/${projectId}`
+}
+
+/**
+ * @summary Get a single NU local project
+ */
+export const getNuLocalProject = async (projectId: string, options?: RequestInit): Promise<NuLocalProject> => {
+
+  return customFetch<NuLocalProject>(getGetNuLocalProjectUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNuLocalProjectQueryKey = (projectId: string,) => {
+    return [
+    `/api/nu/local-projects/${projectId}`
+    ] as const;
+    }
+
+
+export const getGetNuLocalProjectQueryOptions = <TData = Awaited<ReturnType<typeof getNuLocalProject>>, TError = ErrorType<ErrorResponse>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNuLocalProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNuLocalProjectQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNuLocalProject>>> = ({ signal }) => getNuLocalProject(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNuLocalProject>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNuLocalProjectQueryResult = NonNullable<Awaited<ReturnType<typeof getNuLocalProject>>>
+export type GetNuLocalProjectQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a single NU local project
+ */
+
+export function useGetNuLocalProject<TData = Awaited<ReturnType<typeof getNuLocalProject>>, TError = ErrorType<ErrorResponse>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNuLocalProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNuLocalProjectQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateNuLocalProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/nu/local-projects/${projectId}`
+}
+
+/**
+ * All fields are optional. To cancel a project set status to CANCELLED. Physical deletion is not supported.
+ * @summary Update a NU local project
+ */
+export const updateNuLocalProject = async (projectId: string,
+    nuLocalProjectUpdate: NuLocalProjectUpdate, options?: RequestInit): Promise<NuLocalProject> => {
+
+  return customFetch<NuLocalProject>(getUpdateNuLocalProjectUrl(projectId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuLocalProjectUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateNuLocalProjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNuLocalProject>>, TError,{projectId: string;data: BodyType<NuLocalProjectUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateNuLocalProject>>, TError,{projectId: string;data: BodyType<NuLocalProjectUpdate>}, TContext> => {
+
+const mutationKey = ['updateNuLocalProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateNuLocalProject>>, {projectId: string;data: BodyType<NuLocalProjectUpdate>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  updateNuLocalProject(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateNuLocalProjectMutationResult = NonNullable<Awaited<ReturnType<typeof updateNuLocalProject>>>
+    export type UpdateNuLocalProjectMutationBody = BodyType<NuLocalProjectUpdate>
+    export type UpdateNuLocalProjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a NU local project
+ */
+export const useUpdateNuLocalProject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNuLocalProject>>, TError,{projectId: string;data: BodyType<NuLocalProjectUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateNuLocalProject>>,
+        TError,
+        {projectId: string;data: BodyType<NuLocalProjectUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateNuLocalProjectMutationOptions(options));
+    }
+
+export const getListNuResourceBookingsUrl = (params?: ListNuResourceBookingsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/nu/resource-bookings?${stringifiedParams}` : `/api/nu/resource-bookings`
+}
+
+/**
+ * Returns bookings owned by the authenticated NU organisation. Overlap filter: booking.startAt < endTo AND booking.endAt > startFrom. GU and hub-admin users receive 403.
+ * @summary List NU resource bookings with optional overlap filter
+ */
+export const listNuResourceBookings = async (params?: ListNuResourceBookingsParams, options?: RequestInit): Promise<NuResourceBookingListResponse> => {
+
+  return customFetch<NuResourceBookingListResponse>(getListNuResourceBookingsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListNuResourceBookingsQueryKey = (params?: ListNuResourceBookingsParams,) => {
+    return [
+    `/api/nu/resource-bookings`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListNuResourceBookingsQueryOptions = <TData = Awaited<ReturnType<typeof listNuResourceBookings>>, TError = ErrorType<ErrorResponse>>(params?: ListNuResourceBookingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listNuResourceBookings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListNuResourceBookingsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listNuResourceBookings>>> = ({ signal }) => listNuResourceBookings(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listNuResourceBookings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListNuResourceBookingsQueryResult = NonNullable<Awaited<ReturnType<typeof listNuResourceBookings>>>
+export type ListNuResourceBookingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List NU resource bookings with optional overlap filter
+ */
+
+export function useListNuResourceBookings<TData = Awaited<ReturnType<typeof listNuResourceBookings>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListNuResourceBookingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listNuResourceBookings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListNuResourceBookingsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateNuResourceBookingUrl = () => {
+
+
+
+
+  return `/api/nu/resource-bookings`
+}
+
+/**
+ * Creates a booking for a resource belonging to the authenticated NU. nuOrgId is derived from the JWT — clients cannot supply it. The resource must belong to the caller's organisation. endAt must be after startAt. utilizationPercent must be 1–100.
+ * @summary Create a NU resource booking
+ */
+export const createNuResourceBooking = async (nuResourceBookingCreate: NuResourceBookingCreate, options?: RequestInit): Promise<NuResourceBooking> => {
+
+  return customFetch<NuResourceBooking>(getCreateNuResourceBookingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuResourceBookingCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNuResourceBooking>>, TError,{data: BodyType<NuResourceBookingCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createNuResourceBooking>>, TError,{data: BodyType<NuResourceBookingCreate>}, TContext> => {
+
+const mutationKey = ['createNuResourceBooking'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createNuResourceBooking>>, {data: BodyType<NuResourceBookingCreate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createNuResourceBooking(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateNuResourceBookingMutationResult = NonNullable<Awaited<ReturnType<typeof createNuResourceBooking>>>
+    export type CreateNuResourceBookingMutationBody = BodyType<NuResourceBookingCreate>
+    export type CreateNuResourceBookingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a NU resource booking
+ */
+export const useCreateNuResourceBooking = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNuResourceBooking>>, TError,{data: BodyType<NuResourceBookingCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createNuResourceBooking>>,
+        TError,
+        {data: BodyType<NuResourceBookingCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateNuResourceBookingMutationOptions(options));
+    }
+
+export const getGetNuResourceBookingUrl = (bookingId: string,) => {
+
+
+
+
+  return `/api/nu/resource-bookings/${bookingId}`
+}
+
+/**
+ * @summary Get a single NU resource booking
+ */
+export const getNuResourceBooking = async (bookingId: string, options?: RequestInit): Promise<NuResourceBooking> => {
+
+  return customFetch<NuResourceBooking>(getGetNuResourceBookingUrl(bookingId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNuResourceBookingQueryKey = (bookingId: string,) => {
+    return [
+    `/api/nu/resource-bookings/${bookingId}`
+    ] as const;
+    }
+
+
+export const getGetNuResourceBookingQueryOptions = <TData = Awaited<ReturnType<typeof getNuResourceBooking>>, TError = ErrorType<ErrorResponse>>(bookingId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNuResourceBooking>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNuResourceBookingQueryKey(bookingId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNuResourceBooking>>> = ({ signal }) => getNuResourceBooking(bookingId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: bookingId !== null && bookingId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNuResourceBooking>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNuResourceBookingQueryResult = NonNullable<Awaited<ReturnType<typeof getNuResourceBooking>>>
+export type GetNuResourceBookingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a single NU resource booking
+ */
+
+export function useGetNuResourceBooking<TData = Awaited<ReturnType<typeof getNuResourceBooking>>, TError = ErrorType<ErrorResponse>>(
+ bookingId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNuResourceBooking>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNuResourceBookingQueryOptions(bookingId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateNuResourceBookingUrl = (bookingId: string,) => {
+
+
+
+
+  return `/api/nu/resource-bookings/${bookingId}`
+}
+
+/**
+ * All fields are optional. Cannot update a CANCELLED booking (409). endAt must remain after startAt.
+ * @summary Update a NU resource booking
+ */
+export const updateNuResourceBooking = async (bookingId: string,
+    nuResourceBookingUpdate: NuResourceBookingUpdate, options?: RequestInit): Promise<NuResourceBooking> => {
+
+  return customFetch<NuResourceBooking>(getUpdateNuResourceBookingUrl(bookingId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuResourceBookingUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNuResourceBooking>>, TError,{bookingId: string;data: BodyType<NuResourceBookingUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateNuResourceBooking>>, TError,{bookingId: string;data: BodyType<NuResourceBookingUpdate>}, TContext> => {
+
+const mutationKey = ['updateNuResourceBooking'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateNuResourceBooking>>, {bookingId: string;data: BodyType<NuResourceBookingUpdate>}> = (props) => {
+          const {bookingId,data} = props ?? {};
+
+          return  updateNuResourceBooking(bookingId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateNuResourceBookingMutationResult = NonNullable<Awaited<ReturnType<typeof updateNuResourceBooking>>>
+    export type UpdateNuResourceBookingMutationBody = BodyType<NuResourceBookingUpdate>
+    export type UpdateNuResourceBookingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a NU resource booking
+ */
+export const useUpdateNuResourceBooking = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNuResourceBooking>>, TError,{bookingId: string;data: BodyType<NuResourceBookingUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateNuResourceBooking>>,
+        TError,
+        {bookingId: string;data: BodyType<NuResourceBookingUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateNuResourceBookingMutationOptions(options));
+    }
+
+export const getCancelNuResourceBookingUrl = (bookingId: string,) => {
+
+
+
+
+  return `/api/nu/resource-bookings/${bookingId}/cancel`
+}
+
+/**
+ * Sets the booking status to CANCELLED. Idempotent — cancelling an already-cancelled booking returns 200. The booking row is preserved for historical audit purposes.
+ * @summary Cancel a NU resource booking
+ */
+export const cancelNuResourceBooking = async (bookingId: string, options?: RequestInit): Promise<NuResourceBooking> => {
+
+  return customFetch<NuResourceBooking>(getCancelNuResourceBookingUrl(bookingId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelNuResourceBooking>>, TError,{bookingId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelNuResourceBooking>>, TError,{bookingId: string}, TContext> => {
+
+const mutationKey = ['cancelNuResourceBooking'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelNuResourceBooking>>, {bookingId: string}> = (props) => {
+          const {bookingId} = props ?? {};
+
+          return  cancelNuResourceBooking(bookingId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelNuResourceBookingMutationResult = NonNullable<Awaited<ReturnType<typeof cancelNuResourceBooking>>>
+
+    export type CancelNuResourceBookingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a NU resource booking
+ */
+export const useCancelNuResourceBooking = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelNuResourceBooking>>, TError,{bookingId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelNuResourceBooking>>,
+        TError,
+        {bookingId: string},
+        TContext
+      > => {
+      return useMutation(getCancelNuResourceBookingMutationOptions(options));
+    }
 

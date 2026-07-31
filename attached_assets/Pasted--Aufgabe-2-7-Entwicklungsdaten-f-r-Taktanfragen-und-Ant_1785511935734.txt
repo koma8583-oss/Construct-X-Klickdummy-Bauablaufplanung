@@ -1,0 +1,154 @@
+# Aufgabe 2.7 – Entwicklungsdaten für Taktanfragen und Antworten ergänzen
+
+Erweitere die vorhandene Seed- beziehungsweise Entwicklungsdatenlogik um Beispieldaten für die neuen Taktmodelle.
+
+Bestehende Seed-Daten, Benutzer, Organisationen, Projekte, Takte und Delegationen dürfen nicht entfernt werden.
+
+## Ziel
+
+Nach einem Seed oder Entwicklungsdaten-Reset sollen mehrere Taktanfrage-Szenarien für spätere API- und UI-Arbeiten vorhanden sein.
+
+## Allgemeine Regeln
+
+* Verwende bestehende GU- und NU-Organisationen, sofern sinnvoll.
+* Verwende bestehende Benutzer mit passenden Rollen.
+* Verwende vorhandene Takte oder ergänze kollisionsfreie Demo-Takte.
+* Seed-Daten müssen referenziell konsistent sein.
+* Seed soll im Rahmen der vorhandenen Architektur mehrfach ausführbar sein.
+* Bestehende Demo-Funktionen dürfen nicht brechen.
+
+## Fall 1 – Offene Taktanfrage
+
+Erzeuge:
+
+* einen bestehenden Takt
+* `taktVersion = 1`
+* GU-Organisation
+* adressierte NU-Organisation
+* Status `DELIVERED`
+* Antwortfrist in der Zukunft
+* `sentAt` gesetzt
+* `deliveredAt` gesetzt
+* genau einen `TaktRequestSnapshot`
+* noch keine Antwort
+
+## Fall 2 – Bestätigte Anfrage
+
+Erzeuge:
+
+* eigenen TaktRequest
+* Status `ACCEPTED`
+* eine Antwort mit `decision = ACCEPTED`
+* gültiges angenommenes Zeitfenster
+* keine Alternativen
+* generischen Kommentar
+
+## Fall 3 – Anfrage mit Alternativen
+
+Erzeuge:
+
+* eigenen TaktRequest
+* Status `ALTERNATIVES_PROPOSED`
+* eine Antwort mit `decision = ALTERNATIVES_PROPOSED`
+* `reasonCode = RESOURCE_CONFLICT`
+* zwei Alternativen
+* unterschiedliche Zeitfenster
+* eindeutige `alternativeId`
+* eindeutige Rangfolge
+* unterschiedliche Kolonnenstärken oder Bedingungen
+
+Es dürfen keine Namen anderer Projekte oder Auftraggeber in der Antwort stehen.
+
+## Fall 4 – Abgelehnte Anfrage
+
+Erzeuge:
+
+* eigenen TaktRequest
+* Status `REJECTED`
+* Antwort mit `decision = REJECTED`
+* `reasonCode = NO_CAPACITY`
+* keine Alternativen
+* optional ein `nextAvailableDate`
+* nur generischen Kommentar
+
+## Snapshot-Inhalt
+
+Jeder Request erhält genau einen Snapshot.
+
+Verwende eine Struktur ähnlich:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014",
+  "taktVersion": 1,
+  "trade": "DRYWALL",
+  "workPackage": "Montage Trockenbauwände",
+  "location": {
+    "building": "Bauteil A",
+    "storey": "EG",
+    "zone": "Taktbereich 03"
+  },
+  "plannedTimeWindow": {
+    "start": "2026-09-14T05:00:00Z",
+    "end": "2026-09-18T14:00:00Z"
+  }
+}
+```
+
+Passe Referenzen und Zeiträume an die vorhandenen Seed-Daten an.
+
+## Nicht im Snapshot speichern
+
+* vollständigen Projektplan
+* Takte anderer Nachunternehmer
+* interne GU-Kommentare
+* NU-Ressourcen
+* andere Projekte des NU
+* Mitarbeiterdaten
+* interne Konflikte
+
+## Konsistenz
+
+Achte darauf:
+
+* Request-Status und Antwortentscheidung passen zusammen.
+* `ACCEPTED` besitzt ein angenommenes Zeitfenster.
+* `ALTERNATIVES_PROPOSED` besitzt mindestens eine Alternative.
+* `REJECTED` besitzt keine Alternative.
+* jeder Request besitzt genau einen Snapshot.
+* `requestNumber` ist eindeutig.
+* Alternativen besitzen eindeutige Ränge und IDs.
+
+## Einschränkungen
+
+* Keine neuen REST-Endpunkte.
+* Keine UI-Änderungen.
+* Keine Transportlogik.
+* Keine bestehenden Seed-Daten entfernen.
+* Keine bestehende Delegation-Migration.
+
+## Prüfungen
+
+Führe aus:
+
+* Seed oder Entwicklungsdaten-Reset
+* relevante Datenbanktests
+* Typecheck
+* Build
+
+Prüfe anschließend durch geeignete Datenbankabfragen oder bestehende Debug-Werkzeuge, dass alle vier Fälle korrekt angelegt wurden.
+
+## Abschlussbericht
+
+Berichte:
+
+* ergänzte Seed-Dateien
+* erzeugte Taktanfragen
+* erzeugte Snapshots
+* erzeugte Antworten
+* erzeugte Alternativen
+* Ergebnis des Seed-Laufs
+* weiterhin vorhandene bestehende Demo-Daten
+* Ergebnis von Typecheck und Build

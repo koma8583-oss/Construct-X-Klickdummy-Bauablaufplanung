@@ -5,6 +5,10 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+export interface ErrorResponse {
+  error: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -710,6 +714,142 @@ export interface MessageEnvelope {
 }
 
 /**
+ * The released Takt data. Shape defined in docs/json-contracts.md. Does NOT contain full project plan, current live Takt values, other NU data, or internal GU data.
+ */
+export type TaktRequestDetailsResponseSnapshotPayload = { [key: string]: unknown };
+
+/**
+ * Immutable snapshot payload returned by GET /takt-requests/{requestId}/details. Contains only the data the GU released at the time of sending — never the live Takt row or any NU-private data.
+ */
+export interface TaktRequestDetailsResponse {
+  /** ID of the TaktRequest this snapshot belongs to */
+  taktRequestId: string;
+  /** Human-readable request reference (e.g. TKR-2026-0042) */
+  requestNumber: string;
+  /** Snapshot payload schema version (e.g. "1.0") */
+  schemaVersion: string;
+  /** Takt version at the time the snapshot was created */
+  taktVersion: number;
+  /** Current TaktRequest status */
+  status: string;
+  /** GU organisation that created this request */
+  guOrgId: string;
+  /** NU organisation addressed by this request */
+  nuOrgId: string;
+  /** Deadline by which the NU must respond */
+  responseRequiredBy?: string | null;
+  /** When the NU first retrieved these details; null until first access */
+  detailsRetrievedAt?: string | null;
+  /** The released Takt data. Shape defined in docs/json-contracts.md. Does NOT contain full project plan, current live Takt values, other NU data, or internal GU data. */
+  snapshotPayload: TaktRequestDetailsResponseSnapshotPayload;
+  /** When the snapshot was created (same as request send time) */
+  createdAt: string;
+}
+
+/**
+ * Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId, projectReference, taktReference, taktVersion, responseRequiredBy, detailsRef, subject, message. No full Takt data.
+ */
+export type InboxMessageItemPayload = { [key: string]: unknown };
+
+/**
+ * A single message in the NU inbox. Contains only the notification metadata and the minimal payload as delivered — no full Takt snapshot is included.
+ */
+export interface InboxMessageItem {
+  /** Inbox row ID (unique per message+recipient pair) */
+  id: string;
+  /** Globally unique message identifier */
+  messageId: string;
+  messageType: DataspaceMessageType;
+  /** Organisation that sent the message */
+  senderOrgId: string;
+  /** Organisation that received the message */
+  recipientOrgId: string;
+  /** Ties this message to a TaktRequest coordination thread */
+  correlationId: string;
+  status: DataspaceMessageStatus;
+  /** Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId, projectReference, taktReference, taktVersion, responseRequiredBy, detailsRef, subject, message. No full Takt data. */
+  payload: InboxMessageItemPayload;
+  /** When the message was delivered to this inbox */
+  receivedAt: string;
+  /** When the recipient marked the message as read; null if unread */
+  readAt?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Response from POST /messages/inbox/{messageId}/read.
+ */
+export interface InboxMarkReadResponse {
+  messageId: string;
+  status: DataspaceMessageStatus;
+  readAt?: string | null;
+}
+
+/**
+ * Body for POST /takt-requests — GU creates a TaktRequest draft with snapshot.
+ */
+export interface CreateTaktRequestBody {
+  /**
+     * ID of the Takt to coordinate
+     * @minLength 1
+     */
+  taktId: string;
+  /**
+     * ID of the NU organisation to address
+     * @minLength 1
+     */
+  nuOrgId: string;
+  /** ISO 8601 deadline by which the NU must respond */
+  responseRequiredBy?: string | null;
+  /**
+     * Optional human-readable subject line for the coordination message
+     * @maxLength 255
+     */
+  subject?: string;
+  /**
+     * Optional free-text message from GU to NU
+     * @maxLength 2000
+     */
+  message?: string;
+}
+
+/**
+ * Response from POST /takt-requests — the newly created DRAFT request.
+ */
+export interface TaktRequestDraftResponse {
+  /** TaktRequest ID */
+  id: string;
+  taktId: string;
+  /**
+     * Takt version at the time of request creation
+     * @minimum 1
+     */
+  taktVersion: number;
+  guOrgId: string;
+  nuOrgId: string;
+  requestNumber: string;
+  status: TaktRequestStatus;
+  responseRequiredBy?: string | null;
+  /** ID of the immutable snapshot created atomically with this request */
+  snapshotId: string;
+  createdAt: string;
+}
+
+/**
+ * Response from POST /takt-requests/{requestId}/send.
+ */
+export interface TaktRequestSendResult {
+  requestId: string;
+  status: TaktRequestStatus;
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  /** Outbox message ID — deterministic; use for traceability and retry */
+  messageId: string;
+  /** Updated Takt lifecycle status after delivery (IN_COORDINATION on success) */
+  taktLifecycleStatus?: string;
+}
+
+/**
  * Payload for a TAKT_REQUEST_NOTIFICATION message. Contains only references and metadata — no full Takt details. The NU uses detailsRef to pull the released Takt data separately (pull pattern). Must NOT contain: full Takt schedule, other NU data, full LV data, full BIM model, internal GU comments, or NU resource data.
  */
 export interface TaktRequestNotificationPayload {
@@ -747,6 +887,262 @@ export const TaktDecision = {
 } as const;
 
 /**
+ * Technical delivery status of a dataspace message
+ */
+export type MessageOutboxStatus = typeof MessageOutboxStatus[keyof typeof MessageOutboxStatus];
+
+
+export const MessageOutboxStatus = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  READ: 'READ',
+  FAILED: 'FAILED',
+} as const;
+
+/**
+ * Enriched TaktRequest row for the GU overview list. Includes Takt name, project name, NU org name, and transport status. Never contains internal NU data.
+ */
+export interface TaktRequestListItem {
+  id: string;
+  /** Human-readable unique reference (e.g. TKR-2026-0042) */
+  requestNumber: string;
+  taktId: string;
+  /** Display name of the Takt */
+  taktBezeichnung: string;
+  /** @minimum 1 */
+  taktVersion: number;
+  projectId: string;
+  projectName: string;
+  guOrgId: string;
+  nuOrgId: string;
+  /** Display name of the addressed NU organisation */
+  nuOrgName: string;
+  status: TaktRequestStatus;
+  /** Transport delivery status of the notification message. Null if not yet sent. */
+  outboxStatus?: MessageOutboxStatus | null;
+  /** Deadline by which the NU must respond */
+  responseRequiredBy?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Payload that was actually delivered to the NU
+ */
+export type TaktRequestDetailTransportNotificationPayload = { [key: string]: unknown } | null;
+
+/**
+ * Transport/outbox information for the notification sent to the NU
+ */
+export interface TaktRequestDetailTransport {
+  /** Outbox delivery status; null if not yet queued */
+  status?: MessageOutboxStatus | null;
+  /** Payload that was actually delivered to the NU */
+  notificationPayload?: TaktRequestDetailTransportNotificationPayload;
+  attemptCount?: number | null;
+  lastAttemptAt?: string | null;
+  failureReason?: string | null;
+  /** When the NU's inbox row was marked as read */
+  inboxReadAt?: string | null;
+}
+
+/**
+ * All process timestamps in one flat object. Null = not yet occurred or not tracked.
+ */
+export interface TaktRequestDetailTimeline {
+  requestCreatedAt: string;
+  snapshotCreatedAt?: string | null;
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  inboxReadAt?: string | null;
+  detailsRetrievedAt?: string | null;
+  /** Not tracked from the GU side — always null */
+  checkedAt?: string | null;
+  responseCreatedAt?: string | null;
+}
+
+export interface TaktRequestDetailResponseAlt {
+  alternativeId: string;
+  rank: number;
+  proposedStart: string;
+  proposedEnd: string;
+  crewSize?: number | null;
+  conditions?: string[] | null;
+}
+
+export type TaktRequestDetailResponseDecision = typeof TaktRequestDetailResponseDecision[keyof typeof TaktRequestDetailResponseDecision];
+
+
+export const TaktRequestDetailResponseDecision = {
+  ACCEPTED: 'ACCEPTED',
+  ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export interface TaktRequestDetailResponse {
+  id: string;
+  decision: TaktRequestDetailResponseDecision;
+  reasonCode?: string | null;
+  comment?: string | null;
+  acceptedStart?: string | null;
+  acceptedEnd?: string | null;
+  nextAvailableDate?: string | null;
+  createdAt: string;
+  alternatives: TaktRequestDetailResponseAlt[];
+}
+
+export type TaktRequestDetailSnapshot = {
+  id: string;
+  schemaVersion: string;
+  snapshotPayload: { [key: string]: unknown };
+  createdAt: string;
+} | null;
+
+/**
+ * Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.
+ */
+export interface TaktRequestDetail {
+  id: string;
+  requestNumber: string;
+  taktId: string;
+  taktBezeichnung: string;
+  taktVersion: number;
+  projectId: string;
+  projectName: string;
+  guOrgId: string;
+  nuOrgId: string;
+  nuOrgName: string;
+  status: TaktRequestStatus;
+  responseRequiredBy?: string | null;
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  detailsRetrievedAt?: string | null;
+  supersedesRequestId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  transport: TaktRequestDetailTransport;
+  snapshot?: TaktRequestDetailSnapshot;
+  response?: TaktRequestDetailResponse | null;
+  timeline: TaktRequestDetailTimeline;
+}
+
+/**
+ * Overall result of an availability check
+ */
+export type AvailabilityCheckResult = typeof AvailabilityCheckResult[keyof typeof AvailabilityCheckResult];
+
+
+export const AvailabilityCheckResult = {
+  FEASIBLE: 'FEASIBLE',
+  FEASIBLE_WITH_ALTERNATIVES: 'FEASIBLE_WITH_ALTERNATIVES',
+  NOT_FEASIBLE: 'NOT_FEASIBLE',
+} as const;
+
+/**
+ * Proposed alternative window (date-only strings YYYY-MM-DD)
+ */
+export type AvailabilityCheckAlternativeTimeWindow = {
+  start: string;
+  end: string;
+};
+
+/**
+ * A public alternative time window generated by the availability check
+ */
+export interface AvailabilityCheckAlternative {
+  /** Unique ID for this alternative within the check result */
+  alternativeId: string;
+  /**
+     * Preference rank — 1 is most preferred
+     * @minimum 1
+     */
+  rank: number;
+  /** Proposed alternative window (date-only strings YYYY-MM-DD) */
+  timeWindow: AvailabilityCheckAlternativeTimeWindow;
+  /** @minimum 1 */
+  crewSize?: number | null;
+  conditions?: string[] | null;
+}
+
+/**
+ * Public-facing check result — no NU-internal resource IDs, employee names, or internal conflict details.
+ */
+export interface AvailabilityCheckPublicResult {
+  result: AvailabilityCheckResult;
+  /** Empty when result is FEASIBLE */
+  alternatives: AvailabilityCheckAlternative[];
+  nextAvailableDate?: string | null;
+}
+
+export type AvailabilityCheckResponseStatus = typeof AvailabilityCheckResponseStatus[keyof typeof AvailabilityCheckResponseStatus];
+
+
+export const AvailabilityCheckResponseStatus = {
+  PENDING: 'PENDING',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+} as const;
+
+/**
+ * NU-only internal result payload (not forwarded to GU)
+ */
+export type AvailabilityCheckResponseInternalResult = { [key: string]: unknown } | null;
+
+/**
+ * Availability check row returned by the API (Task 4.7)
+ */
+export interface AvailabilityCheckResponse {
+  id: string;
+  taktRequestId: string;
+  nuOrgId: string;
+  status: AvailabilityCheckResponseStatus;
+  result?: AvailabilityCheckResult;
+  /** NU-only internal result payload (not forwarded to GU) */
+  internalResult?: AvailabilityCheckResponseInternalResult;
+  publicResult?: AvailabilityCheckPublicResult;
+  checkedAt?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Start and end accept ISO date (YYYY-MM-DD) or datetime strings
+ */
+export type NuResponseAlternativeTimeWindow = {
+  /** @minLength 1 */
+  start: string;
+  /** @minLength 1 */
+  end: string;
+};
+
+/**
+ * A ranked alternative time window submitted by the NU
+ */
+export interface NuResponseAlternative {
+  /** @minLength 1 */
+  alternativeId: string;
+  /** @minimum 1 */
+  rank: number;
+  /** Start and end accept ISO date (YYYY-MM-DD) or datetime strings */
+  timeWindow: NuResponseAlternativeTimeWindow;
+  /** @minimum 1 */
+  crewSize?: number | null;
+  conditions?: string[] | null;
+}
+
+/**
+ * Required when decision is ACCEPTED
+ */
+export type NuResponseCreateAcceptedTimeWindow = {
+  /** @minLength 1 */
+  start: string;
+  /** @minLength 1 */
+  end: string;
+};
+
+/**
  * Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.
  */
 export type TaktResponseReasonCode = typeof TaktResponseReasonCode[keyof typeof TaktResponseReasonCode];
@@ -761,6 +1157,44 @@ export const TaktResponseReasonCode = {
   OUTSIDE_PLANNING_HORIZON: 'OUTSIDE_PLANNING_HORIZON',
   OTHER: 'OTHER',
 } as const;
+
+/**
+ * Body for POST /takt-requests/{requestId}/responses. Only generic, public fields are permitted — forbidden fields (resourceId, localProjectId, internalResultPayload, etc.) return 400.
+ */
+export interface NuResponseCreate {
+  decision: TaktDecision;
+  /** Required when decision is ACCEPTED */
+  acceptedTimeWindow?: NuResponseCreateAcceptedTimeWindow;
+  reasonCode?: TaktResponseReasonCode;
+  /** @maxLength 2000 */
+  comment?: string | null;
+  /** @maxItems 3 */
+  alternatives?: NuResponseAlternative[] | null;
+  nextAvailableDate?: string | null;
+}
+
+export type NuResponseResultAcceptedTimeWindow = {
+  start?: string;
+  end?: string;
+} | null;
+
+/**
+ * Result returned by POST /takt-requests/{requestId}/responses
+ */
+export interface NuResponseResult {
+  responseId: string;
+  taktRequestId: string;
+  decision: TaktDecision;
+  reasonCode?: TaktResponseReasonCode | null;
+  comment?: string | null;
+  acceptedTimeWindow?: NuResponseResultAcceptedTimeWindow;
+  alternatives?: NuResponseAlternative[] | null;
+  nextAvailableDate?: string | null;
+  transportStatus?: string;
+  transportMessageId?: string;
+  requestStatus: string;
+  createdAt: string;
+}
 
 /**
  * A time window defined by start and end (both date-time). end must be strictly after start.
@@ -871,6 +1305,201 @@ export interface TaktResponseMessage {
   status?: DataspaceMessageStatus;
 }
 
+export type NuLocalProjectStatus = typeof NuLocalProjectStatus[keyof typeof NuLocalProjectStatus];
+
+
+export const NuLocalProjectStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * An NU-internal local project record. Never exposed to GU or Hub. customerAlias anonymises the GU identity and must not be transmitted externally.
+ */
+export interface NuLocalProject {
+  id: string;
+  nuOrgId: string;
+  localProjectCode: string;
+  displayName: string;
+  customerAlias?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  status: NuLocalProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NuLocalProjectCreateStatus = typeof NuLocalProjectCreateStatus[keyof typeof NuLocalProjectCreateStatus];
+
+
+export const NuLocalProjectCreateStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Body for POST /nu/local-projects
+ */
+export interface NuLocalProjectCreate {
+  /** @minLength 1 */
+  localProjectCode: string;
+  /** @minLength 1 */
+  displayName: string;
+  customerAlias?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: NuLocalProjectCreateStatus;
+}
+
+export type NuLocalProjectUpdateStatus = typeof NuLocalProjectUpdateStatus[keyof typeof NuLocalProjectUpdateStatus];
+
+
+export const NuLocalProjectUpdateStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Body for PATCH /nu/local-projects/{projectId}. All fields optional.
+ */
+export interface NuLocalProjectUpdate {
+  /** @minLength 1 */
+  displayName?: string;
+  customerAlias?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: NuLocalProjectUpdateStatus;
+}
+
+export interface NuLocalProjectListResponse {
+  items: NuLocalProject[];
+  limit: number;
+  offset: number;
+  count: number;
+}
+
+export type NuResourceBookingSourceType = typeof NuResourceBookingSourceType[keyof typeof NuResourceBookingSourceType];
+
+
+export const NuResourceBookingSourceType = {
+  LOCAL_PROJECT: 'LOCAL_PROJECT',
+  TAKT_REQUEST: 'TAKT_REQUEST',
+  MANUAL_BLOCK: 'MANUAL_BLOCK',
+  ABSENCE: 'ABSENCE',
+  MAINTENANCE: 'MAINTENANCE',
+} as const;
+
+export type NuResourceBookingStatus = typeof NuResourceBookingStatus[keyof typeof NuResourceBookingStatus];
+
+
+export const NuResourceBookingStatus = {
+  TENTATIVE: 'TENTATIVE',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.
+ */
+export interface NuResourceBooking {
+  id: string;
+  nuOrgId: string;
+  resourceId: string;
+  localProjectId?: string | null;
+  sourceType: NuResourceBookingSourceType;
+  sourceReferenceId?: string | null;
+  startAt: string;
+  endAt: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  utilizationPercent: number;
+  status: NuResourceBookingStatus;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NuResourceBookingCreateSourceType = typeof NuResourceBookingCreateSourceType[keyof typeof NuResourceBookingCreateSourceType];
+
+
+export const NuResourceBookingCreateSourceType = {
+  LOCAL_PROJECT: 'LOCAL_PROJECT',
+  TAKT_REQUEST: 'TAKT_REQUEST',
+  MANUAL_BLOCK: 'MANUAL_BLOCK',
+  ABSENCE: 'ABSENCE',
+  MAINTENANCE: 'MAINTENANCE',
+} as const;
+
+export type NuResourceBookingCreateStatus = typeof NuResourceBookingCreateStatus[keyof typeof NuResourceBookingCreateStatus];
+
+
+export const NuResourceBookingCreateStatus = {
+  TENTATIVE: 'TENTATIVE',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Body for POST /nu/resource-bookings
+ */
+export interface NuResourceBookingCreate {
+  /** @minLength 1 */
+  resourceId: string;
+  localProjectId?: string;
+  sourceType: NuResourceBookingCreateSourceType;
+  sourceReferenceId?: string;
+  startAt: string;
+  endAt: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  utilizationPercent?: number;
+  status?: NuResourceBookingCreateStatus;
+  note?: string;
+}
+
+export type NuResourceBookingUpdateStatus = typeof NuResourceBookingUpdateStatus[keyof typeof NuResourceBookingUpdateStatus];
+
+
+export const NuResourceBookingUpdateStatus = {
+  TENTATIVE: 'TENTATIVE',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Body for PATCH /nu/resource-bookings/{bookingId}. All fields optional.
+ */
+export interface NuResourceBookingUpdate {
+  localProjectId?: string | null;
+  sourceReferenceId?: string;
+  startAt?: string;
+  endAt?: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  utilizationPercent?: number;
+  status?: NuResourceBookingUpdateStatus;
+  note?: string;
+}
+
+export interface NuResourceBookingListResponse {
+  items: NuResourceBooking[];
+  limit: number;
+  offset: number;
+  count: number;
+}
+
 export type ListOrganizationsParams = {
 type?: ListOrganizationsType;
 search?: string;
@@ -946,5 +1575,102 @@ export const ListWebhookEventsStatus = {
   PENDING: 'PENDING',
   DELIVERED: 'DELIVERED',
   FAILED: 'FAILED',
+} as const;
+
+export type ListInboxMessagesParams = {
+status?: DataspaceMessageStatus;
+messageType?: DataspaceMessageType;
+correlationId?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListTaktRequestsParams = {
+/**
+ * Filter by request status
+ */
+status?: TaktRequestStatus;
+/**
+ * Filter by Takt ID
+ */
+taktId?: string;
+/**
+ * Filter by NU organisation ID
+ */
+nuOrgId?: string;
+};
+
+export type ListNuLocalProjectsParams = {
+status?: ListNuLocalProjectsStatus;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListNuLocalProjectsStatus = typeof ListNuLocalProjectsStatus[keyof typeof ListNuLocalProjectsStatus];
+
+
+export const ListNuLocalProjectsStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ListNuResourceBookingsParams = {
+resourceId?: string;
+localProjectId?: string;
+sourceType?: ListNuResourceBookingsSourceType;
+status?: ListNuResourceBookingsStatus;
+/**
+ * ISO 8601 datetime. Returns bookings where endAt > startFrom (overlap).
+ */
+startFrom?: string;
+/**
+ * ISO 8601 datetime. Returns bookings where startAt < endTo (overlap).
+ */
+endTo?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListNuResourceBookingsSourceType = typeof ListNuResourceBookingsSourceType[keyof typeof ListNuResourceBookingsSourceType];
+
+
+export const ListNuResourceBookingsSourceType = {
+  LOCAL_PROJECT: 'LOCAL_PROJECT',
+  TAKT_REQUEST: 'TAKT_REQUEST',
+  MANUAL_BLOCK: 'MANUAL_BLOCK',
+  ABSENCE: 'ABSENCE',
+  MAINTENANCE: 'MAINTENANCE',
+} as const;
+
+export type ListNuResourceBookingsStatus = typeof ListNuResourceBookingsStatus[keyof typeof ListNuResourceBookingsStatus];
+
+
+export const ListNuResourceBookingsStatus = {
+  TENTATIVE: 'TENTATIVE',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
 } as const;
 

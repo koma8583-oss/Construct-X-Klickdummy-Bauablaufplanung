@@ -1,0 +1,210 @@
+# Aufgabe 3.2 – Datenbankmodelle für Message Outbox und Inbox anlegen
+
+Ergänze das bestehende Drizzle-Datenbankschema um Tabellen für den simulierten Nachrichtentransport.
+
+Verwende die vorhandene ID-Strategie, Zeitstempelkonventionen und Benennungskonventionen.
+
+Ändere noch keine öffentlichen REST-Endpunkte und keine Benutzeroberflächen.
+
+## Tabelle `message_outbox`
+
+Ergänze mindestens folgende Felder:
+
+```text
+id
+messageId
+schemaVersion
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+causationId
+payload
+status
+attemptCount
+lastAttemptAt
+nextAttemptAt
+failureReason
+createdAt
+sentAt
+deliveredAt
+```
+
+## Anforderungen an `message_outbox`
+
+### Identifikatoren
+
+* `id` verwendet die bestehende ID-Strategie.
+* `messageId` ist nicht nullable.
+* `messageId` erhält einen Unique Constraint.
+* `correlationId` ist nicht nullable.
+* `causationId` ist nullable.
+
+### Nachrichtentyp
+
+* `messageType` verwendet `DataspaceMessageType`.
+* Nicht nullable.
+
+### Organisationen
+
+* `senderOrgId` referenziert die sendende Organisation.
+* `recipientOrgId` referenziert die empfangende Organisation.
+* Beide Felder sind nicht nullable.
+
+### Payload
+
+* Speicherung als JSONB, sofern PostgreSQL und die bestehende Drizzle-Konfiguration dies unterstützen.
+* Nicht nullable.
+* Der Payload muss dem in OpenAPI definierten Nachrichtenmodell entsprechen.
+
+### Status
+
+Verwende `DataspaceMessageStatus` beziehungsweise ein kompatibles Datenbankenum:
+
+```text
+PENDING
+SENT
+DELIVERED
+READ
+FAILED
+```
+
+Standardwert:
+
+```text
+PENDING
+```
+
+### Zustellversuche
+
+* `attemptCount` ist eine Ganzzahl.
+* Standardwert `0`.
+* `lastAttemptAt` nullable.
+* `nextAttemptAt` nullable.
+* `failureReason` nullable.
+
+### Zeitstempel
+
+* `createdAt` nicht nullable.
+* `sentAt` nullable.
+* `deliveredAt` nullable.
+
+## Tabelle `message_inbox`
+
+Ergänze mindestens:
+
+```text
+id
+messageId
+recipientOrgId
+senderOrgId
+messageType
+correlationId
+payload
+status
+receivedAt
+readAt
+createdAt
+```
+
+## Anforderungen an `message_inbox`
+
+* `messageId` referenziert fachlich die ursprüngliche Outbox-Nachricht.
+* Pro Empfänger darf dieselbe `messageId` nur einmal in der Inbox existieren.
+* Unique Constraint auf `messageId + recipientOrgId`.
+* `recipientOrgId` und `senderOrgId` sind nicht nullable.
+* `payload` wird als JSONB gespeichert.
+* `receivedAt` ist nicht nullable.
+* `readAt` ist nullable.
+* Standardstatus nach erfolgreicher Zustellung ist `DELIVERED`.
+
+## Indizes
+
+Ergänze sinnvolle Indizes für:
+
+```text
+messageId
+correlationId
+senderOrgId
+recipientOrgId
+messageType
+status
+createdAt
+nextAttemptAt
+```
+
+Prüfe kombinierte Indizes:
+
+```text
+recipientOrgId + status
+senderOrgId + status
+status + nextAttemptAt
+correlationId + createdAt
+```
+
+## Datenhoheit
+
+Der Hub beziehungsweise die Nachrichtentabellen dürfen nur kleine Nachrichten-Payloads speichern.
+
+Nicht in Outbox oder Inbox speichern:
+
+* vollständiger Taktplan
+* vollständiger Takt-Snapshot
+* vollständige Ressourcenplanung
+* interne Konfliktanalyse
+* Daten anderer GU-Projekte
+* Mitarbeiterdaten
+* interne NU-Kosten
+
+## Beziehungen
+
+Ergänze geeignete Drizzle-Relations zu:
+
+* sendender Organisation
+* empfangender Organisation
+
+Eine direkte Foreign-Key-Beziehung von Nachrichten zu `TaktRequest` ist nicht zwingend erforderlich, da `correlationId` für die lose Kopplung verwendet wird.
+
+## Noch nicht implementieren
+
+* keine Zustelllogik
+* keine Retries
+* keine neuen REST-Endpunkte
+* keine TaktRequest-Nachrichten
+* keine UI
+* kein EDC
+
+## Tests
+
+Ergänze Datenbanktests:
+
+* Outbox-Nachricht kann gespeichert werden
+* doppelte `messageId` wird abgelehnt
+* Inbox-Nachricht kann gespeichert werden
+* dieselbe `messageId` kann beim selben Empfänger nicht doppelt gespeichert werden
+* Nachrichten verschiedener Empfänger bleiben getrennt
+* JSON-Payload kann gespeichert und gelesen werden
+* Standardstatus ist korrekt
+* `attemptCount` startet bei `0`
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Datenbanktests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neu angelegte Tabellen
+* verwendete Feldtypen
+* Unique Constraints
+* Indizes
+* Organisationsbeziehungen
+* Ergebnis der Migration
+* Testergebnisse
+* Ergebnis von Typecheck und Build

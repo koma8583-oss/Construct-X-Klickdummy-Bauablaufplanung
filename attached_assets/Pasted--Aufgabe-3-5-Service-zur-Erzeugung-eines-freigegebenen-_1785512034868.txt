@@ -1,0 +1,169 @@
+# Aufgabe 3.5 – Service zur Erzeugung eines freigegebenen Takt-Snapshots implementieren
+
+Implementiere einen fachlichen Service, der aus einem bestehenden Takt einen unveränderlichen und für den adressierten Nachunternehmer freigegebenen Snapshot erzeugt.
+
+Es sollen noch keine öffentlichen REST-Endpunkte implementiert werden.
+
+## Ziel
+
+Der Snapshot wird beim Erstellen beziehungsweise Versenden einer Taktanfrage einmalig erzeugt.
+
+Spätere Änderungen am ursprünglichen Takt dürfen den Snapshot nicht verändern.
+
+## Service
+
+Implementiere sinngemäß:
+
+```ts
+buildTaktRequestSnapshot(input): TaktRequestSnapshotPayload
+```
+
+und:
+
+```ts
+createTaktRequestWithSnapshot(...)
+```
+
+oder eine vergleichbare transaktionale Service-Funktion im bestehenden Architekturstil.
+
+## Erlaubte Snapshot-Inhalte
+
+Der Snapshot soll mindestens enthalten:
+
+```text
+schemaVersion
+projectReference
+taktReference
+taktVersion
+trade
+workPackage
+location
+plannedTimeWindow
+bufferTimeWindow
+requiredOutput
+resourceRequirements
+constraints
+predecessors
+successors
+documentReferences
+```
+
+Nur tatsächlich im bestehenden Modell vorhandene Daten sollen übernommen werden. Fehlende Strukturen dürfen zunächst sinnvoll reduziert abgebildet werden.
+
+## Empfohlene Struktur
+
+```json
+{
+  "schemaVersion": "1.0",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014",
+  "taktVersion": 1,
+  "trade": "DRYWALL",
+  "workPackage": "Montage Trockenbauwände",
+  "location": {
+    "building": "Bauteil A",
+    "storey": "EG",
+    "zone": "Taktbereich 03"
+  },
+  "plannedTimeWindow": {
+    "start": "2026-09-14T05:00:00Z",
+    "end": "2026-09-18T14:00:00Z"
+  },
+  "resourceRequirements": [
+    {
+      "resourceType": "CREW",
+      "crewSize": 6
+    }
+  ]
+}
+```
+
+## Nicht freigegebene Daten
+
+Der Snapshot darf nicht enthalten:
+
+* vollständigen Projektplan
+* nicht relevante Takte
+* Zuordnungen anderer Nachunternehmer
+* interne GU-Kommentare
+* interne Kalkulation
+* interne Vertragsinformationen
+* Benutzer- oder Mitarbeiterdaten
+* vollständige Dokumente, wenn eine Referenz genügt
+* NU-Ressourceninformationen
+
+## Whitelist-Prinzip
+
+Erzeuge den Snapshot durch eine explizite Whitelist zulässiger Felder.
+
+Nicht einfach das vollständige Takt-Datenbankobjekt serialisieren.
+
+Verwende keine Blacklist als alleinigen Schutz.
+
+## Versionierung
+
+* `taktVersion` wird aus der aktuellen Taktversion übernommen.
+* `schemaVersion` beschreibt die Struktur des Snapshots.
+* Bei der Taktanfrage wird die verwendete `taktVersion` gespeichert.
+* Snapshot und Request müssen dieselbe Taktversion enthalten.
+
+## Unveränderlichkeit
+
+* Pro Request genau ein Snapshot.
+* Bestehender Snapshot darf nicht überschrieben werden.
+* Änderung am Takt verändert den Snapshot nicht.
+* Kein allgemeiner Update-Service für Snapshots.
+
+## Validierung
+
+Prüfe:
+
+* Takt existiert.
+* Projekt existiert.
+* GU ist Eigentümer beziehungsweise berechtigte Organisation des Takts.
+* adressierter NU besitzt eine bestehende Projekt- oder Partnerzuordnung, sofern diese im aktuellen System bereits modelliert ist.
+* Taktversion ist mindestens 1.
+* Start und Ende sind gültig.
+* Ende liegt nach Beginn.
+
+## Tests
+
+Ergänze Tests:
+
+* gültiger Snapshot wird erstellt
+* nur freigegebene Felder sind enthalten
+* vertrauliche Felder fehlen
+* Snapshot und Request haben dieselbe Taktversion
+* Änderung am Takt verändert bestehenden Snapshot nicht
+* zweiter Snapshot wird abgelehnt
+* fremde GU-Organisation kann keinen Snapshot erzeugen
+* nicht zugeordneter NU wird abgelehnt, sofern Partnerzuordnung vorhanden ist
+
+## Einschränkungen
+
+* keine öffentlichen Routes
+* kein Nachrichtenversand
+* keine UI
+* keine Ressourcenprüfung
+* kein EDC
+
+## Prüfungen
+
+Führe aus:
+
+* neue Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Service-Dateien
+* verwendete Snapshot-Struktur
+* Whitelist der freigegebenen Felder
+* implementierte Berechtigungsprüfungen
+* Nachweis der Unveränderlichkeit
+* Testergebnisse
+* Ergebnis von Typecheck und Build

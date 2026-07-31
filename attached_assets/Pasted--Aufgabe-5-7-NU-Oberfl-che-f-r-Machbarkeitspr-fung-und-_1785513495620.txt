@@ -1,0 +1,634 @@
+# Aufgabe 5.7 – NU-Oberfläche für Machbarkeitsprüfung und Antwort implementieren
+
+Implementiere in der NU-Anwendung die Benutzeroberfläche für:
+
+* lokale Machbarkeitsprüfung
+* Anzeige interner Konflikte
+* Anzeige öffentlicher Vorschläge
+* Bearbeitung der Taktantwort
+* Versand an den GU
+
+## Einstieg
+
+Die Funktion wird aus der TaktRequest-Detailseite gestartet.
+
+Aktion:
+
+```text
+Machbarkeit prüfen
+```
+
+## Prüfung starten
+
+Beim Start:
+
+* Ladezustand anzeigen
+* doppeltes Starten verhindern
+* Fehler verständlich darstellen
+* TaktRequeststatus nach erfolgreichem Start aktualisieren
+
+## Interner Prüfbereich
+
+Nur für NU sichtbar.
+
+Zeige:
+
+* Ergebnis
+* betroffene lokale Ressourcen
+* Konflikttypen
+* Zeitüberschneidungen
+* fehlende Kapazitäten
+* fehlende Qualifikationen
+* nicht verfügbare Geräte
+* Tentative-Buchungen als Warnung
+* Zeitpunkt des Prüflaufs
+
+Interne lokale Projekt- und Ressourceninformationen dürfen hier sichtbar sein.
+
+## Öffentlicher Antwortbereich
+
+Zeige getrennt:
+
+```text
+Diese Angaben können an den GU übertragen werden
+```
+
+Enthalten:
+
+* empfohlene Entscheidung
+* generischer Reason Code
+* bis zu drei Alternativen
+* freigegebene Zeitfenster
+* Kolonnenstärke
+* allgemeine Bedingungen
+* Kommentar
+* nächstes Verfügbarkeitsdatum
+
+## Antwortmodi
+
+Unterstütze:
+
+```text
+Takt bestätigen
+Alternativen vorschlagen
+Takt ablehnen
+```
+
+## Modus „Bestätigen“
+
+Eingaben:
+
+* angenommenes Zeitfenster
+* Kommentar
+
+## Modus „Alternativen“
+
+Funktionen:
+
+* Vorschlag aus Prüfung übernehmen
+* Alternative hinzufügen
+* Alternative entfernen
+* Rangfolge verändern
+* Zeitfenster bearbeiten
+* Kolonnenstärke bearbeiten
+* Bedingungen ergänzen
+* maximal drei Alternativen
+
+## Modus „Ablehnen“
+
+Eingaben:
+
+* generischer Grund
+* Kommentar
+* optional nächstes verfügbares Datum
+
+## Datenschutzvorschau
+
+Vor Versand zwei Bereiche anzeigen:
+
+```text
+Wird übertragen
+```
+
+und:
+
+```text
+Bleibt lokal
+```
+
+### Wird übertragen
+
+Nur öffentliche Antwortdaten.
+
+### Bleibt lokal
+
+Beispielsweise:
+
+```text
+lokale Projekt-IDs
+Kundenalias
+Ressourcen-IDs
+Ressourcennamen
+Mitarbeiternamen
+interne Konflikte
+interne Prioritäten
+interne Kosten
+```
+
+## Versand
+
+Beim Senden:
+
+1. Bestätigungsdialog anzeigen.
+2. Response-Endpunkt aufrufen.
+3. doppeltes Absenden verhindern.
+4. Idempotency-Key verwenden, sofern unterstützt.
+5. Ergebnis anzeigen.
+6. Requeststatus aktualisieren.
+7. gesendete Antwort schreibgeschützt darstellen.
+
+## Transportfehler
+
+Wenn die Antwort fachlich gespeichert, aber die Nachricht nicht zugestellt wurde:
+
+* keine zweite Antwort erzeugen
+* Status der technischen Zustellung anzeigen
+* Retry ermöglichen
+* fachliche Antwort schreibgeschützt erhalten
+
+## Tests
+
+Ergänze:
+
+* Prüfung kann gestartet werden
+* internes und öffentliches Ergebnis werden getrennt angezeigt
+* Bestätigung kann gesendet werden
+* zwei Alternativen können gesendet werden
+* mehr als drei Alternativen werden verhindert
+* Ablehnung kann gesendet werden
+* Datenschutzvorschau enthält korrekte Trennung
+* doppelte Antwort wird verhindert
+* Transportfehler erzeugt keine zweite Antwort
+* GU-interne Ansicht erhält keine NU-internen Konflikte
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Aufbau der Prüfansicht
+* Antwortmodi
+* Datenschutzvorschau
+* Idempotenz und Retry
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 5.8 – GU-Ansicht zum Vergleichen und Bearbeiten von Antworten implementieren
+
+Implementiere in der GU-Anwendung eine Ansicht für eingegangene Taktantworten.
+
+## Einstieg
+
+Die Antwort soll erreichbar sein über:
+
+* Taktanfragen-Übersicht
+* TaktRequest-Detailseite
+* GU-Inbox
+* optional Dashboard-Hinweis
+
+## Antwortübersicht
+
+Zeige:
+
+```text
+Nachunternehmer
+TaktRequest
+Taktversion
+Entscheidung
+Reason Code
+Kommentar
+eingegangen am
+technischer Nachrichtenstatus
+```
+
+## Bestätigung
+
+Bei `ACCEPTED` zeige:
+
+* ursprüngliches Zeitfenster
+* bestätigtes Zeitfenster
+* Kommentar
+* fachlicher Status
+
+## Ablehnung
+
+Bei `REJECTED` zeige:
+
+* generischen Grund
+* Kommentar
+* nächstes verfügbares Datum, falls vorhanden
+
+Keine internen NU-Konflikte anzeigen.
+
+## Alternativenvergleich
+
+Bei `ALTERNATIVES_PROPOSED` erstelle eine Vergleichsansicht.
+
+Spalten oder Karten:
+
+```text
+Originalplanung
+Alternative 1
+Alternative 2
+Alternative 3
+```
+
+Vergleiche:
+
+```text
+Beginn
+Ende
+Dauer
+Verschiebung zum Original
+Kolonnenstärke
+Bedingungen
+Rang
+```
+
+## Datenschutz
+
+Nicht anzeigen:
+
+```text
+lokale Projekte des NU
+andere Generalunternehmer
+Ressourcen-IDs
+Ressourcennamen
+Mitarbeiternamen
+interne Konfliktursache
+interne Kosten
+interne Prioritäten
+```
+
+## Aktionen
+
+In dieser Aufgabe können abhängig vom vorhandenen Backend folgende Aktionen umgesetzt oder vorbereitet werden:
+
+```text
+Antwort zur Kenntnis nehmen
+Alternative auswählen
+Überarbeitung anfordern
+```
+
+Falls das Backend für die Entscheidung noch nicht vorhanden ist:
+
+* keine funktionslose Aktion anbieten
+* Schaltflächen klar als noch nicht verfügbar kennzeichnen oder erst in Aufgabe 6 implementieren
+
+## Inbox
+
+GU muss `TAKT_RESPONSE_SUBMITTED` in seiner Inbox sehen können.
+
+Zeige:
+
+* ungelesene Antwort
+* zugehörige Anfrage
+* Nachunternehmer
+* Entscheidung
+* Eingangszeitpunkt
+
+## Polling
+
+Offene Anfragen dürfen regelmäßig aktualisiert werden.
+
+## Tests
+
+Ergänze:
+
+* bestätigte Antwort wird korrekt angezeigt
+* Ablehnung zeigt nur generische Daten
+* mehrere Alternativen werden verglichen
+* Originalplanung wird gegenübergestellt
+* keine internen NU-Daten sichtbar
+* GU sieht nur Antworten eigener Requests
+* fremder GU erhält keinen Zugriff
+* ungelesene Antwort erscheint in GU-Inbox
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Antwortansicht
+* Vergleichsdarstellung
+* GU-Inbox-Erweiterung
+* Datenschutzprüfung
+* vorhandene beziehungsweise noch fehlende Entscheidungsaktionen
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 5.9 – Hub-Prozessansicht, Demo-Daten und Frontend-Abschlussprüfung implementieren
+
+Erweitere die Hub-Anwendung zu einer technischen Prozessansicht des simulierten Datenraums.
+
+Ergänze außerdem einen reproduzierbaren Demoablauf und prüfe alle Frontends aus Aufgabe 5.
+
+## Hub-Nachrichtenübersicht
+
+Zeige mindestens:
+
+```text
+messageId
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+status
+attemptCount
+createdAt
+sentAt
+deliveredAt
+readAt
+```
+
+## Filter
+
+Unterstütze:
+
+```text
+Sender
+Empfänger
+Nachrichtentyp
+Status
+Correlation-ID
+Zeitraum
+```
+
+## Prozesskettenansicht
+
+Gruppiere Nachrichten nach:
+
+```text
+correlationId
+```
+
+Stelle den Ablauf beispielsweise als Zeitleiste dar:
+
+```text
+TAKT_REQUEST_NOTIFICATION
+→ TAKT_DETAILS_RETRIEVED
+→ TAKT_RESPONSE_SUBMITTED
+→ spätere GU-Entscheidung
+```
+
+## Hub-Datenschutz
+
+Der Hub darf anzeigen:
+
+* Nachrichtenmetadaten
+* kleine Notification-Payload
+* kleine Response-Payload
+* technische Fehler
+* Zustellversuche
+
+Der Hub darf nicht anzeigen:
+
+```text
+vollständiger Snapshot
+vollständiger Taktplan
+NU-Ressourcenplanung
+AvailabilityCheck.internalResultPayload
+lokale Projekte
+Mitarbeiterdaten
+interne Konfliktanalyse
+```
+
+## JSON-Ansicht
+
+Erlaube eine formatierte Ansicht des tatsächlich gespeicherten Nachrichten-Payloads.
+
+Nicht durch zusätzliche API-Aufrufe fachliche Detaildaten nachladen.
+
+## Fehlgeschlagene Zustellungen
+
+Zeige:
+
+* Fehlerstatus
+* Fehlermeldung
+* Anzahl Versuche
+* letzter Versuch
+* nächster möglicher Versuch
+* Aktion `Erneut zustellen`
+
+Retry darf:
+
+* dieselbe `messageId` verwenden
+* keine zweite fachliche Nachricht erzeugen
+* keine zweite Response erzeugen
+
+## Hinweis
+
+Zeige gut sichtbar:
+
+```text
+Simulierter Datenraumtransport – kein EDC
+```
+
+## Demo-Daten
+
+Ergänze Seed- oder Demo-Daten für drei vollständige Szenarien.
+
+### Demo A – Bestätigung
+
+* GU sendet Taktanfrage
+* NU ruft Details ab
+* keine Ressourcenkollision
+* NU bestätigt
+* GU erhält Antwort
+
+### Demo B – Alternativen
+
+* lokale NU-Buchung kollidiert
+* zwei Alternativen werden erzeugt
+* NU sendet Alternativen
+* GU sieht Vergleich
+
+### Demo C – Ablehnung
+
+* keine Kapazität im Suchhorizont
+* NU lehnt mit generischem Grund ab
+* GU sieht keine internen Konfliktdaten
+
+## Demo-Reset
+
+Implementiere einen nur in Entwicklungs- oder Demo-Umgebung verfügbaren Reset.
+
+Sinngemäß:
+
+```http
+POST /demo/reset
+```
+
+Anforderungen:
+
+* nicht in Produktion verfügbar
+* klare Berechtigungsprüfung
+* löscht oder ersetzt nur Demo-Daten
+* setzt alle drei Szenarien reproduzierbar zurück
+* beschädigt keine nicht als Demo gekennzeichneten Daten
+* Frontends können danach neu laden
+
+## End-to-End-Frontendtest
+
+Teste mindestens Szenario B:
+
+1. GU öffnet Takt.
+2. GU erstellt und sendet Anfrage.
+3. Hub zeigt Notification.
+4. NU sieht Notification.
+5. NU ruft Snapshot ab.
+6. NU öffnet Ressourcenplanung.
+7. NU startet Prüfung.
+8. System erzeugt zwei Alternativen.
+9. NU prüft Datenschutzvorschau.
+10. NU sendet Antwort.
+11. Hub zeigt Response-Nachricht.
+12. GU erhält Antwort.
+13. GU vergleicht Original und Alternativen.
+14. interne NU-Daten sind an keiner GU- oder Hub-Stelle sichtbar.
+
+## Gesamtprüfung
+
+Prüfe:
+
+* GU-Navigation
+* NU-Navigation
+* Hub-Navigation
+* Rollen- und Organisationsschutz
+* Ladezustände
+* Fehlerzustände
+* leere Zustände
+* Responsive-Verhalten
+* Tastaturbedienbarkeit grundlegender Dialoge
+* verständliche deutsche Bezeichnungen
+* konsistente Statusübersetzungen
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* alte Delegation-Seiten bleiben erreichbar
+* bestehende Funktionen bleiben nutzbar
+* keine generierten API-Dateien wurden manuell bearbeitet
+* kein EDC wurde implementiert
+* GU-, NU- und Hub-Anwendungen bauen erfolgreich
+
+## Dokumentation
+
+Aktualisiere bei Bedarf:
+
+```text
+docs/frontend-concept.md
+docs/message-flow.md
+docs/transport-architecture.md
+docs/data-ownership.md
+README.md
+```
+
+## Prüfungen
+
+Führe aus:
+
+* Demo-Reset
+* Seed
+* OpenAPI-Codegenerierung
+* Frontendtests
+* API-Tests
+* Transporttests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+### Neue GU-Seiten
+
+Liste alle neuen GU-Routen und Komponenten.
+
+### Neue NU-Seiten
+
+Liste alle neuen NU-Routen und Komponenten.
+
+### Neue Hub-Seiten
+
+Liste alle neuen Hub-Routen und Komponenten.
+
+### Demo-Szenarien
+
+Beschreibe:
+
+```text
+Bestätigung
+Alternativen
+Ablehnung
+```
+
+### Datenhoheit
+
+Bestätige:
+
+* GU sieht keine lokalen NU-Ressourcen.
+* Hub sieht keine vollständigen Fachdaten.
+* NU sieht keinen vollständigen GU-Taktplan.
+* Notification und Snapshot bleiben getrennt.
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Demo-Reset
+* Codegenerierung
+* Frontendtests
+* API-Tests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* GU-Auswahl und verbindliche Annahme einer Alternative
+* Überarbeitungs- und Versionierungsrunde
+* automatische Ablauf- und Erinnerungslogik
+* Export und Reporting
+* semantische Datenmodelle
+* spätere EDC- und Tractus-X-Anbindung

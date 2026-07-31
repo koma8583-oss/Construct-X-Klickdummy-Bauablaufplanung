@@ -1,0 +1,476 @@
+# Aufgabe 5.4 – GU-Detailseite und Prozess-Zeitleiste implementieren
+
+Implementiere in der GU-Anwendung eine Detailseite für eine Taktanfrage.
+
+## Route
+
+Implementiere sinngemäß:
+
+```text
+/takt-requests/{requestId}
+```
+
+## Kopfbereich
+
+Zeige:
+
+```text
+Anfragenummer
+Projekt
+Takt
+Taktversion
+Nachunternehmer
+Antwortfrist
+fachlicher Status
+technischer Nachrichtenstatus
+```
+
+## Prozess-Zeitleiste
+
+Zeige mindestens:
+
+```text
+Anfrage erstellt
+Snapshot erzeugt
+Nachricht versendet
+Nachricht zugestellt
+Nachricht gelesen
+Taktdetails abgerufen
+Prüfung gestartet
+Antwort eingegangen
+Entscheidung getroffen
+```
+
+Nicht vorhandene Ereignisse werden als ausstehend dargestellt.
+
+## Zeitstempel
+
+Nutze vorhandene Daten:
+
+```text
+createdAt
+sentAt
+deliveredAt
+readAt
+detailsRetrievedAt
+checkedAt
+response.createdAt
+```
+
+Falls ein Ereignis technisch nicht gespeichert wird:
+
+* nicht erfinden
+* als nicht verfügbar darstellen
+* keine falsche Prozessvollständigkeit suggerieren
+
+## Snapshot-Vorschau
+
+GU darf den für den NU erzeugten Snapshot kontrollieren.
+
+Zeige:
+
+* Schema-Version
+* Taktversion
+* Zeitraum
+* Gewerk
+* Arbeitspaket
+* Ort
+* Ressourcenanforderungen
+* Randbedingungen
+* Dokumentreferenzen
+
+Kennzeichne klar:
+
+```text
+Dieser Snapshot ist unveränderlich und entspricht dem Stand beim Erstellen der Anfrage.
+```
+
+## Notification-Vorschau
+
+Zeige getrennt die tatsächlich versendete Notification.
+
+## Aktionen
+
+Je nach Status:
+
+```text
+Senden
+Erneut zustellen
+Stornieren
+Antwort anzeigen
+Neue Version erstellen
+```
+
+„Neue Version erstellen“ darf zunächst nur als vorbereitete oder später umgesetzte Aktion erscheinen, wenn der Backendprozess noch nicht vorhanden ist.
+
+Keine funktionslose Schaltfläche ohne Kennzeichnung darstellen.
+
+## Technischer Fehler
+
+Bei `FAILED` anzeigen:
+
+* technische Fehlermeldung in verständlicher Form
+* Anzahl Zustellversuche
+* Zeitpunkt des letzten Versuchs
+* Aktion `Erneut zustellen`
+
+Keine internen Stacktraces anzeigen.
+
+## Berechtigungen
+
+* nur GU-Organisation des Requests
+* NU erhält keinen Zugriff auf GU-Detailseite
+* Hub erhält keinen Zugriff auf Snapshot-Vorschau
+
+## Tests
+
+Ergänze:
+
+* GU kann eigene Anfrage öffnen
+* fremder GU wird abgelehnt
+* Zeitleiste zeigt vorhandene Ereignisse
+* technische und fachliche Status sind getrennt
+* Snapshot bleibt unverändert dargestellt
+* Notification und Snapshot werden getrennt angezeigt
+* Retry-Aktion nur bei technischem Fehler
+* sensible NU-Daten werden nicht angezeigt
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Route
+* dargestellte Metadaten
+* Aufbau der Zeitleiste
+* Snapshot- und Notification-Trennung
+* Retry-Darstellung
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 5.5 – NU-Inbox und Abruf der Taktdetails implementieren
+
+Implementiere in der NU-Anwendung eine Inbox für Taktanfragen.
+
+Verwende die vorhandenen Nachrichten- und Detailendpunkte.
+
+## Neue Route
+
+Implementiere sinngemäß:
+
+```text
+/takt-requests
+```
+
+oder einen zur vorhandenen NU-Navigation passenden Pfad.
+
+## Navigation
+
+Ergänze:
+
+```text
+Taktanfragen
+```
+
+## Inbox-Liste
+
+Zeige mindestens:
+
+```text
+ungelesen / gelesen
+Generalunternehmer
+Projekt-Referenz
+Takt-Referenz
+Taktversion
+Antwortfrist
+Nachrichtenstatus
+Requeststatus
+eingegangen am
+Aktionen
+```
+
+## Filter
+
+Unterstütze:
+
+```text
+ungelesen
+offen
+Antwortfrist
+Generalunternehmer
+Requeststatus
+```
+
+## Notification-Detailansicht
+
+Vor dem Detailabruf dürfen nur Notification-Daten angezeigt werden:
+
+```text
+Absender
+Projekt-Referenz
+Takt-Referenz
+Taktversion
+Antwortfrist
+Betreff
+Nachricht
+Detailreferenz
+```
+
+Keine vollständigen Taktdetails anzeigen.
+
+## Aktion „Taktdetails abrufen“
+
+Bei Betätigung:
+
+1. Detailendpunkt aufrufen.
+2. unveränderlichen Snapshot laden.
+3. Requeststatus aktualisieren.
+4. lokale Detailansicht öffnen.
+5. Notification bei Bedarf als gelesen markieren.
+
+## Nach dem Abruf
+
+Zeige:
+
+* Gewerk
+* Arbeitspaket
+* Ort
+* geplantes Zeitfenster
+* Pufferzeitraum
+* Ressourcenanforderungen
+* Randbedingungen
+* Vorgänger und Nachfolger
+* Dokumentreferenzen
+
+Kennzeichne:
+
+```text
+Diese Daten wurden als freigegebener Snapshot abgerufen.
+```
+
+## Datenschutzdarstellung
+
+Zeige einen Hinweis:
+
+```text
+Ihre lokale Ressourcenplanung bleibt im NU-System und wird nicht an den GU übertragen.
+```
+
+## Antwortfrist
+
+Zeige:
+
+* verbleibende Zeit
+* überfällige Anfragen
+* abgelaufene Anfrage
+* nicht mehr beantwortbare Anfrage
+
+Keine aggressive sekundengenaue Countdown-Anzeige erforderlich.
+
+## Berechtigungen
+
+* NU sieht nur eigene Notifications.
+* fremder NU kann keine Details abrufen.
+* GU kann diese NU-Ansicht nicht öffnen.
+* Hub kann keine Snapshot-Inhalte sehen.
+
+## Tests
+
+Ergänze:
+
+* NU sieht eigene Notification
+* vor Abruf keine Snapshot-Daten sichtbar
+* Abruf lädt Snapshot
+* Status wechselt zu `DETAILS_RETRIEVED`
+* wiederholter Abruf bleibt idempotent
+* fremder NU erhält keinen Zugriff
+* abgelaufene Anfrage wird gekennzeichnet
+* sensible GU- oder fremde NU-Daten werden nicht angezeigt
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Route
+* Aufbau der Inbox
+* Verhalten vor und nach dem Detailabruf
+* Fristdarstellung
+* Berechtigungsprüfung
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 5.6 – NU-Oberfläche für lokale Mehrprojekt-Ressourcenplanung implementieren
+
+Implementiere in der NU-Anwendung eine Oberfläche zur Verwaltung lokaler Projekte und Ressourcenbuchungen.
+
+Verwende die bereits vorhandenen NU-internen APIs.
+
+## Navigation
+
+Ergänze geeignete Bereiche:
+
+```text
+Lokale Projekte
+Ressourcenplanung
+```
+
+## Lokale Projekte
+
+Implementiere eine Übersicht mit:
+
+```text
+Projektcode
+interner Projektname
+Kundenalias
+Beginn
+Ende
+Status
+Aktionen
+```
+
+## Projektaktionen
+
+Unterstütze:
+
+```text
+Anlegen
+Bearbeiten
+Öffnen
+Stornieren
+```
+
+Kein physisches Löschen erforderlich.
+
+## Ressourcenplanung
+
+Implementiere eine Gantt-, Kalender- oder Zeitachsenansicht auf Basis vorhandener UI-Komponenten.
+
+Zeige:
+
+* Ressourcen als Zeilen
+* Zeit als horizontale Achse
+* lokale Projektbuchungen
+* TaktRequest-Buchungen
+* Abwesenheiten
+* Wartungen
+* manuelle Sperrzeiten
+
+## Darstellung nach Buchungstyp
+
+Unterscheide sichtbar:
+
+```text
+LOCAL_PROJECT
+TAKT_REQUEST
+MANUAL_BLOCK
+ABSENCE
+MAINTENANCE
+```
+
+Es müssen nicht zwingend feste Farben codiert werden, wenn das bestehende Design eine andere eindeutige Darstellung verwendet.
+
+## Buchung erstellen
+
+Formularfelder:
+
+```text
+Ressource
+lokales Projekt
+Quelltyp
+Beginn
+Ende
+Auslastung
+Status
+interne Notiz
+```
+
+## Überlappungswarnung
+
+Beim Anlegen oder Bearbeiten:
+
+* vorhandene Überschneidungen anzeigen
+* Summe der Auslastung berücksichtigen
+* Überschreitung von 100 Prozent deutlich warnen
+* Speichern gemäß Backendregeln verhindern oder bestätigen lassen
+
+Die Backendvalidierung bleibt maßgeblich.
+
+## Datenschutz
+
+Zeige deutlich:
+
+```text
+Diese Daten bleiben im lokalen System des Nachunternehmers.
+```
+
+Keine Aktion zum Teilen der vollständigen Ressourcenplanung anbieten.
+
+## Berechtigungen
+
+* nur Benutzer der eigenen NU-Organisation
+* GU und Hub erhalten keinen Zugriff
+* Ressourcen anderer NU werden nicht angezeigt
+
+## Performance
+
+* Zeitraum begrenzen
+* Pagination oder virtuelles Rendering verwenden, falls viele Ressourcen vorhanden sind
+* keine unbeschränkte Abfrage der gesamten Historie
+
+## Tests
+
+Ergänze:
+
+* lokales Projekt kann angelegt werden
+* Buchung kann angelegt werden
+* Zeitraumfilter funktioniert
+* Überschneidung wird angezeigt
+* Auslastung über 100 wird verhindert oder klar behandelt
+* stornierte Buchung bleibt historisch sichtbar
+* GU kann Seite nicht aufrufen
+* fremde NU-Daten werden nicht angezeigt
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Routen und Navigation
+* Projektverwaltung
+* Aufbau der Ressourcenplanung
+* Überlappungsdarstellung
+* Datenschutzmaßnahmen
+* Testergebnisse
+* Ergebnis von Typecheck und Build

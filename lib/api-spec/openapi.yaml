@@ -1043,8 +1043,1057 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnDashboard"
 
+  # ──────────── NU Inbox (Sprint 3) ────────────
+
+  /messages/inbox:
+    get:
+      operationId: listInboxMessages
+      tags: [takt-requests]
+      summary: NU lists their inbox messages (newest first)
+      description: >
+        Returns messages delivered to the authenticated NU organisation.
+        recipientOrgId is always derived from the bearer token — clients cannot
+        query another organisation's inbox. GU users and hub admins are rejected.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DataspaceMessageStatus"
+        - name: messageType
+          in: query
+          schema:
+            $ref: "#/components/schemas/DataspaceMessageType"
+        - name: correlationId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of inbox messages (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InboxMessageItem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not an AN organisation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /messages/inbox/{messageId}:
+    get:
+      operationId: getInboxMessage
+      tags: [takt-requests]
+      summary: NU retrieves a single inbox message by messageId
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inbox message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxMessageItem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed recipient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /messages/inbox/{messageId}/read:
+    post:
+      operationId: markInboxMessageRead
+      tags: [takt-requests]
+      summary: NU marks a message as READ
+      description: >
+        Sets the inbox status to READ and records readAt. Idempotent — calling
+        this endpoint multiple times on the same message is safe. Does NOT
+        change the TaktRequest status.
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message marked as read (or was already read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxMarkReadResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed recipient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ──────────── TaktRequest Sprint 3 endpoints ────────────
+
+  /takt-requests:
+    get:
+      operationId: listTaktRequests
+      tags: [takt-requests]
+      summary: GU lists their own TaktRequests (enriched with Takt, project, NU, transport status)
+      description: >
+        Returns all TaktRequests for the authenticated GU organisation, joined
+        with Takt name, project name, NU organisation name, and the transport
+        delivery status of the notification message.
+
+        Access: GU users only. NU users pass role=nu instead; hub admins → 403.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaktRequestStatus"
+          description: Filter by request status
+        - name: taktId
+          in: query
+          schema:
+            type: string
+          description: Filter by Takt ID
+        - name: nuOrgId
+          in: query
+          schema:
+            type: string
+          description: Filter by NU organisation ID
+      responses:
+        "200":
+          description: List of enriched TaktRequests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaktRequestListItem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Hub admin or unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: createTaktRequestWithSnapshot
+      tags: [takt-requests]
+      summary: GU creates a TaktRequest draft with an immutable Takt snapshot
+      description: >
+        Creates a TaktRequest in DRAFT status and atomically persists an
+        immutable whitelist-scoped snapshot of the current Takt. No message is
+        sent; call /takt-requests/{requestId}/send to deliver the notification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaktRequestBody"
+      responses:
+        "201":
+          description: TaktRequest created in DRAFT status with snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestDraftResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU org is not the project owner, or NU is not a registered contractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Takt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Takt has invalid time window or version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}:
+    get:
+      operationId: getTaktRequestDetail
+      tags: [takt-requests]
+      summary: GU detail view — full metadata, timeline, snapshot, notification, and response
+      description: >
+        Returns the complete detail record for a single TaktRequest.
+        Includes: enriched metadata (Takt name, project name, NU org name),
+        all process timestamps for the timeline, transport/outbox information
+        (status, failure reason, attempt count), the immutable snapshot, the
+        notification payload actually sent to the NU, and the NU's response
+        with any proposed alternatives.
+
+        Access: the creating GU organisation only. Other GU, NU, hub admins
+        and unauthenticated callers receive 403 or 404.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full detail record for the TaktRequest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestDetail"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Hub admin attempting access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found, or belongs to a different GU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/details:
+    get:
+      operationId: getTaktRequestDetails
+      tags: [takt-requests]
+      summary: Pull the immutable Takt snapshot released for a TaktRequest
+      description: >
+        Returns the immutable point-in-time Takt snapshot that was created when
+        the request was sent. The response NEVER contains the live Takt row —
+        only the snapshot data released by the GU.
+
+        Access:
+          - The addressed NU organisation: may access when status is DELIVERED,
+            DETAILS_RETRIEVED, or UNDER_REVIEW. First access transitions
+            DELIVERED → DETAILS_RETRIEVED and records detailsRetrievedAt.
+            Subsequent access (DETAILS_RETRIEVED, UNDER_REVIEW) is idempotent.
+          - The creating GU organisation: always has read access for
+            control/preview purposes. Does NOT trigger any status transition.
+
+        Forbidden for all other callers (other NU, other GU, hub admins,
+        unauthenticated users).
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Immutable Takt snapshot for this TaktRequest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestDetailsResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed NU or the creating GU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found, or snapshot not yet available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Request is in a state that does not permit details retrieval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/send:
+    post:
+      operationId: sendTaktRequest
+      tags: [takt-requests]
+      summary: GU sends a DRAFT TaktRequest as a notification to the NU
+      description: >
+        Builds a TaktRequestNotificationPayload (no full Takt data), delivers
+        it via MessageTransport, and transitions the request
+        DRAFT → SENT → DELIVERED. Also sets the Takt lifecycle status to
+        IN_COORDINATION. Idempotent: if already DELIVERED, returns the existing
+        result without creating a second message.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: TaktRequest sent and locally delivered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestSendResult"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the GU organisation that owns this request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found, or snapshot missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid status transition (already cancelled, superseded, or rejected)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Transport delivery failed — request left in SENT status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── NU: availability checks (Task 4.7) ──────────────────────────────────────
+
+  /takt-requests/{requestId}/availability-checks:
+    post:
+      operationId: runAvailabilityCheck
+      tags: [takt-requests]
+      summary: NU runs a feasibility check against their own resource calendar
+      description: >
+        The addressed NU organisation triggers an availability check for the given
+        TaktRequest. The service inspects the NU's resources and existing bookings
+        against the planned time window from the snapshot.
+
+        On success the TaktRequest transitions to UNDER_REVIEW (if it was
+        DETAILS_RETRIEVED). Repeated calls are allowed (UNDER_REVIEW stays).
+
+        Access: addressed NU only. GU, hub-admin → 403.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Availability check completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityCheckResponse"
+        "400":
+          description: Check cannot be run (e.g. snapshot missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed NU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Request is not in a state that allows a check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/availability-checks/latest:
+    get:
+      operationId: getLatestAvailabilityCheck
+      tags: [takt-requests]
+      summary: NU retrieves the latest feasibility check result
+      description: >
+        Returns the most recently completed availability check for the given
+        TaktRequest. Prefers COMPLETED checks; falls back to any latest check.
+
+        Access: addressed NU only. GU, hub-admin → 403.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest availability check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityCheckResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed NU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found, or no check exists yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/responses:
+    post:
+      operationId: submitNuResponse
+      tags: [takt-requests]
+      summary: NU submits a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
+      description: >
+        The addressed NU organisation submits their coordination response for the
+        TaktRequest. Allowed starting statuses: DETAILS_RETRIEVED, UNDER_REVIEW.
+
+        Privacy rules (enforced server-side):
+          - Forbidden fields: resourceId, localProjectId, internalResultPayload,
+            localProjectCode, customerAlias, resourceName, employeeId, etc.
+          - Only generic reason codes and time windows may be transmitted.
+
+        Idempotency: repeated calls with the same decision return 200 (no second
+        row created). A different decision returns 409.
+
+        On success, a TAKT_RESPONSE_SUBMITTED message is delivered to the GU's
+        inbox. The message payload contains only public data.
+
+        Access: addressed NU only. GU, hub-admin → 403.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuResponseCreate"
+      responses:
+        "201":
+          description: Response created and message delivered to GU inbox
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResponseResult"
+        "200":
+          description: Identical response already exists (idempotent retry)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResponseResult"
+        "400":
+          description: Forbidden field in body or validation failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the addressed NU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Different decision already submitted, or request status not answerable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── NU-internal: local projects ─────────────────────────────────────────────
+
+  /nu/local-projects:
+    get:
+      operationId: listNuLocalProjects
+      summary: List NU's internal local projects
+      description: >
+        Returns all local projects owned by the authenticated NU organisation.
+        GU and hub-admin users receive 403.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PLANNED, ACTIVE, COMPLETED, CANCELLED]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated list of local projects
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuLocalProjectListResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createNuLocalProject
+      summary: Create a NU internal local project
+      description: >
+        Creates an internal local project for the authenticated NU.
+        nuOrgId is derived from the JWT — clients cannot supply it.
+        Physical deletion is not supported; use status CANCELLED.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuLocalProjectCreate"
+      responses:
+        "201":
+          description: Created local project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuLocalProject"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: localProjectCode already exists for this organisation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nu/local-projects/{projectId}:
+    get:
+      operationId: getNuLocalProject
+      summary: Get a single NU local project
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: projectId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Local project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuLocalProject"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found (or belongs to a different NU)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateNuLocalProject
+      summary: Update a NU local project
+      description: >
+        All fields are optional. To cancel a project set status to CANCELLED.
+        Physical deletion is not supported.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: projectId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuLocalProjectUpdate"
+      responses:
+        "200":
+          description: Updated local project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuLocalProject"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── NU-internal: resource bookings ──────────────────────────────────────────
+
+  /nu/resource-bookings:
+    get:
+      operationId: listNuResourceBookings
+      summary: List NU resource bookings with optional overlap filter
+      description: >
+        Returns bookings owned by the authenticated NU organisation.
+        Overlap filter: booking.startAt < endTo AND booking.endAt > startFrom.
+        GU and hub-admin users receive 403.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: resourceId
+          schema:
+            type: string
+        - in: query
+          name: localProjectId
+          schema:
+            type: string
+        - in: query
+          name: sourceType
+          schema:
+            type: string
+            enum: [LOCAL_PROJECT, TAKT_REQUEST, MANUAL_BLOCK, ABSENCE, MAINTENANCE]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [TENTATIVE, CONFIRMED, CANCELLED]
+        - in: query
+          name: startFrom
+          description: >
+            ISO 8601 datetime. Returns bookings where endAt > startFrom (overlap).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: endTo
+          description: >
+            ISO 8601 datetime. Returns bookings where startAt < endTo (overlap).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated list of resource bookings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResourceBookingListResponse"
+        "400":
+          description: Invalid filter parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createNuResourceBooking
+      summary: Create a NU resource booking
+      description: >
+        Creates a booking for a resource belonging to the authenticated NU.
+        nuOrgId is derived from the JWT — clients cannot supply it.
+        The resource must belong to the caller's organisation.
+        endAt must be after startAt.
+        utilizationPercent must be 1–100.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuResourceBookingCreate"
+      responses:
+        "201":
+          description: Created booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResourceBooking"
+        "400":
+          description: Validation error (endAt before startAt, invalid utilization, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU/hub-admin user, or resource belongs to a different organisation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nu/resource-bookings/{bookingId}:
+    get:
+      operationId: getNuResourceBooking
+      summary: Get a single NU resource booking
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resource booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResourceBooking"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found (or belongs to a different NU)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateNuResourceBooking
+      summary: Update a NU resource booking
+      description: >
+        All fields are optional. Cannot update a CANCELLED booking (409).
+        endAt must remain after startAt.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuResourceBookingUpdate"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResourceBooking"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Cannot update a cancelled booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nu/resource-bookings/{bookingId}/cancel:
+    post:
+      operationId: cancelNuResourceBooking
+      summary: Cancel a NU resource booking
+      description: >
+        Sets the booking status to CANCELLED. Idempotent — cancelling an
+        already-cancelled booking returns 200. The booking row is preserved
+        for historical audit purposes.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled (or already-cancelled) booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResourceBooking"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found (or belongs to a different NU)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
     HealthStatus:
       type: object
       properties:
@@ -2015,6 +3064,242 @@ components:
 
     # ── Takt request payload (Task 1.5) ──
 
+    # ── Sprint 3 details schema ──
+
+    TaktRequestDetailsResponse:
+      type: object
+      description: >
+        Immutable snapshot payload returned by GET /takt-requests/{requestId}/details.
+        Contains only the data the GU released at the time of sending — never the
+        live Takt row or any NU-private data.
+      properties:
+        taktRequestId:
+          type: string
+          description: ID of the TaktRequest this snapshot belongs to
+        requestNumber:
+          type: string
+          description: Human-readable request reference (e.g. TKR-2026-0042)
+        schemaVersion:
+          type: string
+          description: Snapshot payload schema version (e.g. "1.0")
+        taktVersion:
+          type: integer
+          description: Takt version at the time the snapshot was created
+        status:
+          type: string
+          description: Current TaktRequest status
+        guOrgId:
+          type: string
+          description: GU organisation that created this request
+        nuOrgId:
+          type: string
+          description: NU organisation addressed by this request
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+          description: Deadline by which the NU must respond
+        detailsRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the NU first retrieved these details; null until first access
+        snapshotPayload:
+          type: object
+          description: >
+            The released Takt data. Shape defined in docs/json-contracts.md.
+            Does NOT contain full project plan, current live Takt values,
+            other NU data, or internal GU data.
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+          description: When the snapshot was created (same as request send time)
+      required:
+        - taktRequestId
+        - requestNumber
+        - schemaVersion
+        - taktVersion
+        - status
+        - guOrgId
+        - nuOrgId
+        - snapshotPayload
+        - createdAt
+
+    # ── Sprint 3 inbox schemas ──
+
+    InboxMessageItem:
+      type: object
+      description: >
+        A single message in the NU inbox. Contains only the notification metadata
+        and the minimal payload as delivered — no full Takt snapshot is included.
+      properties:
+        id:
+          type: string
+          description: Inbox row ID (unique per message+recipient pair)
+        messageId:
+          type: string
+          description: Globally unique message identifier
+        messageType:
+          $ref: "#/components/schemas/DataspaceMessageType"
+        senderOrgId:
+          type: string
+          description: Organisation that sent the message
+        recipientOrgId:
+          type: string
+          description: Organisation that received the message
+        correlationId:
+          type: string
+          description: Ties this message to a TaktRequest coordination thread
+        status:
+          $ref: "#/components/schemas/DataspaceMessageStatus"
+        payload:
+          type: object
+          description: >
+            Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId,
+            projectReference, taktReference, taktVersion, responseRequiredBy,
+            detailsRef, subject, message. No full Takt data.
+          additionalProperties: true
+        receivedAt:
+          type: string
+          format: date-time
+          description: When the message was delivered to this inbox
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the recipient marked the message as read; null if unread
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - messageId
+        - messageType
+        - senderOrgId
+        - recipientOrgId
+        - correlationId
+        - status
+        - payload
+        - receivedAt
+        - createdAt
+
+    InboxMarkReadResponse:
+      type: object
+      description: Response from POST /messages/inbox/{messageId}/read.
+      properties:
+        messageId:
+          type: string
+        status:
+          $ref: "#/components/schemas/DataspaceMessageStatus"
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - messageId
+        - status
+
+    # ── Sprint 3 request/response schemas ──
+
+    CreateTaktRequestBody:
+      type: object
+      description: Body for POST /takt-requests — GU creates a TaktRequest draft with snapshot.
+      properties:
+        taktId:
+          type: string
+          minLength: 1
+          description: ID of the Takt to coordinate
+        nuOrgId:
+          type: string
+          minLength: 1
+          description: ID of the NU organisation to address
+        responseRequiredBy:
+          type: string
+          format: date-time
+          description: ISO 8601 deadline by which the NU must respond
+          nullable: true
+        subject:
+          type: string
+          maxLength: 255
+          description: Optional human-readable subject line for the coordination message
+        message:
+          type: string
+          maxLength: 2000
+          description: Optional free-text message from GU to NU
+      required:
+        - taktId
+        - nuOrgId
+
+    TaktRequestDraftResponse:
+      type: object
+      description: Response from POST /takt-requests — the newly created DRAFT request.
+      properties:
+        id:
+          type: string
+          description: TaktRequest ID
+        taktId:
+          type: string
+        taktVersion:
+          type: integer
+          minimum: 1
+          description: Takt version at the time of request creation
+        guOrgId:
+          type: string
+        nuOrgId:
+          type: string
+        requestNumber:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        snapshotId:
+          type: string
+          description: ID of the immutable snapshot created atomically with this request
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - taktId
+        - taktVersion
+        - guOrgId
+        - nuOrgId
+        - requestNumber
+        - status
+        - snapshotId
+        - createdAt
+
+    TaktRequestSendResult:
+      type: object
+      description: Response from POST /takt-requests/{requestId}/send.
+      properties:
+        requestId:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        messageId:
+          type: string
+          description: Outbox message ID — deterministic; use for traceability and retry
+        taktLifecycleStatus:
+          type: string
+          description: Updated Takt lifecycle status after delivery (IN_COORDINATION on success)
+      required:
+        - requestId
+        - status
+        - messageId
+
     TaktRequestNotificationPayload:
       type: object
       description: >
@@ -2065,6 +3350,527 @@ components:
         - ACCEPTED
         - ALTERNATIVES_PROPOSED
         - REJECTED
+
+    # ── Sprint 5 schemas (Task 5.2) ─────────────────────────────────────────────
+
+    MessageOutboxStatus:
+      type: string
+      description: "Technical delivery status of a dataspace message"
+      enum:
+        - PENDING
+        - SENT
+        - DELIVERED
+        - READ
+        - FAILED
+
+    TaktRequestListItem:
+      type: object
+      description: >
+        Enriched TaktRequest row for the GU overview list.
+        Includes Takt name, project name, NU org name, and transport status.
+        Never contains internal NU data.
+      properties:
+        id:
+          type: string
+        requestNumber:
+          type: string
+          description: "Human-readable unique reference (e.g. TKR-2026-0042)"
+        taktId:
+          type: string
+        taktBezeichnung:
+          type: string
+          description: "Display name of the Takt"
+        taktVersion:
+          type: integer
+          minimum: 1
+        projectId:
+          type: string
+        projectName:
+          type: string
+        guOrgId:
+          type: string
+        nuOrgId:
+          type: string
+        nuOrgName:
+          type: string
+          description: "Display name of the addressed NU organisation"
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        outboxStatus:
+          nullable: true
+          description: "Transport delivery status of the notification message. Null if not yet sent."
+          allOf:
+            - $ref: "#/components/schemas/MessageOutboxStatus"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Deadline by which the NU must respond"
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - requestNumber
+        - taktId
+        - taktBezeichnung
+        - taktVersion
+        - projectId
+        - projectName
+        - guOrgId
+        - nuOrgId
+        - nuOrgName
+        - status
+        - createdAt
+        - updatedAt
+
+    # ── Sprint 5 Task 5.4 schemas ────────────────────────────────────────────────
+
+    TaktRequestDetailTransport:
+      type: object
+      description: Transport/outbox information for the notification sent to the NU
+      properties:
+        status:
+          nullable: true
+          description: "Outbox delivery status; null if not yet queued"
+          allOf:
+            - $ref: "#/components/schemas/MessageOutboxStatus"
+        notificationPayload:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: "Payload that was actually delivered to the NU"
+        attemptCount:
+          type: integer
+          nullable: true
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        failureReason:
+          type: string
+          nullable: true
+        inboxReadAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "When the NU's inbox row was marked as read"
+
+    TaktRequestDetailTimeline:
+      type: object
+      description: All process timestamps in one flat object. Null = not yet occurred or not tracked.
+      properties:
+        requestCreatedAt:
+          type: string
+          format: date-time
+        snapshotCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        inboxReadAt:
+          type: string
+          format: date-time
+          nullable: true
+        detailsRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Not tracked from the GU side — always null"
+        responseCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - requestCreatedAt
+
+    TaktRequestDetailResponseAlt:
+      type: object
+      properties:
+        alternativeId:
+          type: string
+        rank:
+          type: integer
+        proposedStart:
+          type: string
+          format: date-time
+        proposedEnd:
+          type: string
+          format: date-time
+        crewSize:
+          type: integer
+          nullable: true
+        conditions:
+          type: array
+          nullable: true
+          items:
+            type: string
+      required:
+        - alternativeId
+        - rank
+        - proposedStart
+        - proposedEnd
+
+    TaktRequestDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        decision:
+          type: string
+          enum: [ACCEPTED, ALTERNATIVES_PROPOSED, REJECTED]
+        reasonCode:
+          type: string
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        acceptedStart:
+          type: string
+          format: date-time
+          nullable: true
+        acceptedEnd:
+          type: string
+          format: date-time
+          nullable: true
+        nextAvailableDate:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        alternatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaktRequestDetailResponseAlt"
+      required:
+        - id
+        - decision
+        - createdAt
+        - alternatives
+
+    TaktRequestDetail:
+      type: object
+      description: >
+        Full detail record for a single TaktRequest, GU-scoped.
+        Includes enriched metadata, timeline, transport, snapshot, and response.
+      properties:
+        id:
+          type: string
+        requestNumber:
+          type: string
+        taktId:
+          type: string
+        taktBezeichnung:
+          type: string
+        taktVersion:
+          type: integer
+        projectId:
+          type: string
+        projectName:
+          type: string
+        guOrgId:
+          type: string
+        nuOrgId:
+          type: string
+        nuOrgName:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        detailsRetrievedAt:
+          type: string
+          format: date-time
+          nullable: true
+        supersedesRequestId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        transport:
+          $ref: "#/components/schemas/TaktRequestDetailTransport"
+        snapshot:
+          nullable: true
+          allOf:
+            - type: object
+              properties:
+                id:
+                  type: string
+                schemaVersion:
+                  type: string
+                snapshotPayload:
+                  type: object
+                  additionalProperties: true
+                createdAt:
+                  type: string
+                  format: date-time
+              required:
+                - id
+                - schemaVersion
+                - snapshotPayload
+                - createdAt
+        response:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/TaktRequestDetailResponse"
+        timeline:
+          $ref: "#/components/schemas/TaktRequestDetailTimeline"
+      required:
+        - id
+        - requestNumber
+        - taktId
+        - taktBezeichnung
+        - taktVersion
+        - projectId
+        - projectName
+        - guOrgId
+        - nuOrgId
+        - nuOrgName
+        - status
+        - createdAt
+        - updatedAt
+        - transport
+        - timeline
+
+    # ── Sprint 4 schemas (Task 4.7 / 4.8) ──────────────────────────────────────
+
+    AvailabilityCheckResult:
+      type: string
+      description: "Overall result of an availability check"
+      enum:
+        - FEASIBLE
+        - FEASIBLE_WITH_ALTERNATIVES
+        - NOT_FEASIBLE
+
+    AvailabilityCheckAlternative:
+      type: object
+      description: "A public alternative time window generated by the availability check"
+      properties:
+        alternativeId:
+          type: string
+          description: "Unique ID for this alternative within the check result"
+        rank:
+          type: integer
+          minimum: 1
+          description: "Preference rank — 1 is most preferred"
+        timeWindow:
+          type: object
+          description: "Proposed alternative window (date-only strings YYYY-MM-DD)"
+          properties:
+            start:
+              type: string
+            end:
+              type: string
+          required: [start, end]
+        crewSize:
+          type: integer
+          minimum: 1
+          nullable: true
+        conditions:
+          type: array
+          items:
+            type: string
+          nullable: true
+      required: [alternativeId, rank, timeWindow]
+
+    AvailabilityCheckPublicResult:
+      type: object
+      description: >
+        Public-facing check result — no NU-internal resource IDs, employee names,
+        or internal conflict details.
+      properties:
+        result:
+          $ref: "#/components/schemas/AvailabilityCheckResult"
+        alternatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityCheckAlternative"
+          description: "Empty when result is FEASIBLE"
+        nextAvailableDate:
+          type: string
+          format: date
+          nullable: true
+      required: [result, alternatives]
+
+    AvailabilityCheckResponse:
+      type: object
+      description: "Availability check row returned by the API (Task 4.7)"
+      properties:
+        id:
+          type: string
+        taktRequestId:
+          type: string
+        nuOrgId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+        result:
+          $ref: "#/components/schemas/AvailabilityCheckResult"
+        internalResult:
+          type: object
+          nullable: true
+          description: "NU-only internal result payload (not forwarded to GU)"
+          additionalProperties: true
+        publicResult:
+          $ref: "#/components/schemas/AvailabilityCheckPublicResult"
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, taktRequestId, nuOrgId, status, createdAt]
+
+    NuResponseAlternative:
+      type: object
+      description: "A ranked alternative time window submitted by the NU"
+      properties:
+        alternativeId:
+          type: string
+          minLength: 1
+        rank:
+          type: integer
+          minimum: 1
+        timeWindow:
+          type: object
+          description: "Start and end accept ISO date (YYYY-MM-DD) or datetime strings"
+          properties:
+            start:
+              type: string
+              minLength: 1
+            end:
+              type: string
+              minLength: 1
+          required: [start, end]
+        crewSize:
+          type: integer
+          minimum: 1
+          nullable: true
+        conditions:
+          type: array
+          items:
+            type: string
+          nullable: true
+      required: [alternativeId, rank, timeWindow]
+
+    NuResponseCreate:
+      type: object
+      description: >
+        Body for POST /takt-requests/{requestId}/responses.
+        Only generic, public fields are permitted — forbidden fields (resourceId,
+        localProjectId, internalResultPayload, etc.) return 400.
+      properties:
+        decision:
+          $ref: "#/components/schemas/TaktDecision"
+        acceptedTimeWindow:
+          type: object
+          description: "Required when decision is ACCEPTED"
+          properties:
+            start:
+              type: string
+              minLength: 1
+            end:
+              type: string
+              minLength: 1
+          required: [start, end]
+        reasonCode:
+          $ref: "#/components/schemas/TaktResponseReasonCode"
+        comment:
+          type: string
+          maxLength: 2000
+          nullable: true
+        alternatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/NuResponseAlternative"
+          maxItems: 3
+          nullable: true
+        nextAvailableDate:
+          type: string
+          format: date
+          nullable: true
+      required: [decision]
+
+    NuResponseResult:
+      type: object
+      description: "Result returned by POST /takt-requests/{requestId}/responses"
+      properties:
+        responseId:
+          type: string
+        taktRequestId:
+          type: string
+        decision:
+          $ref: "#/components/schemas/TaktDecision"
+        reasonCode:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/TaktResponseReasonCode"
+        comment:
+          type: string
+          nullable: true
+        acceptedTimeWindow:
+          type: object
+          nullable: true
+          properties:
+            start:
+              type: string
+            end:
+              type: string
+        alternatives:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/NuResponseAlternative"
+        nextAvailableDate:
+          type: string
+          format: date
+          nullable: true
+        transportStatus:
+          type: string
+        transportMessageId:
+          type: string
+        requestStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [responseId, taktRequestId, decision, requestStatus, createdAt]
 
     TaktResponseReasonCode:
       type: string
@@ -2260,3 +4066,248 @@ components:
         - correlationId
         - createdAt
         - payload
+
+    # ── NU-internal schemas ──────────────────────────────────────────────────────
+
+    NuLocalProject:
+      type: object
+      description: >
+        An NU-internal local project record. Never exposed to GU or Hub.
+        customerAlias anonymises the GU identity and must not be transmitted externally.
+      properties:
+        id:
+          type: string
+        nuOrgId:
+          type: string
+        localProjectCode:
+          type: string
+        displayName:
+          type: string
+        customerAlias:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [PLANNED, ACTIVE, COMPLETED, CANCELLED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - nuOrgId
+        - localProjectCode
+        - displayName
+        - status
+        - createdAt
+        - updatedAt
+
+    NuLocalProjectCreate:
+      type: object
+      description: Body for POST /nu/local-projects
+      properties:
+        localProjectCode:
+          type: string
+          minLength: 1
+        displayName:
+          type: string
+          minLength: 1
+        customerAlias:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PLANNED, ACTIVE, COMPLETED, CANCELLED]
+      required:
+        - localProjectCode
+        - displayName
+
+    NuLocalProjectUpdate:
+      type: object
+      description: Body for PATCH /nu/local-projects/{projectId}. All fields optional.
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+        customerAlias:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PLANNED, ACTIVE, COMPLETED, CANCELLED]
+
+    NuLocalProjectListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NuLocalProject"
+        limit:
+          type: integer
+        offset:
+          type: integer
+        count:
+          type: integer
+      required:
+        - items
+        - limit
+        - offset
+        - count
+
+    NuResourceBooking:
+      type: object
+      description: >
+        A NU-internal resource booking. Never exposed to GU or Hub.
+        Internal fields (localProjectId, sourceReferenceId) must not be
+        transmitted in TaktRequest responses.
+      properties:
+        id:
+          type: string
+        nuOrgId:
+          type: string
+        resourceId:
+          type: string
+        localProjectId:
+          type: string
+          nullable: true
+        sourceType:
+          type: string
+          enum: [LOCAL_PROJECT, TAKT_REQUEST, MANUAL_BLOCK, ABSENCE, MAINTENANCE]
+        sourceReferenceId:
+          type: string
+          nullable: true
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        utilizationPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+        status:
+          type: string
+          enum: [TENTATIVE, CONFIRMED, CANCELLED]
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - nuOrgId
+        - resourceId
+        - sourceType
+        - startAt
+        - endAt
+        - utilizationPercent
+        - status
+        - createdAt
+        - updatedAt
+
+    NuResourceBookingCreate:
+      type: object
+      description: Body for POST /nu/resource-bookings
+      properties:
+        resourceId:
+          type: string
+          minLength: 1
+        localProjectId:
+          type: string
+        sourceType:
+          type: string
+          enum: [LOCAL_PROJECT, TAKT_REQUEST, MANUAL_BLOCK, ABSENCE, MAINTENANCE]
+        sourceReferenceId:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        utilizationPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+        status:
+          type: string
+          enum: [TENTATIVE, CONFIRMED, CANCELLED]
+          default: TENTATIVE
+        note:
+          type: string
+      required:
+        - resourceId
+        - sourceType
+        - startAt
+        - endAt
+
+    NuResourceBookingUpdate:
+      type: object
+      description: Body for PATCH /nu/resource-bookings/{bookingId}. All fields optional.
+      properties:
+        localProjectId:
+          type: string
+          nullable: true
+        sourceReferenceId:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        utilizationPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+        status:
+          type: string
+          enum: [TENTATIVE, CONFIRMED, CANCELLED]
+        note:
+          type: string
+
+    NuResourceBookingListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NuResourceBooking"
+        limit:
+          type: integer
+        offset:
+          type: integer
+        count:
+          type: integer
+      required:
+        - items
+        - limit
+        - offset
+        - count

@@ -43,11 +43,20 @@ router.get("/resources", requireJwt, async (req, res): Promise<void> => {
 // POST /resources
 router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
-    type: z.enum(["EMPLOYEE", "EQUIPMENT", "MACHINE", "OTHER"]),
+    type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]),
     name: z.string().min(1),
+    // Legacy fields — retained for backward compatibility
     qualification: z.string().optional(),
     dailyCapacityHours: z.number().optional(),
     color: z.string().optional(),
+    // New fields (Task 4.3) — all optional to keep existing clients working
+    trade: z.string().optional(),
+    skills: z.array(z.string()).optional(),
+    qualifications: z.array(z.string()).optional(),
+    capacity: z.number().positive().optional(),
+    capacityUnit: z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
+    calendarId: z.string().optional(),
+    active: z.boolean().optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -70,11 +79,20 @@ router.patch(
   requireJwt,
   async (req, res): Promise<void> => {
     const schema = z.object({
-      type: z.enum(["EMPLOYEE", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
+      type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
       name: z.string().min(1).optional(),
+      // Legacy fields
       qualification: z.string().optional(),
       dailyCapacityHours: z.number().optional(),
       color: z.string().optional(),
+      // New fields (Task 4.3)
+      trade: z.string().optional(),
+      skills: z.array(z.string()).optional(),
+      qualifications: z.array(z.string()).optional(),
+      capacity: z.number().positive().optional(),
+      capacityUnit: z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
+      calendarId: z.string().optional(),
+      active: z.boolean().optional(),
     });
 
     const parsed = schema.safeParse(req.body);
