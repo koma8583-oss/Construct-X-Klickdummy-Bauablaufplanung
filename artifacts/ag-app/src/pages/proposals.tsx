@@ -19,7 +19,7 @@ export default function Proposals() {
 
   const { data: delegations, isLoading } = useListDelegations(
     { status: 'ALTERNATIVE_PROPOSED' }, 
-    { query: { queryKey: getListDelegationsQueryKey({ status: 'ALTERNATIVE_PROPOSED' }) } }
+    { query: { queryKey: getListDelegationsQueryKey({ status: 'ALTERNATIVE_PROPOSED' }), refetchInterval: 30_000 } }
   );
 
   const filteredDelegations = delegations?.filter(d => {

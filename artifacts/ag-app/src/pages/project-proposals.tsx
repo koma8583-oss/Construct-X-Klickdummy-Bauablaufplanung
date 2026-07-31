@@ -32,7 +32,7 @@ export default function ProjectProposals() {
 
   const { data: delegations, isLoading } = useListDelegations(
     { projectId, status: 'ALTERNATIVE_PROPOSED' }, 
-    { query: { enabled: !!projectId, queryKey: getListDelegationsQueryKey({ projectId, status: 'ALTERNATIVE_PROPOSED' }) } }
+    { query: { enabled: !!projectId, queryKey: getListDelegationsQueryKey({ projectId, status: 'ALTERNATIVE_PROPOSED' }), refetchInterval: 30_000 } }
   );
 
   return (
@@ -80,7 +80,7 @@ function DelegationProposalCard({ delegation }: { delegation: any }) {
   const [comment, setComment] = useState('');
 
   const { data: responses } = useListDelegationResponses(delegation.id, {
-    query: { enabled: !!delegation.id, queryKey: getListDelegationResponsesQueryKey(delegation.id) }
+    query: { enabled: !!delegation.id, queryKey: getListDelegationResponsesQueryKey(delegation.id), refetchInterval: 30_000 }
   });
 
   const updateResponse = useUpdateDelegationResponse();
