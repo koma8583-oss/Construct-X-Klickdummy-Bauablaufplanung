@@ -12,7 +12,10 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const sessionExpired = new URLSearchParams(window.location.search).get('session_expired') === '1';
+  const [error, setError] = useState(
+    sessionExpired ? 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.' : ''
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {

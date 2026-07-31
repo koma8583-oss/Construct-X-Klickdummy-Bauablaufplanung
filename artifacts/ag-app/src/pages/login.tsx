@@ -25,6 +25,8 @@ export default function Login() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
+  const sessionExpired = new URLSearchParams(window.location.search).get('session_expired') === '1';
+
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
@@ -64,6 +66,12 @@ export default function Login() {
           <h2 className="mt-8 text-2xl font-bold tracking-tight text-foreground">
             {t('login.title')}
           </h2>
+
+          {sessionExpired && (
+            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700 dark:text-amber-400">
+              Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.
+            </div>
+          )}
 
           <div className="mt-8">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">

@@ -12,7 +12,10 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const sessionExpired = new URLSearchParams(window.location.search).get('session_expired') === '1';
+  const [error, setError] = useState(
+    sessionExpired ? 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.' : ''
+  );
   const { login, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
