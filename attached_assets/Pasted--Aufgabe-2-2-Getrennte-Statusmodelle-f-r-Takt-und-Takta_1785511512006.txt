@@ -1,0 +1,203 @@
+# Aufgabe 2.2 – Getrennte Statusmodelle für Takt und Taktanfrage definieren
+
+Ergänze getrennte fachliche Statusmodelle für:
+
+* den Lebenszyklus eines Takts
+* den Abstimmungsprozess einer Taktanfrage
+
+Bearbeite:
+
+* die zentrale OpenAPI-Spezifikation
+* eine geeignete zentrale Domain- oder Typdatei
+* die neue Dokumentationsdatei `docs/state-model.md`
+
+Nimm noch keine Änderungen an Datenbanktabellen, bestehenden Delegation-Endpunkten oder Benutzeroberflächen vor.
+
+## Ziel
+
+Der Zustand eines Takts muss vom Zustand einer einzelnen Anfrage getrennt werden.
+
+Ein technisch zugestellter, abgelehnter oder ersetzter Request darf nicht automatisch denselben Zustand am Takt auslösen.
+
+## Enum `TaktLifecycleStatus`
+
+Definiere folgende Werte:
+
+```text
+DRAFT
+PLANNED
+IN_COORDINATION
+CONFIRMED
+CANCELLED
+```
+
+Dokumentiere die Bedeutung:
+
+* `DRAFT` – Der Takt wird bearbeitet.
+* `PLANNED` – Der Takt ist planungsseitig vorbereitet.
+* `IN_COORDINATION` – Mindestens eine Abstimmung mit einem Nachunternehmer läuft.
+* `CONFIRMED` – Der Takt wurde fachlich bestätigt.
+* `CANCELLED` – Der Takt wurde aufgehoben.
+
+## Enum `TaktRequestStatus`
+
+Definiere folgende Werte:
+
+```text
+DRAFT
+SENT
+DELIVERED
+DETAILS_RETRIEVED
+UNDER_REVIEW
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+REVISION_REQUIRED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+## Zulässige Übergänge
+
+Dokumentiere und implementiere mindestens folgende Übergänge:
+
+```text
+DRAFT → SENT
+DRAFT → CANCELLED
+
+SENT → DELIVERED
+SENT → CANCELLED
+SENT → EXPIRED
+
+DELIVERED → DETAILS_RETRIEVED
+DELIVERED → UNDER_REVIEW
+DELIVERED → CANCELLED
+DELIVERED → EXPIRED
+
+DETAILS_RETRIEVED → UNDER_REVIEW
+DETAILS_RETRIEVED → ACCEPTED
+DETAILS_RETRIEVED → ALTERNATIVES_PROPOSED
+DETAILS_RETRIEVED → REJECTED
+DETAILS_RETRIEVED → CANCELLED
+DETAILS_RETRIEVED → EXPIRED
+
+UNDER_REVIEW → ACCEPTED
+UNDER_REVIEW → ALTERNATIVES_PROPOSED
+UNDER_REVIEW → REJECTED
+UNDER_REVIEW → CANCELLED
+UNDER_REVIEW → EXPIRED
+
+ALTERNATIVES_PROPOSED → ACCEPTED
+ALTERNATIVES_PROPOSED → REVISION_REQUIRED
+ALTERNATIVES_PROPOSED → SUPERSEDED
+
+REJECTED → REVISION_REQUIRED
+REJECTED → SUPERSEDED
+
+REVISION_REQUIRED → SUPERSEDED
+```
+
+Terminale Zustände:
+
+```text
+ACCEPTED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+Aus terminalen Zuständen dürfen keine weiteren regulären Übergänge erfolgen.
+
+## Übergangsfunktion
+
+Implementiere eine kleine, frameworkunabhängige Domain-Funktion:
+
+```ts
+isValidTaktRequestTransition(
+  currentStatus: TaktRequestStatus,
+  nextStatus: TaktRequestStatus
+): boolean
+```
+
+Ergänze außerdem eine Funktion, die bei einem ungültigen Übergang einen klaren Fehler auslöst, beispielsweise:
+
+```ts
+assertValidTaktRequestTransition(
+  currentStatus: TaktRequestStatus,
+  nextStatus: TaktRequestStatus
+): void
+```
+
+Verwende den bestehenden Stil für Domain-Fehler.
+
+## Fachliche Regeln
+
+Dokumentiere ausdrücklich:
+
+1. `DELIVERED` ist nur ein technischer Zustellstatus.
+2. `DELIVERED` bedeutet keine fachliche Zustimmung.
+3. `ACCEPTED` ist eine fachliche Bestätigung.
+4. `REJECTED` bezieht sich nur auf die konkrete Anfrage.
+5. Eine abgelehnte Anfrage setzt den Takt nicht automatisch auf `CANCELLED`.
+6. Eine nicht akzeptierte Alternative führt zu `REVISION_REQUIRED`.
+7. Eine neue Anfrageversion setzt die vorherige Anfrage auf `SUPERSEDED`.
+8. Eine offene Anfrage kann den Takt auf `IN_COORDINATION` setzen.
+9. Erst eine akzeptierte Antwort oder Alternative kann den Takt auf `CONFIRMED` setzen.
+10. Der Taktstatus darf nicht direkt aus einem Transportstatus abgeleitet werden.
+
+## Dokumentation `docs/state-model.md`
+
+Dokumentiere:
+
+* beide Statusmodelle
+* die Bedeutung jedes Status
+* zulässige Übergänge
+* terminale Zustände
+* Unterschied zwischen technischem und fachlichem Status
+* Beispiele für gültige und ungültige Übergänge
+
+## Tests
+
+Ergänze Tests für:
+
+* `DRAFT → SENT`
+* `SENT → DELIVERED`
+* `DELIVERED → DETAILS_RETRIEVED`
+* `UNDER_REVIEW → ACCEPTED`
+* `UNDER_REVIEW → ALTERNATIVES_PROPOSED`
+* `REJECTED → REVISION_REQUIRED`
+* ungültigen Rücksprung `DELIVERED → DRAFT`
+* ungültigen Übergang `ACCEPTED → UNDER_REVIEW`
+* ungültigen Übergang `EXPIRED → ACCEPTED`
+* Unterschied zwischen `DELIVERED` und `ACCEPTED`
+
+## Einschränkungen
+
+* Keine Datenbankänderungen.
+* Keine neuen REST-Endpunkte.
+* Bestehende Delegation-Logik noch nicht umstellen.
+* Keine UI-Änderungen.
+* Keine Transportlogik.
+* Keine manuelle Bearbeitung generierter Dateien.
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* neue Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neu definierte Enums
+* Speicherort der Übergangslogik
+* dokumentierte Zustandsübergänge
+* Testergebnisse
+* Ergebnis der Codegenerierung
+* Ergebnis von Typecheck und Build

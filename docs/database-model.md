@@ -86,31 +86,50 @@ Composite PK: `(projectId, anOrgId)`.
 
 The core schedule entries. One row per Takt.
 
-| Column             | Type                  | Constraints                       |
-| ------------------ | --------------------- | --------------------------------- |
-| `id`               | text (UUID)           | PK                                |
-| `projectId`        | text (UUID)           | NOT NULL, FK → `projects.id` CASCADE |
-| `taktBezeichnung`  | text                  | NOT NULL                          |
-| `zone`             | text                  | NOT NULL                          |
-| `gewerk`           | text                  | NOT NULL                          |
-| `description`      | text                  | nullable                          |
-| `plannedStart`     | date (string mode)    | NOT NULL                          |
-| `plannedEnd`       | date (string mode)    | NOT NULL                          |
-| `earliestStart`    | date (string mode)    | nullable                          |
-| `latestEnd`        | date (string mode)    | nullable                          |
-| `lvReference`      | text                  | nullable                          |
-| `bimReference`     | text                  | nullable                          |
-| `requiredResources`| text                  | nullable                          |
-| `status`           | enum `takt_status`    | NOT NULL, DEFAULT `GEPLANT`       |
-| `createdAt`        | timestamptz           | NOT NULL, DEFAULT now()           |
-| `updatedAt`        | timestamptz           | NOT NULL, DEFAULT now(), on update |
+| Column              | Type                        | Constraints                                           |
+| ------------------- | --------------------------- | ----------------------------------------------------- |
+| `id`                | text (UUID)                 | PK                                                    |
+| `projectId`         | text (UUID)                 | NOT NULL, FK → `projects.id` CASCADE                  |
+| `taktBezeichnung`   | text                        | NOT NULL                                              |
+| `zone`              | text                        | NOT NULL                                              |
+| `gewerk`            | text                        | NOT NULL                                              |
+| `description`       | text                        | nullable                                              |
+| `plannedStart`      | date (string mode)          | NOT NULL                                              |
+| `plannedEnd`        | date (string mode)          | NOT NULL                                              |
+| `earliestStart`     | date (string mode)          | nullable                                              |
+| `latestEnd`         | date (string mode)          | nullable                                              |
+| `lvReference`       | text                        | nullable                                              |
+| `bimReference`      | text                        | nullable                                              |
+| `requiredResources` | text                        | nullable                                              |
+| `status`            | enum `takt_status`          | NOT NULL, DEFAULT `GEPLANT`                           |
+| `createdAt`         | timestamptz                 | NOT NULL, DEFAULT now()                               |
+| `updatedAt`         | timestamptz                 | NOT NULL, DEFAULT now(), on update                    |
+| `version`           | integer                     | NOT NULL, DEFAULT 1 *(added Sprint 2)*                |
+| `lifecycleStatus`   | enum `takt_lifecycle_status`| NOT NULL, DEFAULT `PLANNED` *(added Sprint 2)*        |
 
-**Enum `takt_status`**: `GEPLANT`, `VERGEBEN`, `ALTERNATIV`, `BESTAETIGT`, `ABGELEHNT`, `STORNIERT`
+**Enum `takt_status`** (legacy — preserved for backward compatibility):
+`GEPLANT`, `VERGEBEN`, `ALTERNATIV`, `BESTAETIGT`, `ABGELEHNT`, `STORNIERT`
 
-No per-Takt versioning currently. Status conflates multiple concerns:
-- `VERGEBEN` means "a delegation was sent" — a transport/routing state
-- `BESTAETIGT` means "the AN confirmed" — a business decision
-- This mixing is one of the problems the new model corrects.
+**Enum `takt_lifecycle_status`** (new — dedicated Takt lifecycle, added Sprint 2):
+`DRAFT`, `PLANNED`, `IN_COORDINATION`, `CONFIRMED`, `CANCELLED`
+
+**`version`**: monotonically incrementing integer, starts at 1 for all existing Takte. Incremented when Takt data changes in a way that invalidates active TaktRequests. Recorded in `takt_requests.taktVersion` at request creation time.
+
+**Legacy `takt_status` conflation** (problem retained for backward compat, separated by new columns):
+- `VERGEBEN` means "a delegation was sent" — transport/routing concern now handled by `TaktRequestStatus`
+- `BESTAETIGT` means "the AN confirmed" — business decision now expressed in `takt_lifecycle_status = CONFIRMED`
+- `ABGELEHNT` means "one delegation was rejected" — does not cancel the Takt; maps to `PLANNED` in lifecycle
+
+**Status mapping `takt_status` → `takt_lifecycle_status`**:
+
+| `takt_status` | `takt_lifecycle_status` |
+| ------------- | ----------------------- |
+| `GEPLANT`     | `PLANNED`               |
+| `VERGEBEN`    | `IN_COORDINATION`       |
+| `ALTERNATIV`  | `IN_COORDINATION`       |
+| `BESTAETIGT`  | `CONFIRMED`             |
+| `ABGELEHNT`   | `PLANNED`               |
+| `STORNIERT`   | `CANCELLED`             |
 
 ---
 
@@ -314,9 +333,18 @@ The new model separates these into:
 
 ---
 
-## 4 — Target Model
+## 4 — New Tables (Implemented in Sprint 2)
 
-New tables introduced in parallel with existing delegation tables. No existing tables are removed in Task 2.
+All four tables below are live in the database. They were introduced in parallel with the existing delegation tables; no existing tables were removed. New coordination features use only these tables; existing delegation endpoints remain unchanged.
+
+**New enums added to the database:**
+
+| Enum type                      | Values                                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `takt_lifecycle_status`        | `DRAFT`, `PLANNED`, `IN_COORDINATION`, `CONFIRMED`, `CANCELLED`                                               |
+| `takt_request_status`          | `DRAFT`, `SENT`, `DELIVERED`, `DETAILS_RETRIEVED`, `UNDER_REVIEW`, `ACCEPTED`, `ALTERNATIVES_PROPOSED`, `REJECTED`, `REVISION_REQUIRED`, `CANCELLED`, `EXPIRED`, `SUPERSEDED` |
+| `takt_decision`                | `ACCEPTED`, `ALTERNATIVES_PROPOSED`, `REJECTED`                                                               |
+| `takt_response_reason_code`    | `RESOURCE_CONFLICT`, `NO_CAPACITY`, `EQUIPMENT_UNAVAILABLE`, `QUALIFICATION_MISSING`, `TIME_WINDOW_TOO_SHORT`, `OUTSIDE_PLANNING_HORIZON`, `OTHER` |
 
 ### 4.1 `takt_requests`
 
@@ -463,7 +491,16 @@ All existing tables remain: `delegations`, `delegation_responses`, `resource_ass
 
 ## 6 — Architecture Decision: Parallel Introduction
 
-**Decision**: New tables (`takt_requests`, `takt_request_snapshots`, `takt_responses`, `takt_response_alternatives`) are introduced alongside the existing delegation tables without replacing them.
+**Decision**: New tables (`takt_requests`, `takt_request_snapshots`, `takt_responses`, `takt_response_alternatives`) were introduced alongside the existing delegation tables without replacing them. **This decision has been implemented (Sprint 2).**
+
+The six architecture constraints that governed the Sprint 2 implementation:
+
+1. The new tables are introduced **parallel** to the existing delegation tables — no existing tables removed.
+2. Existing delegation endpoints remain fully functional — unchanged.
+3. Sprint 2 performed **no migration** of existing `delegations` rows to the new model.
+4. Existing data was not deleted or altered.
+5. New coordination features use only the new model.
+6. Existing delegation-based features are preserved until a controlled migration is planned.
 
 **Rationale**:
 - Zero-risk rollout: existing delegation endpoints continue to function unchanged.
@@ -476,30 +513,51 @@ All existing tables remain: `delegations`, `delegation_responses`, `resource_ass
 
 ## 7 — Analysis Summary
 
-### Tables analysed
+### Tables analysed (14 existing tables)
 
 `users`, `organizations`, `user_organizations`, `projects`, `project_contractors`, `takte`, `takt_dependencies`, `delegations`, `delegation_responses`, `resources`, `resource_assignments`, `hub_messages`, `hub_admins`, `refresh_tokens`
 
+### New tables now live (4 tables, implemented Sprint 2)
+
+`takt_requests`, `takt_request_snapshots`, `takt_responses`, `takt_response_alternatives`
+
+### New columns added to existing table (Sprint 2)
+
+`takte.version` (integer, default 1), `takte.lifecycle_status` (enum `takt_lifecycle_status`, default `PLANNED`)
+
 ### Status problems identified
 
-1. `takt_status` conflates transport routing, coordination progress, and business decisions in one enum.
-2. `delegation_status` mixes a transport state (`PENDING`) with business outcomes.
-3. `delegation_responses.agDecision` co-locates the GU's decision on the NU's response record.
-4. No version tracking on Takte — no way to know which version of a Takt was referenced at delegation time.
+1. `takt_status` conflates transport routing, coordination progress, and business decisions in one enum. **Addressed** by the parallel `takt_lifecycle_status` column.
+2. `delegation_status` mixes transport state (`PENDING`) with business outcomes. **Addressed** by the new 12-value `takt_request_status` enum in `takt_requests`.
+3. `delegation_responses.agDecision` co-locates the GU's decision on the NU response record. **Partially addressed** — new model separates decision into `takt_responses.decision` (NU) and TaktRequest status transitions (GU).
+4. No version tracking on Takte. **Addressed** by `takte.version` and `takt_requests.takt_version`.
 
-### ID and timestamp types in target model
+### ID and timestamp conventions (applied in new tables)
 
-- IDs: `text`, generated with `crypto.randomUUID()` (same as existing)
-- `createdAt`, `updatedAt`, `sentAt`, `deliveredAt`, `detailsRetrievedAt`, `responseRequiredBy`: `timestamptz`
-- `acceptedStart`, `acceptedEnd`, `proposedStart`, `proposedEnd`: `timestamptz` (not date, to support time-of-day precision)
-- `nextAvailableDate`: `date` (string mode, YYYY-MM-DD)
+| Field category | Type | Convention |
+| --- | --- | --- |
+| Primary keys | `text` | `crypto.randomUUID()` at JS insert time |
+| `createdAt`, `updatedAt` | `timestamptz` | `NOT NULL DEFAULT now()`, on-update hook |
+| Coordination timestamps (`sentAt`, `deliveredAt`, `detailsRetrievedAt`, `responseRequiredBy`) | `timestamptz` | nullable, set by business logic |
+| Time-window fields (`acceptedStart`, `acceptedEnd`, `proposedStart`, `proposedEnd`) | `timestamptz` | NOT NULL for alternatives, nullable for acceptance |
+| Calendar dates (`nextAvailableDate`) | `date` (string mode, `YYYY-MM-DD`) | no time-of-day needed |
+| Snapshot payload | `jsonb` | Binary JSON for indexability; `schemaVersion` field enables future evolution |
 
-### Migration risks
+### Technical recommendations applied
+
+- **IDs**: `text` with `crypto.randomUUID()` — consistent with all 14 existing tables
+- **FK on `taktId`**: `RESTRICT` (not `CASCADE`) — preserves historical requests when a Takt is deleted
+- **Self-referential FK** (`supersedesRequestId`): uses Drizzle `AnyPgColumn` pattern
+- **Snapshot table**: no `updatedAt` — write-once by design
+- **Naming**: snake_case table names (`takt_requests`), camelCase Drizzle field names (`taktRequestId`)
+- **JSONB over JSON**: `conditions` array and `snapshotPayload` use `jsonb` for indexability
+
+### Migration risks (future, not Sprint 2)
 
 | Risk | Impact | Mitigation |
 | ---- | ------ | ---------- |
-| Generating retroactive `requestNumber` for existing delegations | Medium | Use delegation ID as fallback reference; sequence can be generated during migration |
-| Retroactive Takt snapshots | High | Cannot reconstruct the exact Takt state at delegation time; will need to flag migrated records as `MIGRATED` |
-| `takt_status` rename | High | Column renamed would break all existing routes — keep old column, add new `lifecycleStatus` in parallel |
-| `proposedStart/End` semantics | Medium | Old alternative rows have one time window; new model uses child table with multiple ranked alternatives |
-| `agDecision` on response | Low | Can be handled at migration time; field belongs on TaktRequest in new model |
+| Retroactive `requestNumber` for existing delegations | Medium | Use delegation ID as fallback; a counter sequence can be generated at migration time |
+| Retroactive Takt snapshots | High | Exact Takt state at delegation time cannot be reconstructed — flag migrated rows as `LEGACY_MIGRATED` in `schemaVersion` |
+| Removing legacy `takt_status` column | High | Would break all existing delegation routes; keep indefinitely until all routes are migrated |
+| `proposedStart/End` semantics in `delegation_responses` | Medium | Single time window per response row; new model uses a ranked child table — requires splitting on migration |
+| `agDecision` on response | Low | Move to TaktRequest status transition at migration time |

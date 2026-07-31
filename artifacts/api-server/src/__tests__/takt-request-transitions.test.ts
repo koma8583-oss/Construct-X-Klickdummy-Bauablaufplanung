@@ -123,6 +123,46 @@ describe("terminal states have no outgoing transitions", () => {
   }
 });
 
+// ── Explicitly required test pairs (Task 2.2) ─────────────────────────────────
+
+describe("Named transition tests required by Task 2.2", () => {
+  // Valid transitions
+  it("DRAFT → SENT is valid", () => {
+    expect(isValidTaktRequestTransition("DRAFT", "SENT")).toBe(true);
+  });
+  it("SENT → DELIVERED is valid", () => {
+    expect(isValidTaktRequestTransition("SENT", "DELIVERED")).toBe(true);
+  });
+  it("DELIVERED → DETAILS_RETRIEVED is valid", () => {
+    expect(isValidTaktRequestTransition("DELIVERED", "DETAILS_RETRIEVED")).toBe(true);
+  });
+  it("UNDER_REVIEW → ACCEPTED is valid", () => {
+    expect(isValidTaktRequestTransition("UNDER_REVIEW", "ACCEPTED")).toBe(true);
+  });
+  it("UNDER_REVIEW → ALTERNATIVES_PROPOSED is valid", () => {
+    expect(isValidTaktRequestTransition("UNDER_REVIEW", "ALTERNATIVES_PROPOSED")).toBe(true);
+  });
+  it("REJECTED → REVISION_REQUIRED is valid", () => {
+    expect(isValidTaktRequestTransition("REJECTED", "REVISION_REQUIRED")).toBe(true);
+  });
+
+  // Invalid transitions — explicit pairs named in Task 2.2
+  it("DELIVERED → DRAFT is invalid (backward jump)", () => {
+    expect(isValidTaktRequestTransition("DELIVERED", "DRAFT")).toBe(false);
+  });
+  it("ACCEPTED → UNDER_REVIEW is invalid (terminal state)", () => {
+    expect(isValidTaktRequestTransition("ACCEPTED", "UNDER_REVIEW")).toBe(false);
+  });
+  it("EXPIRED → ACCEPTED is invalid (terminal state)", () => {
+    expect(isValidTaktRequestTransition("EXPIRED", "ACCEPTED")).toBe(false);
+  });
+
+  // DELIVERED ≠ ACCEPTED distinction
+  it("DELIVERED status does not mean business acceptance — DELIVERED → ACCEPTED is invalid", () => {
+    expect(isValidTaktRequestTransition("DELIVERED", "ACCEPTED")).toBe(false);
+  });
+});
+
 // ── assertValidTaktRequestTransition ──────────────────────────────────────────
 
 describe("assertValidTaktRequestTransition", () => {

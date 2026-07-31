@@ -1,0 +1,151 @@
+# Aufgabe 2.1 – Bestehendes Datenmodell analysieren und Zielmodell dokumentieren
+
+Analysiere die aktuelle Implementierung des Repositorys. Untersuche insbesondere:
+
+* das bestehende Datenbankschema
+* die Drizzle-Modelle
+* die Takt-Tabelle
+* die Delegation-Tabelle
+* die Delegation-Antworten
+* Beziehungen zu Projekten, Organisationen und Benutzern
+* vorhandene Statusfelder
+* vorhandene Indizes und Constraints
+* die aktuell verwendete ID-Strategie
+* die aktuell verwendeten Zeitstempeltypen
+
+Erstelle anschließend ausschließlich die Datei:
+
+`docs/database-model.md`
+
+Nimm in diesem Schritt keine Änderungen am Datenbankschema, an der OpenAPI-Spezifikation, an REST-Endpunkten oder am Anwendungscode vor.
+
+## Zielmodell
+
+Dokumentiere die später einzuführenden fachlichen Objekte:
+
+* `TaktRequest`
+* `TaktRequestSnapshot`
+* `TaktResponse`
+* `TaktResponseAlternative`
+
+Die bestehenden Delegation-Modelle bleiben zunächst erhalten.
+
+## Geplantes Modell `TaktRequest`
+
+Dokumentiere folgende vorgesehenen Felder:
+
+```text
+id
+taktId
+taktVersion
+guOrgId
+nuOrgId
+requestNumber
+status
+responseRequiredBy
+sentAt
+deliveredAt
+detailsRetrievedAt
+supersedesRequestId
+createdByUserId
+createdAt
+updatedAt
+```
+
+## Geplantes Modell `TaktRequestSnapshot`
+
+Dokumentiere folgende Felder:
+
+```text
+id
+taktRequestId
+schemaVersion
+snapshotPayload
+createdAt
+```
+
+## Geplantes Modell `TaktResponse`
+
+Dokumentiere folgende Felder:
+
+```text
+id
+taktRequestId
+messageId
+decision
+reasonCode
+comment
+acceptedStart
+acceptedEnd
+nextAvailableDate
+createdByUserId
+createdAt
+```
+
+## Geplantes Modell `TaktResponseAlternative`
+
+Dokumentiere folgende Felder:
+
+```text
+id
+responseId
+alternativeId
+rank
+proposedStart
+proposedEnd
+crewSize
+conditions
+createdAt
+```
+
+## Mapping zum aktuellen Modell
+
+Dokumentiere:
+
+* welche vorhandenen Tabellen und Felder weiterverwendet werden können
+* welche neuen Felder erforderlich sind
+* welche bestehenden Statusfelder mehrere fachliche Bedeutungen vermischen
+* wie die vorhandenen Delegation-Modelle zu `TaktRequest` und `TaktResponse` passen
+* welche Daten später migriert werden könnten
+* welche bestehenden Tabellen vorerst erhalten bleiben müssen
+* welche Risiken bei einer späteren Migration bestehen
+
+## Architekturentscheidung
+
+Dokumentiere ausdrücklich:
+
+1. Die neuen Tabellen werden später parallel zu den bestehenden Delegation-Tabellen eingeführt.
+2. Bestehende Delegation-Endpunkte bleiben zunächst funktionsfähig.
+3. In Aufgabe 2 erfolgt keine Migration bestehender Delegationen.
+4. Bestehende Daten dürfen nicht gelöscht oder verändert werden.
+5. Neue Funktionen sollen später ausschließlich die neuen Modelle verwenden.
+6. Bestehende Funktionen bleiben bis zu einer kontrollierten Migration erhalten.
+
+## Technische Empfehlungen
+
+Dokumentiere auf Grundlage der aktuellen Implementierung:
+
+* welcher ID-Typ für die neuen Tabellen verwendet werden soll
+* welcher Zeitstempeltyp verwendet werden soll
+* ob JSON oder JSONB für Snapshot-Daten geeignet ist
+* welche Foreign-Key-Regeln zum bestehenden System passen
+* welche Namenskonventionen für Tabellen und Spalten verwendet werden sollen
+
+## Einschränkungen
+
+* Nur `docs/database-model.md` erstellen oder ändern.
+* Keine Datenbankänderungen.
+* Keine OpenAPI-Änderungen.
+* Keine Codeänderungen.
+* Keine neuen Endpunkte.
+* Keine bestehenden Tabellen oder Funktionen entfernen.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche bestehenden Tabellen analysiert wurden
+* welche Statusprobleme festgestellt wurden
+* welche ID- und Zeitstempeltypen empfohlen werden
+* welche bestehenden Felder wiederverwendet werden können
+* welche Migrationsrisiken festgestellt wurden
