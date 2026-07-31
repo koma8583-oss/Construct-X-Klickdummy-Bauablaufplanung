@@ -26,6 +26,7 @@ import {
   getListOrganizationsQueryKey,
   getListTaktDependenciesQueryKey,
   TaktStatus,
+  TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
 import type { TaktDependency, TaktUpdateResult, RescheduledTakt } from '@workspace/api-client-react';
@@ -105,6 +106,26 @@ const STATUS_LABEL: Record<TaktStatus, string> = {
   ABGELEHNT:  'Abgelehnt',
   STORNIERT:  'Storniert',
 };
+
+const LIFECYCLE_COLOR: Record<TaktLifecycleStatus, string> = {
+  DRAFT:          '#94a3b8',
+  PLANNED:        '#3b82f6',
+  IN_COORDINATION:'#f59e0b',
+  CONFIRMED:      '#10b981',
+  CANCELLED:      '#ef4444',
+};
+
+const LIFECYCLE_LABEL: Record<TaktLifecycleStatus, string> = {
+  DRAFT:          'Entwurf',
+  PLANNED:        'Bereit',
+  IN_COORDINATION:'In Abstimmung',
+  CONFIRMED:      'Koordiniert',
+  CANCELLED:      'Abgebrochen',
+};
+
+function getLifecycleColor(s?: TaktLifecycleStatus | null): string {
+  return s ? (LIFECYCLE_COLOR[s] ?? '#94a3b8') : '#94a3b8';
+}
 
 const DEP_TYPE_LABEL: Record<TaktDependencyType, string> = {
   EA: 'Ende → Anfang',
@@ -199,32 +220,55 @@ const GanttListHeader: React.FC<TaskListHeaderProps> = ({ headerHeight, rowWidth
   </div>
 );
 
-const GanttListTable: React.FC<TaskListTableProps> = ({
-  rowHeight, rowWidth, fontFamily, fontSize, tasks, selectedTaskId, setSelectedTask,
-}) => (
-  <div style={{ fontFamily, fontSize, borderRight: '1px solid hsl(var(--border))' }}>
-    {tasks.map((task, idx) => (
-      <div
-        key={task.id}
-        onClick={() => setSelectedTask(task.id)}
-        style={{
-          height: rowHeight, width: rowWidth,
-          display: 'flex', alignItems: 'center', padding: '0 12px',
-          cursor: 'pointer', userSelect: 'none',
-          borderBottom: '1px solid hsl(var(--border) / 0.4)',
-          background: task.id === selectedTaskId
-            ? 'hsl(var(--sidebar-accent))'
-            : idx % 2 === 0 ? 'hsl(var(--background))' : 'hsl(var(--card) / 0.6)',
-          color: 'hsl(var(--foreground))',
-        }}
-      >
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', fontSize: '11px' }}>
-          {task.name}
-        </div>
+/** Build a memoisation-safe GanttListTable that closes over takte for lifecycle badges. */
+function makeGanttListTable(
+  taktById: Map<string, { lifecycleStatus?: TaktLifecycleStatus | null }>,
+): React.FC<TaskListTableProps> {
+  return function GanttListTable({ rowHeight, rowWidth, fontFamily, fontSize, tasks, selectedTaskId, setSelectedTask }) {
+    return (
+      <div style={{ fontFamily, fontSize, borderRight: '1px solid hsl(var(--border))' }}>
+        {tasks.map((task, idx) => {
+          const lc = taktById.get(task.id)?.lifecycleStatus ?? null;
+          const lcColor = getLifecycleColor(lc as TaktLifecycleStatus | null);
+          const lcLabel = lc ? (LIFECYCLE_LABEL[lc as TaktLifecycleStatus] ?? lc) : null;
+          return (
+            <div
+              key={task.id}
+              onClick={() => setSelectedTask(task.id)}
+              style={{
+                height: rowHeight, width: rowWidth,
+                display: 'flex', alignItems: 'center', padding: '0 12px', gap: 6,
+                cursor: 'pointer', userSelect: 'none',
+                borderBottom: '1px solid hsl(var(--border) / 0.4)',
+                background: task.id === selectedTaskId
+                  ? 'hsl(var(--sidebar-accent))'
+                  : idx % 2 === 0 ? 'hsl(var(--background))' : 'hsl(var(--card) / 0.6)',
+                color: 'hsl(var(--foreground))',
+              }}
+            >
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: '11px' }}>
+                {task.name}
+              </div>
+              {lcLabel && lc !== 'PLANNED' && (
+                <span style={{
+                  flexShrink: 0,
+                  fontSize: '9px', fontWeight: 600, lineHeight: 1,
+                  padding: '2px 5px', borderRadius: 4,
+                  background: lcColor + '22',
+                  color: lcColor,
+                  border: `1px solid ${lcColor}44`,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {lcLabel}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
-    ))}
-  </div>
-);
+    );
+  };
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -309,10 +353,25 @@ export default function ProjectDetail() {
     return map;
   }, [takte]);
 
+  // Index: taktId → takt (for lifecycle status lookup in list table)
+  const taktById = useMemo(() => {
+    const map = new Map<string, { lifecycleStatus?: TaktLifecycleStatus | null }>();
+    for (const t of takte ?? []) {
+      map.set(t.id, { lifecycleStatus: t.lifecycleStatus });
+    }
+    return map;
+  }, [takte]);
+
   // Stable tooltip component (recreated only when dep data changes)
   const GanttTooltip = useMemo(
     () => makeGanttTooltip(depsBySuccessor, taktNameById),
     [depsBySuccessor, taktNameById],
+  );
+
+  // Stable list table component (recreated when lifecycle statuses change)
+  const GanttListTable = useMemo(
+    () => makeGanttListTable(taktById),
+    [taktById],
   );
 
   // Set of takt IDs that are currently in conflict
@@ -828,7 +887,7 @@ export default function ProjectDetail() {
             <>
               <SheetHeader className="mb-6">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant="outline" className="font-mono text-xs">{selectedTakt.taktBezeichnung}</Badge>
                     <Badge
                       style={{
@@ -839,6 +898,17 @@ export default function ProjectDetail() {
                     >
                       {STATUS_LABEL[selectedTakt.status] ?? selectedTakt.status}
                     </Badge>
+                    {selectedTakt.lifecycleStatus && (
+                      <Badge
+                        style={{
+                          backgroundColor: getLifecycleColor(selectedTakt.lifecycleStatus as TaktLifecycleStatus) + '20',
+                          color: getLifecycleColor(selectedTakt.lifecycleStatus as TaktLifecycleStatus),
+                        }}
+                        className="border-transparent"
+                      >
+                        {LIFECYCLE_LABEL[selectedTakt.lifecycleStatus as TaktLifecycleStatus] ?? selectedTakt.lifecycleStatus}
+                      </Badge>
+                    )}
                   </div>
                   {isTaktEditable(selectedTakt.status) && (
                     <Button size="sm" variant="outline" onClick={handleOpenEdit}>
