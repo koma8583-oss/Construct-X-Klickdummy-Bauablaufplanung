@@ -1,0 +1,1128 @@
+# Aufgabe 2.1 – Bestehendes Datenmodell analysieren und Zielmodell dokumentieren
+
+Analysiere das bestehende Datenbankschema, die Drizzle-Modelle, die vorhandenen Delegation-Tabellen sowie die Takt- und Antwortmodelle.
+
+Erstelle anschließend ausschließlich die Datei:
+
+`docs/database-model.md`
+
+Nimm in diesem Schritt noch keine Änderungen am Datenbankschema, an der OpenAPI-Spezifikation oder am Anwendungscode vor.
+
+## Ziel
+
+Dokumentiere, wie das bestehende Datenmodell schrittweise um folgende fachliche Objekte erweitert werden soll:
+
+* `TaktRequest`
+* `TaktRequestSnapshot`
+* `TaktResponse`
+* `TaktResponseAlternative`
+
+Die bestehenden Delegation-Tabellen bleiben zunächst erhalten.
+
+## Bestehendes Modell dokumentieren
+
+Beschreibe anhand der tatsächlichen Implementierung:
+
+* aktuelle Takt-Tabelle
+* aktuelle Delegation-Tabelle
+* aktuelle Delegation-Antwort
+* aktuelle Beziehungen zu Projekten
+* aktuelle Beziehungen zu Organisationen
+* aktuelle Beziehungen zu Benutzern
+* aktuell verwendete Statusfelder
+* aktuell verwendete ID-Typen
+* aktuell verwendete Zeitstempel
+* bestehende Constraints und Indizes
+
+Verwende die tatsächlichen Tabellen- und Feldnamen.
+
+## Zielmodell dokumentieren
+
+### `TaktRequest`
+
+Vorgesehene Felder:
+
+```text
+id
+taktId
+taktVersion
+guOrgId
+nuOrgId
+requestNumber
+status
+responseRequiredBy
+sentAt
+deliveredAt
+detailsRetrievedAt
+supersedesRequestId
+createdByUserId
+createdAt
+updatedAt
+```
+
+### `TaktRequestSnapshot`
+
+Vorgesehene Felder:
+
+```text
+id
+taktRequestId
+schemaVersion
+snapshotPayload
+createdAt
+```
+
+### `TaktResponse`
+
+Vorgesehene Felder:
+
+```text
+id
+taktRequestId
+messageId
+decision
+reasonCode
+comment
+acceptedStart
+acceptedEnd
+nextAvailableDate
+createdByUserId
+createdAt
+```
+
+### `TaktResponseAlternative`
+
+Vorgesehene Felder:
+
+```text
+id
+responseId
+alternativeId
+rank
+proposedStart
+proposedEnd
+crewSize
+conditions
+createdAt
+```
+
+## Mapping zum bestehenden Modell
+
+Dokumentiere:
+
+* welche bestehenden Felder wiederverwendet werden können
+* welche neuen Felder erforderlich sind
+* welche bestehenden Felder fachlich mehrere Bedeutungen vermischen
+* welche bisherigen Delegation-Funktionen vorerst bestehen bleiben müssen
+* welche Daten später migriert werden könnten
+* welche Tabellen nicht sofort ersetzt werden sollen
+
+## Wichtige Architekturentscheidung
+
+Dokumentiere ausdrücklich:
+
+* Neue Tabellen werden zunächst parallel zu bestehenden Delegation-Tabellen eingeführt.
+* Bestehende Delegation-Endpunkte bleiben funktionsfähig.
+* Es erfolgt in Aufgabe 2 noch keine vollständige Migration bestehender Delegationen.
+* Neue Funktionen sollen später nur noch die neuen Modelle verwenden.
+* Bestehende Daten dürfen durch die Schemaerweiterung nicht verloren gehen.
+
+## Abschluss
+
+Berichte:
+
+* welche bestehenden Tabellen analysiert wurden
+* welche Statusprobleme festgestellt wurden
+* welche ID- und Zeitstempeltypen im Zielmodell verwendet werden sollen
+* welche Risiken bei der späteren Migration bestehen
+
+---
+
+# Aufgabe 2.2 – Getrennte Statusmodelle definieren
+
+Ergänze die fachlichen Statusmodelle für Takte und Taktanfragen.
+
+Bearbeite:
+
+* die OpenAPI-Spezifikation
+* die zentrale Domain- oder Typdefinition
+* eine neue Dokumentationsdatei `docs/state-model.md`
+
+Ändere noch keine Datenbanktabellen und keine API-Endpunkte.
+
+## Ziel
+
+Der Zustand eines Takts muss vom Zustand einer einzelnen Taktanfrage getrennt werden.
+
+Ein technisch zugestellter oder fachlich abgelehnter Request darf nicht automatisch den gesamten Takt auf zugestellt oder abgelehnt setzen.
+
+## Neues Enum `TaktLifecycleStatus`
+
+Definiere folgende Werte:
+
+```text
+DRAFT
+PLANNED
+IN_COORDINATION
+CONFIRMED
+CANCELLED
+```
+
+Bedeutung:
+
+* `DRAFT` – Takt wird bearbeitet.
+* `PLANNED` – Takt ist planungsseitig vorbereitet.
+* `IN_COORDINATION` – mindestens eine Abstimmung mit einem Nachunternehmer läuft.
+* `CONFIRMED` – die Ausführung wurde fachlich bestätigt.
+* `CANCELLED` – der Takt wurde aufgehoben.
+
+## Neues Enum `TaktRequestStatus`
+
+Definiere folgende Werte:
+
+```text
+DRAFT
+SENT
+DELIVERED
+DETAILS_RETRIEVED
+UNDER_REVIEW
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+REVISION_REQUIRED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+## Dokumentiere zulässige Übergänge
+
+Mindestens folgende Übergänge sollen zulässig sein:
+
+```text
+DRAFT → SENT
+DRAFT → CANCELLED
+
+SENT → DELIVERED
+SENT → CANCELLED
+SENT → EXPIRED
+
+DELIVERED → DETAILS_RETRIEVED
+DELIVERED → UNDER_REVIEW
+DELIVERED → CANCELLED
+DELIVERED → EXPIRED
+
+DETAILS_RETRIEVED → UNDER_REVIEW
+DETAILS_RETRIEVED → ACCEPTED
+DETAILS_RETRIEVED → ALTERNATIVES_PROPOSED
+DETAILS_RETRIEVED → REJECTED
+DETAILS_RETRIEVED → CANCELLED
+DETAILS_RETRIEVED → EXPIRED
+
+UNDER_REVIEW → ACCEPTED
+UNDER_REVIEW → ALTERNATIVES_PROPOSED
+UNDER_REVIEW → REJECTED
+UNDER_REVIEW → CANCELLED
+UNDER_REVIEW → EXPIRED
+
+ALTERNATIVES_PROPOSED → ACCEPTED
+ALTERNATIVES_PROPOSED → REVISION_REQUIRED
+ALTERNATIVES_PROPOSED → SUPERSEDED
+
+REJECTED → REVISION_REQUIRED
+REJECTED → SUPERSEDED
+
+REVISION_REQUIRED → SUPERSEDED
+```
+
+Folgende Zustände sind grundsätzlich terminal:
+
+```text
+ACCEPTED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+## Fachliche Regeln
+
+Dokumentiere ausdrücklich:
+
+* `DELIVERED` ist nur ein technischer Zustand.
+* `ACCEPTED` ist eine fachliche Entscheidung.
+* `REJECTED` bezieht sich auf eine konkrete Anfrage, nicht automatisch auf den Takt.
+* Eine abgelehnte Alternative führt zu `REVISION_REQUIRED`.
+* Eine neue Anfrageversion setzt die alte Anfrage auf `SUPERSEDED`.
+* Erst eine akzeptierte Antwort oder Alternative kann den Takt auf `CONFIRMED` setzen.
+* Eine offene Anfrage kann den Takt auf `IN_COORDINATION` setzen.
+* Der Taktstatus darf nicht direkt aus dem Transportstatus abgeleitet werden.
+
+## Übergangsprüfung
+
+Implementiere eine kleine, frameworkunabhängige Funktion, zum Beispiel:
+
+```ts
+isValidTaktRequestTransition(
+  currentStatus: TaktRequestStatus,
+  nextStatus: TaktRequestStatus
+): boolean
+```
+
+Optional zusätzlich:
+
+```ts
+assertValidTaktRequestTransition(...)
+```
+
+Die Funktion darf noch nicht automatisch von bestehenden Delegation-Endpunkten verwendet werden.
+
+## Tests
+
+Ergänze Tests für:
+
+* gültige Übergänge
+* ungültige Rücksprünge
+* Übergang aus terminalen Zuständen
+* Unterschied zwischen `DELIVERED` und `ACCEPTED`
+
+## Einschränkungen
+
+* keine Datenbankänderung
+* keine neuen REST-Endpunkte
+* keine Änderung bestehender Delegation-Logik
+* keine UI-Änderung
+
+## Abschluss
+
+Berichte:
+
+* neu definierte Enums
+* Speicherort der Übergangslogik
+* dokumentierte Zustandsübergänge
+* Testergebnisse
+* Ergebnis von Codegenerierung und Typecheck
+
+---
+
+# Aufgabe 2.3 – Taktmodell nicht brechend um Versionierung erweitern
+
+Erweitere das bestehende Takt-Datenmodell um eine fachliche Version und einen getrennten Lebenszyklusstatus.
+
+Bestehende Funktionen und API-Endpunkte müssen weiter funktionieren.
+
+## Neue Felder
+
+Ergänze am bestehenden Taktmodell:
+
+```text
+version
+lifecycleStatus
+updatedAt
+```
+
+Verwende den tatsächlich im Repository üblichen Benennungsstil.
+
+## `version`
+
+Anforderungen:
+
+* Ganzzahl
+* nicht nullable
+* Standardwert `1`
+* Minimum fachlich `1`
+* bestehende Takte erhalten Version `1`
+
+## `lifecycleStatus`
+
+Verwendet das neue Enum `TaktLifecycleStatus`.
+
+Anforderungen:
+
+* nicht nullable
+* bestehende Takte erhalten einen sinnvollen Standardwert
+* bevorzugter Standardwert `PLANNED`
+* bestehender alter Status darf vorerst erhalten bleiben, wenn er noch von der Anwendung benötigt wird
+
+## Kompatibilität
+
+Falls bereits ein Feld `status` existiert:
+
+* nicht löschen
+* nicht ungeprüft umbenennen
+* bestehende API-Antworten nicht brechen
+* `lifecycleStatus` parallel ergänzen
+* Mapping zum alten Status dokumentieren
+
+Ergänze in `docs/database-model.md` eine Tabelle:
+
+| Bestehender Status | Neuer Takt-Lebenszyklusstatus |
+| ------------------ | ----------------------------- |
+| tatsächlicher Wert | passender neuer Wert          |
+
+Verwende die tatsächlich vorhandenen Statuswerte.
+
+## Datenbankmigration
+
+* vorhandene Datensätze erhalten `version = 1`
+* vorhandene Datensätze erhalten einen sinnvollen `lifecycleStatus`
+* keine Takte löschen
+* keine bestehenden IDs verändern
+* bestehende Beziehungen erhalten
+
+## API
+
+Ergänze die neuen Felder nur dann an bestehenden API-Modellen, wenn dies rückwärtskompatibel möglich ist.
+
+Neue Felder sollten optional in bestehenden Responses sein, falls ältere Clients sonst brechen könnten.
+
+## Noch nicht implementieren
+
+* kein automatisches Hochzählen der Version
+* keine Versionstabelle
+* kein Erstellen neuer Taktversionen
+* keine neuen TaktRequest-Endpunkte
+* keine UI für Versionierung
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration beziehungsweise Schema-Push
+* OpenAPI-Codegenerierung, falls OpenAPI geändert wurde
+* Typecheck
+* Build
+* bestehende Tests
+
+## Abschluss
+
+Berichte:
+
+* geänderte Tabellen und Dateien
+* verwendete Standardwerte
+* Mapping bestehender Statuswerte
+* Ergebnis der Migration
+* Ergebnis von Typecheck und Build
+
+---
+
+# Aufgabe 2.4 – Tabellen für Taktanfragen und unveränderliche Snapshots anlegen
+
+Ergänze die Datenbank um die neuen Tabellen:
+
+* `takt_requests`
+* `takt_request_snapshots`
+
+Verwende die vorhandene Drizzle-Struktur, die vorhandene ID-Strategie und die bestehenden Zeitstempelkonventionen.
+
+Ändere noch keine REST-Endpunkte und keine Benutzeroberflächen.
+
+## Tabelle `takt_requests`
+
+Ergänze mindestens folgende Felder:
+
+```text
+id
+taktId
+taktVersion
+guOrgId
+nuOrgId
+requestNumber
+status
+responseRequiredBy
+sentAt
+deliveredAt
+detailsRetrievedAt
+supersedesRequestId
+createdByUserId
+createdAt
+updatedAt
+```
+
+## Anforderungen
+
+### Identifikatoren
+
+* Verwende für `id` den bestehenden ID-Typ des Projekts.
+* `requestNumber` ist eine fachlich lesbare, eindeutige Referenz.
+* `requestNumber` erhält einen Unique Constraint.
+
+### Referenzen
+
+* `taktId` referenziert einen bestehenden Takt.
+* `guOrgId` referenziert die GU-Organisation.
+* `nuOrgId` referenziert die adressierte NU-Organisation.
+* `createdByUserId` referenziert den erstellenden Benutzer.
+* `supersedesRequestId` ist optional und referenziert eine ältere Anfrage.
+
+### Taktversion
+
+* `taktVersion` ist nicht nullable.
+* `taktVersion` muss mindestens `1` sein.
+* Der Wert beschreibt die bei Erstellung der Anfrage verwendete Taktversion.
+
+### Status
+
+* `status` verwendet `TaktRequestStatus`.
+* Standardwert ist `DRAFT`.
+
+### Zeitfelder
+
+* `responseRequiredBy` darf zunächst nullable sein, falls bestehende Workflows dies benötigen.
+* `sentAt`, `deliveredAt` und `detailsRetrievedAt` sind nullable.
+* `createdAt` und `updatedAt` sind nicht nullable.
+
+## Indizes
+
+Ergänze geeignete Indizes mindestens für:
+
+```text
+taktId
+guOrgId
+nuOrgId
+status
+responseRequiredBy
+createdAt
+```
+
+Prüfe, ob kombinierte Indizes sinnvoll sind, beispielsweise:
+
+```text
+nuOrgId + status
+guOrgId + status
+taktId + taktVersion
+```
+
+## Tabelle `takt_request_snapshots`
+
+Ergänze mindestens:
+
+```text
+id
+taktRequestId
+schemaVersion
+snapshotPayload
+createdAt
+```
+
+## Anforderungen an den Snapshot
+
+* `taktRequestId` referenziert `takt_requests`.
+* Pro Taktanfrage ist genau ein Snapshot erlaubt.
+* Setze einen Unique Constraint auf `taktRequestId`.
+* `schemaVersion` ist nicht nullable.
+* Standardwert kann `1.0` sein.
+* `snapshotPayload` wird als JSON beziehungsweise JSONB gespeichert.
+* `snapshotPayload` ist nicht nullable.
+* Snapshot-Datensätze sollen nicht aktualisiert werden.
+* Snapshot-Datensätze sollen nicht automatisch mit Änderungen am Takt verändert werden.
+
+## Löschverhalten
+
+Wähle ein nachvollziehbares Foreign-Key-Verhalten.
+
+Bevorzugt:
+
+* TaktRequest nicht automatisch löschen, wenn ein Takt gelöscht werden soll.
+* Historische Anfragen und Snapshots sollen erhalten bleiben.
+* Falls das bestehende System physisches Löschen verwendet, verhindere Datenverlust durch geeignete Restriktionen.
+
+Dokumentiere die Entscheidung.
+
+## Keine Fachlogik implementieren
+
+Noch nicht implementieren:
+
+* Erstellen eines Requests aus einem API-Endpunkt
+* Erzeugen des Snapshot-Inhalts
+* Versand einer Nachricht
+* Statusänderungen durch Transport
+* Abruf des Snapshots durch einen NU
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankschema-Push oder Migration
+* Typecheck
+* Build
+* vorhandene Datenbanktests
+
+## Abschluss
+
+Berichte:
+
+* angelegte Tabellen
+* Foreign Keys
+* Unique Constraints
+* Indizes
+* Löschverhalten
+* Ergebnis der Migration
+* Ergebnis von Typecheck und Build
+
+---
+
+# Aufgabe 2.5 – Tabellen für Taktantworten und Alternativen anlegen
+
+Ergänze die Datenbank um:
+
+* `takt_responses`
+* `takt_response_alternatives`
+
+Verwende die vorhandene ID-Strategie und Drizzle-Konventionen.
+
+Ändere noch keine REST-Endpunkte oder Benutzeroberflächen.
+
+## Tabelle `takt_responses`
+
+Ergänze mindestens:
+
+```text
+id
+taktRequestId
+messageId
+decision
+reasonCode
+comment
+acceptedStart
+acceptedEnd
+nextAvailableDate
+createdByUserId
+createdAt
+```
+
+## Anforderungen
+
+### Beziehung zur Anfrage
+
+* `taktRequestId` referenziert `takt_requests`.
+* Pro Taktanfrage soll im PoC maximal eine fachliche Antwort gespeichert werden.
+* Setze einen Unique Constraint auf `taktRequestId`.
+
+Eine neue Abstimmungsrunde soll später eine neue Taktanfrage erzeugen und nicht die alte Antwort überschreiben.
+
+### `messageId`
+
+* nullable, solange der Transport noch nicht umgesetzt ist
+* falls gesetzt, eindeutig
+* Unique Constraint für nicht leere Werte, soweit mit der verwendeten Datenbank sinnvoll umsetzbar
+
+### `decision`
+
+Verwendet das vorhandene Enum:
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+```
+
+### `reasonCode`
+
+Verwendet das vorhandene Enum `TaktResponseReasonCode`.
+
+Das Feld ist nullable.
+
+### Angenommenes Zeitfenster
+
+* `acceptedStart` und `acceptedEnd` sind nullable.
+* Beide werden später bei `ACCEPTED` benötigt.
+* Datenbankseitig muss nicht zwingend eine komplexe bedingte Constraint implementiert werden.
+* Die Regel wird später zusätzlich in der Service-Schicht validiert.
+
+### Weitere Felder
+
+* `comment` nullable
+* `nextAvailableDate` nullable
+* `createdByUserId` referenziert den antwortenden Benutzer
+* `createdAt` nicht nullable
+
+## Tabelle `takt_response_alternatives`
+
+Ergänze mindestens:
+
+```text
+id
+responseId
+alternativeId
+rank
+proposedStart
+proposedEnd
+crewSize
+conditions
+createdAt
+```
+
+## Anforderungen
+
+* `responseId` referenziert `takt_responses`.
+* `alternativeId` ist eine fachliche ID innerhalb einer Antwort.
+* `rank` ist mindestens 1.
+* `crewSize` ist nullable, aber falls gesetzt mindestens 1.
+* `conditions` wird als JSON, JSONB oder bestehender geeigneter Array-Typ gespeichert.
+* `proposedStart` und `proposedEnd` sind nicht nullable.
+
+## Constraints
+
+Ergänze:
+
+* Unique Constraint auf `responseId + alternativeId`
+* Unique Constraint auf `responseId + rank`
+* Index auf `responseId`
+* maximal drei Alternativen werden später in der Service-Schicht validiert
+
+## Löschverhalten
+
+* Alternativen dürfen mit ihrer Antwort gelöscht werden, falls eine noch nicht verwendete Antwort technisch entfernt wird.
+* Historisch relevante Antworten sollen später nicht physisch gelöscht werden.
+* Dokumentiere das gewählte Verhalten.
+
+## Noch nicht implementieren
+
+* keine Antwort-Endpunkte
+* keine GU-Entscheidung über Alternativen
+* keine automatische Statusänderung
+* keine Transportnachricht
+* keine UI
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Typecheck
+* Build
+* bestehende Tests
+
+## Abschluss
+
+Berichte:
+
+* Tabellen und Felder
+* Unique Constraints
+* Foreign Keys
+* Speicherung der Bedingungen
+* Löschverhalten
+* Ergebnis der Migration
+* Ergebnis von Typecheck und Build
+
+---
+
+# Aufgabe 2.6 – Datenzugriffsschicht für Taktanfragen und Antworten implementieren
+
+Implementiere eine interne Datenzugriffs- beziehungsweise Repository-Schicht für die neuen Tabellen.
+
+Es sollen noch keine öffentlichen REST-Endpunkte ergänzt werden.
+
+Nutze die bestehende Architektur und den bestehenden Stil für Datenbankzugriffe.
+
+## Ziel
+
+Die neuen Tabellen sollen nicht direkt aus zukünftigen Routes heraus angesprochen werden müssen.
+
+Implementiere klar abgegrenzte Repository- oder Service-Funktionen.
+
+## Funktionen für `TaktRequest`
+
+Mindestens:
+
+```ts
+createTaktRequestDraft(...)
+getTaktRequestById(...)
+getTaktRequestWithSnapshot(...)
+listTaktRequestsForGu(...)
+listTaktRequestsForNu(...)
+updateTaktRequestStatus(...)
+markTaktRequestSuperseded(...)
+```
+
+Passe Namen und Parameter an den vorhandenen Stil an.
+
+## Funktionen für Snapshots
+
+Mindestens:
+
+```ts
+createTaktRequestSnapshot(...)
+getTaktRequestSnapshot(...)
+```
+
+Regeln:
+
+* Pro Anfrage darf nur ein Snapshot erzeugt werden.
+* Ein bestehender Snapshot darf nicht überschrieben werden.
+* Es darf keine allgemeine Update-Funktion für Snapshots geben.
+* Snapshot-Payloads müssen als validierbares Objekt behandelt werden.
+
+## Funktionen für Antworten
+
+Mindestens:
+
+```ts
+createTaktResponse(...)
+getTaktResponseByRequestId(...)
+getTaktResponseWithAlternatives(...)
+```
+
+## Funktionen für Alternativen
+
+Die Alternativen sollen möglichst innerhalb einer Transaktion gemeinsam mit der Antwort gespeichert werden.
+
+Regeln:
+
+* höchstens drei Alternativen
+* eindeutige `alternativeId`
+* eindeutiger `rank`
+* `proposedEnd` liegt nach `proposedStart`
+* `crewSize` ist mindestens 1, falls vorhanden
+
+## Validierung der Antwort
+
+Implementiere in der Service-Schicht folgende Regeln:
+
+### `ACCEPTED`
+
+* `acceptedStart` erforderlich
+* `acceptedEnd` erforderlich
+* `acceptedEnd` nach `acceptedStart`
+* keine Alternativen erforderlich
+
+### `ALTERNATIVES_PROPOSED`
+
+* mindestens eine Alternative
+* maximal drei Alternativen
+* kein angenommenes Zeitfenster erforderlich
+
+### `REJECTED`
+
+* keine Alternative erforderlich
+* `reasonCode` empfohlen, aber nicht zwingend, falls bestehendes Schema dies nicht vorsieht
+
+## Statusänderung
+
+`updateTaktRequestStatus` muss die in Aufgabe 2.2 implementierte Übergangsprüfung verwenden.
+
+Ungültige Übergänge müssen einen klaren Domain-Fehler auslösen.
+
+## Organisationsfilter
+
+Repository-Funktionen müssen so gestaltet werden, dass spätere Routes immer nach GU- beziehungsweise NU-Organisation filtern können.
+
+Vermeide eine Funktion, die ungefiltert alle Anfragen an beliebige Benutzer zurückgibt.
+
+## Keine Transportlogik
+
+Nicht implementieren:
+
+* Hub-Nachrichten
+* Outbox
+* Webhooks
+* EDC
+* Notification Push
+* Details Pull
+* Antwort Push
+
+## Tests
+
+Ergänze Tests für:
+
+* Erstellung einer Anfrage im Status `DRAFT`
+* genau einen Snapshot pro Anfrage
+* unveränderlichen Snapshot
+* Erstellung einer Bestätigung
+* Erstellung von zwei Alternativen
+* Ablehnung ohne Alternativen
+* mehr als drei Alternativen
+* doppelten Rang
+* doppelte Alternative-ID
+* ungültige Zeitfenster
+* ungültige Statusübergänge
+* organisationsbezogene Filterung
+
+## Abschluss
+
+Berichte:
+
+* neue Repository- und Service-Dateien
+* implementierte Funktionen
+* verwendete Transaktionen
+* implementierte Validierungsregeln
+* Testergebnisse
+* Ergebnis von Typecheck und Build
+
+---
+
+# Aufgabe 2.7 – Entwicklungsdaten für neue Taktmodelle ergänzen
+
+Erweitere ausschließlich die vorhandene Seed- beziehungsweise Entwicklungsdatenlogik um Beispieldaten für die neuen Tabellen.
+
+Bestehende Seed-Daten dürfen nicht entfernt werden.
+
+## Ziel
+
+Nach einem Reset beziehungsweise Seed sollen neue Taktanfragen und Antworten für spätere Entwicklungsschritte verfügbar sein.
+
+## Beispieldaten
+
+Erzeuge mindestens folgende Fälle.
+
+### Fall 1 – Offene Taktanfrage
+
+* bestehender Takt
+* Taktversion `1`
+* GU-Organisation
+* adressierte NU-Organisation
+* Status `DELIVERED`
+* Antwortfrist in der Zukunft
+* genau ein TaktRequestSnapshot
+* noch keine Antwort
+
+### Fall 2 – Bestätigte Anfrage
+
+* Status `ACCEPTED`
+* Antwort mit `decision = ACCEPTED`
+* gültiges angenommenes Zeitfenster
+* keine Alternativen
+
+### Fall 3 – Anfrage mit Alternativen
+
+* Status `ALTERNATIVES_PROPOSED`
+* Antwort mit `decision = ALTERNATIVES_PROPOSED`
+* zwei Alternativen
+* unterschiedliche Zeitfenster
+* eindeutige Rangfolge
+* generischer `reasonCode = RESOURCE_CONFLICT`
+
+### Fall 4 – Abgelehnte Anfrage
+
+* Status `REJECTED`
+* Antwort mit `decision = REJECTED`
+* `reasonCode = NO_CAPACITY`
+* keine vertraulichen Daten über andere Projekte
+
+## Snapshot-Inhalt
+
+Der Snapshot soll einen plausiblen, aber reduzierten Takt-Ausschnitt enthalten.
+
+Beispielsweise:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014",
+  "taktVersion": 1,
+  "trade": "DRYWALL",
+  "workPackage": "Montage Trockenbauwände",
+  "location": {
+    "building": "Bauteil A",
+    "storey": "EG",
+    "zone": "Taktbereich 03"
+  },
+  "plannedTimeWindow": {
+    "start": "2026-09-14T05:00:00Z",
+    "end": "2026-09-18T14:00:00Z"
+  }
+}
+```
+
+Der Snapshot darf nicht enthalten:
+
+* vollständigen Projektplan
+* Takte anderer Nachunternehmer
+* interne GU-Kommentare
+* NU-Ressourcendaten
+
+## Kompatibilität
+
+* Bestehende Delegation-Seed-Daten bleiben erhalten.
+* Bestehende Demo-Benutzer bleiben erhalten.
+* Verwende vorhandene IDs beziehungsweise neue kollisionsfreie IDs.
+* Seed muss mehrfach ausführbar sein, soweit die vorhandene Seed-Architektur dies unterstützt.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbank-Reset oder Seed in Entwicklungsumgebung
+* Typecheck
+* Build
+* vorhandene Seed-Tests
+
+## Abschluss
+
+Berichte:
+
+* ergänzte Seed-Fälle
+* erzeugte Taktanfragen
+* erzeugte Antworten und Alternativen
+* Ergebnis des Seeds
+* weiterhin vorhandene bestehende Demo-Daten
+
+---
+
+# Aufgabe 2.8 – Datenbankmodelle, Zustände und Kompatibilität abschließend prüfen
+
+Prüfe alle Änderungen aus Aufgabe 2 und korrigiere nur festgestellte Inkonsistenzen.
+
+Implementiere keine neuen REST-Endpunkte und keine Benutzeroberflächen.
+
+## Zu prüfende Modelle
+
+### Takt
+
+Prüfe:
+
+* `version`
+* `lifecycleStatus`
+* Standardwerte
+* Kompatibilität mit bestehendem `status`
+
+### Taktanfrage
+
+Prüfe:
+
+* `takt_requests`
+* `takt_request_snapshots`
+* genau ein Snapshot pro Anfrage
+* Beziehungen zu Takt, GU, NU und Benutzer
+* Statusenum
+* Indizes
+* Unique Constraints
+
+### Taktantwort
+
+Prüfe:
+
+* `takt_responses`
+* `takt_response_alternatives`
+* maximal eine Antwort pro Anfrage
+* eindeutige Alternativen und Rangfolgen
+* gültige Zeitfenster
+* maximal drei Alternativen in der Service-Schicht
+
+## Zustandsregeln
+
+Prüfe:
+
+* technische Zustellung ist keine fachliche Zustimmung
+* `REJECTED` lehnt nicht automatisch den gesamten Takt ab
+* `ALTERNATIVES_PROPOSED` bestätigt den Takt noch nicht
+* `ACCEPTED` kann später den Takt bestätigen
+* `SUPERSEDED` markiert eine ersetzte Anfrage
+* terminale Zustände können nicht beliebig verändert werden
+
+## Datenintegrität
+
+Prüfe automatisiert oder durch Tests:
+
+* Request referenziert existierenden Takt
+* Request referenziert existierende Organisationen
+* Snapshot ohne Request ist nicht möglich
+* zweiter Snapshot für denselben Request wird abgelehnt
+* zweite Response für denselben Request wird abgelehnt
+* Alternative ohne Response ist nicht möglich
+* doppelte `requestNumber` wird abgelehnt
+* doppelte `messageId` wird abgelehnt, sofern gesetzt
+* ungültiger Rang wird abgelehnt
+* ungültige Zeitfenster werden abgelehnt
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* bestehende Delegation-Tabellen wurden nicht entfernt
+* bestehende Delegation-Endpunkte wurden nicht entfernt
+* bestehende GU-, NU- und Hub-Anwendungen bleiben startfähig
+* bestehende Seed-Daten bleiben vorhanden
+* bestehende Clients funktionieren weiterhin
+* neue OpenAPI-Felder brechen bestehende Responses nicht
+
+## Prüfungen
+
+Führe die tatsächlich vorhandenen Befehle aus für:
+
+* Datenbankschema-Push oder Migration
+* OpenAPI-Codegenerierung
+* Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte strukturiert:
+
+### Geänderte Dateien
+
+Liste alle in Aufgabe 2 geänderten Dateien.
+
+### Neue Datenbankobjekte
+
+Liste:
+
+```text
+takt_requests
+takt_request_snapshots
+takt_responses
+takt_response_alternatives
+```
+
+### Erweiterte Datenbankobjekte
+
+Nenne die am Taktmodell ergänzten Felder.
+
+### Statusmodelle
+
+Liste:
+
+```text
+TaktLifecycleStatus
+TaktRequestStatus
+```
+
+### Constraints und Indizes
+
+Liste die wichtigsten:
+
+* Unique Constraints
+* Foreign Keys
+* Organisationsindizes
+* Statusindizes
+* Snapshot-Constraint
+* Response-Constraint
+* Alternative-Constraints
+
+### Testergebnisse
+
+Nenne das Ergebnis von:
+
+* Datenbanktests
+* Service-Tests
+* bestehenden Tests
+* Codegenerierung
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne nur die späteren Arbeitspakete:
+
+* Transportabstraktion
+* Outbox und Inbox
+* Push der Taktanfrage
+* Pull der Takt-Snapshots
+* lokale Ressourcenprüfung
+* Push der Taktantwort
+* GU-Entscheidung über Alternativen
+* Anpassung der GU-, NU- und Hub-Oberflächen
+
+## Nicht Bestandteil von Aufgabe 2
+
+* keine neuen öffentlichen TaktRequest-Endpunkte
+* keine Hub-Transportlogik
+* keine Notification-Zustellung
+* keine lokale Ressourcenprüfung
+* keine UI-Anpassung
+* kein EDC
+* kein DSP
+* keine Wallet
+* keine Policy- oder Vertragslogik
