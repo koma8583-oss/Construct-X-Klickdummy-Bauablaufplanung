@@ -7,7 +7,7 @@
  */
 
 export interface CreateTaktRequest {
-  taktNumber: number;
+  taktBezeichnung: string;
   zone: string;
   gewerk: string;
   description?: string;

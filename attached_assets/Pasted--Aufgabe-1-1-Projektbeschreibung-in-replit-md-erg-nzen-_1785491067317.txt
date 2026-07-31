@@ -1,0 +1,871 @@
+# Aufgabe 1.1 – Projektbeschreibung in `replit.md` ergänzen
+
+Analysiere die vorhandene Repository-Struktur und ergänze ausschließlich die Datei `replit.md`.
+
+Die bestehende Anwendung soll schrittweise zu einem Proof of Concept für eine föderierte Taktkoordination im Bauwesen weiterentwickelt werden.
+
+## Fachlicher Kontext
+
+Ein Generalunternehmer beziehungsweise ein Generalplaner erstellt einen vollständigen Taktplan. Einzelne Takte werden Nachunternehmern zur Prüfung übermittelt.
+
+Der geplante spätere Ablauf lautet:
+
+1. Der Generalunternehmer sendet eine Benachrichtigung über eine Taktanfrage.
+2. Der Nachunternehmer ruft die für ihn freigegebenen Taktdetails ab.
+3. Der Nachunternehmer prüft die Taktdaten gegen seine lokale Ressourcenplanung.
+4. Der Nachunternehmer bestätigt den Takt, schlägt Alternativen vor oder lehnt ihn ab.
+5. Die Antwort wird an den Generalunternehmer zurückgesendet.
+
+Aktuell gibt es noch keinen echten Datenraum. Der Austausch wird im PoC mit REST-Schnittstellen, JSON-Nachrichten und dem vorhandenen Hub simuliert.
+
+## Ergänze in `replit.md`
+
+### Projektname
+
+`Takt Coordination Flow – Federated Dataspace PoC`
+
+### Produktbeschreibung
+
+Beschreibe:
+
+* Taktplanung durch Generalunternehmer und Generalplaner
+* Abstimmung mit mehreren Nachunternehmern
+* dezentrale Datenhaltung
+* lokale Ressourcenprüfung beim Nachunternehmer
+* Push einer Benachrichtigung
+* Pull der Taktdetails
+* Push einer Antwort
+* spätere Ersetzbarkeit des lokalen Transports durch EDC
+
+### Architekturregeln
+
+Dokumentiere verbindlich:
+
+1. Der Generalunternehmer besitzt den vollständigen Taktplan.
+2. Der Nachunternehmer besitzt seine vollständige Ressourcenplanung.
+3. Der Hub besitzt keine vollständigen Projekt- oder Ressourcendaten.
+4. Der Generalunternehmer darf keine internen Ressourcendaten des Nachunternehmers abrufen.
+5. Der Nachunternehmer darf nicht den vollständigen Taktplan abrufen.
+6. Der Nachunternehmer erhält nur die für ihn freigegebenen Taktdetails.
+7. Daten anderer Nachunternehmer dürfen nicht offengelegt werden.
+8. Daten anderer Auftraggeber des Nachunternehmers dürfen nicht offengelegt werden.
+9. Fachlogik und Transportlogik müssen getrennt bleiben.
+10. Es wird aktuell kein EDC, DSP, Wallet oder Verifiable Credential implementiert.
+
+### Bestehende und zukünftige Begriffe
+
+Dokumentiere das Mapping:
+
+* bestehendes `AG` entspricht fachlich `GU`
+* bestehendes `AN` entspricht fachlich `NU`
+* bestehende `Delegation` entspricht künftig `TaktRequest`
+* bestehende Delegation-Antwort entspricht künftig `TaktResponse`
+* bestehende Hub-Nachricht entspricht künftig `DataspaceMessage`
+* bestehende Ressourcenzuweisung entspricht künftig `ResourceBooking`
+
+Führe in diesem Schritt keine globale Umbenennung im Code durch.
+
+### Fachliche Kernobjekte
+
+Beschreibe kurz:
+
+* Project
+* Takt
+* TaktRequest
+* TaktRequestSnapshot
+* TaktResponse
+* TaktResponseAlternative
+* DataspaceMessage
+* Resource
+* ResourceBooking
+* AvailabilityCheck
+
+### Entwicklungsregeln
+
+Dokumentiere:
+
+* bestehende Architektur weiterverwenden
+* keine Neuentwicklung
+* OpenAPI bleibt Quelle der API-Verträge
+* generierte Dateien nicht manuell ändern
+* bestehende Delegation-Endpunkte nicht entfernen
+* neue Funktionen später schrittweise ergänzen
+* Zeitangaben als ISO 8601
+* intern möglichst UTC
+* Typecheck und Build müssen nach Änderungen erfolgreich sein
+
+### Entwicklungsbefehle
+
+Ermittle die tatsächlich vorhandenen Befehle und dokumentiere mindestens:
+
+* Installation
+* Entwicklungsstart
+* OpenAPI-Codegenerierung
+* Datenbank-Schema-Push oder Migration
+* Typecheck
+* Build
+* Tests
+
+## Einschränkungen
+
+In diesem Schritt:
+
+* nur `replit.md` ändern
+* keine OpenAPI-Änderungen
+* keine Datenbankänderungen
+* keine UI-Änderungen
+* keine neuen API-Endpunkte
+* keine bestehenden Funktionen entfernen
+
+## Abschluss
+
+Berichte anschließend:
+
+* welche Abschnitte in `replit.md` ergänzt wurden
+* ob noch Platzhalter vorhanden sind
+* ob bestehende Informationen beibehalten wurden
+
+---
+
+# Aufgabe 1.2 – `README.md` um das PoC-Zielbild ergänzen
+
+Bearbeite ausschließlich die bestehende `README.md`.
+
+Entferne keine wichtigen vorhandenen Installations- oder Startinformationen.
+
+## Ergänze folgende Inhalte
+
+### Kurzbeschreibung
+
+Beschreibe in maximal drei Absätzen:
+
+* Der Generalunternehmer beziehungsweise Generalplaner verwaltet den vollständigen Taktplan.
+* Nachunternehmer prüfen einzelne Taktanfragen gegen ihre lokale Ressourcenplanung.
+* Der Informationsaustausch erfolgt zunächst über REST und JSON.
+* Die spätere Migration zu Tractus-X und EDC wird vorbereitet.
+
+### Anwendungen und Komponenten
+
+Beschreibe anhand der tatsächlich vorhandenen Repository-Struktur:
+
+* GU- beziehungsweise bisherige Auftraggeber-Anwendung
+* NU- beziehungsweise bisherige Auftragnehmer-Anwendung
+* Hub-Anwendung
+* API-Server
+* Datenbank
+* OpenAPI-Spezifikation
+* generierte API-Clients und Validierungsschemas
+
+Verwende die tatsächlichen Verzeichnisnamen.
+
+### PoC-Grenzen
+
+Füge ausdrücklich folgenden Inhalt sinngemäß ein:
+
+Dieses Projekt verwendet aktuell keinen Eclipse Dataspace Connector und kein Dataspace Protocol. Der Datenraumaustausch wird durch REST-Schnittstellen, standardisierte JSON-Nachrichten und einen lokalen Hub simuliert.
+
+### Datenhoheit
+
+Dokumentiere:
+
+* GU hält den vollständigen Taktplan.
+* NU hält die vollständige lokale Ressourcenplanung.
+* Hub hält nur Nachrichten und Transportinformationen.
+* Es gibt keine zentrale gemeinsame Ressourcenplanung.
+* Andere Projekte und Kunden des NU bleiben verborgen.
+
+### Spätere Migration
+
+Beschreibe kurz:
+
+* lokaler Transport kann später durch EDC ersetzt werden
+* Fachprozesse und JSON-Verträge sollen dabei erhalten bleiben
+* digitale Identitäten, Policies und Vertragsverhandlungen kommen erst später hinzu
+
+## Einschränkungen
+
+In diesem Schritt:
+
+* nur `README.md` ändern
+* keine Codeänderungen
+* keine OpenAPI-Änderungen
+* keine Umbenennung von Verzeichnissen
+* keine bestehenden Funktionen entfernen
+
+## Abschluss
+
+Berichte:
+
+* welche README-Abschnitte ergänzt wurden
+* welche vorhandenen Informationen beibehalten wurden
+* welche tatsächlichen Anwendungs- und Paketnamen dokumentiert wurden
+
+---
+
+# Aufgabe 1.3 – Dokumentation der Rollen und Datenhoheit erstellen
+
+Erstelle ausschließlich die Datei:
+
+`docs/data-ownership.md`
+
+Lege das Verzeichnis `docs` an, falls es noch nicht existiert.
+
+## Benutzerrollen dokumentieren
+
+Beschreibe folgende fachliche Zielrollen:
+
+* `GU_ADMIN`
+* `GENERAL_PLANNER`
+* `NU_ADMIN`
+* `NU_DISPATCHER`
+* `HUB_ADMIN`
+
+Der Generalplaner ist ein Benutzer innerhalb der Organisation des Generalunternehmers und keine eigene Organisation.
+
+Falls die bestehende Anwendung andere Rollen verwendet, dokumentiere das derzeitige Mapping. Ändere das bestehende Authentifizierungs- oder Rollenmodell in diesem Schritt nicht.
+
+## Organisationstypen dokumentieren
+
+Zielbegriffe:
+
+* `GU`
+* `NU`
+* `HUB`
+
+Dokumentiere:
+
+* bestehendes `AG` entspricht fachlich `GU`
+* bestehendes `AN` entspricht fachlich `NU`
+
+## Tabelle zur Datenhoheit
+
+Erstelle mindestens folgende Tabelle:
+
+| Datenobjekt                    | Eigentümer | GU sichtbar |         NU sichtbar |   Hub sichtbar |
+| ------------------------------ | ---------- | ----------: | ------------------: | -------------: |
+| Vollständiger Taktplan         | GU         |          Ja |                Nein |           Nein |
+| Freigegebener Takt-Snapshot    | GU         |          Ja | Nur adressierter NU |           Nein |
+| Taktanfrage-Benachrichtigung   | GU         |          Ja | Nur adressierter NU | Kleine Payload |
+| Vollständige Ressourcenplanung | NU         |        Nein |                  Ja |           Nein |
+| Interne Konfliktanalyse        | NU         |        Nein |                  Ja |           Nein |
+| Reduzierte Taktantwort         | NU         |          Ja |                  Ja | Kleine Payload |
+| Andere Projekte des NU         | NU         |        Nein |                  Ja |           Nein |
+| Mitarbeiter- und Gerätedetails | NU         |        Nein |                  Ja |           Nein |
+
+## Nicht extern übertragbare Informationen
+
+Dokumentiere ausdrücklich, dass folgende Informationen niemals Teil einer externen Antwort an den GU oder einer Hub-Nachricht sein dürfen:
+
+* Name eines anderen Generalunternehmers
+* Name eines anderen Auftraggebers
+* Name eines anderen Projekts
+* lokale Projekt-ID
+* Mitarbeitername
+* Mitarbeiter-ID
+* interne Ressourcenbezeichnung
+* interne Kosten
+* interne Prioritäten
+* vollständige Konfliktliste
+* interne Auslastungsplanung
+
+Beispiele möglicher technischer Feldnamen:
+
+```text
+customerName
+customerId
+otherGuName
+otherProjectName
+localProjectId
+employeeName
+employeeId
+resourceName
+internalCost
+internalPriority
+internalConflicts
+```
+
+## Einschränkungen
+
+In diesem Schritt:
+
+* nur Dokumentation erstellen
+* keine Codeänderungen
+* keine Datenbankänderungen
+* keine OpenAPI-Änderungen
+* bestehende Rollen noch nicht verändern
+
+## Abschluss
+
+Berichte:
+
+* ob `docs/data-ownership.md` erstellt wurde
+* welche Rollen-Mappings dokumentiert wurden
+* welche Datenschutzregeln festgehalten wurden
+
+---
+
+# Aufgabe 1.4 – OpenAPI-Basisschemas für Nachrichten ergänzen
+
+Analysiere die vorhandene OpenAPI-Spezifikation und ergänze ausschließlich die grundlegenden, wiederverwendbaren Nachrichtenschemas.
+
+Die OpenAPI-Spezifikation bleibt die Quelle der API-Verträge.
+
+Ändere keine generierten Dateien manuell.
+
+## Ergänze folgende Schemas
+
+### `DataspaceMessageType`
+
+Enum-Werte:
+
+```text
+TAKT_REQUEST_NOTIFICATION
+TAKT_REQUEST_REVISED
+TAKT_REQUEST_CANCELLED
+TAKT_DETAILS_RETRIEVED
+TAKT_RESPONSE_SUBMITTED
+TAKT_RESPONSE_ACCEPTED
+TAKT_RESPONSE_REVISION_REQUESTED
+```
+
+### `DataspaceMessageStatus`
+
+Enum-Werte:
+
+```text
+PENDING
+SENT
+DELIVERED
+READ
+FAILED
+```
+
+### `MessageEnvelope`
+
+Pflichtfelder:
+
+* `messageId`
+* `schemaVersion`
+* `messageType`
+* `senderOrgId`
+* `recipientOrgId`
+* `correlationId`
+* `createdAt`
+* `payload`
+
+Optionale Felder:
+
+* `causationId`
+* `expiresAt`
+* `status`
+
+Anforderungen:
+
+* `messageId` ist ein nicht leerer String.
+* `schemaVersion` entspricht dem Muster `Zahl.Zahl`, zum Beispiel `1.0`.
+* `messageType` referenziert `DataspaceMessageType`.
+* `status` referenziert `DataspaceMessageStatus`.
+* `createdAt` und `expiresAt` verwenden `date-time`.
+* `payload` ist zunächst ein generisches Objekt.
+* Nullable-Felder müssen zur verwendeten OpenAPI-Version passen.
+
+Beispiel:
+
+```json
+{
+  "messageId": "MSG-2026-000001",
+  "schemaVersion": "1.0",
+  "messageType": "TAKT_REQUEST_NOTIFICATION",
+  "senderOrgId": "GU-001",
+  "recipientOrgId": "NU-017",
+  "correlationId": "REQ-001",
+  "causationId": null,
+  "createdAt": "2026-07-31T09:00:00Z",
+  "expiresAt": "2026-08-07T10:00:00Z",
+  "status": "DELIVERED",
+  "payload": {}
+}
+```
+
+## Wichtige Regeln
+
+* Der technische Status `DELIVERED` ist keine fachliche Zustimmung.
+* `correlationId` verbindet alle Nachrichten eines TaktRequest-Prozesses.
+* `causationId` verweist auf die auslösende Nachricht.
+* `schemaVersion` wird von Anfang an geführt.
+* Bestehende Hub- oder Delegation-Schemas nicht entfernen.
+* Bestehende API-Endpunkte nicht verändern.
+* Noch keine Datenbanktabellen ergänzen.
+
+## Codegenerierung
+
+Führe nach der OpenAPI-Änderung die bestehende Codegenerierung aus.
+
+Prüfe:
+
+* erzeugte TypeScript-Typen
+* erzeugte Zod-Schemas
+* Kompatibilität mit der bestehenden Codegenerierung
+
+Bearbeite die generierten Ergebnisse nicht manuell.
+
+## Prüfungen
+
+Führe mindestens aus:
+
+* OpenAPI-Codegenerierung
+* Typecheck
+
+Falls ohne zusätzlichen Aufwand möglich, auch den Build.
+
+## Abschluss
+
+Berichte:
+
+* geänderte Dateien
+* neu ergänzte Schemas
+* Ergebnis der Codegenerierung
+* Ergebnis des Typechecks
+* mögliche Kompatibilitätsprobleme
+
+---
+
+# Aufgabe 1.5 – OpenAPI-Schemas für Taktanfrage und Taktantwort ergänzen
+
+Ergänze die vorhandene OpenAPI-Spezifikation um die fachlichen Payload-Schemas für Taktanfragen und Taktantworten.
+
+Bestehende Endpunkte und bestehende Delegation-Schemas bleiben unverändert.
+
+## Ergänze `TaktRequestNotificationPayload`
+
+Pflichtfelder:
+
+* `taktRequestId`
+* `projectReference`
+* `taktReference`
+* `taktVersion`
+* `responseRequiredBy`
+* `detailsRef`
+
+Optionale Felder:
+
+* `subject`
+* `message`
+
+Anforderungen:
+
+* `taktVersion` ist eine Ganzzahl mit Minimum 1.
+* `responseRequiredBy` ist `date-time`.
+* `detailsRef` ist eine Referenz auf den späteren Detailabruf.
+* Das Payload enthält keine vollständigen Taktdetails.
+
+Nicht enthalten sein dürfen:
+
+* vollständiger Taktplan
+* Liste aller Projekttakte
+* Daten anderer Nachunternehmer
+* vollständige LV-Daten
+* vollständiges BIM-Modell
+* interne GU-Kommentare
+* NU-Ressourcendaten
+
+## Ergänze `TaktDecision`
+
+Enum-Werte:
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+```
+
+## Ergänze `TaktResponseReasonCode`
+
+Enum-Werte:
+
+```text
+RESOURCE_CONFLICT
+NO_CAPACITY
+EQUIPMENT_UNAVAILABLE
+QUALIFICATION_MISSING
+TIME_WINDOW_TOO_SHORT
+OUTSIDE_PLANNING_HORIZON
+OTHER
+```
+
+## Ergänze `TimeWindow`
+
+Pflichtfelder:
+
+* `start`
+* `end`
+
+Beide Werte verwenden `date-time`.
+
+Dokumentiere, dass `end` nach `start` liegen muss.
+
+## Ergänze `TaktResponseAlternative`
+
+Pflichtfelder:
+
+* `alternativeId`
+* `rank`
+* `timeWindow`
+
+Optionale Felder:
+
+* `crewSize`
+* `conditions`
+
+Anforderungen:
+
+* `rank` ist mindestens 1.
+* `crewSize` ist mindestens 1.
+* `conditions` ist ein Array von Strings.
+
+## Ergänze `TaktResponsePayload`
+
+Pflichtfelder:
+
+* `taktRequestId`
+* `decision`
+
+Optionale Felder:
+
+* `reasonCode`
+* `comment`
+* `acceptedTimeWindow`
+* `alternatives`
+* `nextAvailableDate`
+
+Anforderungen:
+
+* maximal drei Alternativen
+* `comment` maximal 2000 Zeichen
+* `nextAvailableDate` verwendet `date`
+
+Dokumentiere folgende fachliche Regeln:
+
+* Bei `ACCEPTED` ist `acceptedTimeWindow` erforderlich.
+* Bei `ALTERNATIVES_PROPOSED` ist mindestens eine Alternative erforderlich.
+* Bei `REJECTED` sind keine Alternativen erforderlich.
+* Es dürfen nur generische Konfliktgründe übertragen werden.
+* Interne NU-Daten dürfen nicht im Payload enthalten sein.
+
+Diese bedingten Regeln müssen in diesem Schritt noch nicht vollständig als Laufzeitvalidierung implementiert werden, sofern die bestehende OpenAPI- und Zod-Struktur dies nicht unterstützt.
+
+## Spezifische Nachrichtenmodelle
+
+Ergänze:
+
+* `TaktRequestNotificationMessage`
+* `TaktResponseMessage`
+
+Beide sollen den gemeinsamen Nachrichtenumschlag verwenden und ein typisiertes Payload besitzen.
+
+Prüfe, ob die vorhandene Codegenerierung `allOf` zuverlässig unterstützt.
+
+Falls nicht, verwende eine explizite, codegeneratorfreundliche Definition.
+
+## Einschränkungen
+
+* keine neuen API-Endpunkte
+* keine Datenbankänderungen
+* keine UI-Änderungen
+* keine Entfernung bestehender Delegation-Schemas
+* keine manuelle Bearbeitung generierter Dateien
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Typecheck
+* Build, sofern mit der bestehenden Projektstruktur möglich
+
+## Abschluss
+
+Berichte:
+
+* neu ergänzte Schemas
+* gewählte Modellierung der spezifischen Nachrichtentypen
+* Ergebnis der Codegenerierung
+* Ergebnis des Typechecks
+* Ergebnis des Builds
+
+---
+
+# Aufgabe 1.6 – JSON-Beispiele und Nachrichtenablauf dokumentieren
+
+Erstelle beziehungsweise ergänze ausschließlich:
+
+* `docs/json-contracts.md`
+* `docs/message-flow.md`
+
+Führe in diesem Schritt keine Änderungen an Code, Datenbank oder OpenAPI durch.
+
+## `docs/json-contracts.md`
+
+Dokumentiere vier vollständige JSON-Beispiele, die exakt zu den bereits definierten OpenAPI-Schemas passen.
+
+### Beispiel 1 – Taktanfrage-Benachrichtigung
+
+Enthalten sein müssen:
+
+* MessageEnvelope
+* `TAKT_REQUEST_NOTIFICATION`
+* GU als Sender
+* NU als Empfänger
+* TaktRequest-ID
+* Projekt- und Taktreferenz
+* Taktversion
+* Antwortfrist
+* Detailreferenz
+
+Die Notification darf keine vollständigen Taktdetails enthalten.
+
+### Beispiel 2 – Bestätigung
+
+Enthalten sein müssen:
+
+* `TAKT_RESPONSE_SUBMITTED`
+* NU als Sender
+* GU als Empfänger
+* gleiche `correlationId` wie die Anfrage
+* `causationId` mit Verweis auf die Anfrage
+* `decision: ACCEPTED`
+* `acceptedTimeWindow`
+
+### Beispiel 3 – Mehrere Alternativen
+
+Enthalten sein müssen:
+
+* `decision: ALTERNATIVES_PROPOSED`
+* `reasonCode: RESOURCE_CONFLICT`
+* zwei unterschiedliche Alternativen
+* Rangfolge
+* Zeitfenster
+* unterschiedliche Kolonnenstärken oder Bedingungen
+
+Keine internen Projekt- oder Ressourcendaten nennen.
+
+### Beispiel 4 – Ablehnung
+
+Enthalten sein müssen:
+
+* `decision: REJECTED`
+* `reasonCode: NO_CAPACITY`
+* generischer Kommentar
+* optionales `nextAvailableDate`
+
+Keine Angaben dazu, welches andere Projekt den Konflikt verursacht.
+
+## `docs/message-flow.md`
+
+Dokumentiere den zukünftigen Prozess:
+
+```text
+GU → Hub → NU
+Push der Taktanfrage-Benachrichtigung
+
+NU → GU
+Pull der freigegebenen Taktdetails
+
+NU lokal
+Prüfung gegen die lokale Ressourcenplanung
+
+NU → Hub → GU
+Push der Taktantwort
+
+GU → Hub → NU
+Bestätigung oder Anforderung einer Überarbeitung
+```
+
+Erkläre außerdem:
+
+* `messageId` identifiziert eine einzelne Nachricht.
+* `correlationId` verbindet den gesamten TaktRequest-Prozess.
+* `causationId` verweist auf die auslösende Nachricht.
+* `schemaVersion` ermöglicht spätere Schemaänderungen.
+* `senderOrgId` und `recipientOrgId` beschreiben die Kommunikationsrichtung.
+* `createdAt` ist der Erstellungszeitpunkt.
+* `expiresAt` gibt die fachliche Gültigkeit an.
+* `status` beschreibt nur den technischen Nachrichtenstatus.
+
+Dokumentiere ausdrücklich:
+
+```text
+DELIVERED bedeutet nur, dass die Nachricht technisch zugestellt wurde.
+
+ACCEPTED bedeutet, dass der Nachunternehmer den Takt fachlich bestätigt hat.
+```
+
+## Qualitätsprüfung
+
+Prüfe alle JSON-Beispiele manuell gegen die vorhandenen OpenAPI-Schemas.
+
+Achte insbesondere auf:
+
+* gültige Enum-Werte
+* Pflichtfelder
+* ISO-8601-Zeitangaben
+* maximal drei Alternativen
+* gültige `schemaVersion`
+* keine vertraulichen NU-Daten
+
+## Abschluss
+
+Berichte:
+
+* welche Dokumente erstellt oder ergänzt wurden
+* welche vier Beispiele enthalten sind
+* ob Abweichungen von den OpenAPI-Schemas gefunden und korrigiert wurden
+
+---
+
+# Aufgabe 1.7 – Schema-Validierung und Abschlussprüfung für Aufgabe 1
+
+Prüfe die bisher für Aufgabe 1 erstellten Dokumentationen und OpenAPI-Schemas. Führe nur notwendige Korrekturen durch.
+
+## Zu prüfende Inhalte
+
+### Dokumentation
+
+Prüfe:
+
+* `replit.md`
+* `README.md`
+* `docs/data-ownership.md`
+* `docs/json-contracts.md`
+* `docs/message-flow.md`
+
+Achte auf konsistente Begriffe:
+
+* Generalunternehmer
+* Generalplaner
+* Nachunternehmer
+* GU
+* NU
+* TaktRequest
+* TaktResponse
+* DataspaceMessage
+
+Bestehende technische Begriffe `AG`, `AN` und `Delegation` dürfen weiterhin vorkommen, müssen dann aber als aktuelle Bestandsbegriffe beziehungsweise Mapping beschrieben sein.
+
+### OpenAPI
+
+Prüfe das Vorhandensein und die Konsistenz folgender Schemas:
+
+```text
+DataspaceMessageType
+DataspaceMessageStatus
+MessageEnvelope
+TaktRequestNotificationPayload
+TaktDecision
+TaktResponseReasonCode
+TimeWindow
+TaktResponseAlternative
+TaktResponsePayload
+TaktRequestNotificationMessage
+TaktResponseMessage
+```
+
+### JSON-Beispiele
+
+Prüfe:
+
+* Taktanfrage-Benachrichtigung
+* Bestätigung
+* Antwort mit mehreren Alternativen
+* Ablehnung
+
+Validiere die Beispiele nach Möglichkeit automatisiert mit den generierten Zod-Schemas.
+
+Falls bereits eine Teststruktur vorhanden ist, ergänze kleine Schema-Tests für:
+
+#### Valide Fälle
+
+* gültige Taktanfrage
+* gültige Bestätigung
+* gültige Antwort mit zwei Alternativen
+* gültige Ablehnung
+
+#### Invalide Fälle
+
+* fehlende `messageId`
+* fehlende `senderOrgId`
+* fehlende `recipientOrgId`
+* fehlende `correlationId`
+* ungültige `schemaVersion`
+* `taktVersion` kleiner als 1
+* Alternative ohne Zeitfenster
+* mehr als drei Alternativen
+* `crewSize` kleiner als 1
+
+Keine neue Testbibliothek einführen, wenn bereits eine geeignete vorhanden ist.
+
+Falls keine geeignete Teststruktur vorhanden ist, dokumentiere dies und beschränke dich auf Codegenerierung, Typecheck und Build.
+
+## Prüfkommandos
+
+Verwende die tatsächlich im Repository vorhandenen Kommandos für:
+
+* OpenAPI-Codegenerierung
+* Tests
+* Typecheck
+* Build
+
+Bestehende Delegation-Funktionen müssen weiterhin funktionieren.
+
+## Nicht durchführen
+
+* keine neuen Datenbanktabellen
+* keine neuen TaktRequest-Endpunkte
+* keine Transportabstraktion
+* keine UI-Umstellung
+* keine Entfernung alter APIs
+* keine EDC-Implementierung
+
+## Abschlussbericht
+
+Berichte strukturiert:
+
+### Geänderte Dateien
+
+Liste jede geänderte Datei mit kurzer Begründung.
+
+### Neue Schemas
+
+Liste alle neu eingeführten OpenAPI-Schemas.
+
+### Kompatibilität
+
+Bestätige:
+
+* bestehende Delegation-Endpunkte wurden nicht entfernt
+* bestehende Anwendungen bleiben startfähig
+* generierte Dateien wurden nicht manuell bearbeitet
+
+### Prüfungsergebnisse
+
+Nenne das Ergebnis von:
+
+* Codegenerierung
+* Schema-Tests
+* bestehenden Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne nur die später vorgesehenen Arbeiten:
+
+* neue Datenbankmodelle
+* getrennte Zustände für Takt und TaktRequest
+* versionierte Takt-Snapshots
+* Transportabstraktion
+* Push der Notification
+* Pull der Taktdetails
+* lokale Ressourcenprüfung
+* Push der Antwort
+* Anpassung der GU-, NU- und Hub-Oberflächen

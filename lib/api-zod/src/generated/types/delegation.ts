@@ -7,6 +7,7 @@
  */
 import type { DelegationStatus } from './delegationStatus';
 import type { Organization } from './organization';
+import type { Project } from './project';
 import type { Takt } from './takt';
 
 export interface Delegation {
@@ -16,6 +17,7 @@ export interface Delegation {
   agOrgId: string;
   anOrgId: string;
   takt?: Takt;
+  project?: Project;
   anOrganization?: Organization;
   agOrganization?: Organization;
   requestedStart: Date;

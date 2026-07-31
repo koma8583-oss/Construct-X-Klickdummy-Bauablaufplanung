@@ -26,6 +26,8 @@ tags:
     description: AN Gantt resource assignments
   - name: webhooks
     description: Webhook subscriptions and event log
+  - name: takt-dependencies
+    description: Takt dependency (Anordnungsbeziehung) management
   - name: dashboard
     description: Dashboard summary endpoints
 
@@ -483,11 +485,11 @@ paths:
               $ref: "#/components/schemas/UpdateTaktRequest"
       responses:
         "200":
-          description: Updated Takt
+          description: Updated Takt with cascade-reschedule result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Takt"
+                $ref: "#/components/schemas/TaktUpdateResult"
     delete:
       operationId: deleteTakt
       tags: [takte]
@@ -506,6 +508,75 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  # ──────────── Takt Dependencies ────────────
+  /projects/{projectId}/takt-dependencies:
+    get:
+      operationId: listTaktDependencies
+      tags: [takt-dependencies]
+      summary: List all Takt dependencies for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of enriched TaktDependency objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaktDependency"
+    post:
+      operationId: createTaktDependency
+      tags: [takt-dependencies]
+      summary: Create a Takt dependency and cascade-reschedule successors
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaktDependencyRequest"
+      responses:
+        "201":
+          description: Created dependency with reschedule result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktDependencyCreateResult"
+
+  /projects/{projectId}/takt-dependencies/{depId}:
+    delete:
+      operationId: deleteTaktDependency
+      tags: [takt-dependencies]
+      summary: Delete a Takt dependency and cascade-reschedule successors
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: depId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reschedule result after dependency removal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktDependencyDeleteResult"
 
   # ──────────── Delegations ────────────
   /delegations:
@@ -1289,6 +1360,116 @@ components:
         requiredResources:
           type: string
 
+    # ── Takt Dependencies ──
+    TaktDependencyType:
+      type: string
+      description: "Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende"
+      enum: [EA, AA, EE]
+
+    TaktDependency:
+      type: object
+      description: "A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects"
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        predecessorId:
+          type: string
+        successorId:
+          type: string
+        type:
+          $ref: "#/components/schemas/TaktDependencyType"
+        lagDays:
+          type: integer
+          minimum: 0
+          description: "Number of calendar days of lag between the trigger date and the constraint"
+        predecessor:
+          $ref: "#/components/schemas/Takt"
+        successor:
+          $ref: "#/components/schemas/Takt"
+      required: [id, projectId, predecessorId, successorId, type, lagDays]
+
+    CreateTaktDependencyRequest:
+      type: object
+      properties:
+        predecessorId:
+          type: string
+        successorId:
+          type: string
+        type:
+          $ref: "#/components/schemas/TaktDependencyType"
+        lagDays:
+          type: integer
+          minimum: 0
+      required: [predecessorId, successorId]
+
+    TaktDependencyCreateResult:
+      type: object
+      description: "Result of creating a dependency including the new dependency and cascade-reschedule result"
+      properties:
+        dependency:
+          $ref: "#/components/schemas/TaktDependency"
+        moved:
+          type: array
+          items:
+            $ref: "#/components/schemas/Takt"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/RescheduledTakt"
+      required: [dependency, moved, conflicts]
+
+    TaktDependencyDeleteResult:
+      type: object
+      description: "Result of deleting a dependency including the cascade-reschedule result"
+      properties:
+        moved:
+          type: array
+          items:
+            $ref: "#/components/schemas/Takt"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/RescheduledTakt"
+      required: [moved, conflicts]
+
+    # ── Takt cascade-reschedule result (Task #17) ──
+    RescheduledTakt:
+      type: object
+      description: "A Takt that could not be automatically moved due to its status, along with its required dates"
+      properties:
+        takt:
+          $ref: "#/components/schemas/Takt"
+        requiredStart:
+          type: string
+          format: date
+          description: "The start date the dependency chain requires"
+        requiredEnd:
+          type: string
+          format: date
+          description: "The end date the dependency chain requires"
+      required: [takt, requiredStart, requiredEnd]
+
+    TaktUpdateResult:
+      type: object
+      description: "Result of a Takt update including cascade-rescheduled successors and scheduling conflicts"
+      properties:
+        takt:
+          $ref: "#/components/schemas/Takt"
+          description: "The updated Takt"
+        moved:
+          type: array
+          items:
+            $ref: "#/components/schemas/Takt"
+          description: "Successor Takte that were automatically rescheduled"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/RescheduledTakt"
+          description: "Successor Takte that could not be moved (e.g. already delegated)"
+      required: [takt, moved, conflicts]
+
     # ── Delegation ──
     Delegation:
       type: object
@@ -1305,6 +1486,8 @@ components:
           type: string
         takt:
           $ref: "#/components/schemas/Takt"
+        project:
+          $ref: "#/components/schemas/Project"
         anOrganization:
           $ref: "#/components/schemas/Organization"
         agOrganization:
@@ -1698,3 +1881,336 @@ components:
           items:
             $ref: "#/components/schemas/Delegation"
       required: [pendingRequests, confirmedWork, upcomingDeadlines, resourceUtilization, recentRequests]
+
+    # ── Dataspace message envelope (Tasks 1.4 + 1.5) ──
+
+    DataspaceMessageType:
+      type: string
+      description: >
+        Typed message kinds for the federated Takt coordination dataspace.
+        These values identify the business event carried in a MessageEnvelope.
+      enum:
+        - TAKT_REQUEST_NOTIFICATION
+        - TAKT_REQUEST_REVISED
+        - TAKT_REQUEST_CANCELLED
+        - TAKT_DETAILS_RETRIEVED
+        - TAKT_RESPONSE_SUBMITTED
+        - TAKT_RESPONSE_ACCEPTED
+        - TAKT_RESPONSE_REVISION_REQUESTED
+
+    DataspaceMessageStatus:
+      type: string
+      description: >
+        Technical delivery status of a message envelope.
+        DELIVERED means the message arrived — it is NOT a business confirmation.
+        Business outcomes are expressed in TaktDecision, not here.
+      enum:
+        - PENDING
+        - SENT
+        - DELIVERED
+        - READ
+        - FAILED
+
+    MessageEnvelope:
+      type: object
+      description: >
+        Generic transport envelope for all dataspace messages.
+        correlationId ties all messages of one TaktRequest process together.
+        causationId references the messageId of the triggering message (null on first message).
+        schemaVersion is carried from the start to enable future schema evolution.
+      properties:
+        messageId:
+          type: string
+          minLength: 1
+          description: "Unique identifier for this individual message"
+        schemaVersion:
+          type: string
+          pattern: '^\d+\.\d+$'
+          description: "Schema version in major.minor format, e.g. '1.0'"
+        messageType:
+          $ref: "#/components/schemas/DataspaceMessageType"
+        senderOrgId:
+          type: string
+          description: "Organisation ID of the sender"
+        recipientOrgId:
+          type: string
+          description: "Organisation ID of the intended recipient"
+        correlationId:
+          type: string
+          description: "Links all messages belonging to one TaktRequest process"
+        createdAt:
+          type: string
+          format: date-time
+          description: "ISO 8601 UTC creation timestamp"
+        payload:
+          type: object
+          additionalProperties: true
+          description: "Typed payload — schema depends on messageType"
+        causationId:
+          type: string
+          nullable: true
+          description: "messageId of the message that caused this one; null on initial notification"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "ISO 8601 UTC expiry of the business validity window"
+        status:
+          $ref: "#/components/schemas/DataspaceMessageStatus"
+      required:
+        - messageId
+        - schemaVersion
+        - messageType
+        - senderOrgId
+        - recipientOrgId
+        - correlationId
+        - createdAt
+        - payload
+
+    # ── Takt request payload (Task 1.5) ──
+
+    TaktRequestNotificationPayload:
+      type: object
+      description: >
+        Payload for a TAKT_REQUEST_NOTIFICATION message.
+        Contains only references and metadata — no full Takt details.
+        The NU uses detailsRef to pull the released Takt data separately (pull pattern).
+        Must NOT contain: full Takt schedule, other NU data, full LV data,
+        full BIM model, internal GU comments, or NU resource data.
+      properties:
+        taktRequestId:
+          type: string
+          description: "Unique identifier of the TaktRequest (matches correlationId)"
+        projectReference:
+          type: string
+          description: "Opaque project reference — no internal GU project details"
+        taktReference:
+          type: string
+          description: "Opaque Takt reference — no full schedule context"
+        taktVersion:
+          type: integer
+          minimum: 1
+          description: "Monotonically increasing version of the Takt snapshot"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          description: "ISO 8601 UTC deadline by which the NU must respond"
+        detailsRef:
+          type: string
+          description: "URL or reference for the NU to pull the released Takt details"
+        subject:
+          type: string
+          description: "Optional human-readable subject line"
+        message:
+          type: string
+          description: "Optional free-text message from the GU to the NU"
+      required:
+        - taktRequestId
+        - projectReference
+        - taktReference
+        - taktVersion
+        - responseRequiredBy
+        - detailsRef
+
+    TaktDecision:
+      type: string
+      description: "Business decision made by the NU in response to a TaktRequest"
+      enum:
+        - ACCEPTED
+        - ALTERNATIVES_PROPOSED
+        - REJECTED
+
+    TaktResponseReasonCode:
+      type: string
+      description: >
+        Generic reason code for a non-acceptance. Only generic codes may be
+        transmitted — internal conflict details must not leave the NU.
+      enum:
+        - RESOURCE_CONFLICT
+        - NO_CAPACITY
+        - EQUIPMENT_UNAVAILABLE
+        - QUALIFICATION_MISSING
+        - TIME_WINDOW_TOO_SHORT
+        - OUTSIDE_PLANNING_HORIZON
+        - OTHER
+
+    TimeWindow:
+      type: object
+      description: >
+        A time window defined by start and end (both date-time).
+        end must be strictly after start.
+      properties:
+        start:
+          type: string
+          format: date-time
+          description: "ISO 8601 UTC start of the window"
+        end:
+          type: string
+          format: date-time
+          description: "ISO 8601 UTC end of the window — must be after start"
+      required:
+        - start
+        - end
+
+    TaktResponseAlternative:
+      type: object
+      description: "A ranked alternative time window proposed by the NU"
+      properties:
+        alternativeId:
+          type: string
+          description: "Unique identifier of this alternative within the response"
+        rank:
+          type: integer
+          minimum: 1
+          description: "Preference rank — 1 is most preferred"
+        timeWindow:
+          $ref: "#/components/schemas/TimeWindow"
+        crewSize:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: "Number of workers available in this window"
+        conditions:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: "Generic conditions or constraints for this alternative"
+      required:
+        - alternativeId
+        - rank
+        - timeWindow
+
+    TaktResponsePayload:
+      type: object
+      description: >
+        Payload for a TAKT_RESPONSE_SUBMITTED message.
+        Only generic reason codes and time windows are transmitted.
+        Internal NU resource data must never appear here.
+        Business rules (not enforced as runtime validation in this PoC):
+          - ACCEPTED: acceptedTimeWindow is required.
+          - ALTERNATIVES_PROPOSED: at least one alternative is required.
+          - REJECTED: no alternatives are required.
+      properties:
+        taktRequestId:
+          type: string
+          description: "References the TaktRequest being responded to"
+        decision:
+          $ref: "#/components/schemas/TaktDecision"
+        reasonCode:
+          $ref: "#/components/schemas/TaktResponseReasonCode"
+        comment:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: "Optional generic comment — must not contain internal NU details"
+        acceptedTimeWindow:
+          $ref: "#/components/schemas/TimeWindow"
+        alternatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaktResponseAlternative"
+          maxItems: 3
+          nullable: true
+          description: "Up to three ranked alternative time windows"
+        nextAvailableDate:
+          type: string
+          format: date
+          nullable: true
+          description: "Earliest date the NU could be available — no reason given"
+      required:
+        - taktRequestId
+        - decision
+
+    # ── Specific message types (Task 1.5) ──
+    # Defined as explicit flat objects (not allOf) for reliable Orval code generation.
+
+    TaktRequestNotificationMessage:
+      type: object
+      description: >
+        A MessageEnvelope carrying a TaktRequestNotificationPayload.
+        messageType is fixed to TAKT_REQUEST_NOTIFICATION.
+      properties:
+        messageId:
+          type: string
+          minLength: 1
+        schemaVersion:
+          type: string
+          pattern: '^\d+\.\d+$'
+        messageType:
+          type: string
+          enum: [TAKT_REQUEST_NOTIFICATION]
+        senderOrgId:
+          type: string
+        recipientOrgId:
+          type: string
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: "#/components/schemas/TaktRequestNotificationPayload"
+        causationId:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: "#/components/schemas/DataspaceMessageStatus"
+      required:
+        - messageId
+        - schemaVersion
+        - messageType
+        - senderOrgId
+        - recipientOrgId
+        - correlationId
+        - createdAt
+        - payload
+
+    TaktResponseMessage:
+      type: object
+      description: >
+        A MessageEnvelope carrying a TaktResponsePayload.
+        messageType is fixed to TAKT_RESPONSE_SUBMITTED.
+      properties:
+        messageId:
+          type: string
+          minLength: 1
+        schemaVersion:
+          type: string
+          pattern: '^\d+\.\d+$'
+        messageType:
+          type: string
+          enum: [TAKT_RESPONSE_SUBMITTED]
+        senderOrgId:
+          type: string
+        recipientOrgId:
+          type: string
+        correlationId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: "#/components/schemas/TaktResponsePayload"
+        causationId:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: "#/components/schemas/DataspaceMessageStatus"
+      required:
+        - messageId
+        - schemaVersion
+        - messageType
+        - senderOrgId
+        - recipientOrgId
+        - correlationId
+        - createdAt
+        - payload

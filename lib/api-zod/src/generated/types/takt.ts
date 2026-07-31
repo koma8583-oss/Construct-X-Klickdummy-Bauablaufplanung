@@ -5,12 +5,13 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
-import type { TaktDelegationStatus } from './taktDelegationStatus';
+import type { TaktStatus } from './taktStatus';
 
 export interface Takt {
   id: string;
   projectId: string;
-  taktNumber: number;
+  /** Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord) */
+  taktBezeichnung: string;
   zone: string;
   gewerk: string;
   description?: string | null;
@@ -24,6 +25,6 @@ export interface Takt {
   bimReference?: string | null;
   /** Free-text description of required resources */
   requiredResources?: string | null;
-  delegationStatus?: TaktDelegationStatus;
+  status: TaktStatus;
   createdAt: Date;
 }

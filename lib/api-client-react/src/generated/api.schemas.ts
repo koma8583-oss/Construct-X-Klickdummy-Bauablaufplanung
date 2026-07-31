@@ -169,7 +169,11 @@ export interface UpdateProjectRequest {
   endDate?: string;
 }
 
+/**
+ * Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.
+ */
 export type TaktStatus = typeof TaktStatus[keyof typeof TaktStatus];
+
 
 export const TaktStatus = {
   GEPLANT: 'GEPLANT',
@@ -183,6 +187,7 @@ export const TaktStatus = {
 export interface Takt {
   id: string;
   projectId: string;
+  /** Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord) */
   taktBezeichnung: string;
   zone: string;
   gewerk: string;
@@ -229,6 +234,84 @@ export interface UpdateTaktRequest {
   requiredResources?: string;
 }
 
+/**
+ * Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende
+ */
+export type TaktDependencyType = typeof TaktDependencyType[keyof typeof TaktDependencyType];
+
+
+export const TaktDependencyType = {
+  EA: 'EA',
+  AA: 'AA',
+  EE: 'EE',
+} as const;
+
+/**
+ * A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects
+ */
+export interface TaktDependency {
+  id: string;
+  projectId: string;
+  predecessorId: string;
+  successorId: string;
+  type: TaktDependencyType;
+  /**
+     * Number of calendar days of lag between the trigger date and the constraint
+     * @minimum 0
+     */
+  lagDays: number;
+  predecessor?: Takt;
+  successor?: Takt;
+}
+
+export interface CreateTaktDependencyRequest {
+  predecessorId: string;
+  successorId: string;
+  type?: TaktDependencyType;
+  /** @minimum 0 */
+  lagDays?: number;
+}
+
+/**
+ * A Takt that could not be automatically moved due to its status, along with its required dates
+ */
+export interface RescheduledTakt {
+  takt: Takt;
+  /** The start date the dependency chain requires */
+  requiredStart: string;
+  /** The end date the dependency chain requires */
+  requiredEnd: string;
+}
+
+/**
+ * Result of creating a dependency including the new dependency and cascade-reschedule result
+ */
+export interface TaktDependencyCreateResult {
+  dependency: TaktDependency;
+  moved: Takt[];
+  conflicts: RescheduledTakt[];
+}
+
+/**
+ * Result of deleting a dependency including the cascade-reschedule result
+ */
+export interface TaktDependencyDeleteResult {
+  moved: Takt[];
+  conflicts: RescheduledTakt[];
+}
+
+/**
+ * Result of a Takt update including cascade-rescheduled successors and scheduling conflicts
+ */
+export interface TaktUpdateResult {
+  /** The updated Takt */
+  takt: Takt;
+  /** Successor Takte that were automatically rescheduled */
+  moved: Takt[];
+  /** Successor Takte that could not be moved (e.g. already delegated) */
+  conflicts: RescheduledTakt[];
+}
+
 export type DelegationStatus = typeof DelegationStatus[keyof typeof DelegationStatus];
 
 
@@ -247,9 +330,9 @@ export interface Delegation {
   agOrgId: string;
   anOrgId: string;
   takt?: Takt;
+  project?: Project;
   anOrganization?: Organization;
   agOrganization?: Organization;
-  project?: Project;
   requestedStart: string;
   requestedEnd: string;
   earliestStart?: string | null;
@@ -516,55 +599,233 @@ export interface AnDashboard {
   recentRequests: Delegation[];
 }
 
-// ── Takt Dependencies ──────────────────────────────────────────────────────
+/**
+ * Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.
+ */
+export type DataspaceMessageType = typeof DataspaceMessageType[keyof typeof DataspaceMessageType];
 
-export type TaktDependencyType = typeof TaktDependencyType[keyof typeof TaktDependencyType];
 
-export const TaktDependencyType = {
-  EA: 'EA', // Ende-Anfang (Finish-Start)
-  AA: 'AA', // Anfang-Anfang (Start-Start)
-  EE: 'EE', // Ende-Ende (Finish-Finish)
+export const DataspaceMessageType = {
+  TAKT_REQUEST_NOTIFICATION: 'TAKT_REQUEST_NOTIFICATION',
+  TAKT_REQUEST_REVISED: 'TAKT_REQUEST_REVISED',
+  TAKT_REQUEST_CANCELLED: 'TAKT_REQUEST_CANCELLED',
+  TAKT_DETAILS_RETRIEVED: 'TAKT_DETAILS_RETRIEVED',
+  TAKT_RESPONSE_SUBMITTED: 'TAKT_RESPONSE_SUBMITTED',
+  TAKT_RESPONSE_ACCEPTED: 'TAKT_RESPONSE_ACCEPTED',
+  TAKT_RESPONSE_REVISION_REQUESTED: 'TAKT_RESPONSE_REVISION_REQUESTED',
 } as const;
 
-export interface TaktDependency {
-  id: string;
-  projectId: string;
-  predecessorId: string;
-  successorId: string;
-  type: TaktDependencyType;
-  lagDays: number;
-  predecessor?: Takt;
-  successor?: Takt;
+/**
+ * Technical delivery status of a message envelope. DELIVERED means the message arrived — it is NOT a business confirmation. Business outcomes are expressed in TaktDecision, not here.
+ */
+export type DataspaceMessageStatus = typeof DataspaceMessageStatus[keyof typeof DataspaceMessageStatus];
+
+
+export const DataspaceMessageStatus = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  READ: 'READ',
+  FAILED: 'FAILED',
+} as const;
+
+/**
+ * Typed payload — schema depends on messageType
+ */
+export type MessageEnvelopePayload = { [key: string]: unknown };
+
+/**
+ * Generic transport envelope for all dataspace messages. correlationId ties all messages of one TaktRequest process together. causationId references the messageId of the triggering message (null on first message). schemaVersion is carried from the start to enable future schema evolution.
+ */
+export interface MessageEnvelope {
+  /**
+     * Unique identifier for this individual message
+     * @minLength 1
+     */
+  messageId: string;
+  /**
+     * Schema version in major.minor format, e.g. '1.0'
+     * @pattern ^\d+\.\d+$
+     */
+  schemaVersion: string;
+  messageType: DataspaceMessageType;
+  /** Organisation ID of the sender */
+  senderOrgId: string;
+  /** Organisation ID of the intended recipient */
+  recipientOrgId: string;
+  /** Links all messages belonging to one TaktRequest process */
+  correlationId: string;
+  /** ISO 8601 UTC creation timestamp */
+  createdAt: string;
+  /** Typed payload — schema depends on messageType */
+  payload: MessageEnvelopePayload;
+  /** messageId of the message that caused this one; null on initial notification */
+  causationId?: string | null;
+  /** ISO 8601 UTC expiry of the business validity window */
+  expiresAt?: string | null;
+  status?: DataspaceMessageStatus;
 }
 
-export interface CreateTaktDependencyRequest {
-  predecessorId: string;
-  successorId: string;
-  type?: TaktDependencyType;
-  lagDays?: number;
+/**
+ * Payload for a TAKT_REQUEST_NOTIFICATION message. Contains only references and metadata — no full Takt details. The NU uses detailsRef to pull the released Takt data separately (pull pattern). Must NOT contain: full Takt schedule, other NU data, full LV data, full BIM model, internal GU comments, or NU resource data.
+ */
+export interface TaktRequestNotificationPayload {
+  /** Unique identifier of the TaktRequest (matches correlationId) */
+  taktRequestId: string;
+  /** Opaque project reference — no internal GU project details */
+  projectReference: string;
+  /** Opaque Takt reference — no full schedule context */
+  taktReference: string;
+  /**
+     * Monotonically increasing version of the Takt snapshot
+     * @minimum 1
+     */
+  taktVersion: number;
+  /** ISO 8601 UTC deadline by which the NU must respond */
+  responseRequiredBy: string;
+  /** URL or reference for the NU to pull the released Takt details */
+  detailsRef: string;
+  /** Optional human-readable subject line */
+  subject?: string;
+  /** Optional free-text message from the GU to the NU */
+  message?: string;
 }
 
-export interface RescheduledTakt {
-  takt: Takt;
-  requiredStart: string;
-  requiredEnd: string;
+/**
+ * Business decision made by the NU in response to a TaktRequest
+ */
+export type TaktDecision = typeof TaktDecision[keyof typeof TaktDecision];
+
+
+export const TaktDecision = {
+  ACCEPTED: 'ACCEPTED',
+  ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
+  REJECTED: 'REJECTED',
+} as const;
+
+/**
+ * Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.
+ */
+export type TaktResponseReasonCode = typeof TaktResponseReasonCode[keyof typeof TaktResponseReasonCode];
+
+
+export const TaktResponseReasonCode = {
+  RESOURCE_CONFLICT: 'RESOURCE_CONFLICT',
+  NO_CAPACITY: 'NO_CAPACITY',
+  EQUIPMENT_UNAVAILABLE: 'EQUIPMENT_UNAVAILABLE',
+  QUALIFICATION_MISSING: 'QUALIFICATION_MISSING',
+  TIME_WINDOW_TOO_SHORT: 'TIME_WINDOW_TOO_SHORT',
+  OUTSIDE_PLANNING_HORIZON: 'OUTSIDE_PLANNING_HORIZON',
+  OTHER: 'OTHER',
+} as const;
+
+/**
+ * A time window defined by start and end (both date-time). end must be strictly after start.
+ */
+export interface TimeWindow {
+  /** ISO 8601 UTC start of the window */
+  start: string;
+  /** ISO 8601 UTC end of the window — must be after start */
+  end: string;
 }
 
-export interface TaktDependencyCreateResult {
-  dependency: TaktDependency;
-  moved: Takt[];
-  conflicts: RescheduledTakt[];
+/**
+ * A ranked alternative time window proposed by the NU
+ */
+export interface TaktResponseAlternative {
+  /** Unique identifier of this alternative within the response */
+  alternativeId: string;
+  /**
+     * Preference rank — 1 is most preferred
+     * @minimum 1
+     */
+  rank: number;
+  timeWindow: TimeWindow;
+  /**
+     * Number of workers available in this window
+     * @minimum 1
+     */
+  crewSize?: number | null;
+  /** Generic conditions or constraints for this alternative */
+  conditions?: string[] | null;
 }
 
-export interface TaktUpdateResult {
-  takt: Takt;
-  moved: Takt[];
-  conflicts: RescheduledTakt[];
+/**
+ * Payload for a TAKT_RESPONSE_SUBMITTED message. Only generic reason codes and time windows are transmitted. Internal NU resource data must never appear here. Business rules (not enforced as runtime validation in this PoC):
+ *   - ACCEPTED: acceptedTimeWindow is required.
+ *   - ALTERNATIVES_PROPOSED: at least one alternative is required.
+ *   - REJECTED: no alternatives are required.
+ */
+export interface TaktResponsePayload {
+  /** References the TaktRequest being responded to */
+  taktRequestId: string;
+  decision: TaktDecision;
+  reasonCode?: TaktResponseReasonCode;
+  /**
+     * Optional generic comment — must not contain internal NU details
+     * @maxLength 2000
+     */
+  comment?: string | null;
+  acceptedTimeWindow?: TimeWindow;
+  /**
+     * Up to three ranked alternative time windows
+     * @maxItems 3
+     */
+  alternatives?: TaktResponseAlternative[] | null;
+  /** Earliest date the NU could be available — no reason given */
+  nextAvailableDate?: string | null;
 }
 
-export interface TaktDependencyDeleteResult {
-  moved: Takt[];
-  conflicts: RescheduledTakt[];
+export type TaktRequestNotificationMessageMessageType = typeof TaktRequestNotificationMessageMessageType[keyof typeof TaktRequestNotificationMessageMessageType];
+
+
+export const TaktRequestNotificationMessageMessageType = {
+  TAKT_REQUEST_NOTIFICATION: 'TAKT_REQUEST_NOTIFICATION',
+} as const;
+
+/**
+ * A MessageEnvelope carrying a TaktRequestNotificationPayload. messageType is fixed to TAKT_REQUEST_NOTIFICATION.
+ */
+export interface TaktRequestNotificationMessage {
+  /** @minLength 1 */
+  messageId: string;
+  /** @pattern ^\d+\.\d+$ */
+  schemaVersion: string;
+  messageType: TaktRequestNotificationMessageMessageType;
+  senderOrgId: string;
+  recipientOrgId: string;
+  correlationId: string;
+  createdAt: string;
+  payload: TaktRequestNotificationPayload;
+  causationId?: string | null;
+  expiresAt?: string | null;
+  status?: DataspaceMessageStatus;
+}
+
+export type TaktResponseMessageMessageType = typeof TaktResponseMessageMessageType[keyof typeof TaktResponseMessageMessageType];
+
+
+export const TaktResponseMessageMessageType = {
+  TAKT_RESPONSE_SUBMITTED: 'TAKT_RESPONSE_SUBMITTED',
+} as const;
+
+/**
+ * A MessageEnvelope carrying a TaktResponsePayload. messageType is fixed to TAKT_RESPONSE_SUBMITTED.
+ */
+export interface TaktResponseMessage {
+  /** @minLength 1 */
+  messageId: string;
+  /** @pattern ^\d+\.\d+$ */
+  schemaVersion: string;
+  messageType: TaktResponseMessageMessageType;
+  senderOrgId: string;
+  recipientOrgId: string;
+  correlationId: string;
+  createdAt: string;
+  payload: TaktResponsePayload;
+  causationId?: string | null;
+  expiresAt?: string | null;
+  status?: DataspaceMessageStatus;
 }
 
 export type ListOrganizationsParams = {

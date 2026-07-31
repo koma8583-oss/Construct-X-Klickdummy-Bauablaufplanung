@@ -360,7 +360,7 @@ export const ListTakteParams = zod.object({
 export const ListTakteResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -371,7 +371,7 @@ export const ListTakteResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
 })
 export const ListTakteResponse = zod.array(ListTakteResponseItem)
@@ -385,7 +385,7 @@ export const CreateTaktParams = zod.object({
 })
 
 export const CreateTaktBody = zod.object({
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string(),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().optional(),
@@ -401,7 +401,7 @@ export const CreateTaktBody = zod.object({
 export const CreateTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -412,7 +412,7 @@ export const CreateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
 })
 
@@ -428,7 +428,7 @@ export const GetTaktParams = zod.object({
 export const GetTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -439,7 +439,7 @@ export const GetTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
 })
 
@@ -453,7 +453,7 @@ export const UpdateTaktParams = zod.object({
 })
 
 export const UpdateTaktBody = zod.object({
-  "taktNumber": zod.number().optional(),
+  "taktBezeichnung": zod.string().optional(),
   "zone": zod.string().optional(),
   "gewerk": zod.string().optional(),
   "description": zod.string().optional(),
@@ -467,9 +467,10 @@ export const UpdateTaktBody = zod.object({
 })
 
 export const UpdateTaktResponse = zod.object({
+  "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -480,9 +481,48 @@ export const UpdateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
-})
+}).describe('The updated Takt'),
+  "moved": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+})).describe('Successor Takte that were automatically rescheduled'),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}),
+  "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
+  "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
+}).describe('A Takt that could not be automatically moved due to its status, along with its required dates')).describe('Successor Takte that could not be moved (e.g. already delegated)')
+}).describe('Result of a Takt update including cascade-rescheduled successors and scheduling conflicts')
 
 
 /**
@@ -494,6 +534,218 @@ export const DeleteTaktParams = zod.object({
 })
 
 export const DeleteTaktResponse = zod.void()
+
+
+/**
+ * @summary List all Takt dependencies for a project
+ */
+export const ListTaktDependenciesParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const listTaktDependenciesResponseLagDaysMin = 0;
+
+
+
+export const ListTaktDependenciesResponseItem = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(listTaktDependenciesResponseLagDaysMin).describe('Number of calendar days of lag between the trigger date and the constraint'),
+  "predecessor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}).optional(),
+  "successor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}).optional()
+}).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects')
+export const ListTaktDependenciesResponse = zod.array(ListTaktDependenciesResponseItem)
+
+
+/**
+ * @summary Create a Takt dependency and cascade-reschedule successors
+ */
+export const CreateTaktDependencyParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const createTaktDependencyBodyLagDaysMin = 0;
+
+
+
+export const CreateTaktDependencyBody = zod.object({
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).optional().describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(createTaktDependencyBodyLagDaysMin).optional()
+})
+
+export const createTaktDependencyResponseDependencyLagDaysMin = 0;
+
+
+
+export const CreateTaktDependencyResponse = zod.object({
+  "dependency": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(createTaktDependencyResponseDependencyLagDaysMin).describe('Number of calendar days of lag between the trigger date and the constraint'),
+  "predecessor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}).optional(),
+  "successor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}).optional()
+}).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects'),
+  "moved": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+})),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}),
+  "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
+  "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
+}).describe('A Takt that could not be automatically moved due to its status, along with its required dates'))
+}).describe('Result of creating a dependency including the new dependency and cascade-reschedule result')
+
+
+/**
+ * @summary Delete a Takt dependency and cascade-reschedule successors
+ */
+export const DeleteTaktDependencyParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "depId": zod.coerce.string()
+})
+
+export const DeleteTaktDependencyResponse = zod.object({
+  "moved": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+})),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date()
+}),
+  "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
+  "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
+}).describe('A Takt that could not be automatically moved due to its status, along with its required dates'))
+}).describe('Result of deleting a dependency including the cascade-reschedule result')
 
 
 /**
@@ -514,7 +766,7 @@ export const ListDelegationsResponseItem = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -525,8 +777,22 @@ export const ListDelegationsResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -579,7 +845,7 @@ export const CreateDelegationResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -590,8 +856,22 @@ export const CreateDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -637,7 +917,7 @@ export const GetDelegationResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -648,8 +928,22 @@ export const GetDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -700,7 +994,7 @@ export const UpdateDelegationResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -711,8 +1005,22 @@ export const UpdateDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -942,7 +1250,7 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -953,8 +1261,22 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -1024,7 +1346,7 @@ export const CreateResourceAssignmentResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1035,8 +1357,22 @@ export const CreateResourceAssignmentResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -1107,7 +1443,7 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1118,8 +1454,22 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -1267,7 +1617,7 @@ export const GetAgDashboardResponse = zod.object({
   "upcomingTakte": zod.array(zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1278,7 +1628,7 @@ export const GetAgDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
 })),
   "recentActivity": zod.array(zod.object({
@@ -1290,7 +1640,7 @@ export const GetAgDashboardResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1301,8 +1651,22 @@ export const GetAgDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -1348,7 +1712,7 @@ export const GetAnDashboardResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1359,8 +1723,22 @@ export const GetAnDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
@@ -1410,7 +1788,7 @@ export const GetAnDashboardResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktNumber": zod.number(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
   "zone": zod.string(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1421,8 +1799,22 @@ export const GetAnDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "delegationStatus": zod.enum(['UNDELEGATED', 'PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED']).nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
   "createdAt": zod.coerce.date()
+}).optional(),
+  "project": zod.object({
+  "id": zod.string(),
+  "agOrgId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "taktCount": zod.number(),
+  "delegationCount": zod.number(),
+  "pendingResponseCount": zod.number()
 }).optional(),
   "anOrganization": zod.object({
   "id": zod.string(),
