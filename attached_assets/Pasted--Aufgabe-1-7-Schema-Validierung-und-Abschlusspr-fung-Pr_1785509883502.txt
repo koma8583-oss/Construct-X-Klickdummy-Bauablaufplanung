@@ -1,0 +1,153 @@
+# Aufgabe 1.7 – Schema-Validierung und Abschlussprüfung
+
+Prüfe alle bisher im Rahmen von Aufgabe 1 vorgenommenen Änderungen. Führe nur notwendige Korrekturen durch.
+
+Implementiere keine neuen fachlichen Funktionen.
+
+## 1. Dokumentation prüfen
+
+Prüfe:
+
+* `replit.md`
+* `README.md`
+* `docs/data-ownership.md`
+* `docs/json-contracts.md`
+* `docs/message-flow.md`
+
+Achte auf eine konsistente Verwendung folgender Begriffe:
+
+* Generalunternehmer
+* Generalplaner
+* Nachunternehmer
+* GU
+* NU
+* TaktRequest
+* TaktResponse
+* DataspaceMessage
+
+Die bestehenden Begriffe `AG`, `AN` und `Delegation` dürfen weiterhin vorkommen, müssen dann aber als bestehende technische Begriffe gekennzeichnet sein.
+
+## 2. OpenAPI-Schemas prüfen
+
+Prüfe das Vorhandensein und die Konsistenz folgender Schemas:
+
+```text
+DataspaceMessageType
+DataspaceMessageStatus
+MessageEnvelope
+TaktRequestNotificationPayload
+TaktDecision
+TaktResponseReasonCode
+TimeWindow
+TaktResponseAlternative
+TaktResponsePayload
+TaktRequestNotificationMessage
+TaktResponseMessage
+```
+
+## 3. JSON-Beispiele prüfen
+
+Prüfe:
+
+* Taktanfrage-Benachrichtigung
+* Bestätigung
+* Antwort mit zwei Alternativen
+* Ablehnung
+
+Validiere die Beispiele nach Möglichkeit automatisiert mit den generierten Zod-Schemas.
+
+## 4. Schema-Tests ergänzen
+
+Falls bereits eine geeignete Teststruktur vorhanden ist, ergänze kleine Schema-Validierungstests.
+
+### Valide Fälle
+
+* gültige Taktanfrage
+* gültige Bestätigung
+* gültige Antwort mit zwei Alternativen
+* gültige Ablehnung
+
+### Invalide Fälle
+
+* fehlende `messageId`
+* fehlende `senderOrgId`
+* fehlende `recipientOrgId`
+* fehlende `correlationId`
+* ungültige `schemaVersion`
+* `taktVersion` kleiner als 1
+* Alternative ohne Zeitfenster
+* mehr als drei Alternativen
+* `crewSize` kleiner als 1
+
+Keine neue Testbibliothek einführen, wenn bereits eine geeignete vorhanden ist.
+
+Falls keine geeignete Teststruktur vorhanden ist:
+
+* keine neue umfangreiche Testinfrastruktur aufbauen
+* dies im Abschlussbericht dokumentieren
+* mindestens Codegenerierung, Typecheck und Build ausführen
+
+## 5. Kompatibilität prüfen
+
+Bestätige:
+
+* bestehende Delegation-Endpunkte wurden nicht entfernt
+* bestehende Delegation-Schemas bleiben vorhanden
+* bestehende Anwendungen bleiben startfähig
+* generierte Dateien wurden nicht manuell bearbeitet
+* es wurde kein EDC implementiert
+* es wurden keine neuen Datenbanktabellen angelegt
+* es wurden keine neuen produktiven TaktRequest-Endpunkte implementiert
+
+## 6. Prüfungen ausführen
+
+Verwende die tatsächlich im Repository vorhandenen Befehle für:
+
+* OpenAPI-Codegenerierung
+* Schema-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## 7. Abschlussbericht
+
+### Geänderte Dateien
+
+Liste jede geänderte Datei mit kurzer Begründung.
+
+### Neue Schemas
+
+Liste alle neu eingeführten OpenAPI-Schemas.
+
+### Kompatibilität
+
+Berichte:
+
+* welche bestehenden Funktionen unverändert blieben
+* ob alte API-Modelle weiter funktionieren
+* ob bestehende Delegation-Endpunkte weiterhin vorhanden sind
+* ob generierte Clients aktualisiert wurden
+
+### Prüfungsergebnisse
+
+Nenne das Ergebnis von:
+
+* Codegenerierung
+* Schema-Tests
+* bestehenden Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* neue Datenbankmodelle
+* getrennte Zustände für Takt und TaktRequest
+* versionierte Takt-Snapshots
+* Transportabstraktion
+* Push der Taktanfrage
+* Pull der Taktdetails
+* lokale Ressourcenprüfung
+* Push der Antwort
+* Anpassung der GU-, NU- und Hub-Oberflächen

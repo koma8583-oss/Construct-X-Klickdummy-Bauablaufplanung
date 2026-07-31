@@ -1,0 +1,134 @@
+# Aufgabe 1.6 – JSON-Beispiele und Nachrichtenablauf dokumentieren
+
+Erstelle beziehungsweise ergänze ausschließlich:
+
+* `docs/json-contracts.md`
+* `docs/message-flow.md`
+
+Führe keine Änderungen an Anwendungscode, Datenbank oder OpenAPI-Spezifikation durch.
+
+## 1. Datei `docs/json-contracts.md`
+
+Dokumentiere vier vollständige JSON-Beispiele, die exakt zu den vorhandenen OpenAPI-Schemas passen.
+
+### Beispiel 1 – Taktanfrage-Benachrichtigung
+
+Enthalten sein müssen:
+
+* vollständiger `MessageEnvelope`
+* `messageType: TAKT_REQUEST_NOTIFICATION`
+* GU als Sender
+* NU als Empfänger
+* TaktRequest-ID
+* Projekt- und Taktreferenz
+* Taktversion
+* Antwortfrist
+* Detailreferenz
+
+Die Notification darf keine vollständigen Taktdetails enthalten.
+
+### Beispiel 2 – Bestätigung
+
+Enthalten sein müssen:
+
+* `messageType: TAKT_RESPONSE_SUBMITTED`
+* NU als Sender
+* GU als Empfänger
+* gleiche `correlationId` wie die Anfrage
+* `causationId` mit Verweis auf die ursprüngliche Anfrage
+* `decision: ACCEPTED`
+* `acceptedTimeWindow`
+
+### Beispiel 3 – Mehrere Alternativen
+
+Enthalten sein müssen:
+
+* `decision: ALTERNATIVES_PROPOSED`
+* `reasonCode: RESOURCE_CONFLICT`
+* zwei unterschiedliche Alternativen
+* eindeutige Rangfolge
+* unterschiedliche Zeitfenster
+* unterschiedliche Kolonnenstärken oder Bedingungen
+
+Keine internen Projekt- oder Ressourcendaten nennen.
+
+### Beispiel 4 – Ablehnung
+
+Enthalten sein müssen:
+
+* `decision: REJECTED`
+* `reasonCode: NO_CAPACITY`
+* generischer Kommentar
+* optionales `nextAvailableDate`
+
+Es darf nicht angegeben werden, welches andere Projekt den Konflikt verursacht.
+
+## 2. Datei `docs/message-flow.md`
+
+Dokumentiere den zukünftigen Prozess:
+
+```text
+GU → Hub → NU
+Push der Taktanfrage-Benachrichtigung
+
+NU → GU
+Pull der freigegebenen Taktdetails
+
+NU lokal
+Prüfung gegen die lokale Ressourcenplanung
+
+NU → Hub → GU
+Push der Taktantwort
+
+GU → Hub → NU
+Bestätigung oder Anforderung einer Überarbeitung
+```
+
+## 3. Nachrichtenfelder erklären
+
+Dokumentiere:
+
+* `messageId` identifiziert eine einzelne Nachricht.
+* `correlationId` verbindet den gesamten TaktRequest-Prozess.
+* `causationId` verweist auf die auslösende Nachricht.
+* `schemaVersion` ermöglicht spätere Schemaänderungen.
+* `senderOrgId` und `recipientOrgId` beschreiben die Kommunikationsrichtung.
+* `createdAt` beschreibt den Erstellungszeitpunkt.
+* `expiresAt` beschreibt die fachliche Gültigkeit.
+* `status` beschreibt nur den technischen Nachrichtenstatus.
+
+Dokumentiere ausdrücklich:
+
+```text
+DELIVERED bedeutet nur, dass eine Nachricht technisch zugestellt wurde.
+
+ACCEPTED bedeutet, dass der Nachunternehmer den Takt fachlich bestätigt hat.
+```
+
+## 4. Qualitätsprüfung
+
+Prüfe alle JSON-Beispiele gegen die vorhandenen OpenAPI-Schemas.
+
+Achte insbesondere auf:
+
+* gültige Enum-Werte
+* vollständige Pflichtfelder
+* ISO-8601-Zeitangaben
+* maximal drei Alternativen
+* gültige `schemaVersion`
+* keine vertraulichen NU-Daten
+
+## Einschränkungen
+
+* Keine Codeänderungen.
+* Keine Datenbankänderungen.
+* Keine OpenAPI-Änderungen.
+* Keine neuen API-Endpunkte.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche Dokumente erstellt oder ergänzt wurden
+* welche vier Beispiele enthalten sind
+* ob Abweichungen von den OpenAPI-Schemas gefunden und korrigiert wurden

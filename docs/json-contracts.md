@@ -135,15 +135,17 @@ Two ranked alternatives with different crew sizes and conditions. No internal NU
 
 Generic reason code and optional next-available date. No information about which other project blocks the capacity.
 
+This example shows a **separate** TaktRequest (`correlationId: REQ-2026-0043`). The `causationId` references the notification message that belongs to the same coordination chain (`MSG-2026-000009`), not a message from a different request.
+
 ```json
 {
-  "messageId": "MSG-2026-000004",
+  "messageId": "MSG-2026-000010",
   "schemaVersion": "1.0",
   "messageType": "TAKT_RESPONSE_SUBMITTED",
   "senderOrgId": "NU-017",
   "recipientOrgId": "GU-001",
   "correlationId": "REQ-2026-0043",
-  "causationId": "MSG-2026-000001",
+  "causationId": "MSG-2026-000009",
   "createdAt": "2026-08-05T08:30:00Z",
   "expiresAt": null,
   "status": "DELIVERED",

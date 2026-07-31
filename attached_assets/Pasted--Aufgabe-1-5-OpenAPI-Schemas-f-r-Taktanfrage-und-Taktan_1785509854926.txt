@@ -1,0 +1,162 @@
+# Aufgabe 1.5 – OpenAPI-Schemas für Taktanfrage und Taktantwort ergänzen
+
+Ergänze die bestehende OpenAPI-Spezifikation um fachliche Payload-Schemas für Taktanfragen und Taktantworten.
+
+Bestehende Endpunkte und bestehende Delegation-Schemas müssen unverändert funktionsfähig bleiben.
+
+## 1. Schema `TaktRequestNotificationPayload`
+
+Pflichtfelder:
+
+* `taktRequestId`
+* `projectReference`
+* `taktReference`
+* `taktVersion`
+* `responseRequiredBy`
+* `detailsRef`
+
+Optionale Felder:
+
+* `subject`
+* `message`
+
+Anforderungen:
+
+* `taktVersion` ist eine Ganzzahl mit Minimum 1.
+* `responseRequiredBy` verwendet `date-time`.
+* `detailsRef` verweist auf den späteren Detailabruf.
+* Das Payload enthält keine vollständigen Taktdetails.
+
+Nicht enthalten sein dürfen:
+
+* vollständiger Taktplan
+* Liste aller Projekttakte
+* Daten anderer Nachunternehmer
+* vollständige LV-Daten
+* vollständiges BIM-Modell
+* interne GU-Kommentare
+* NU-Ressourcendaten
+
+## 2. Schema `TaktDecision`
+
+Enum-Werte:
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+```
+
+## 3. Schema `TaktResponseReasonCode`
+
+Enum-Werte:
+
+```text
+RESOURCE_CONFLICT
+NO_CAPACITY
+EQUIPMENT_UNAVAILABLE
+QUALIFICATION_MISSING
+TIME_WINDOW_TOO_SHORT
+OUTSIDE_PLANNING_HORIZON
+OTHER
+```
+
+## 4. Schema `TimeWindow`
+
+Pflichtfelder:
+
+* `start`
+* `end`
+
+Beide Felder verwenden `date-time`.
+
+Dokumentiere, dass `end` zeitlich nach `start` liegen muss.
+
+## 5. Schema `TaktResponseAlternative`
+
+Pflichtfelder:
+
+* `alternativeId`
+* `rank`
+* `timeWindow`
+
+Optionale Felder:
+
+* `crewSize`
+* `conditions`
+
+Anforderungen:
+
+* `rank` ist mindestens 1.
+* `crewSize` ist mindestens 1, falls gesetzt.
+* `conditions` ist ein Array von Strings.
+
+## 6. Schema `TaktResponsePayload`
+
+Pflichtfelder:
+
+* `taktRequestId`
+* `decision`
+
+Optionale Felder:
+
+* `reasonCode`
+* `comment`
+* `acceptedTimeWindow`
+* `alternatives`
+* `nextAvailableDate`
+
+Anforderungen:
+
+* maximal drei Alternativen
+* `comment` maximal 2000 Zeichen
+* `nextAvailableDate` verwendet `date`
+
+Dokumentiere folgende Regeln:
+
+* Bei `ACCEPTED` ist `acceptedTimeWindow` erforderlich.
+* Bei `ALTERNATIVES_PROPOSED` ist mindestens eine Alternative erforderlich.
+* Bei `REJECTED` sind keine Alternativen erforderlich.
+* Es dürfen nur generische Konfliktgründe übertragen werden.
+* Interne NU-Daten dürfen nicht enthalten sein.
+
+Die bedingten Regeln müssen noch nicht vollständig als Laufzeitvalidierung umgesetzt werden, falls die bestehende OpenAPI- und Zod-Struktur dies nicht unterstützt.
+
+## 7. Spezifische Nachrichtenmodelle
+
+Ergänze:
+
+* `TaktRequestNotificationMessage`
+* `TaktResponseMessage`
+
+Beide Modelle sollen den gemeinsamen Nachrichtenumschlag verwenden und ein typisiertes Payload besitzen.
+
+Prüfe, ob die vorhandene Codegenerierung `allOf` zuverlässig unterstützt.
+
+Falls nicht, verwende eine explizite, codegeneratorfreundliche Definition.
+
+## Einschränkungen
+
+* Keine neuen API-Endpunkte.
+* Keine Datenbankänderungen.
+* Keine UI-Änderungen.
+* Bestehende Delegation-Schemas nicht entfernen.
+* Generierte Dateien nicht manuell bearbeiten.
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neu ergänzte Schemas
+* gewählte Modellierung der spezifischen Nachrichtentypen
+* Ergebnis der Codegenerierung
+* Ergebnis des Typechecks
+* Ergebnis des Builds

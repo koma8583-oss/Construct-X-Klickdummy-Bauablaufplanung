@@ -357,6 +357,9 @@ export const ListTakteParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
+
+
+
 export const ListTakteResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -371,8 +374,11 @@ export const ListTakteResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })
 export const ListTakteResponse = zod.array(ListTakteResponseItem)
 
@@ -398,6 +404,9 @@ export const CreateTaktBody = zod.object({
   "requiredResources": zod.string().optional()
 })
 
+
+
+
 export const CreateTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -412,8 +421,11 @@ export const CreateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })
 
 
@@ -424,6 +436,9 @@ export const GetTaktParams = zod.object({
   "projectId": zod.coerce.string(),
   "taktId": zod.coerce.string()
 })
+
+
+
 
 export const GetTaktResponse = zod.object({
   "id": zod.string(),
@@ -439,8 +454,11 @@ export const GetTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })
 
 
@@ -466,6 +484,11 @@ export const UpdateTaktBody = zod.object({
   "requiredResources": zod.string().optional()
 })
 
+
+
+
+
+
 export const UpdateTaktResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
@@ -481,8 +504,11 @@ export const UpdateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).describe('The updated Takt'),
   "moved": zod.array(zod.object({
   "id": zod.string(),
@@ -498,8 +524,11 @@ export const UpdateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })).describe('Successor Takte that were automatically rescheduled'),
   "conflicts": zod.array(zod.object({
   "takt": zod.object({
@@ -516,8 +545,11 @@ export const UpdateTaktResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }),
   "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
   "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
@@ -547,6 +579,8 @@ export const listTaktDependenciesResponseLagDaysMin = 0;
 
 
 
+
+
 export const ListTaktDependenciesResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -568,8 +602,11 @@ export const ListTaktDependenciesResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "successor": zod.object({
   "id": zod.string(),
@@ -585,8 +622,11 @@ export const ListTaktDependenciesResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional()
 }).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects')
 export const ListTaktDependenciesResponse = zod.array(ListTaktDependenciesResponseItem)
@@ -614,6 +654,10 @@ export const createTaktDependencyResponseDependencyLagDaysMin = 0;
 
 
 
+
+
+
+
 export const CreateTaktDependencyResponse = zod.object({
   "dependency": zod.object({
   "id": zod.string(),
@@ -636,8 +680,11 @@ export const CreateTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "successor": zod.object({
   "id": zod.string(),
@@ -653,8 +700,11 @@ export const CreateTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional()
 }).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects'),
   "moved": zod.array(zod.object({
@@ -671,8 +721,11 @@ export const CreateTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })),
   "conflicts": zod.array(zod.object({
   "takt": zod.object({
@@ -689,8 +742,11 @@ export const CreateTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }),
   "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
   "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
@@ -705,6 +761,10 @@ export const DeleteTaktDependencyParams = zod.object({
   "projectId": zod.coerce.string(),
   "depId": zod.coerce.string()
 })
+
+
+
+
 
 export const DeleteTaktDependencyResponse = zod.object({
   "moved": zod.array(zod.object({
@@ -721,8 +781,11 @@ export const DeleteTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })),
   "conflicts": zod.array(zod.object({
   "takt": zod.object({
@@ -739,8 +802,11 @@ export const DeleteTaktDependencyResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }),
   "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
   "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
@@ -756,6 +822,9 @@ export const ListDelegationsQueryParams = zod.object({
   "status": zod.enum(['PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED', 'CANCELLED']).optional(),
   "anOrgId": zod.coerce.string().optional()
 })
+
+
+
 
 export const ListDelegationsResponseItem = zod.object({
   "id": zod.string(),
@@ -777,8 +846,11 @@ export const ListDelegationsResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -836,6 +908,9 @@ export const CreateDelegationBody = zod.object({
   "message": zod.string().optional()
 })
 
+
+
+
 export const CreateDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -856,8 +931,11 @@ export const CreateDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -908,6 +986,9 @@ export const GetDelegationParams = zod.object({
   "delegationId": zod.coerce.string()
 })
 
+
+
+
 export const GetDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -928,8 +1009,11 @@ export const GetDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -985,6 +1069,9 @@ export const UpdateDelegationBody = zod.object({
   "message": zod.string().optional()
 })
 
+
+
+
 export const UpdateDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -1005,8 +1092,11 @@ export const UpdateDelegationResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1227,6 +1317,9 @@ export const ListResourceAssignmentsQueryParams = zod.object({
   "to": zod.date().optional()
 })
 
+
+
+
 export const ListResourceAssignmentsResponseItem = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -1261,8 +1354,11 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1323,6 +1419,9 @@ export const CreateResourceAssignmentBody = zod.object({
   "note": zod.string().optional()
 })
 
+
+
+
 export const CreateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -1357,8 +1456,11 @@ export const CreateResourceAssignmentResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1420,6 +1522,9 @@ export const UpdateResourceAssignmentBody = zod.object({
   "note": zod.string().optional()
 })
 
+
+
+
 export const UpdateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -1454,8 +1559,11 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1607,6 +1715,10 @@ export const ListWebhookEventsResponse = zod.array(ListWebhookEventsResponseItem
 /**
  * @summary AG dashboard summary
  */
+
+
+
+
 export const GetAgDashboardResponse = zod.object({
   "totalProjects": zod.number(),
   "activeProjects": zod.number(),
@@ -1628,8 +1740,11 @@ export const GetAgDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 })),
   "recentActivity": zod.array(zod.object({
   "id": zod.string(),
@@ -1651,8 +1766,11 @@ export const GetAgDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1700,6 +1818,10 @@ export const GetAgDashboardResponse = zod.object({
 /**
  * @summary AN dashboard summary
  */
+
+
+
+
 export const GetAnDashboardResponse = zod.object({
   "pendingRequests": zod.number(),
   "confirmedWork": zod.number(),
@@ -1723,8 +1845,11 @@ export const GetAnDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),
@@ -1799,8 +1924,11 @@ export const GetAnDashboardResponse = zod.object({
   "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
   "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
   "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date()
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
 }).optional(),
   "project": zod.object({
   "id": zod.string(),

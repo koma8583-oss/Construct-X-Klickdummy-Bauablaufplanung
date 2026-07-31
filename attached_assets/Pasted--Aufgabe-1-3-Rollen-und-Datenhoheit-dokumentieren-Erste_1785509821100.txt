@@ -1,0 +1,114 @@
+# Aufgabe 1.3 – Rollen und Datenhoheit dokumentieren
+
+Erstelle ausschließlich die Datei:
+
+`docs/data-ownership.md`
+
+Lege das Verzeichnis `docs` an, falls es noch nicht existiert.
+
+## 1. Benutzerrollen
+
+Dokumentiere folgende fachlichen Zielrollen:
+
+* `GU_ADMIN`
+* `GENERAL_PLANNER`
+* `NU_ADMIN`
+* `NU_DISPATCHER`
+* `HUB_ADMIN`
+
+Der Generalplaner ist ein Benutzer innerhalb der Organisation des Generalunternehmers. Er ist keine eigene externe Organisation.
+
+Falls die bestehende Anwendung andere Rollen verwendet:
+
+* analysiere die vorhandenen Rollen
+* dokumentiere das Mapping
+* ändere das bestehende Rollenmodell noch nicht
+
+## 2. Organisationstypen
+
+Dokumentiere folgende fachlichen Zieltypen:
+
+* `GU`
+* `NU`
+* `HUB`
+
+Dokumentiere außerdem:
+
+* bestehendes `AG` entspricht fachlich `GU`
+* bestehendes `AN` entspricht fachlich `NU`
+
+## 3. Tabelle zur Datenhoheit
+
+Erstelle mindestens folgende Tabelle:
+
+| Datenobjekt                    | Eigentümer | GU sichtbar |         NU sichtbar |   Hub sichtbar |
+| ------------------------------ | ---------- | ----------: | ------------------: | -------------: |
+| Vollständiger Taktplan         | GU         |          Ja |                Nein |           Nein |
+| Freigegebener Takt-Snapshot    | GU         |          Ja | Nur adressierter NU |           Nein |
+| Taktanfrage-Benachrichtigung   | GU         |          Ja | Nur adressierter NU | Kleine Payload |
+| Vollständige Ressourcenplanung | NU         |        Nein |                  Ja |           Nein |
+| Interne Konfliktanalyse        | NU         |        Nein |                  Ja |           Nein |
+| Reduzierte Taktantwort         | NU         |          Ja |                  Ja | Kleine Payload |
+| Andere Projekte des NU         | NU         |        Nein |                  Ja |           Nein |
+| Mitarbeiter- und Gerätedetails | NU         |        Nein |                  Ja |           Nein |
+
+## 4. Nicht extern übertragbare Informationen
+
+Dokumentiere ausdrücklich, dass folgende Informationen niemals Teil einer externen Antwort oder einer Hub-Nachricht sein dürfen:
+
+* Name eines anderen Generalunternehmers
+* Name eines anderen Auftraggebers
+* Name eines anderen Projekts
+* lokale Projekt-ID
+* Mitarbeitername
+* Mitarbeiter-ID
+* interne Ressourcenbezeichnung
+* interne Kosten
+* interne Prioritäten
+* vollständige Konfliktliste
+* interne Auslastungsplanung
+
+Nenne als Beispiele möglicher technischer Feldnamen:
+
+```text
+customerName
+customerId
+otherGuName
+otherProjectName
+localProjectId
+employeeName
+employeeId
+resourceName
+internalCost
+internalPriority
+internalConflicts
+```
+
+## 5. Grundsatz für externe Antworten
+
+Dokumentiere:
+
+Der Nachunternehmer übermittelt an den Generalunternehmer nur das notwendige fachliche Ergebnis:
+
+* Takt ist möglich.
+* Takt ist mit Alternativen möglich.
+* Takt ist nicht möglich.
+* Optional kann ein generischer Konfliktgrund übermittelt werden.
+
+Die zugrunde liegende interne Ressourcen- und Konfliktanalyse verbleibt beim Nachunternehmer.
+
+## Einschränkungen
+
+* Nur Dokumentation erstellen.
+* Keine Codeänderungen.
+* Keine Datenbankänderungen.
+* Keine OpenAPI-Änderungen.
+* Bestehende Rollen noch nicht verändern.
+
+## Abschlussbericht
+
+Berichte:
+
+* ob die Datei erstellt wurde
+* welche Rollen-Mappings dokumentiert wurden
+* welche Datenschutz- und Datenhoheitsregeln festgehalten wurden

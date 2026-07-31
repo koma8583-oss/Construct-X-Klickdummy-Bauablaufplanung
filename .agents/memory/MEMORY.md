@@ -1,3 +1,5 @@
 - [Express v5 params typing](express-v5-params.md) — ParamsDictionary in @types/express-serve-static-core@5.1.2 is `string | string[]`; add `as string` casts to all req.params access in drizzle eq() calls.
-- [DB schema & backend routes](taktkoord-backend.md) — TaktKoord backend: JWT auth (bcryptjs + jsonwebtoken), 8 schema files (added refresh_tokens), full route set; zod v4 in schema files, plain zod in route files.
+- [DB schema & backend routes](taktkoord-backend.md) — TaktKoord backend: JWT auth (bcryptjs + jsonwebtoken), 10 schema files (added takt-requests, takt-responses), full route set; zod v4 in schema files, plain zod in route files.
 - [JWT Auth Service](jwt-auth-service.md) — centralized auth at /auth-service; Express.Request global namespace is the correct req.user extension point; lib/db needs tsc rebuild after schema changes.
+- [DB push via psql not drizzle-kit](db-push-psql.md) — drizzle-kit push hangs on TTY prompts in non-interactive shells; use raw psql SQL with IF NOT EXISTS + idempotent DO $$ BEGIN … EXCEPTION WHEN duplicate_object THEN NULL; END $$ for enum creation.
+- [TaktKoord Sprint 2 model](sprint2-takt-model.md) — new tables: takt_requests, takt_request_snapshots, takt_responses, takt_response_alternatives + takte.version/lifecycle_status; state machine in takt-request-transitions.ts; Vitest installed in api-server.

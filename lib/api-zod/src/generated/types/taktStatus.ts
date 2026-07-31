@@ -7,7 +7,7 @@
  */
 
 /**
- * Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.
+ * Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.
  */
 export type TaktStatus = typeof TaktStatus[keyof typeof TaktStatus];
 

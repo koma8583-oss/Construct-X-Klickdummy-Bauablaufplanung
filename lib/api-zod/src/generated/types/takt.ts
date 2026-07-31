@@ -5,6 +5,7 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { TaktLifecycleStatus } from './taktLifecycleStatus';
 import type { TaktStatus } from './taktStatus';
 
 export interface Takt {
@@ -27,4 +28,12 @@ export interface Takt {
   requiredResources?: string | null;
   status: TaktStatus;
   createdAt: Date;
+  /** Last-modified timestamp */
+  updatedAt?: Date;
+  /**
+     * Monotonically incrementing version; starts at 1 for all existing Takte
+     * @minimum 1
+     */
+  version?: number;
+  lifecycleStatus?: TaktLifecycleStatus;
 }

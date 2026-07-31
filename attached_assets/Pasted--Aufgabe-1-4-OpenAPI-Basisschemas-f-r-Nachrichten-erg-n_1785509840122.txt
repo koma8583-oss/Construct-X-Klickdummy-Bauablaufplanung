@@ -1,0 +1,130 @@
+# Aufgabe 1.4 – OpenAPI-Basisschemas für Nachrichten ergänzen
+
+Analysiere die vorhandene OpenAPI-Spezifikation und ergänze ausschließlich grundlegende, wiederverwendbare Nachrichtenschemas.
+
+Die OpenAPI-Spezifikation bleibt die zentrale Quelle der API-Verträge.
+
+Generierte Dateien dürfen nicht manuell bearbeitet werden.
+
+## 1. Schema `DataspaceMessageType`
+
+Definiere folgende Enum-Werte:
+
+```text
+TAKT_REQUEST_NOTIFICATION
+TAKT_REQUEST_REVISED
+TAKT_REQUEST_CANCELLED
+TAKT_DETAILS_RETRIEVED
+TAKT_RESPONSE_SUBMITTED
+TAKT_RESPONSE_ACCEPTED
+TAKT_RESPONSE_REVISION_REQUESTED
+```
+
+## 2. Schema `DataspaceMessageStatus`
+
+Definiere folgende Enum-Werte:
+
+```text
+PENDING
+SENT
+DELIVERED
+READ
+FAILED
+```
+
+## 3. Schema `MessageEnvelope`
+
+Pflichtfelder:
+
+* `messageId`
+* `schemaVersion`
+* `messageType`
+* `senderOrgId`
+* `recipientOrgId`
+* `correlationId`
+* `createdAt`
+* `payload`
+
+Optionale Felder:
+
+* `causationId`
+* `expiresAt`
+* `status`
+
+## Anforderungen
+
+* `messageId` ist ein nicht leerer String.
+* `schemaVersion` entspricht dem Muster `Zahl.Zahl`, beispielsweise `1.0`.
+* `messageType` referenziert `DataspaceMessageType`.
+* `status` referenziert `DataspaceMessageStatus`.
+* `createdAt` und `expiresAt` verwenden `date-time`.
+* `payload` ist zunächst ein generisches Objekt.
+* Nullable-Felder müssen zur verwendeten OpenAPI-Version passen.
+
+Beispiel:
+
+```json
+{
+  "messageId": "MSG-2026-000001",
+  "schemaVersion": "1.0",
+  "messageType": "TAKT_REQUEST_NOTIFICATION",
+  "senderOrgId": "GU-001",
+  "recipientOrgId": "NU-017",
+  "correlationId": "REQ-001",
+  "causationId": null,
+  "createdAt": "2026-07-31T09:00:00Z",
+  "expiresAt": "2026-08-07T10:00:00Z",
+  "status": "DELIVERED",
+  "payload": {}
+}
+```
+
+## 4. Fachliche Dokumentation in OpenAPI
+
+Dokumentiere:
+
+* `messageId` identifiziert eine einzelne Nachricht.
+* `correlationId` verbindet alle Nachrichten eines TaktRequest-Prozesses.
+* `causationId` verweist auf die auslösende Nachricht.
+* `schemaVersion` ermöglicht spätere Änderungen am Datenvertrag.
+* `DELIVERED` beschreibt nur eine technische Zustellung.
+* `DELIVERED` bedeutet keine fachliche Zustimmung.
+
+## 5. Kompatibilität
+
+* Bestehende Hub-Schemas nicht entfernen.
+* Bestehende Delegation-Schemas nicht entfernen.
+* Bestehende Endpunkte nicht verändern.
+* Noch keine Datenbanktabellen anlegen.
+* Noch keine neuen REST-Endpunkte ergänzen.
+
+## 6. Codegenerierung
+
+Führe die vorhandene OpenAPI-Codegenerierung aus.
+
+Prüfe:
+
+* erzeugte TypeScript-Typen
+* erzeugte Zod-Schemas
+* Kompatibilität mit der bestehenden Codegenerierung
+
+Ändere generierte Dateien nicht manuell.
+
+## 7. Prüfungen
+
+Führe mindestens aus:
+
+* OpenAPI-Codegenerierung
+* Typecheck
+* Build, sofern ohne zusätzliche Änderungen möglich
+
+## Abschlussbericht
+
+Berichte:
+
+* geänderte Dateien
+* neu ergänzte Schemas
+* Ergebnis der Codegenerierung
+* Ergebnis des Typechecks
+* Ergebnis des Builds
+* mögliche Kompatibilitätsprobleme

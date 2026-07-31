@@ -28,6 +28,8 @@ tags:
     description: Webhook subscriptions and event log
   - name: takt-dependencies
     description: Takt dependency (Anordnungsbeziehung) management
+  - name: takt-requests
+    description: TaktRequest — coordination requests from GU to NU (Task 2)
   - name: dashboard
     description: Dashboard summary endpoints
 
@@ -1241,13 +1243,45 @@ components:
       type: string
       enum: [GEPLANT, VERGEBEN, ALTERNATIV, BESTAETIGT, ABGELEHNT, STORNIERT]
       description: >
-        Lifecycle-Status eines Takts.
+        Legacy Takt status (backward-compatible, retained for existing delegation routes).
         GEPLANT = angelegt, editierbar;
         VERGEBEN = Delegation verschickt;
         ALTERNATIV = AN hat Gegenvorschlag;
         BESTAETIGT = Termin bestätigt;
         ABGELEHNT = abgelehnt, wieder editierbar;
         STORNIERT = Vergabe storniert, wieder editierbar.
+
+    TaktLifecycleStatus:
+      type: string
+      description: >
+        Dedicated lifecycle status for the Takt itself (Task 2.2).
+        Separated from TaktStatus to decouple the Takt lifecycle from
+        the state of any individual TaktRequest.
+        DRAFT = being edited; PLANNED = ready, no active coordination;
+        IN_COORDINATION = at least one TaktRequest is active;
+        CONFIRMED = a NU response was accepted by the GU;
+        CANCELLED = Takt cancelled.
+      enum: [DRAFT, PLANNED, IN_COORDINATION, CONFIRMED, CANCELLED]
+
+    TaktRequestStatus:
+      type: string
+      description: >
+        Status of one specific TaktRequest (coordination request from GU to NU).
+        Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED).
+        Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.
+      enum:
+        - DRAFT
+        - SENT
+        - DELIVERED
+        - DETAILS_RETRIEVED
+        - UNDER_REVIEW
+        - ACCEPTED
+        - ALTERNATIVES_PROPOSED
+        - REJECTED
+        - REVISION_REQUIRED
+        - CANCELLED
+        - EXPIRED
+        - SUPERSEDED
 
     Takt:
       type: object
@@ -1297,7 +1331,19 @@ components:
         createdAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          description: "Last-modified timestamp"
+        version:
+          type: integer
+          minimum: 1
+          description: "Monotonically incrementing version; starts at 1 for all existing Takte"
+        lifecycleStatus:
+          $ref: "#/components/schemas/TaktLifecycleStatus"
       required: [id, projectId, taktBezeichnung, zone, gewerk, plannedStart, plannedEnd, status, createdAt]
+      # version and lifecycleStatus are optional in responses for backward compatibility;
+      # both fields are always populated in the database (have DEFAULT values).
 
     CreateTaktRequest:
       type: object

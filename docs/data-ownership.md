@@ -90,6 +90,20 @@ A Takt response may only contain generic reason codes (e.g. `RESOURCE_CONFLICT`,
 
 ---
 
+## Principle for external responses
+
+The Nachunternehmer transmits to the Generalunternehmer only the necessary business result. There are exactly three possible outcomes:
+
+1. **Takt is possible** — the NU accepts the requested time window.
+2. **Takt is possible with alternatives** — the NU cannot fulfil the requested window but proposes up to three alternative time windows.
+3. **Takt is not possible** — the NU rejects the request.
+
+Optionally, a generic conflict reason code may be included (e.g. `RESOURCE_CONFLICT`, `NO_CAPACITY`, `QUALIFICATION_MISSING`). This reason code must be generic — it describes the category of the problem, not the internal root cause.
+
+The underlying internal resource and conflict analysis remains exclusively with the Nachunternehmer and is never transmitted.
+
+---
+
 ## Data flow rules
 
 1. The GU sends only a notification with a reference — no full Takt details in the push.

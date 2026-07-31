@@ -10,7 +10,7 @@ import { TaktStatusBadge } from "@/components/takt-status-badge";
 export default function Dashboard() {
   const { t } = useTranslation();
   const { data: dashboard, isLoading, isError, refetch } = useGetAnDashboard({
-    query: { refetchInterval: 30_000 },
+    query: { queryKey: ["an-dashboard"], refetchInterval: 30_000 },
   });
 
   if (isLoading) {

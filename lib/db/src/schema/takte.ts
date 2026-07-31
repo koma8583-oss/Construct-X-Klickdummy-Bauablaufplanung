@@ -1,7 +1,16 @@
-import { pgTable, text, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, date, pgEnum, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
+
+/** Dedicated lifecycle status for the Takt itself — separate from TaktStatus (Task 2.2/2.3) */
+export const taktLifecycleStatusEnum = pgEnum("takt_lifecycle_status", [
+  "DRAFT",
+  "PLANNED",
+  "IN_COORDINATION",
+  "CONFIRMED",
+  "CANCELLED",
+]);
 
 export const taktStatusEnum = pgEnum("takt_status", [
   "GEPLANT",
@@ -38,6 +47,20 @@ export const takteTable = pgTable("takte", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
+  /**
+   * Monotonically incrementing version number (Task 2.3).
+   * Starts at 1 for all existing Takte.
+   * Incremented when Takt data changes in a way that invalidates active TaktRequests.
+   */
+  version: integer("version").notNull().default(1),
+  /**
+   * Dedicated lifecycle status for the Takt itself (Task 2.3).
+   * Parallel to `status` — not a replacement.
+   * Existing Takte default to PLANNED; see docs/database-model.md for full mapping.
+   */
+  lifecycleStatus: taktLifecycleStatusEnum("lifecycle_status")
+    .notNull()
+    .default("PLANNED"),
 });
 
 export const insertTaktSchema = createInsertSchema(takteTable).omit({

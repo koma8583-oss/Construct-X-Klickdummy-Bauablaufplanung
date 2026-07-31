@@ -3,6 +3,8 @@ export * from "./organizations";
 export * from "./projects";
 export * from "./takte";
 export * from "./takt-dependencies";
+export * from "./takt-requests";
+export * from "./takt-responses";
 export * from "./delegations";
 export * from "./resources";
 export * from "./webhooks";

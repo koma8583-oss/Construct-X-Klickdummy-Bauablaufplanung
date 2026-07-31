@@ -1,0 +1,127 @@
+# Aufgabe 1.1 – Projektbeschreibung in `replit.md` ergänzen
+
+Analysiere die vorhandene Repository-Struktur und bearbeite ausschließlich die Datei `replit.md`.
+
+## Ziel
+
+Die bestehende Anwendung soll schrittweise zu einem Proof of Concept für eine föderierte Taktkoordination im Bauwesen weiterentwickelt werden.
+
+Aktuell wird noch kein echter Datenraum eingesetzt. Der Datenaustausch wird zunächst durch REST-Schnittstellen, standardisierte JSON-Nachrichten und den vorhandenen Hub simuliert.
+
+## Fachlicher Ablauf
+
+Dokumentiere folgenden Zielprozess:
+
+1. Ein Generalunternehmer beziehungsweise Generalplaner erstellt einen vollständigen Taktplan.
+2. Ein einzelner Takt wird einem Nachunternehmer zur Prüfung angeboten.
+3. Der Generalunternehmer sendet eine Benachrichtigung über die Taktanfrage.
+4. Der Nachunternehmer ruft nur die für ihn freigegebenen Taktdetails ab.
+5. Der Nachunternehmer prüft die Anfrage gegen seine lokale Ressourcenplanung.
+6. Der Nachunternehmer bestätigt den Takt, schlägt Alternativen vor oder lehnt ihn ab.
+7. Die reduzierte Antwort wird an den Generalunternehmer zurückgesendet.
+
+## Ergänze in `replit.md`
+
+### Projektname
+
+`Takt Coordination Flow – Federated Dataspace PoC`
+
+### Produktbeschreibung
+
+Beschreibe:
+
+* Taktplanung durch Generalunternehmer und Generalplaner
+* Koordination mit mehreren Nachunternehmern
+* dezentrale Datenhaltung
+* lokale Ressourcenprüfung beim Nachunternehmer
+* Push einer Taktbenachrichtigung
+* Pull der Taktdetails
+* Push einer Antwort
+* spätere Ersetzbarkeit des lokalen Transports durch EDC
+
+### Architekturregeln
+
+Dokumentiere verbindlich:
+
+1. Der Generalunternehmer besitzt den vollständigen Taktplan.
+2. Der Nachunternehmer besitzt seine vollständige Ressourcenplanung.
+3. Der Hub besitzt keine vollständigen Projekt- oder Ressourcendaten.
+4. Der GU darf keine internen Ressourcendaten des NU abrufen.
+5. Der NU darf nicht den vollständigen Taktplan des GU abrufen.
+6. Der NU erhält nur die für ihn freigegebenen Taktdetails.
+7. Daten anderer Nachunternehmer dürfen nicht offengelegt werden.
+8. Daten anderer Auftraggeber des NU dürfen nicht offengelegt werden.
+9. Fachlogik und Transportlogik müssen getrennt bleiben.
+10. Es wird aktuell kein EDC, DSP, Wallet oder Verifiable Credential implementiert.
+
+### Begriffs-Mapping
+
+Dokumentiere:
+
+* bestehendes `AG` entspricht fachlich `GU`
+* bestehendes `AN` entspricht fachlich `NU`
+* bestehende `Delegation` entspricht künftig `TaktRequest`
+* bestehende Delegation-Antwort entspricht künftig `TaktResponse`
+* bestehende Hub-Nachricht entspricht künftig `DataspaceMessage`
+* bestehende Ressourcenzuweisung entspricht künftig `ResourceBooking`
+
+Führe noch keine globale Umbenennung im Code durch.
+
+### Fachliche Kernobjekte
+
+Beschreibe jeweils kurz:
+
+* `Project`
+* `Takt`
+* `TaktRequest`
+* `TaktRequestSnapshot`
+* `TaktResponse`
+* `TaktResponseAlternative`
+* `DataspaceMessage`
+* `Resource`
+* `ResourceBooking`
+* `AvailabilityCheck`
+
+### Entwicklungsregeln
+
+Dokumentiere:
+
+* bestehende Architektur weiterverwenden
+* keine Neuentwicklung
+* OpenAPI bleibt Quelle der API-Verträge
+* generierte Dateien nicht manuell ändern
+* bestehende Delegation-Endpunkte nicht entfernen
+* neue Funktionen schrittweise ergänzen
+* Zeitangaben als ISO 8601
+* intern möglichst UTC verwenden
+* Typecheck und Build müssen erfolgreich sein
+
+### Entwicklungsbefehle
+
+Ermittle und dokumentiere die tatsächlich vorhandenen Befehle für:
+
+* Installation
+* Entwicklungsstart
+* OpenAPI-Codegenerierung
+* Datenbankmigration oder Schema-Push
+* Typecheck
+* Build
+* Tests
+
+## Einschränkungen
+
+* Nur `replit.md` ändern.
+* Keine OpenAPI-Änderungen.
+* Keine Datenbankänderungen.
+* Keine UI-Änderungen.
+* Keine neuen API-Endpunkte.
+* Keine bestehenden Funktionen entfernen.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche Abschnitte ergänzt wurden
+* ob noch Platzhalter vorhanden sind
+* welche bestehenden Informationen beibehalten wurden
+* welche tatsächlichen Entwicklungsbefehle gefunden wurden

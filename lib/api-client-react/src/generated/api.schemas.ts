@@ -170,7 +170,7 @@ export interface UpdateProjectRequest {
 }
 
 /**
- * Lifecycle-Status eines Takts. GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.
+ * Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.
  */
 export type TaktStatus = typeof TaktStatus[keyof typeof TaktStatus];
 
@@ -182,6 +182,41 @@ export const TaktStatus = {
   BESTAETIGT: 'BESTAETIGT',
   ABGELEHNT: 'ABGELEHNT',
   STORNIERT: 'STORNIERT',
+} as const;
+
+/**
+ * Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.
+ */
+export type TaktLifecycleStatus = typeof TaktLifecycleStatus[keyof typeof TaktLifecycleStatus];
+
+
+export const TaktLifecycleStatus = {
+  DRAFT: 'DRAFT',
+  PLANNED: 'PLANNED',
+  IN_COORDINATION: 'IN_COORDINATION',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.
+ */
+export type TaktRequestStatus = typeof TaktRequestStatus[keyof typeof TaktRequestStatus];
+
+
+export const TaktRequestStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  DETAILS_RETRIEVED: 'DETAILS_RETRIEVED',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  ACCEPTED: 'ACCEPTED',
+  ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
+  REJECTED: 'REJECTED',
+  REVISION_REQUIRED: 'REVISION_REQUIRED',
+  CANCELLED: 'CANCELLED',
+  EXPIRED: 'EXPIRED',
+  SUPERSEDED: 'SUPERSEDED',
 } as const;
 
 export interface Takt {
@@ -204,6 +239,14 @@ export interface Takt {
   requiredResources?: string | null;
   status: TaktStatus;
   createdAt: string;
+  /** Last-modified timestamp */
+  updatedAt?: string;
+  /**
+     * Monotonically incrementing version; starts at 1 for all existing Takte
+     * @minimum 1
+     */
+  version?: number;
+  lifecycleStatus?: TaktLifecycleStatus;
 }
 
 export interface CreateTaktRequest {
