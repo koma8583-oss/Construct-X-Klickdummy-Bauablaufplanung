@@ -30,7 +30,7 @@ export default function Requests() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: delegations, isLoading } = useListDelegations(
     { status: statusFilter === "ALL" ? undefined : (statusFilter as DelegationStatus) },
-    { query: { refetchInterval: 5_000 } as any }
+    { query: { refetchInterval: 5_000, refetchIntervalInBackground: false } as any }
   );
 
   if (isLoading) {

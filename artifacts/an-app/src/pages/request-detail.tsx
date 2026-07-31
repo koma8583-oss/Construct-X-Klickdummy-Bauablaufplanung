@@ -28,12 +28,12 @@ export default function RequestDetail() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: delegation, isLoading: isDelegationLoading } = useGetDelegation(
     delegationId!,
-    { query: { refetchInterval: 5_000 } as any }
+    { query: { refetchInterval: 5_000, refetchIntervalInBackground: false } as any }
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: responses, isLoading: isResponsesLoading } = useListDelegationResponses(
     delegationId!,
-    { query: { refetchInterval: 5_000 } as any }
+    { query: { refetchInterval: 5_000, refetchIntervalInBackground: false } as any }
   );
   const createResponse = useCreateDelegationResponse();
 
