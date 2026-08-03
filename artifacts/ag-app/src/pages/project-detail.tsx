@@ -610,6 +610,7 @@ export default function ProjectDetail() {
     addContractor.mutate({ projectId, data: { anOrgId } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
+        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
         toast({ title: 'Nachunternehmer verknüpft' });
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
@@ -620,6 +621,7 @@ export default function ProjectDetail() {
     removeContractor.mutate({ projectId, anOrgId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
+        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
         toast({ title: 'Nachunternehmer entfernt' });
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
