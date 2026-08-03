@@ -97,6 +97,15 @@ export const taktResponsesTable = pgTable(
      */
     nextAvailableDate: date("next_available_date", { mode: "string" }),
 
+    /**
+     * SHA-256 hash of the canonical public response payload (sorted keys, ISO dates).
+     * Used for full-payload idempotency:
+     *   - Same requestId + same hash → idempotent 200 (identical payload).
+     *   - Same requestId + different hash → 409 conflict.
+     * Nullable for responses created before this column was added (legacy rows).
+     */
+    responsePayloadHash: text("response_payload_hash").unique(),
+
     /** NU user who submitted this response */
     createdByUserId: text("created_by_user_id")
       .notNull()

@@ -44,10 +44,14 @@ import {
   InvalidTaktForSnapshotError,
 } from "../lib/takt-request-snapshot-service";
 import {
-  createTaktResponse,
   getTaktResponseWithAlternatives,
   TaktResponseValidationError,
 } from "../lib/takt-response-repository";
+import {
+  processNuResponse,
+  ResponseConflictError,
+  ResponseStatusError,
+} from "../services/nu-response-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
@@ -128,19 +132,21 @@ router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
 });
 
 // ── POST /projects/:projectId/takt-requests ───────────────────────────────────
-// GU creates a DRAFT TaktRequest for a Takt in their project.
+// GU creates a DRAFT TaktRequest for a Takt in their project (legacy endpoint).
+// Now delegates to createTaktRequestWithSnapshot() — same service as the
+// canonical POST /takt-requests — so every new request has an immutable snapshot
+// from creation time. requestNumber is optional; auto-generated if omitted.
 router.post(
   "/projects/:projectId/takt-requests",
   requireJwt,
   async (req, res): Promise<void> => {
     const guOrgId = req.user!.orgId!;
     const userId = req.user!.userId!;
-    const projectId = req.params.projectId as string;
 
     const schema = z.object({
-      taktId: z.string().min(1),
-      nuOrgId: z.string().min(1),
-      requestNumber: z.string().min(1),
+      taktId:             z.string().min(1),
+      nuOrgId:            z.string().min(1),
+      requestNumber:      z.string().min(1).optional(),
       responseRequiredBy: z.string().datetime({ offset: true }).optional(),
     });
 
@@ -150,51 +156,51 @@ router.post(
       return;
     }
 
-    const { taktId, nuOrgId, requestNumber, responseRequiredBy } = parsed.data;
+    const { taktId, nuOrgId, responseRequiredBy } = parsed.data;
+    const requestNumber = parsed.data.requestNumber ?? `TKR-${Date.now().toString(36).toUpperCase()}`;
 
-    // Verify the project exists and is owned by the calling GU org
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, projectId))
-      .limit(1);
-
-    if (!project) {
-      res.status(404).json({ error: "Project not found" });
-      return;
+    let result;
+    try {
+      result = await createTaktRequestWithSnapshot({
+        taktId,
+        guOrgId,
+        nuOrgId,
+        requestNumber,
+        responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
+        createdByUserId: userId,
+      });
+    } catch (err) {
+      if (err instanceof TaktNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof UnauthorizedSnapshotError) {
+        res.status(403).json({ error: err.message });
+        return;
+      }
+      if (err instanceof NuNotContractorError) {
+        res.status(403).json({ error: err.message });
+        return;
+      }
+      if (err instanceof InvalidTaktForSnapshotError) {
+        res.status(422).json({ error: err.message });
+        return;
+      }
+      throw err;
     }
-    if (project.agOrgId !== guOrgId) {
-      res
-        .status(403)
-        .json({ error: "You are not authorized to create requests for this project" });
-      return;
-    }
 
-    // Verify the Takt belongs to this project
-    const [takt] = await db
-      .select()
-      .from(takteTable)
-      .where(and(eq(takteTable.id, taktId), eq(takteTable.projectId, projectId)))
-      .limit(1);
-
-    if (!takt) {
-      res.status(404).json({ error: "Takt not found in the specified project" });
-      return;
-    }
-
-    const request = await createTaktRequestDraft({
-      taktId,
-      taktVersion: takt.version ?? 1,
-      guOrgId,
-      nuOrgId,
-      requestNumber,
-      responseRequiredBy: responseRequiredBy
-        ? new Date(responseRequiredBy)
-        : undefined,
-      createdByUserId: userId,
+    res.status(201).json({
+      id:                  result.request.id,
+      taktId:              result.request.taktId,
+      taktVersion:         result.request.taktVersion,
+      guOrgId:             result.request.guOrgId,
+      nuOrgId:             result.request.nuOrgId,
+      requestNumber:       result.request.requestNumber,
+      status:              result.request.status,
+      responseRequiredBy:  result.request.responseRequiredBy ?? null,
+      snapshotId:          result.snapshot.id,
+      createdAt:           result.request.createdAt,
     });
-
-    res.status(201).json(request);
   },
 );
 
@@ -356,45 +362,17 @@ router.post(
     }
 
     // ── 4. Snapshot must exist ─────────────────────────────────────────────
+    // Since Task 81, every TaktRequest created via POST /takt-requests or the
+    // legacy POST /projects/:id/takt-requests gets a snapshot atomically at
+    // creation time. If there is no snapshot here the request is malformed.
     const snapResult = await getTaktRequestWithSnapshot(id);
     if (!snapResult?.snapshot) {
-      // Fallback: create snapshot from current Takt state (backward compat with
-      // requests created via legacy POST /projects/:projectId/takt-requests).
-      const [taktJoin] = await db
-        .select({ takt: takteTable, project: projectsTable })
-        .from(takteTable)
-        .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
-        .where(eq(takteTable.id, existing.taktId))
-        .limit(1);
-
-      if (!taktJoin) {
-        res.status(422).json({ error: "Referenced Takt no longer exists" });
-        return;
-      }
-      if (taktJoin.project.agOrgId !== guOrgId) {
-        res.status(403).json({ error: "You are not authorised to send this request" });
-        return;
-      }
-
-      const fallbackPayload: Record<string, unknown> = {
-        taktId: taktJoin.takt.id,
-        taktVersion: taktJoin.takt.version,
-        taktBezeichnung: taktJoin.takt.taktBezeichnung,
-        zone: taktJoin.takt.zone,
-        gewerk: taktJoin.takt.gewerk,
-        description: taktJoin.takt.description ?? null,
-        plannedStart: taktJoin.takt.plannedStart,
-        plannedEnd: taktJoin.takt.plannedEnd,
-      };
-      try {
-        await createTaktRequestSnapshot({
-          taktRequestId: id,
-          schemaVersion: "1.0",
-          snapshotPayload: fallbackPayload,
-        });
-      } catch (err) {
-        if (!(err instanceof DuplicateSnapshotError)) throw err;
-      }
+      res.status(422).json({
+        error:
+          "Cannot send TaktRequest: no snapshot exists. " +
+          "Create the request via POST /takt-requests which creates a snapshot atomically at creation time.",
+      });
+      return;
     }
 
     // ── 5. Build notification payload — minimal, no full Takt data ─────────
@@ -710,42 +688,45 @@ router.get(
 );
 
 // ── POST /takt-requests/:id/response ─────────────────────────────────────────
-// NU submits ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED.
+// Legacy NU response endpoint — kept for backward compatibility.
+// Translates the old flat acceptedStart/acceptedEnd fields to the canonical
+// acceptedTimeWindow format, then delegates to processNuResponse() — the same
+// service used by the canonical POST /takt-requests/:id/responses endpoint.
+// Both endpoints are now fully unified at the service layer.
 router.post(
   "/takt-requests/:id/response",
   requireJwt,
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
-    const userId = req.user!.userId!;
-    const id = req.params.id as string;
+    const userId  = req.user!.userId!;
+    const id      = req.params.id as string;
 
+    // ── 1. NU-only guard ────────────────────────────────────────────────────
+    if (!nuOrgId || req.user!.orgType !== "AN" || req.user!.hubAdmin) {
+      res.status(403).json({ error: "Only NU (AN) organisations may submit a TaktResponse" });
+      return;
+    }
+
+    // ── 2. Parse body (legacy flat format) ──────────────────────────────────
     const alternativeSchema = z.object({
       alternativeId: z.string().min(1),
-      rank: z.number().int().min(1),
+      rank:          z.number().int().min(1),
       proposedStart: z.string().datetime({ offset: true }),
-      proposedEnd: z.string().datetime({ offset: true }),
-      crewSize: z.number().int().min(1).optional(),
-      conditions: z.array(z.string()).optional(),
+      proposedEnd:   z.string().datetime({ offset: true }),
+      crewSize:      z.number().int().min(1).optional(),
+      conditions:    z.array(z.string()).optional(),
     });
 
     const schema = z.object({
-      decision: z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
-      reasonCode: z
-        .enum([
-          "RESOURCE_CONFLICT",
-          "NO_CAPACITY",
-          "EQUIPMENT_UNAVAILABLE",
-          "QUALIFICATION_MISSING",
-          "TIME_WINDOW_TOO_SHORT",
-          "OUTSIDE_PLANNING_HORIZON",
-          "OTHER",
-        ])
-        .optional(),
-      comment: z.string().max(2000).optional(),
-      acceptedStart: z.string().datetime({ offset: true }).optional(),
-      acceptedEnd: z.string().datetime({ offset: true }).optional(),
+      decision:          z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
+      reasonCode:        z.enum(["RESOURCE_CONFLICT","NO_CAPACITY","EQUIPMENT_UNAVAILABLE",
+                                 "QUALIFICATION_MISSING","TIME_WINDOW_TOO_SHORT",
+                                 "OUTSIDE_PLANNING_HORIZON","OTHER"]).optional(),
+      comment:           z.string().max(2000).optional(),
+      acceptedStart:     z.string().datetime({ offset: true }).optional(),
+      acceptedEnd:       z.string().datetime({ offset: true }).optional(),
       nextAvailableDate: z.string().optional(),
-      alternatives: z.array(alternativeSchema).max(3).optional(),
+      alternatives:      z.array(alternativeSchema).max(3).optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -754,96 +735,103 @@ router.post(
       return;
     }
 
-    const existing = await getTaktRequestById(id);
-    if (!existing) {
-      res.status(404).json({ error: "TaktRequest not found" });
-      return;
-    }
-    if (existing.nuOrgId !== nuOrgId) {
-      res
-        .status(403)
-        .json({ error: "Only the addressed NU organisation may respond" });
+    // ── 3. Load TaktRequest ─────────────────────────────────────────────────
+    const request = await getTaktRequestById(id);
+    if (!request) { res.status(404).json({ error: "TaktRequest not found" }); return; }
+    if (request.nuOrgId !== nuOrgId) {
+      res.status(403).json({ error: "Only the addressed NU organisation may respond" });
       return;
     }
 
-    // Check no response exists yet
-    const existingResponse = await getTaktResponseWithAlternatives(id);
-    if (existingResponse) {
-      res
-        .status(409)
-        .json({ error: "A response already exists for this TaktRequest" });
-      return;
-    }
+    // ── 4. Translate flat → canonical format ────────────────────────────────
+    const { decision, reasonCode, comment, acceptedStart, acceptedEnd,
+            nextAvailableDate, alternatives } = parsed.data;
 
-    const { decision, reasonCode, comment, acceptedStart, acceptedEnd, nextAvailableDate, alternatives } =
-      parsed.data;
+    const acceptedTimeWindow = acceptedStart && acceptedEnd
+      ? { start: acceptedStart, end: acceptedEnd }
+      : undefined;
 
+    const canonicalAlternatives = alternatives?.map(alt => ({
+      alternativeId: alt.alternativeId,
+      rank:          alt.rank,
+      timeWindow:    { start: alt.proposedStart, end: alt.proposedEnd },
+      crewSize:      alt.crewSize,
+      conditions:    alt.conditions,
+    }));
+
+    // ── 5. Call unified service ─────────────────────────────────────────────
+    const msgId = `taktresponse-${id}`;
     let result;
     try {
-      result = await createTaktResponse({
-        taktRequestId: id,
+      result = await processNuResponse({
+        taktRequestId:        id,
+        nuOrgId,
+        userId,
         decision,
+        acceptedTimeWindow,
         reasonCode,
         comment,
-        acceptedStart: acceptedStart ? new Date(acceptedStart) : undefined,
-        acceptedEnd: acceptedEnd ? new Date(acceptedEnd) : undefined,
+        alternatives:         canonicalAlternatives,
         nextAvailableDate,
-        createdByUserId: userId,
-        alternatives: alternatives?.map((alt) => ({
-          alternativeId: alt.alternativeId,
-          rank: alt.rank,
-          proposedStart: new Date(alt.proposedStart),
-          proposedEnd: new Date(alt.proposedEnd),
-          crewSize: alt.crewSize,
-          conditions: alt.conditions,
-        })),
+        answerableStatuses:   new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED"]),
+        currentRequestStatus: request.status,
+        messageId:            msgId,
       });
     } catch (err) {
       if (err instanceof TaktResponseValidationError) {
-        res.status(422).json({ error: err.message });
-        return;
+        res.status(422).json({ error: err.message }); return;
+      }
+      if (err instanceof ResponseConflictError) {
+        res.status(409).json({ error: err.message }); return;
+      }
+      if (err instanceof ResponseStatusError) {
+        res.status(409).json({ error: err.message }); return;
       }
       throw err;
     }
 
-    // Transition the TaktRequest status to match the decision
-    const nextStatus =
-      decision === "ACCEPTED"
-        ? "ACCEPTED"
-        : decision === "ALTERNATIVES_PROPOSED"
-          ? "ALTERNATIVES_PROPOSED"
-          : "REJECTED";
-
-    try {
-      await updateTaktRequestStatus(id, nextStatus as TaktRequestStatus);
-    } catch (err) {
-      if (err instanceof TaktRequestTransitionError) {
-        // Response was saved — return it but note the transition failed
-        res.status(201).json({
-          ...result,
-          warning: `Response recorded but status transition failed: ${(err as Error).message}`,
-        });
-        return;
-      }
-      throw err;
+    // ── 6. Idempotent: return existing without re-sending ───────────────────
+    if (result.idempotent) {
+      const [existingOutbox] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, msgId)).limit(1);
+      res.status(200).json({
+        id:               result.response.id,
+        taktRequestId:    id,
+        decision:         result.response.decision,
+        requestStatus:    result.response.decision === "ACCEPTED" ? "ACCEPTED"
+                        : result.response.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED"
+                        : "REJECTED",
+        transportStatus:  existingOutbox?.status ?? "UNKNOWN",
+      });
+      return;
     }
 
-    // Write hub audit message
-    const responseHubType =
-      decision === "ACCEPTED"
-        ? "TAKT_REQUEST_ACCEPTED"
-        : decision === "ALTERNATIVES_PROPOSED"
-          ? "TAKT_REQUEST_ALTERNATIVES_PROPOSED"
-          : "TAKT_REQUEST_REJECTED";
-    await db.insert(hubMessagesTable).values({
-      type: responseHubType as any,
-      senderOrgId: nuOrgId,
-      recipientOrgId: existing.guOrgId,
+    // ── 7. Send to GU inbox via transport ────────────────────────────────────
+    const guPayload = buildGuPayload(
+      id, decision, reasonCode, comment, acceptedTimeWindow, canonicalAlternatives, nextAvailableDate,
+    );
+    const envelope = {
+      messageId:     msgId,
+      schemaVersion: "1.0",
+      messageType:   DataspaceMessageType.TAKT_RESPONSE_SUBMITTED,
+      senderOrgId:   nuOrgId,
+      recipientOrgId: request.guOrgId,
       correlationId: id,
-      payload: { taktRequestId: id, decision, reasonCode, comment },
-    });
+      createdAt:     new Date(),
+      causationId:   null,
+      payload:       guPayload,
+    };
+    const transportResult = await transport.send(envelope);
 
-    res.status(201).json(result);
+    res.status(201).json({
+      id:              result.response.id,
+      taktRequestId:   id,
+      decision:        result.response.decision,
+      reasonCode:      result.response.reasonCode ?? null,
+      comment:         result.response.comment    ?? null,
+      requestStatus:   result.newStatus,
+      transportStatus: transportResult.status,
+    });
   },
 );
 
@@ -939,24 +927,21 @@ router.get(
 // NU creates a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
 // and delivers it to the GU's inbox via LocalHubTransport.
 //
-// Request body format (NEW — uses timeWindow objects, not flat dates):
-//   { decision, acceptedTimeWindow?, reasonCode?, comment?,
-//     alternatives?: [{alternativeId, rank, timeWindow, crewSize, conditions}],
+// This is the canonical response endpoint. Both this endpoint and the legacy
+// /response endpoint now delegate to processNuResponse() — all business logic
+// (validation, hash-based idempotency, atomic transaction) is in the service.
+//
+// Request body (canonical schema v1.0):
+//   { decision, acceptedTimeWindow?.{start,end}, reasonCode?, comment?,
+//     alternatives?: [{alternativeId, rank, timeWindow.{start,end}, crewSize?, conditions?}],
 //     nextAvailableDate? }
 //
-// Privacy:
-//   - Strict allowlist — unknown fields are rejected with 400.
-//   - Forbidden fields (localProjectId, resourceId, etc.) → 400.
-//   - Only public fields are transmitted to the GU's inbox.
+// Idempotency (SHA-256 payload hash):
+//   - Same request + identical payload → 200 with existing response (no duplicate row)
+//   - Same request + different payload (any field) → 409
 //
-// Idempotency:
-//   - messageId = deterministic `taktresponse-{requestId}`.
-//   - If a response already exists with the same decision → transport retried, 200.
-//   - If a response exists with a different decision → 409.
-//   - On transport failure: business response is saved; retry re-delivers.
-//
-// Status: UNDER_REVIEW → ACCEPTED | ALTERNATIVES_PROPOSED | REJECTED.
-//         DETAILS_RETRIEVED is also accepted as starting state.
+// Transaction: response insert + alternatives insert + request status update
+//   all succeed or all roll back; transport.send() runs after commit.
 //
 // Permissions: NU (AN), addressed NU only. GU, Hub → 403.
 router.post(
@@ -974,44 +959,28 @@ router.post(
     const nuOrgId = user.orgId;
     const userId  = user.userId!;
 
-    // ── 2. Privacy filter (run before Zod parse) ──────────────────────────────
+    // ── 2. Privacy filter (allowlist — run before Zod to give clear errors) ───
     const privacyError = checkResponsePrivacy(req.body);
     if (privacyError) {
       res.status(400).json({ error: privacyError });
       return;
     }
 
-    // ── 3. Parse + validate body ──────────────────────────────────────────────
+    // ── 3. Parse + validate canonical schema ──────────────────────────────────
     const alternativeSchema = z.object({
       alternativeId: z.string().min(1),
-      rank: z.number().int().min(1),
-      // timeWindow.start/end accept ISO date ("YYYY-MM-DD") or datetime strings
-      timeWindow: z.object({
-        start: z.string().min(1),
-        end:   z.string().min(1),
-      }),
-      crewSize:   z.number().int().min(1).optional(),
-      conditions: z.array(z.string()).optional(),
+      rank:          z.number().int().min(1),
+      timeWindow:    z.object({ start: z.string().min(1), end: z.string().min(1) }),
+      crewSize:      z.number().int().min(1).optional(),
+      conditions:    z.array(z.string()).optional(),
     });
 
     const bodySchema = z.object({
-      decision: z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
-      // acceptedTimeWindow accepts ISO date or datetime strings
-      acceptedTimeWindow: z.object({
-        start: z.string().min(1),
-        end:   z.string().min(1),
-      }).optional(),
-      reasonCode: z
-        .enum([
-          "RESOURCE_CONFLICT",
-          "NO_CAPACITY",
-          "EQUIPMENT_UNAVAILABLE",
-          "QUALIFICATION_MISSING",
-          "TIME_WINDOW_TOO_SHORT",
-          "OUTSIDE_PLANNING_HORIZON",
-          "OTHER",
-        ])
-        .optional(),
+      decision:          z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
+      acceptedTimeWindow: z.object({ start: z.string().min(1), end: z.string().min(1) }).optional(),
+      reasonCode:        z.enum(["RESOURCE_CONFLICT","NO_CAPACITY","EQUIPMENT_UNAVAILABLE",
+                                  "QUALIFICATION_MISSING","TIME_WINDOW_TOO_SHORT",
+                                  "OUTSIDE_PLANNING_HORIZON","OTHER"]).optional(),
       comment:           z.string().max(2000).optional(),
       alternatives:      z.array(alternativeSchema).max(3).optional(),
       nextAvailableDate: z.string().optional(),
@@ -1023,9 +992,8 @@ router.post(
       return;
     }
 
-    const {
-      decision, acceptedTimeWindow, reasonCode, comment, alternatives, nextAvailableDate,
-    } = parsed.data;
+    const { decision, acceptedTimeWindow, reasonCode, comment, alternatives, nextAvailableDate } =
+      parsed.data;
 
     // ── 4. Load TaktRequest ────────────────────────────────────────────────────
     const request = await getTaktRequestById(id);
@@ -1038,158 +1006,113 @@ router.post(
       return;
     }
 
-    // ── 5. Answerable status check ─────────────────────────────────────────────
+    // ── 5. Call unified service (idempotency + transaction + status update) ───
     const ANSWERABLE_STATUSES = new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED"]);
-
-    // ── 6. Idempotency: check existing response ───────────────────────────────
     const msgId = `taktresponse-${id}`;
-    const existing = await getTaktResponseWithAlternatives(id);
-    if (existing) {
-      if (existing.response.decision !== decision) {
-        res.status(409).json({
-          error: `A response with decision "${existing.response.decision}" already exists. ` +
-                 `Cannot replace it with "${decision}" for the same TaktRequest.`,
-        });
-        return;
+
+    let result;
+    try {
+      result = await processNuResponse({
+        taktRequestId:        id,
+        nuOrgId,
+        userId,
+        decision,
+        acceptedTimeWindow,
+        reasonCode,
+        comment,
+        alternatives,
+        nextAvailableDate,
+        answerableStatuses:   ANSWERABLE_STATUSES,
+        currentRequestStatus: request.status,
+        messageId:            msgId,
+      });
+    } catch (err) {
+      if (err instanceof TaktResponseValidationError) {
+        res.status(422).json({ error: err.message }); return;
       }
-      // Same decision: idempotent — look up the existing outbox entry directly
-      // (avoids re-sending with a reconstructed payload that may not match the stored one,
-      //  which would cause InvalidEnvelopeError due to date format differences)
+      if (err instanceof ResponseConflictError) {
+        res.status(409).json({ error: err.message }); return;
+      }
+      if (err instanceof ResponseStatusError) {
+        res.status(409).json({ error: err.message, currentStatus: request.status }); return;
+      }
+      throw err;
+    }
+
+    // ── 6. Idempotent: return existing without re-sending ────────────────────
+    if (result.idempotent) {
       const [existingOutbox] = await db
         .select()
         .from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, msgId))
         .limit(1);
 
-      const transportStatus = existingOutbox?.status ?? "DELIVERED";
-      const transportMessageId = existingOutbox?.messageId ?? msgId;
-
       res.status(200).json({
-        responseId: existing.response.id,
-        taktRequestId: id,
-        decision: existing.response.decision,
-        reasonCode: existing.response.reasonCode ?? null,
-        comment: existing.response.comment ?? null,
-        acceptedTimeWindow: existing.response.acceptedStart
-          ? { start: existing.response.acceptedStart.toISOString(), end: existing.response.acceptedEnd!.toISOString() }
+        responseId:        result.response.id,
+        taktRequestId:     id,
+        decision:          result.response.decision,
+        reasonCode:        result.response.reasonCode ?? null,
+        comment:           result.response.comment    ?? null,
+        acceptedTimeWindow: result.response.acceptedStart
+          ? { start: result.response.acceptedStart.toISOString(), end: result.response.acceptedEnd!.toISOString() }
           : null,
-        alternatives: existing.alternatives.map(a => ({
+        alternatives: result.alternatives.map(a => ({
           alternativeId: a.alternativeId,
-          rank: a.rank,
-          timeWindow: { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
-          crewSize: a.crewSize ?? null,
-          conditions: a.conditions ?? null,
+          rank:          a.rank,
+          timeWindow:    { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
+          crewSize:      a.crewSize   ?? null,
+          conditions:    a.conditions ?? null,
         })),
-        nextAvailableDate: existing.response.nextAvailableDate ?? null,
-        transportStatus: transportStatus,
-        transportMessageId: transportMessageId,
-        requestStatus: request.status,
-        createdAt: existing.response.createdAt.toISOString(),
+        nextAvailableDate:   result.response.nextAvailableDate ?? null,
+        // Report actual outbox status — never silently say DELIVERED when unknown
+        transportStatus:     existingOutbox?.status ?? "UNKNOWN",
+        transportMessageId:  existingOutbox?.messageId ?? msgId,
+        requestStatus:       result.newStatus,
+        createdAt:           result.response.createdAt.toISOString(),
       });
       return;
     }
 
-    // ── 7. Status guard (first-time response) ─────────────────────────────────
-    if (!ANSWERABLE_STATUSES.has(request.status)) {
-      res.status(409).json({
-        error: `TaktRequest cannot be answered in status "${request.status}". ` +
-               `Expected: ${[...ANSWERABLE_STATUSES].join(", ")}`,
-        currentStatus: request.status,
-      });
-      return;
-    }
-
-    // ── 8. Save response transactionally (business response first) ────────────
-    let result;
-    try {
-      result = await createTaktResponse({
-        taktRequestId: id,
-        decision,
-        reasonCode,
-        comment,
-        acceptedStart:  acceptedTimeWindow ? new Date(acceptedTimeWindow.start) : undefined,
-        acceptedEnd:    acceptedTimeWindow ? new Date(acceptedTimeWindow.end)   : undefined,
-        nextAvailableDate,
-        createdByUserId: userId,
-        messageId: msgId,
-        alternatives: alternatives?.map(alt => ({
-          alternativeId: alt.alternativeId,
-          rank:          alt.rank,
-          proposedStart: new Date(alt.timeWindow.start),
-          proposedEnd:   new Date(alt.timeWindow.end),
-          crewSize:      alt.crewSize,
-          conditions:    alt.conditions,
-        })),
-      });
-    } catch (err) {
-      if (err instanceof TaktResponseValidationError) {
-        res.status(422).json({ error: err.message });
-        return;
-      }
-      throw err;
-    }
-
-    // ── 9. Send TaktResponseMessage to GU inbox ───────────────────────────────
+    // ── 7. Send TaktResponseMessage to GU inbox ────────────────────────────────
     const guPayload = buildGuPayload(
       id, decision, reasonCode, comment, acceptedTimeWindow, alternatives, nextAvailableDate,
     );
     const envelope = {
-      messageId: msgId,
-      schemaVersion: "1.0",
-      messageType: DataspaceMessageType.TAKT_RESPONSE_SUBMITTED,
-      senderOrgId: nuOrgId,
+      messageId:      msgId,
+      schemaVersion:  "1.0",
+      messageType:    DataspaceMessageType.TAKT_RESPONSE_SUBMITTED,
+      senderOrgId:    nuOrgId,
       recipientOrgId: request.guOrgId,
-      correlationId: id,
-      createdAt: new Date(),
-      causationId: null,
-      payload: guPayload,
+      correlationId:  id,
+      createdAt:      new Date(),
+      causationId:    null,
+      payload:        guPayload,
     };
 
     const transportResult = await transport.send(envelope);
 
-    // ── 10. Update TaktRequest status ─────────────────────────────────────────
-    const nextStatus: TaktRequestStatus =
-      decision === "ACCEPTED"              ? "ACCEPTED" :
-      decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
-                                             "REJECTED";
-    try {
-      await updateTaktRequestStatus(id, nextStatus);
-    } catch (err) {
-      if (!(err instanceof TaktRequestTransitionError)) throw err;
-      // Non-fatal: response and message already saved — status may have advanced
-    }
-
-    // ── 11. Write audit events ─────────────────────────────────────────────────
+    // ── 8. Write audit events ─────────────────────────────────────────────────
     await writeAuditEvent({
-      requestId: id,
-      eventType: "RESPONSE_SUBMITTED",
-      actorOrgId: nuOrgId,
-      actorUserId: userId,
-      actorRole: "NU",
-      metadata: {
-        decision,
-        reasonCode: reasonCode ?? null,
-        transportMessageId: transportResult.messageId,
-        transportStatus: transportResult.status,
-      },
+      requestId: id, eventType: "RESPONSE_SUBMITTED",
+      actorOrgId: nuOrgId, actorUserId: userId, actorRole: "NU",
+      metadata: { decision, reasonCode: reasonCode ?? null,
+                  transportMessageId: transportResult.messageId,
+                  transportStatus: transportResult.status },
     });
     if (transportResult.status === "DELIVERED") {
       await writeAuditEvent({
-        requestId: id,
-        eventType: "RESPONSE_DELIVERED",
-        actorOrgId: nuOrgId,
-        actorUserId: userId,
-        actorRole: "NU",
+        requestId: id, eventType: "RESPONSE_DELIVERED",
+        actorOrgId: nuOrgId, actorUserId: userId, actorRole: "NU",
         metadata: { transportMessageId: transportResult.messageId },
       });
     }
 
     res.status(201).json({
-      responseId:       result.response.id,
-      taktRequestId:    id,
-      decision:         result.response.decision,
-      reasonCode:       result.response.reasonCode ?? null,
-      comment:          result.response.comment ?? null,
+      responseId:         result.response.id,
+      taktRequestId:      id,
+      decision:           result.response.decision,
+      reasonCode:         result.response.reasonCode ?? null,
+      comment:            result.response.comment    ?? null,
       acceptedTimeWindow: result.response.acceptedStart
         ? { start: result.response.acceptedStart.toISOString(), end: result.response.acceptedEnd!.toISOString() }
         : null,
@@ -1197,13 +1120,13 @@ router.post(
         alternativeId: a.alternativeId,
         rank:          a.rank,
         timeWindow:    { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
-        crewSize:      a.crewSize ?? null,
+        crewSize:      a.crewSize   ?? null,
         conditions:    a.conditions ?? null,
       })),
       nextAvailableDate:   result.response.nextAvailableDate ?? null,
       transportStatus:     transportResult.status,
       transportMessageId:  transportResult.messageId,
-      requestStatus:       nextStatus,
+      requestStatus:       result.newStatus,
       createdAt:           result.response.createdAt.toISOString(),
     });
   },
