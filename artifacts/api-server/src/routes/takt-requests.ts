@@ -293,7 +293,7 @@ router.post("/takt-requests", requireJwt, async (req, res): Promise<void> => {
     nuOrgId: result.request.nuOrgId,
     requestNumber: result.request.requestNumber,
     status: result.request.status,
-    responseRequiredBy: result.request.createdAt ?? null,
+    responseRequiredBy: result.request.responseRequiredBy ?? null,
     snapshotId: result.snapshot.id,
     createdAt: result.request.createdAt,
   });

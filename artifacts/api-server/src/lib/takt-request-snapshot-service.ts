@@ -286,6 +286,7 @@ export interface CreateTaktRequestWithSnapshotResult {
     nuOrgId: string;
     requestNumber: string;
     status: string;
+    responseRequiredBy: Date | null;
     createdAt: Date;
   };
   snapshot: {
@@ -438,6 +439,7 @@ export async function createTaktRequestWithSnapshot(
         nuOrgId: requestRow.nuOrgId,
         requestNumber: requestRow.requestNumber,
         status: requestRow.status,
+        responseRequiredBy: requestRow.responseRequiredBy ?? null,
         createdAt: requestRow.createdAt,
       },
       snapshot: {

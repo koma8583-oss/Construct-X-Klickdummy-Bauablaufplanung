@@ -42,6 +42,7 @@ import { eq, and } from "drizzle-orm";
 import type { TaktRequest, TaktRequestSnapshot, TaktVersion } from "@workspace/db";
 import { VersionConflictError } from "./takt-version-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import type { MessageTransport } from "../lib/transport/message-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
 
 const logger = pino({ name: "revision-service" });
@@ -125,6 +126,12 @@ export interface CreateRevisionParams {
     bimReference?: string;
     requiredResources?: string;
   };
+  /**
+   * Optional transport override — used in tests to inject a failing or mock
+   * transport without requiring module-level singleton replacement.
+   * Production code always omits this; the module-level LocalHubTransport is used.
+   */
+  _transport?: MessageTransport;
 }
 
 export interface CreateRevisionResult {
@@ -145,6 +152,7 @@ export async function createRevision(
     plannedTimeWindow, responseRequiredBy,
     subject, message, sendImmediately = false,
     idempotencyKey, taktUpdates,
+    _transport: effectiveTransport = transport,
   } = params;
 
   // ── 1. Load old TaktRequest ───────────────────────────────────────────────────
@@ -382,43 +390,73 @@ export async function createRevision(
   // ── 8. Optional send (post-commit, Task 6.6) ──────────────────────────────────
   let sent = false;
   if (sendImmediately) {
-    try {
-      const msgId  = `takt-revised-${txResult.newRequest.id}`;
-      const payload = {
-        taktRequestId:       txResult.newRequest.id,
-        supersedesRequestId: oldRequestId,
-        previousTaktVersion: takt.version,
-        taktVersion:         newVersionNumber,
-        projectReference:    project?.id ?? takt.projectId,
-        taktReference:       takt.id,
-        responseRequiredBy:  responseRequiredBy?.toISOString() ?? null,
-        detailsRef:          `/takt-requests/${txResult.newRequest.id}/details`,
-        subject:             subject ?? null,
-        message:             message ?? null,
-      };
+    const msgId = `takt-revised-${txResult.newRequest.id}`;
+    const payload = {
+      taktRequestId:       txResult.newRequest.id,
+      supersedesRequestId: oldRequestId,
+      previousTaktVersion: takt.version,
+      taktVersion:         newVersionNumber,
+      projectReference:    project?.id ?? takt.projectId,
+      taktReference:       takt.id,
+      responseRequiredBy:  responseRequiredBy?.toISOString() ?? null,
+      detailsRef:          `/takt-requests/${txResult.newRequest.id}/details`,
+      subject:             subject ?? null,
+      message:             message ?? null,
+    };
 
-      await transport.send({
-        messageId:     msgId,
-        schemaVersion: "1.0",
-        messageType:   DataspaceMessageType.TAKT_REQUEST_REVISED,
-        senderOrgId:   oldRequest.guOrgId,
+    let transportResult;
+    try {
+      transportResult = await effectiveTransport.send({
+        messageId:      msgId,
+        schemaVersion:  "1.0",
+        messageType:    DataspaceMessageType.TAKT_REQUEST_REVISED,
+        senderOrgId:    oldRequest.guOrgId,
         recipientOrgId: oldRequest.nuOrgId,
-        correlationId: txResult.newRequest.id,
-        createdAt:     new Date(),
-        causationId:   oldRequestId,
+        correlationId:  txResult.newRequest.id,
+        createdAt:      new Date(),
+        causationId:    oldRequestId,
         payload,
       });
+    } catch (err) {
+      // transport.send() threw (e.g. InvalidEnvelopeError) — leave request as DRAFT
+      logger.warn({ err, newRequestId: txResult.newRequest.id }, "sendImmediately transport threw — request remains DRAFT");
+      transportResult = null;
+    }
 
-      // Update new request status to DELIVERED
+    if (transportResult?.status === "DELIVERED") {
+      // Happy path: DRAFT → SENT → DELIVERED
+      const now = new Date();
       await db
         .update(taktRequestsTable)
-        .set({ status: "DELIVERED", sentAt: new Date(), deliveredAt: new Date() })
+        .set({
+          status:      "DELIVERED",
+          sentAt:      transportResult.sentAt      ?? now,
+          deliveredAt: transportResult.deliveredAt ?? now,
+        })
         .where(eq(taktRequestsTable.id, txResult.newRequest.id));
-
-      txResult.newRequest = { ...txResult.newRequest, status: "DELIVERED" as typeof txResult.newRequest.status };
+      txResult.newRequest = {
+        ...txResult.newRequest,
+        status: "DELIVERED" as typeof txResult.newRequest.status,
+      };
       sent = true;
-    } catch (err) {
-      logger.warn({ err, newRequestId: txResult.newRequest.id }, "sendImmediately transport failed — request remains DRAFT");
+    } else if (transportResult?.status === "SENT") {
+      // Async confirmation pending: advance to SENT only
+      const now = new Date();
+      await db
+        .update(taktRequestsTable)
+        .set({ status: "SENT", sentAt: transportResult.sentAt ?? now })
+        .where(eq(taktRequestsTable.id, txResult.newRequest.id));
+      txResult.newRequest = {
+        ...txResult.newRequest,
+        status: "SENT" as typeof txResult.newRequest.status,
+      };
+      sent = true;
+    } else {
+      // FAILED or null: leave business object intact (stays DRAFT)
+      logger.warn(
+        { transportResult, newRequestId: txResult.newRequest.id },
+        "sendImmediately transport failed — request remains DRAFT",
+      );
     }
   }
 
