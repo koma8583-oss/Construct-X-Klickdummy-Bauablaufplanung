@@ -589,6 +589,45 @@ export async function updateTaktRequestStatus(
 }
 
 /**
+ * Atomically transitions a TaktRequest from DELIVERED to DETAILS_RETRIEVED.
+ *
+ * Uses a single conditional UPDATE:
+ *   UPDATE takt_requests
+ *      SET status='DETAILS_RETRIEVED', details_retrieved_at=NOW()
+ *    WHERE id=? AND status='DELIVERED'
+ *   RETURNING *
+ *
+ * Returns the updated row when THIS call won the race, or null when
+ * another concurrent caller already performed the transition.
+ *
+ * This is the ONLY correct way to gate a DETAILS_RETRIEVED audit event —
+ * non-atomic read-validate-update sequences allow two concurrent callers
+ * to both write the audit event. Callers must write DETAILS_RETRIEVED audit
+ * events only when this function returns a non-null row.
+ */
+export async function transitionToDetailsRetrievedAtomic(
+  id: string,
+  detailsRetrievedAt: Date,
+): Promise<TaktRequest | null> {
+  const [updated] = await db
+    .update(taktRequestsTable)
+    .set({
+      status: "DETAILS_RETRIEVED" as TaktRequestStatus,
+      detailsRetrievedAt,
+    })
+    .where(
+      and(
+        eq(taktRequestsTable.id, id),
+        eq(taktRequestsTable.status, "DELIVERED" as TaktRequestStatus),
+      ),
+    )
+    .returning();
+
+  // `updated` is undefined when no row matched (already past DELIVERED)
+  return updated ?? null;
+}
+
+/**
  * Marks a TaktRequest as SUPERSEDED.
  * Called when a revised request is created that replaces this one.
  * Uses the standard transition validation — SUPERSEDED is only reachable

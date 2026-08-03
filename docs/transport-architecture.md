@@ -253,7 +253,24 @@ The existing 7 delegation-based values are retained unchanged.
 
 ---
 
-## 8 — Analysis Summary
+## 8 — EDC / Tractus-X Dataspace Readiness
+
+The `MessageTransport` interface is the single integration point for replacing
+`LocalHubTransport` with an EDC connector implementation. No domain service,
+route handler, or business rule needs to change when that swap is made.
+
+Every coordination data-exchange operation writes an entry to
+`takt_request_audit_events` (see `lib/db/src/schema/takt-request-audit-events.ts`).
+This table is transport-agnostic: the `EdcTransport` will write the same event
+types, so the coordination history is consistent regardless of transport.
+
+For the complete asset classification, Provider-Push flow design, contract/policy
+placeholder mapping, and EDC migration checklist, see
+**`docs/dataspace-readiness.md`**.
+
+---
+
+## 9 — Analysis Summary
 
 **Existing hub/message components analysed:**
 `hub_messages` (table + schema) · `hub_admins` · `hub_message_type` enum · `writeHubMessage` helper · `webhook_subscriptions` + `webhook_events` · hub routes (`/messages`, `/messages/timeline/:delegationId`, `/admin/users`, `/admin/orgs`) · `webhookDispatcher` · delegation route hub-call sites (4 locations)

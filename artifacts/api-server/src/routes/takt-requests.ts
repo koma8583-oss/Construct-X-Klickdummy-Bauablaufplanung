@@ -30,6 +30,7 @@ import {
   listTaktRequestsForGuEnriched,
   listTaktRequestsForNu,
   updateTaktRequestStatus,
+  transitionToDetailsRetrievedAtomic,
   createTaktRequestSnapshot,
   TaktRequestTransitionError,
   DuplicateSnapshotError,
@@ -64,6 +65,7 @@ import {
   createRevision,
   RevisionError,
 } from "../services/revision-service";
+import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-service";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
 
 // Module-level transport singleton — stateless, safe to share across requests.
@@ -463,6 +465,27 @@ router.post(
         payload: { taktRequestId: id, taktId: existing.taktId },
       });
 
+      // ── 9a. Write structured audit events ─────────────────────────────
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "NOTIFICATION_SENT",
+        actorOrgId: guOrgId,
+        actorUserId: req.user!.userId,
+        actorRole: "GU",
+        metadata: { transportMessageId: transportResult.messageId },
+      });
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "NOTIFICATION_DELIVERED",
+        actorOrgId: guOrgId,
+        actorUserId: req.user!.userId,
+        actorRole: "GU",
+        metadata: {
+          transportMessageId: transportResult.messageId,
+          deliveredAt: (transportResult.deliveredAt ?? new Date()).toISOString(),
+        },
+      });
+
       const [taktAfter] = await db
         .select()
         .from(takteTable)
@@ -565,23 +588,27 @@ router.get(
       return;
     }
 
-    // ── 5. First NU access: DELIVERED → DETAILS_RETRIEVED ────────────────
+    // ── 5. First NU access: atomic DELIVERED → DETAILS_RETRIEVED ────────────
+    // transitionToDetailsRetrievedAtomic uses a single conditional UPDATE
+    // (WHERE status='DELIVERED') so only one concurrent caller can win.
+    // The returned row is non-null only for the winner; concurrent callers
+    // get null and must NOT write the audit event.
     let updatedRequest = request;
+    let firstAccessTransitionSucceeded = false;
     if (isAddressedNu && request.status === "DELIVERED") {
-      try {
-        updatedRequest = await updateTaktRequestStatus(id, "DETAILS_RETRIEVED", {
-          detailsRetrievedAt: new Date(),
-        }) ?? request;
-      } catch (err) {
-        if (!(err instanceof TaktRequestTransitionError)) throw err;
-        // Already past DELIVERED — another concurrent call beat us. Reload.
+      const transitioned = await transitionToDetailsRetrievedAtomic(id, new Date());
+      if (transitioned) {
+        updatedRequest = transitioned;
+        firstAccessTransitionSucceeded = true;
+      } else {
+        // Another concurrent call won the race — reload current state.
         updatedRequest = (await getTaktRequestWithSnapshot(id))?.request ?? request;
       }
     }
 
-    // ── 6. Audit log (minimal — no sensitive payload content) ─────────────
-    // detailsRetrievedAt on the request row is the durable audit trail.
-    // Structured log entry is the lightweight complement.
+    // ── 6. Audit log ────────────────────────────────────────────────────────
+    // detailsRetrievedAt on the request row is the durable timestamp.
+    // Structured log + DB audit event are the queryable complement.
     req.log.info(
       {
         requestId: id,
@@ -589,10 +616,29 @@ router.get(
         callerUserId: req.user!.userId,
         role: isAddressedNu ? "NU" : "GU",
         requestStatus: updatedRequest.status,
-        firstAccess: request.status === "DELIVERED" && isAddressedNu,
+        firstAccess: firstAccessTransitionSucceeded,
       },
       "takt-request details retrieved",
     );
+
+    // Persist to structured audit trail only when THIS call won the race for
+    // the DELIVERED → DETAILS_RETRIEVED transition.  Concurrent losers and
+    // all subsequent re-reads do NOT write a second event.
+    // GU preview accesses are never recorded as coordination events.
+    if (firstAccessTransitionSucceeded) {
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "DETAILS_RETRIEVED",
+        actorOrgId: callerOrgId ?? null,
+        actorUserId: req.user!.userId,
+        actorRole: "NU",
+        metadata: {
+          firstAccess: true,
+          requestStatusBefore: "DELIVERED",
+          requestStatusAfter: updatedRequest.status,
+        },
+      });
+    }
 
     // ── 7. Build response — snapshot payload, never live Takt data ────────
     res.json({
@@ -640,18 +686,23 @@ router.get(
       return;
     }
 
-    // Advance to DETAILS_RETRIEVED if currently in DELIVERED
+    // Advance to DETAILS_RETRIEVED atomically (WHERE status='DELIVERED').
+    // Only the winning caller (non-null return) writes the audit event.
+    let snapshotTransitionSucceeded = false;
     if (request.status === "DELIVERED") {
-      try {
-        await updateTaktRequestStatus(id, "DETAILS_RETRIEVED", {
-          detailsRetrievedAt: new Date(),
-        });
-      } catch (err) {
-        if (!(err instanceof TaktRequestTransitionError)) {
-          throw err;
-        }
-        // Already past this state — not an error
-      }
+      const transitioned = await transitionToDetailsRetrievedAtomic(id, new Date());
+      snapshotTransitionSucceeded = transitioned !== null;
+    }
+
+    // Write audit event only when THIS call successfully performed the transition.
+    if (snapshotTransitionSucceeded) {
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "DETAILS_RETRIEVED",
+        actorOrgId: nuOrgId,
+        actorRole: "NU",
+        metadata: { firstAccess: true, requestStatusBefore: "DELIVERED" },
+      });
     }
 
     res.json({ request, snapshot });
@@ -1108,6 +1159,31 @@ router.post(
       // Non-fatal: response and message already saved — status may have advanced
     }
 
+    // ── 11. Write audit events ─────────────────────────────────────────────────
+    await writeAuditEvent({
+      requestId: id,
+      eventType: "RESPONSE_SUBMITTED",
+      actorOrgId: nuOrgId,
+      actorUserId: userId,
+      actorRole: "NU",
+      metadata: {
+        decision,
+        reasonCode: reasonCode ?? null,
+        transportMessageId: transportResult.messageId,
+        transportStatus: transportResult.status,
+      },
+    });
+    if (transportResult.status === "DELIVERED") {
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "RESPONSE_DELIVERED",
+        actorOrgId: nuOrgId,
+        actorUserId: userId,
+        actorRole: "NU",
+        metadata: { transportMessageId: transportResult.messageId },
+      });
+    }
+
     res.status(201).json({
       responseId:       result.response.id,
       taktRequestId:    id,
@@ -1306,6 +1382,20 @@ router.post(
             });
           }
         }
+
+        // Write structured audit event
+        await writeAuditEvent({
+          requestId: id,
+          eventType: "GU_DECISION_MADE",
+          actorOrgId: guOrgId,
+          actorUserId: userId,
+          actorRole: "GU",
+          metadata: {
+            decisionType,
+            acceptedAlternativeId: acceptedAlternativeId ?? null,
+            updatedRequestStatus: updatedRequest.status,
+          },
+        });
       }
 
       res.status(idempotent ? 200 : 201).json({
@@ -1407,6 +1497,20 @@ router.post(
         taktUpdates,
       });
 
+      // Write audit event on the OLD request (the one being superseded)
+      await writeAuditEvent({
+        requestId: id,
+        eventType: "REVISION_CREATED",
+        actorOrgId: guOrgId,
+        actorUserId: userId,
+        actorRole: "GU",
+        metadata: {
+          newRequestId: result.newRequest.id,
+          newTaktVersion: result.newTaktVersion.version,
+          sent: result.sent,
+        },
+      });
+
       res.status(201).json({
         oldRequestId:        result.oldRequest.id,
         oldRequestStatus:    "SUPERSEDED",
@@ -1433,4 +1537,66 @@ router.post(
   },
 );
 
+// ── GET /takt-requests/:id/audit-trail ───────────────────────────────────────
+// Returns the coordination audit trail for a TaktRequest.
+//
+// Access:
+//   GU (owning org):  full event list — all event types.
+//   NU (addressed):   filtered to externally visible events only
+//                     (NOTIFICATION_DELIVERED, DETAILS_RETRIEVED,
+//                      AVAILABILITY_CHECK_DONE, RESPONSE_SUBMITTED,
+//                      RESPONSE_DELIVERED).
+//   Hub admin:        full event list (read-only oversight).
+//   Other callers:    403.
+//
+// Events are returned in ascending chronological order (occurredAt ASC).
+// Each entry: { id, requestId, eventType, actorOrgId, actorUserId, actorRole,
+//               metadata, occurredAt }
+router.get(
+  "/takt-requests/:id/audit-trail",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const callerOrgId = req.user!.orgId;
+    const isHubAdmin  = req.user!.hubAdmin;
+    const id = req.params.id as string;
+
+    // ── 1. Load request to check access ──────────────────────────────────────
+    const request = await getTaktRequestById(id);
+    if (!request) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+
+    // ── 2. Determine caller role ──────────────────────────────────────────────
+    const isOwnerGu     = callerOrgId === request.guOrgId;
+    const isAddressedNu = callerOrgId === request.nuOrgId;
+
+    if (!isHubAdmin && !isOwnerGu && !isAddressedNu) {
+      res.status(403).json({
+        error: "Access denied. Only the creating GU, addressed NU, or a Hub admin may view this audit trail.",
+      });
+      return;
+    }
+
+    // ── 3. Query audit trail ──────────────────────────────────────────────────
+    const callerRole = isHubAdmin ? "HUB_ADMIN" : isOwnerGu ? "GU" : "NU";
+    const events = await getAuditTrail(id, callerRole);
+
+    res.json({
+      requestId: id,
+      callerRole,
+      events: events.map((e) => ({
+        id: e.id,
+        eventType: e.eventType,
+        actorOrgId: e.actorOrgId,
+        actorUserId: e.actorUserId,
+        actorRole: e.actorRole,
+        metadata: e.metadata,
+        occurredAt: e.occurredAt.toISOString(),
+      })),
+    });
+  },
+);
+
 export default router;
+

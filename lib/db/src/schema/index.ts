@@ -1,5 +1,6 @@
 export * from "./availability-checks";
 export * from "./delegations";
+export * from "./takt-request-audit-events";
 export * from "./hub";
 export * from "./messages";
 export * from "./organizations";

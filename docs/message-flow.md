@@ -93,12 +93,39 @@ The `MessageEnvelope`, `TaktRequestNotificationPayload`, and `TaktResponsePayloa
 
 ---
 
-## Future migration (EDC)
+## Audit trail
 
-When the local transport is replaced by EDC:
+Every data-exchange step in this flow writes an entry to
+`takt_request_audit_events`. The `GET /api/takt-requests/:id/audit-trail`
+endpoint exposes this trail:
 
-- Each step above becomes an EDC transfer process or contract-negotiated data pull.
+- **GU** (owning org): full event list
+- **NU** (addressed org): NOTIFICATION_DELIVERED, DETAILS_RETRIEVED,
+  AVAILABILITY_CHECK_DONE, RESPONSE_SUBMITTED, RESPONSE_DELIVERED
+- **Hub admin**: full event list (read-only)
+
+---
+
+## Future migration (EDC / Tractus-X)
+
+When the local transport is replaced by an Eclipse Dataspace Connector (EDC):
+
+- Each step above becomes an EDC transfer process (Provider-Push) or
+  contract-negotiated data transfer.
 - `messageId`, `correlationId`, and `causationId` remain unchanged.
 - JSON payload schemas remain unchanged.
-- Digital identities and policy enforcement are added at the transport layer only.
-- Domain logic (steps 1–5) is not affected.
+- Digital identities (BPN) and usage-policy enforcement (ODRL) are added at
+  the transport layer only — no domain service changes.
+- `EdcTransport` implements the same `MessageTransport` interface as
+  `LocalHubTransport`; the swap is a one-line factory change.
+- The audit trail (`takt_request_audit_events`) records identical event types
+  regardless of which transport is active.
+
+For the complete EDC asset classification, Provider-Push flow, contract/policy
+placeholder design, and migration checklist, see **`docs/dataspace-readiness.md`**.
+
+Step 2 (NU retrieves details) currently uses Consumer-Pull (`GET /details`).
+The EDC equivalent is Provider-Push: the GU connector pushes the snapshot asset
+to the NU connector after contract negotiation — the NU no longer polls. The
+`DETAILS_RETRIEVED` audit event and status transition are written identically
+in both models.
