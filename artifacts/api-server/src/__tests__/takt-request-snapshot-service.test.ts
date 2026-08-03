@@ -61,6 +61,11 @@ const TAKT_FIXTURE: Takt = {
   updatedAt: new Date("2026-08-01T00:00:00Z"),
   version: 1,
   lifecycleStatus: "PLANNED",
+  // GU-internal fields — must be null/undefined in fixture (never appear in snapshot)
+  internalNote: null,
+  costEstimate: null,
+  procurementPriority: null,
+  riskClassification: null,
 };
 
 const PREDECESSORS: TaktDependency[] = [

@@ -3,6 +3,20 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
 
+/** Vergabe-Priorität — GU-internal, never released to NU */
+export const taktProcurementPriorityEnum = pgEnum("takt_procurement_priority", [
+  "HIGH",
+  "MEDIUM",
+  "LOW",
+]);
+
+/** Risikoklasse — GU-internal, never released to NU */
+export const taktRiskClassificationEnum = pgEnum("takt_risk_classification", [
+  "A",
+  "B",
+  "C",
+]);
+
 /** Dedicated lifecycle status for the Takt itself — separate from TaktStatus (Task 2.2/2.3) */
 export const taktLifecycleStatusEnum = pgEnum("takt_lifecycle_status", [
   "DRAFT",
@@ -61,6 +75,19 @@ export const takteTable = pgTable("takte", {
   lifecycleStatus: taktLifecycleStatusEnum("lifecycle_status")
     .notNull()
     .default("PLANNED"),
+
+  // ── GU-internal fields — NEVER released to NU via TaktRequestSnapshot ────
+  // These fields are excluded from buildTaktRequestSnapshot() by design.
+  // See docs/data-ownership.md § Takt field classification for the policy.
+
+  /** Internal notes for the GU team — not shared with NU */
+  internalNote: text("internal_note"),
+  /** Internal cost estimate / budget note — not shared with NU */
+  costEstimate: text("cost_estimate"),
+  /** Procurement priority (HIGH/MEDIUM/LOW) — not shared with NU */
+  procurementPriority: taktProcurementPriorityEnum("procurement_priority"),
+  /** Risk classification (A/B/C) — not shared with NU */
+  riskClassification: taktRiskClassificationEnum("risk_classification"),
 });
 
 export const insertTaktSchema = createInsertSchema(takteTable).omit({

@@ -156,6 +156,19 @@ export { DuplicateSnapshotError } from "./takt-request-repository";
  * Whitelist: only fields explicitly listed here are included in the snapshot.
  * No spread of full Takt/Project objects. Confidential data is excluded by
  * omission, not by blacklist.
+ *
+ * ── GU-INTERNAL FIELDS — PERMANENTLY EXCLUDED FROM SNAPSHOT ────────────────
+ * The following Takt columns are GU-internal and must NEVER appear in the
+ * snapshot payload released to the NU. Exclusion is enforced by the whitelist
+ * principle: these fields are simply not referenced below.
+ *
+ *   takt.internalNote          — internal GU notes
+ *   takt.costEstimate          — internal budget / cost estimate
+ *   takt.procurementPriority   — internal procurement priority (HIGH/MEDIUM/LOW)
+ *   takt.riskClassification    — internal risk classification (A/B/C)
+ *
+ * See docs/data-ownership.md § "Takt field classification" for the policy.
+ * ────────────────────────────────────────────────────────────────────────────
  */
 export function buildTaktRequestSnapshot(input: {
   takt: Takt;

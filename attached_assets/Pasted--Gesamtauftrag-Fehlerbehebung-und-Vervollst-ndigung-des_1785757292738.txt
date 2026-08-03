@@ -1,0 +1,1748 @@
+# Gesamtauftrag – Fehlerbehebung und Vervollständigung des PoC Task Coordination Flow
+
+Arbeite den aktuellen Stand des Repositorys `Task-Coordination-Flow` vollständig durch und behebe die nachfolgend beschriebenen Sicherheitsprobleme, fachlichen Inkonsistenzen und fehlenden Bestandteile.
+
+Führe nicht nur eine Analyse durch, sondern implementiere die Korrekturen vollständig.
+
+## Ziel
+
+Nach Abschluss muss der PoC folgende Eigenschaften besitzen:
+
+* sichere Trennung der Organisationen
+* AG sieht ausschließlich eigene Projekte
+* jedes AG-Projekt besitzt eigene projektbezogene AN-Zuordnungen
+* AN sieht ausschließlich eigene lokale Projekte, Ressourcen und Buchungen
+* unveränderliche TaktRequest-Snapshots
+* eindeutiger TaktRequest- und Response-Prozess
+* konsistente Statusübergänge
+* transaktional sichere Fachlogik
+* idempotenter Nachrichtentransport
+* funktionierende Fristen und Reminder
+* vollständige AG-, AN- und Hub-Oberflächen
+* Reporting und Audit entsprechend Aufgabe 8
+* Schema-Version `1.0`
+* erfolgreiche Tests, Typecheck und Builds
+
+## Begriffe
+
+Behalte die vorhandenen Begriffe des Repositorys bei:
+
+```text
+AG = Generalunternehmer beziehungsweise GU
+AN = Nachunternehmer beziehungsweise NU
+```
+
+Führe keine globale Umbenennung durch.
+
+## Nicht implementieren
+
+Nicht Bestandteil dieses Auftrags:
+
+* kein EDC
+* kein Tractus-X Connector
+* kein Dataspace Protocol
+* keine Wallet
+* keine Verifiable Credentials
+* keine Policy Negotiation
+* keine externe Schema-Registry
+* keine produktive E-Mail- oder SMS-Integration
+
+---
+
+# Phase 1 – Sicherheitskritische Mandantentrennung korrigieren
+
+## 1.1 Legacy-Projektendpunkte absichern
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/routes/projects.ts
+```
+
+und alle weiteren Projekt-Routen.
+
+Folgende Endpunkte müssen zwingend die Organisation des angemeldeten AG prüfen:
+
+```http
+GET    /projects/:projectId
+PATCH  /projects/:projectId
+DELETE /projects/:projectId
+
+GET    /projects/:projectId/contractors
+POST   /projects/:projectId/contractors
+DELETE /projects/:projectId/contractors/:anOrgId
+```
+
+## Verbindliche Regel
+
+Ein Projektzugriff ist nur zulässig, wenn:
+
+```text
+authenticatedUser.orgType = AG
+AND
+project.agOrgId = authenticatedUser.orgId
+```
+
+Die Prüfung muss serverseitig erfolgen.
+
+Die bloße Kenntnis einer `projectId` darf niemals genügen.
+
+## Erwartetes Verhalten
+
+* eigener AG und eigenes Projekt → Zugriff erlaubt
+* anderer AG → `403` oder etabliertes sicheres `404`
+* AN → `403`
+* Hub → `403`
+* nicht authentifiziert → `401`
+
+## Keine ungefilterten Projektabfragen
+
+Vermeide:
+
+```ts
+where(eq(projects.id, projectId))
+```
+
+wenn keine zusätzliche AG-Organisationsprüfung erfolgt.
+
+Verwende sinngemäß:
+
+```ts
+where(
+  and(
+    eq(projects.id, projectId),
+    eq(projects.agOrgId, authenticatedUser.orgId)
+  )
+)
+```
+
+## 1.2 Physisches Löschen entfernen
+
+Historisch verwendete Projekte und AN-Zuordnungen dürfen nicht physisch gelöscht werden.
+
+Ersetze physische DELETE-Operationen durch Statusänderungen.
+
+Für Projekte beispielsweise:
+
+```text
+ACTIVE
+COMPLETED
+CANCELLED
+ARCHIVED
+```
+
+Für Projekt-AN-Zuordnungen beispielsweise:
+
+```text
+PLANNED
+ACTIVE
+INACTIVE
+COMPLETED
+CANCELLED
+```
+
+Alte TaktRequests müssen weiterhin auf die damaligen Projekt- und AN-Zuordnungen verweisen können.
+
+Falls DELETE-Endpunkte aus Kompatibilitätsgründen bestehen bleiben müssen:
+
+* intern nur deaktivieren
+* keine Daten physisch löschen
+* Response und OpenAPI entsprechend dokumentieren
+
+## Tests
+
+Ergänze mindestens:
+
+* AG A kann Projekt von AG A lesen
+* AG A kann Projekt von AG B nicht lesen
+* AG A kann Projekt von AG B nicht bearbeiten
+* AG A kann Projekt von AG B nicht löschen oder archivieren
+* AG A kann AN-Zuordnungen von AG B nicht lesen
+* AG A kann AN-Zuordnungen von AG B nicht verändern
+* AN erhält keinen Zugriff auf AG-Verwaltungsendpunkte
+* deaktivierte Zuordnung bleibt historisch lesbar
+
+---
+
+# Phase 2 – Internen Deadline-Endpunkt absichern
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/routes/internal.ts
+```
+
+Der Endpunkt:
+
+```http
+POST /internal/jobs/deadlines/run
+```
+
+darf nicht ohne Authentifizierung erreichbar sein.
+
+## Umsetzung
+
+Implementiere mindestens eine robuste Sicherung.
+
+Bevorzugte Lösung:
+
+```text
+Authorization: Bearer <INTERNAL_JOB_TOKEN>
+```
+
+mit:
+
+```text
+INTERNAL_JOB_TOKEN
+```
+
+aus einer Umgebungsvariable.
+
+Alternativ oder zusätzlich:
+
+* nur `HUB_ADMIN`
+* nur internes Netzwerk
+* Route in Produktion vollständig deaktivieren
+* Deadline Worker als separaten Prozess ausführen
+
+## Anforderungen
+
+* Token niemals im Repository speichern
+* Token niemals loggen
+* kein frei wählbarer Testzeitpunkt in Produktion
+* in Produktion keinen `now`-Parameter aus Benutzerinput akzeptieren
+* bei fehlendem oder falschem Token `401` oder `403`
+* Route nur aktivieren, wenn sie explizit konfiguriert wurde
+
+## Tests
+
+* ohne Token abgelehnt
+* falscher Token abgelehnt
+* korrekter Token erlaubt
+* Produktion akzeptiert keine frei gesetzte Testzeit
+* Secrets erscheinen nicht in Logs
+
+---
+
+# Phase 3 – Revisionsversand und Zustellstatus korrigieren
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/services/revision-service.ts
+artifacts/api-server/src/lib/transport/local-hub-transport.ts
+```
+
+## Problem
+
+Das Ergebnis von:
+
+```ts
+transport.send(...)
+```
+
+darf nicht ignoriert werden.
+
+Der neue Revisionsrequest darf nur dann auf `DELIVERED` gesetzt werden, wenn das Transportergebnis tatsächlich:
+
+```text
+DELIVERED
+```
+
+ist.
+
+## Umsetzung
+
+Sinngemäß:
+
+```ts
+const transportResult = await transport.send(envelope);
+
+switch (transportResult.status) {
+  case "DELIVERED":
+    // fachlichen Requeststatus entsprechend aktualisieren
+    break;
+
+  case "SENT":
+    // nur SENT setzen
+    break;
+
+  case "FAILED":
+    // Fachobjekte bleiben gespeichert
+    // Request nicht als DELIVERED markieren
+    // Outbox bleibt FAILED
+    break;
+
+  default:
+    // keinen positiven Zustellstatus annehmen
+}
+```
+
+## Verbindliche Regeln
+
+* Transportfehler erzeugt keine zweite Revision.
+* Transportfehler erzeugt keine zweite Taktversion.
+* Transportfehler erzeugt keinen zweiten Snapshot.
+* Retry verwendet dieselbe `messageId`.
+* Fachliche Revision bleibt gespeichert.
+* Technischer Status bleibt getrennt vom fachlichen Requeststatus.
+* `DELIVERED` darf niemals angenommen werden, wenn kein positiver Transportnachweis vorliegt.
+
+## Tests
+
+* erfolgreiche Zustellung → `DELIVERED`
+* Transport liefert `FAILED` → Request nicht `DELIVERED`
+* Transport wirft Fehler → Fachobjekte bleiben erhalten
+* Retry verwendet dieselbe Nachricht
+* Retry erzeugt keine zweite Version
+* Retry erzeugt keinen zweiten Request
+* Retry erzeugt keinen zweiten Snapshot
+
+---
+
+# Phase 4 – Fehlerhafte Antwortfrist korrigieren
+
+Prüfe:
+
+```text
+POST /takt-requests
+```
+
+und insbesondere die Response-Zuordnung in:
+
+```text
+artifacts/api-server/src/routes/takt-requests.ts
+```
+
+## Fehler
+
+`responseRequiredBy` darf nicht mit `createdAt` befüllt werden.
+
+Korrigiere sinngemäß:
+
+```ts
+responseRequiredBy: result.request.responseRequiredBy ?? null
+```
+
+und nicht:
+
+```ts
+responseRequiredBy: result.request.createdAt ?? null
+```
+
+## Zusätzliche Prüfung
+
+Suche im gesamten Repository nach weiteren fehlerhaften Mappings zwischen:
+
+```text
+createdAt
+responseRequiredBy
+expiresAt
+guDecisionRequiredBy
+```
+
+## Tests
+
+* übergebene Antwortfrist wird gespeichert
+* Create-Response enthält exakt diese Antwortfrist
+* `createdAt` bleibt davon unabhängig
+* ungültige Frist wird abgelehnt
+* Frist in der Vergangenheit wird abgelehnt
+
+---
+
+# Phase 5 – TaktRequest-Erstellung vereinheitlichen
+
+Aktuell existieren möglicherweise parallele Endpunkte:
+
+```http
+POST /projects/:projectId/takt-requests
+POST /takt-requests
+```
+
+## Ziel
+
+Es darf nur eine kanonische fachliche Implementierung zur Erstellung eines TaktRequests geben.
+
+Beide Routen dürfen aus Kompatibilitätsgründen bestehen bleiben, müssen aber intern denselben Application Service verwenden.
+
+Beispielsweise:
+
+```text
+createTaktRequestWithSnapshot()
+```
+
+## Verbindlicher Ablauf
+
+Die Erstellung muss in einer Datenbanktransaktion ausführen:
+
+1. Projektberechtigung prüfen
+2. projektbezogene AN-Zuordnung prüfen
+3. Takt und Taktversion prüfen
+4. TaktRequest im Status `DRAFT` anlegen
+5. unveränderlichen Snapshot erzeugen
+6. Snapshot speichern
+7. Commit
+
+## Snapshot
+
+Der Snapshot wird beim Erstellen des Requests erzeugt.
+
+Entferne eine Logik, die beim späteren Versand ersatzweise einen Snapshot aus dem dann aktuellen Takt erzeugt.
+
+Nicht zulässig:
+
+```text
+Request wurde ohne Snapshot erstellt
+→ Takt wird später verändert
+→ Versand erzeugt Snapshot aus verändertem Takt
+```
+
+## Falls Legacy-Daten ohne Snapshot existieren
+
+Implementiere eine klar begrenzte Migrations- oder Reparaturlogik:
+
+* nur für vorhandene historische Daten
+* eindeutig markieren
+* nicht für neue Requests verwenden
+* dokumentieren, dass der Snapshot rekonstruiert wurde
+
+## Tests
+
+* beide Create-Routen verwenden denselben Service
+* jeder neue Request besitzt genau einen Snapshot
+* Snapshot entspricht der Taktversion beim Erstellen
+* spätere Taktänderung verändert Snapshot nicht
+* Versand erzeugt keinen neuen Ersatz-Snapshot
+* AN eines anderen Projekts wird abgelehnt
+* deaktivierte Projekt-AN-Zuordnung wird abgelehnt
+
+---
+
+# Phase 6 – Response-API vereinheitlichen
+
+Prüfe parallele Endpunkte wie:
+
+```http
+POST /takt-requests/:id/response
+POST /takt-requests/:id/responses
+```
+
+und unterschiedliche Payload-Formate.
+
+## Kanonisches Response-Schema
+
+Verwende ausschließlich folgende externe Struktur:
+
+### ACCEPTED
+
+```json
+{
+  "schemaVersion": "1.0",
+  "decision": "ACCEPTED",
+  "acceptedTimeWindow": {
+    "start": "2026-09-14T05:00:00Z",
+    "end": "2026-09-18T14:00:00Z"
+  },
+  "comment": "Der Zeitraum kann bestätigt werden."
+}
+```
+
+### ALTERNATIVES_PROPOSED
+
+```json
+{
+  "schemaVersion": "1.0",
+  "decision": "ALTERNATIVES_PROPOSED",
+  "reasonCode": "RESOURCE_CONFLICT",
+  "comment": "Der ursprüngliche Zeitraum ist nicht verfügbar.",
+  "alternatives": [
+    {
+      "alternativeId": "ALT-01",
+      "rank": 1,
+      "timeWindow": {
+        "start": "2026-09-16T05:00:00Z",
+        "end": "2026-09-22T14:00:00Z"
+      },
+      "crewSize": 6,
+      "conditions": []
+    }
+  ]
+}
+```
+
+### REJECTED
+
+```json
+{
+  "schemaVersion": "1.0",
+  "decision": "REJECTED",
+  "reasonCode": "NO_CAPACITY",
+  "comment": "Keine ausreichende Kapazität vorhanden.",
+  "nextAvailableDate": "2026-10-05"
+}
+```
+
+## Legacy-Endpunkt
+
+Falls der alte Endpunkt erhalten bleiben muss:
+
+* als deprecated markieren
+* Legacy-Payload in das kanonische interne Command übersetzen
+* denselben Response-Service verwenden
+* keine separate Fachlogik behalten
+* Frontends ausschließlich auf den kanonischen Endpunkt umstellen
+
+## OpenAPI
+
+* nur ein kanonisches externes Schema
+* Legacy-Schema klar als deprecated
+* keine widersprüchlichen Feldnamen
+* generierte Dateien nicht manuell bearbeiten
+
+## Tests
+
+* beide Endpunkte erzeugen dasselbe interne Ergebnis
+* Frontends verwenden kanonischen Endpunkt
+* Legacy-Format wird korrekt übersetzt
+* mehr als drei Alternativen wird abgelehnt
+* ungültiges Zeitfenster wird abgelehnt
+* unbekannte interne Felder werden abgelehnt
+
+---
+
+# Phase 7 – Response-Idempotenz vollständig korrigieren
+
+## Problem
+
+Die Prüfung darf nicht nur `decision` vergleichen.
+
+Speichere für jede fachliche Response einen deterministischen Hash über den vollständigen öffentlichen Payload.
+
+Beispielsweise:
+
+```text
+responsePayloadHash
+```
+
+## Hash-Grundlage
+
+Mindestens:
+
+```text
+schemaVersion
+decision
+reasonCode
+comment
+acceptedTimeWindow
+alternatives
+nextAvailableDate
+```
+
+## Kanonische Serialisierung
+
+Implementiere rekursive kanonische JSON-Serialisierung:
+
+* Objekt-Keys sortieren
+* Objekte innerhalb von Arrays ebenfalls rekursiv kanonisieren
+* Array-Reihenfolge beibehalten
+* `undefined` eindeutig behandeln
+* Datumswerte als ISO-Strings
+* keine internen Felder einbeziehen
+
+## Idempotenzregeln
+
+### Gleicher Key und gleicher vollständiger Payload
+
+* bestehende Response zurückgeben
+* keine zweite Response
+* keine zweite Nachricht
+* keine zweite Statusänderung
+
+### Gleicher Key und abweichender Payload
+
+* `409 Conflict`
+* keine Änderung
+
+### Bereits bestehende Response ohne passenden Key
+
+* keine zweite fachliche Response
+* kontrollierte Konfliktantwort
+
+## Outbox-Status
+
+Wenn kein Outbox-Datensatz existiert:
+
+Nicht verwenden:
+
+```text
+DELIVERED
+```
+
+Verwende stattdessen beispielsweise:
+
+```text
+NOT_SENT
+UNKNOWN
+MISSING_OUTBOX
+```
+
+oder eine vorhandene fachlich passende Darstellung.
+
+## Tests
+
+* gleicher vollständiger Payload ist idempotent
+* gleiches `decision`, aber anderer Kommentar → Konflikt
+* gleiches `decision`, aber anderes Zeitfenster → Konflikt
+* gleiches `decision`, aber andere Alternative → Konflikt
+* fehlende Outbox wird nicht als zugestellt gemeldet
+* Retry verwendet dieselbe Nachricht
+
+---
+
+# Phase 8 – Response, Requeststatus und Outbox konsistent verarbeiten
+
+## Ziel
+
+Die fachliche Speicherung einer Response und der Statuswechsel des Requests müssen transaktional konsistent sein.
+
+## Verbindliche Transaktion
+
+Innerhalb einer Datenbanktransaktion:
+
+1. Request mit Sperre laden
+2. Organisationsberechtigung prüfen
+3. Statusübergang prüfen
+4. vorhandene Response prüfen
+5. Response speichern
+6. Alternativen speichern
+7. Requeststatus aktualisieren
+8. Outbox-Nachricht im Status `PENDING` anlegen
+9. Commit
+
+Erst danach erfolgt die technische Zustellung.
+
+## Statusmapping
+
+```text
+ACCEPTED
+→ Requeststatus ACCEPTED
+
+ALTERNATIVES_PROPOSED
+→ Requeststatus ALTERNATIVES_PROPOSED
+
+REJECTED
+→ Requeststatus REJECTED
+```
+
+## Nicht zulässig
+
+* Response gespeichert, Requeststatus unverändert
+* HTTP-Response meldet Status, der nicht in der Datenbank gespeichert ist
+* Nachricht zugestellt, obwohl Response-Transaktion fehlgeschlagen ist
+* Statusfehler wird lediglich geloggt und ignoriert
+
+## Bei Transportfehler
+
+* Response bleibt gespeichert
+* Requeststatus bleibt fachlich korrekt
+* Outbox wird `FAILED`
+* API meldet fachliche Speicherung und technischen Fehler getrennt
+* Retry erzeugt keine zweite Response
+
+## Tests
+
+* Response und Requeststatus werden gemeinsam gespeichert
+* Fehler beim Statuswechsel rollt Response zurück
+* Fehler beim Speichern einer Alternative rollt alles zurück
+* Transportfehler verändert fachliche Daten nicht
+* API liefert tatsächlich gespeicherten Status
+* parallele Response-Erstellung erzeugt nur eine Response
+
+---
+
+# Phase 9 – Deadline Worker tatsächlich starten
+
+Prüfe:
+
+```text
+artifacts/api-server/src/index.ts
+```
+
+sowie:
+
+```text
+DeadlineEvaluationService
+LocalDeadlineWorker
+```
+
+## Ziel
+
+Der Deadline Worker muss entweder:
+
+### Variante A – im API-Prozess
+
+* beim Start genau einmal initialisiert werden
+* konfigurierbar sein
+* keine mehrfachen Timer erzeugen
+* bei Shutdown sauber gestoppt werden
+
+oder:
+
+### Variante B – als separater Prozess
+
+* eigenes Startskript besitzen
+* separat deploybar sein
+* dieselbe Datenbank verwenden
+* Locking gegen parallele Läufe besitzen
+
+Bevorzuge die Architektur, die im Repository bereits vorbereitet ist.
+
+## Konfiguration
+
+Beispielsweise:
+
+```text
+DEADLINE_WORKER_ENABLED=true
+DEADLINE_WORKER_INTERVAL_MINUTES=5
+```
+
+## Mehrinstanzfähigkeit
+
+Verwende keine rein lokale In-Memory-Sperre als einzigen Schutz.
+
+Nutze:
+
+* PostgreSQL Advisory Lock
+* atomischen Job-Lock
+* vorhandene Lock-Tabelle
+* andere datenbankbasierte Sperre
+
+## Shutdown
+
+Bei `SIGTERM` und `SIGINT`:
+
+* Timer stoppen
+* laufenden Job kontrolliert abschließen
+* Datenbankverbindung sauber schließen
+
+## Tests
+
+* Worker startet bei aktivierter Konfiguration
+* Worker startet nicht bei deaktivierter Konfiguration
+* nur ein Worker verarbeitet einen Zeitpunkt
+* wiederholter Lauf erzeugt keine doppelten Reminder
+* Shutdown stoppt weitere Läufe
+* Request läuft automatisch ab
+* Reminder wird automatisch erzeugt
+
+---
+
+# Phase 10 – Rollen- und Berechtigungsmodell ergänzen
+
+Das aktuelle Modell darf nicht nur zwischen `AG`, `AN` und `hubAdmin` unterscheiden.
+
+## Rollen
+
+Ergänze mindestens:
+
+```text
+AG_ADMIN
+GENERAL_PLANNER
+AN_ADMIN
+AN_DISPATCHER
+HUB_ADMIN
+```
+
+Alternativ dürfen bestehende äquivalente Namen verwendet werden.
+
+## Benutzer- und JWT-Modell
+
+JWT beziehungsweise Session enthält mindestens:
+
+```text
+userId
+orgId
+orgType
+roles
+```
+
+oder:
+
+```text
+permissions
+```
+
+## Backend-Prüfung
+
+Die Berechtigung muss serverseitig erfolgen.
+
+### AG-Aktionen
+
+```text
+Taktanfrage erstellen
+Taktanfrage senden
+AN einem Projekt zuordnen
+GU-Entscheidung treffen
+Revision erstellen
+Reporting öffnen
+```
+
+nur für passende AG-Rollen.
+
+### AN-Aktionen
+
+```text
+lokale Projekte verwalten
+Ressourcen verwalten
+Buchungen verwalten
+Machbarkeitsprüfung starten
+Response senden
+```
+
+nur für passende AN-Rollen.
+
+### Hub
+
+Technische Nachrichten, Retry und Transport-Reporting nur für `HUB_ADMIN`.
+
+## Migration
+
+Vorhandene Demo-Benutzer erhalten passende Rollen.
+
+## Tests
+
+* AG-Standardbenutzer ohne Rolle kann keine administrative Aktion ausführen
+* Generalplaner darf Taktanfragen erstellen
+* AN-Disponent darf Availability Check und Response ausführen
+* AN-Benutzer kann keine AG-Aktion ausführen
+* Hub-Admin kann technische Retry-Aktion ausführen
+* Frontend versteckt unzulässige Aktionen
+* Backend lehnt direkte unzulässige API-Aufrufe ab
+
+---
+
+# Phase 11 – Schema-Versionierung und Transport-Idempotenz korrigieren
+
+## Unterstützte Version
+
+Aktuell:
+
+```text
+1.0
+```
+
+Implementiere zentral:
+
+```ts
+assertSupportedSchemaVersion(schemaVersion)
+```
+
+## Regeln
+
+* fehlende Version → `400`
+* ungültiges Format → `400`
+* unterstützte Version `1.0` → akzeptieren
+* optionale unterstützte Minor-Version entsprechend dokumentierter Regel
+* unbekannte Major-Version → `422` oder geeigneter klarer Fehler
+
+Nicht ausreichend ist eine reine Regex-Prüfung wie:
+
+```text
+Zahl.Zahl
+```
+
+## Envelope-Idempotenz
+
+Beim Vergleich derselben `messageId` müssen mindestens berücksichtigt werden:
+
+```text
+schemaVersion
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+causationId
+payload
+```
+
+Gleiche `messageId` mit abweichender `schemaVersion` oder `causationId` muss als Konflikt gelten.
+
+## Rekursive kanonische Serialisierung
+
+Korrigiere `stableStringify()` so, dass:
+
+* Objekt-Keys rekursiv sortiert werden
+* Objekte in Arrays rekursiv sortiert werden
+* verschachtelte Arrays korrekt verarbeitet werden
+* keine unstabile Serialisierung durch JSONB-Roundtrips entsteht
+
+## Tests
+
+* Version `1.0` akzeptiert
+* Version `99.0` abgelehnt
+* gleiche Message mit anderer Version → Konflikt
+* gleiche Message mit anderer `causationId` → Konflikt
+* verschachtelte Objekte in Alternativen ergeben stabilen Hash
+* JSONB-Roundtrip verändert Idempotenz nicht
+
+---
+
+# Phase 12 – AN-Oberfläche vervollständigen
+
+Prüfe insbesondere:
+
+```text
+artifacts/an-app/src/App.tsx
+```
+
+und bestehende AN-Seiten.
+
+## Fehlende Routen ergänzen
+
+Mindestens:
+
+```text
+/local-projects
+/resource-bookings
+/availability-checks
+/reports
+```
+
+Passe die Pfade an die vorhandene Navigation an.
+
+## Lokale Projekte
+
+Implementiere:
+
+* Liste eigener lokaler Projekte
+* Projekt anlegen
+* Projekt bearbeiten
+* Projekt deaktivieren oder abschließen
+* kein physisches Löschen
+
+Felder:
+
+```text
+localProjectCode
+displayName
+customerAlias
+startDate
+endDate
+status
+```
+
+## Ressourcenbuchungen
+
+Implementiere eine Mehrprojektansicht auf Basis von:
+
+```text
+resource_bookings
+nu_local_projects
+resources
+```
+
+Nicht ausschließlich auf alten `resource_assignments`.
+
+Darstellen:
+
+* lokale Projekte
+* TaktRequest-Buchungen
+* Abwesenheiten
+* Wartung
+* manuelle Sperrzeiten
+* Auslastung
+* Überschneidungen
+
+## Machbarkeitsprüfung
+
+Implementiere:
+
+* Liste bisheriger Prüfläufe
+* letzte Prüfung
+* interner Ergebnisbereich
+* öffentlicher Ergebnisbereich
+* generierte Alternativen
+* Datenschutzvorschau
+
+## Trennung intern und extern
+
+### Nur AN-intern
+
+```text
+resourceId
+resourceName
+localProjectId
+customerAlias
+interne Konflikte
+interne Prioritäten
+interne Kosten
+```
+
+### Übertragbar
+
+```text
+decision
+reasonCode
+comment
+acceptedTimeWindow
+alternatives
+nextAvailableDate
+```
+
+## Tests
+
+* AN sieht lokale Projekte
+* AN sieht nur eigene Projekte
+* AN sieht Buchungen mehrerer AG-Projekte
+* AG kann Seiten nicht öffnen
+* Availability Check zeigt interne und externe Daten getrennt
+* Datenschutzvorschau enthält keine internen Daten im externen Bereich
+* Response verwendet kanonischen Endpunkt
+
+---
+
+# Phase 13 – Reporting und Audit aus Aufgabe 8 implementieren
+
+Aufgabe 8 ist vollständig zu implementieren.
+
+## Backend-Services
+
+Implementiere sinngemäß:
+
+```text
+GuReportingService
+AnReportingService
+HubReportingService
+AuditTrailService
+ReportExportService
+```
+
+## AG-Reporting
+
+Mindestens:
+
+```text
+Taktanfragen gesamt
+offene Taktanfragen
+überfällige Taktanfragen
+abgelaufene Taktanfragen
+bestätigte Taktanfragen
+Anfragen mit Alternativen
+abgelehnte Taktanfragen
+durchschnittliche Antwortzeit
+mediane Antwortzeit
+fristgerechte Antwortquote
+laufende Revisionsrunden
+Zeit bis Taktbestätigung
+```
+
+Gruppierungen:
+
+```text
+Projekt
+AN
+Gewerk
+Status
+Zeitraum
+```
+
+## AN-Reporting
+
+Mindestens:
+
+```text
+eingegangene Taktanfragen
+offene Prüfungen
+bald fällige Anfragen
+überfällige Anfragen
+fristgerechte Antwortquote
+durchschnittliche Prüfzeit
+mediane Prüfzeit
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+Reason-Code-Verteilung
+Ressourcenauslastung
+Konfliktanzahl
+```
+
+AN-interne Ressourcenkennzahlen bleiben ausschließlich im AN-System.
+
+## Hub-Reporting
+
+Mindestens:
+
+```text
+Nachrichten gesamt
+Nachrichten nach Typ
+Nachrichten nach Status
+Zustellquote
+Fehlerquote
+durchschnittliche Zustellzeit
+mediane Zustellzeit
+Retries
+Erfolgsquote nach Retry
+ausstehende Nachrichten
+```
+
+Keine vollständigen Fachdaten laden.
+
+## Endpunkte
+
+Sinngemäß:
+
+```http
+GET /reports/ag/summary
+GET /reports/ag/projects
+GET /reports/ag/subcontractors
+GET /reports/ag/response-times
+GET /reports/ag/deadlines
+
+GET /reports/an/summary
+GET /reports/an/response-times
+GET /reports/an/deadlines
+GET /reports/an/availability
+GET /reports/an/reason-codes
+GET /reports/an/resource-utilization
+
+GET /reports/hub/transport-summary
+GET /reports/hub/message-status
+GET /reports/hub/message-types
+GET /reports/hub/delivery-latency
+GET /reports/hub/retries
+GET /reports/hub/failures
+
+GET /takt-requests/:requestId/audit-trail
+```
+
+## Dashboard-Routen
+
+In allen drei Anwendungen ergänzen:
+
+```text
+AG:  /reports
+AN:  /reports
+Hub: /reports
+```
+
+## AG-Projektübersichten
+
+AG muss erhalten:
+
+### Übersicht aller eigenen Projekte
+
+```text
+Projekt
+Projektstatus
+zugeordnete AN
+Gewerke
+Takte
+offene Requests
+überfällige Requests
+bestätigte Takte
+Revisionen
+letzte Aktivität
+nächste Frist
+```
+
+### Einzelprojektübersicht
+
+```text
+Projektinformationen
+alle projektbezogenen AN
+projektbezogene Gewerke
+Takte
+Requests
+Responses
+GU-Entscheidungen
+Revisionen
+Fristen
+```
+
+AG darf keine anderen Projekte eines AN sehen.
+
+## Audit-Trail
+
+Chronologisch mindestens:
+
+```text
+Request erstellt
+Snapshot erstellt
+Notification erzeugt
+Notification gesendet
+Notification zugestellt
+Details abgerufen
+Availability Check ausgeführt
+Response gespeichert
+Response zugestellt
+GU-Entscheidung
+Taktversion erzeugt
+Revision erzeugt
+Reminder gesendet
+Request abgelaufen oder geschlossen
+```
+
+Keine vollständigen internen Payloads im Audit-Trail.
+
+## Exporte
+
+Implementiere:
+
+```text
+CSV
+JSON
+```
+
+für:
+
+* AG-Berichte
+* AN-Berichte
+* Hub-Berichte
+* Audit-Trail
+
+## CSV-Sicherheit
+
+Schütze gegen Formula Injection für Werte, die beginnen mit:
+
+```text
+=
++
+-
+@
+```
+
+## Tests
+
+* AG sieht nur eigene Reports
+* AN sieht nur eigene Reports
+* Hub sieht nur technische Reports
+* Median ist korrekt
+* Durchschnitt ist korrekt
+* leerer Zeitraum funktioniert
+* Audit-Trail ist chronologisch
+* Export enthält keine internen Daten
+* CSV-Formula-Injection wird verhindert
+* Frontend-Routen funktionieren
+
+---
+
+# Phase 14 – Projektbezogene AN-Zuordnung konsequent verwenden
+
+Ein AG besitzt mehrere Projekte.
+
+Jedes Projekt kann unterschiedliche AN besitzen.
+
+## Verbindliche Regel
+
+Ein AN darf für einen TaktRequest nur ausgewählt werden, wenn:
+
+* AN dem konkreten Projekt zugeordnet ist
+* Zuordnung aktiv ist
+* Zuordnung zeitlich gültig ist
+* Gewerk oder Arbeitspaket passt, sofern angegeben
+
+## Nicht zulässig
+
+* globale Liste aller AN des AG
+* AN eines anderen Projekts
+* freie Eingabe beliebiger `anOrgId`
+* Nutzung deaktivierter Zuordnung
+
+## AG-Übersicht alle Projekte
+
+Stelle sicher, dass die Übersicht alle Projekte der eigenen AG-Organisation liefert.
+
+Je Projekt mindestens:
+
+```text
+projectId
+projectReference
+projectName
+projectStatus
+assignedAnCount
+assignedTrades
+totalTaktRequests
+openTaktRequests
+overdueTaktRequests
+confirmedTakts
+lastActivityAt
+```
+
+## AG-Einzelprojekt
+
+Je AN mindestens:
+
+```text
+anOrgId
+anName
+trade
+workPackageReference
+assignmentStatus
+totalRequests
+openRequests
+acceptedRequests
+alternativeRequests
+rejectedRequests
+lastResponseAt
+```
+
+## Tests
+
+* Projekt A besitzt AN 1 und AN 2
+* Projekt B besitzt AN 3
+* AN 3 wird in Projekt A nicht angeboten
+* derselbe AN kann Projekt A und C zugeordnet sein
+* deaktivierter AN bleibt historisch sichtbar
+* deaktivierter AN kann nicht für neuen Request gewählt werden
+* AG sieht alle eigenen Projekte
+* AG sieht keine fremden Projekte
+
+---
+
+# Phase 15 – Frontend- und API-Testinfrastruktur ergänzen
+
+Prüfe alle `package.json`.
+
+Aktuell vorhandene Testskripte müssen vereinheitlicht werden.
+
+## Für jedes Paket
+
+Ergänze, soweit passend:
+
+```json
+{
+  "scripts": {
+    "test": "...",
+    "typecheck": "...",
+    "build": "..."
+  }
+}
+```
+
+## Mindestens testen
+
+### API
+
+* Services
+* Repositories
+* Routes
+* Berechtigungen
+* Organisationsfilter
+* Statusübergänge
+* Idempotenz
+* Transaktionen
+* Transport
+* Deadline Worker
+* Reporting
+* Export
+
+### AG-Frontend
+
+* Projektübersicht
+* TaktRequest-Erstellung
+* Antwortvergleich
+* GU-Entscheidung
+* Revision
+* Reporting
+
+### AN-Frontend
+
+* Inbox
+* Snapshot
+* lokale Projekte
+* Ressourcenbuchungen
+* Availability Check
+* Response
+* Reporting
+
+### Hub-Frontend
+
+* Nachrichtenliste
+* Prozesskette
+* Retry
+* Reminder
+* Reporting
+
+## End-to-End-Kernszenario
+
+Implementiere mindestens einen vollständigen Test:
+
+```text
+AG besitzt mehrere Projekte
+→ Projekt A besitzt AN 1 und AN 2
+→ Projekt B besitzt AN 3
+→ AG öffnet Projekt A
+→ AG kann nur AN 1 oder AN 2 auswählen
+→ AG erstellt Request und Snapshot
+→ Notification wird zugestellt
+→ AN ruft Snapshot ab
+→ AN besitzt lokale Buchungskollision
+→ Availability Check erzeugt Alternativen
+→ AN sendet Response
+→ AG wählt Alternative
+→ neue Taktversion entsteht
+→ AN erhält Bestätigung
+→ Audit-Trail und Reporting sind korrekt
+→ keine internen AN-Daten verlassen das AN-System
+```
+
+## Sicherheits-End-to-End-Test
+
+```text
+AG A versucht Projekt von AG B zu öffnen
+→ Zugriff abgelehnt
+
+AG A versucht AN-Zuordnung von AG B zu verändern
+→ Zugriff abgelehnt
+
+AN versucht GU-Entscheidung zu erstellen
+→ Zugriff abgelehnt
+
+Nicht authentifizierter Benutzer ruft internen Deadline-Job auf
+→ Zugriff abgelehnt
+```
+
+---
+
+# Phase 16 – CI und einheitliche Prüfkommandos
+
+Ergänze eine CI-Pipeline, falls noch nicht vorhanden.
+
+Mindestens:
+
+```text
+Install
+OpenAPI-Codegenerierung
+Typecheck
+Tests
+Build
+```
+
+## Erwartete Kommandos
+
+Passe sie an das tatsächliche Repository an, aber stelle einen einheitlichen Root-Ablauf bereit.
+
+Beispielsweise:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run generate
+pnpm run typecheck
+pnpm -r --if-present test
+pnpm run build
+```
+
+Ergänze ein Root-Skript:
+
+```text
+verify
+```
+
+das alle Prüfungen ausführt.
+
+Beispiel:
+
+```json
+{
+  "scripts": {
+    "verify": "pnpm run generate && pnpm run typecheck && pnpm -r --if-present test && pnpm run build"
+  }
+}
+```
+
+## Datenbanktests
+
+* separate Testdatenbank
+* keine Produktionsdaten
+* Migration vor Test
+* reproduzierbarer Seed
+* Aufräumen nach Test
+
+---
+
+# Phase 17 – Dokumentation mit tatsächlichem Code abgleichen
+
+Aktualisiere die vorhandene Dokumentation so, dass sie den tatsächlich implementierten Stand beschreibt.
+
+Mindestens prüfen:
+
+```text
+README.md
+replit.md
+docs/data-ownership.md
+docs/state-model.md
+docs/message-flow.md
+docs/transport-architecture.md
+docs/resource-planning.md
+docs/coordination-decision.md
+docs/deadlines-and-reminders.md
+docs/reporting-and-kpis.md
+docs/json-contracts.md
+docs/schema-versioning.md
+docs/frontend-concept.md
+```
+
+## Verbindliche Dokumentation
+
+Dokumentiere:
+
+* kanonische Request-Route
+* kanonische Response-Route
+* deprecated Legacy-Routen
+* Rollen und Berechtigungen
+* Transaktionsgrenzen
+* Snapshot-Erstellung
+* Outbox-/Inbox-Verhalten
+* Transportstatus
+* Deadline Worker
+* AG-Projektübersichten
+* projektbezogene AN-Zuordnungen
+* Reporting
+* Audit-Trail
+* Schema-Version `1.0`
+* bewusst nicht implementierte EDC-Komponenten
+
+## Keine falschen Aussagen
+
+Dokumentiere eine Funktion nur als umgesetzt, wenn:
+
+* Code vorhanden
+* Route eingebunden
+* Tests vorhanden
+* Typecheck erfolgreich
+* Build erfolgreich
+
+---
+
+# Abschließende Abnahmeprüfung
+
+Führe nach allen Änderungen folgende Prüfungen aus.
+
+## Installation
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+## OpenAPI
+
+```bash
+pnpm run generate
+```
+
+oder tatsächliches vorhandenes Generierungsskript.
+
+## Datenbank
+
+* Migration gegen Testdatenbank
+* Seed
+* Demo-Reset
+* keine Migration gegen Produktionsdaten
+
+## Tests
+
+```bash
+pnpm -r --if-present test
+```
+
+Zusätzlich alle vorhandenen:
+
+```text
+Datenbanktests
+Service-Tests
+API-Tests
+Transporttests
+Parallelitätstests
+Berechtigungstests
+Datenschutztests
+Frontendtests
+Reportingtests
+Exporttests
+End-to-End-Tests
+```
+
+## Typecheck
+
+```bash
+pnpm run typecheck
+```
+
+## Build
+
+```bash
+pnpm run build
+```
+
+## Manueller Smoke-Test
+
+Teste mindestens:
+
+### AG
+
+* Anmeldung
+* alle eigenen Projekte sichtbar
+* fremde Projekte nicht sichtbar
+* Projekt mit unterschiedlichen AN öffnen
+* Request erstellen
+* Request senden
+* Response anzeigen
+* Alternative auswählen
+* Revision erstellen
+* Reporting öffnen
+
+### AN
+
+* Notification sehen
+* Snapshot abrufen
+* lokale Projekte öffnen
+* Ressourcenbuchung anlegen
+* Availability Check starten
+* interne und externe Ergebnisse getrennt sehen
+* Response senden
+* Reporting öffnen
+
+### Hub
+
+* Notification sehen
+* Response sehen
+* Prozesskette sehen
+* fehlgeschlagene Nachricht sehen
+* Retry ausführen
+* technische Reports öffnen
+
+---
+
+# Verbindliche Abschlusskriterien
+
+Der Auftrag gilt nur als abgeschlossen, wenn alle folgenden Kriterien erfüllt sind:
+
+* keine bekannte organisationsübergreifende Projektlücke
+* keine ungeschützte interne Deadline-Route
+* Revisionsrequest wird bei Transportfehler nicht als zugestellt markiert
+* `responseRequiredBy` wird korrekt ausgegeben
+* jeder neue Request besitzt genau einen unveränderlichen Snapshot
+* nur eine kanonische Response-Fachlogik
+* vollständige Payload-Idempotenz
+* Response und Requeststatus sind transaktional konsistent
+* Deadline Worker läuft automatisch oder als dokumentierter separater Prozess
+* Rollen werden serverseitig geprüft
+* unbekannte Major-Schema-Versionen werden abgelehnt
+* Transport-Idempotenz berücksichtigt alle relevanten Envelope-Felder
+* AN-Oberfläche enthält lokale Projekte, Buchungen und Availability Checks
+* Reporting und Audit sind implementiert
+* AG sieht eine Übersicht aller eigenen Projekte
+* AG sieht pro Projekt alle dort zugeordneten AN
+* Projekt A zeigt nicht die AN von Projekt B
+* Frontendtests und Backendtests sind ausführbar
+* Typecheck erfolgreich
+* Build aller Anwendungen erfolgreich
+* Dokumentation entspricht dem tatsächlichen Code
+
+---
+
+# Abschlussbericht
+
+Erstelle nach Umsetzung einen strukturierten Bericht.
+
+## 1. Behobene kritische Sicherheitsprobleme
+
+Liste:
+
+* betroffene Dateien
+* ursprüngliches Problem
+* implementierte Lösung
+* zugehörige Tests
+
+## 2. Behobene fachliche Inkonsistenzen
+
+Liste:
+
+* Request-Erstellung
+* Snapshot
+* Response
+* Status
+* Revision
+* Fristen
+* Transport
+* Schema-Versionierung
+
+## 3. Neue oder geänderte Datenbankobjekte
+
+Liste:
+
+* Tabellen
+* Spalten
+* Enums
+* Constraints
+* Indizes
+* Migrationen
+
+## 4. Neue oder geänderte Endpunkte
+
+Liste:
+
+* kanonische Endpunkte
+* deprecated Endpunkte
+* Reporting-Endpunkte
+* Audit-Endpunkt
+* interne Job-Endpunkte
+
+## 5. Frontendänderungen
+
+Getrennt nach:
+
+```text
+AG
+AN
+Hub
+```
+
+## 6. Testresultate
+
+Nenne tatsächliche Resultate für:
+
+```text
+OpenAPI-Codegenerierung
+Datenbankmigration
+Backendtests
+Frontendtests
+Sicherheitstests
+Datenschutztests
+End-to-End-Tests
+Typecheck
+Build
+```
+
+Keine erfolgreichen Ergebnisse behaupten, wenn ein Kommando nicht ausgeführt wurde.
+
+## 7. Noch offene Punkte
+
+Nur tatsächlich noch offene Punkte nennen.
+
+## 8. Abschließende Bewertung
+
+Bewerte:
+
+```text
+Aufgabe 1
+Aufgabe 2
+Aufgabe 3
+Aufgabe 4
+Aufgabe 5
+Aufgabe 6
+Aufgabe 7
+Aufgabe 8
+Aufgabe 9
+```
+
+jeweils mit:
+
+```text
+VOLLSTÄNDIG
+TEILWEISE
+NICHT UMGESETZT
+BLOCKIERT
+```
+
+und einer kurzen Begründung.

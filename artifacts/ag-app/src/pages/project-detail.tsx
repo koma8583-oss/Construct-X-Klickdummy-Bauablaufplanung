@@ -361,6 +361,14 @@ export default function ProjectDetail() {
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
+  // Internal field state — create form
+  const [createProcPriority, setCreateProcPriority] = useState<string>('');
+  const [createRiskClass, setCreateRiskClass] = useState<string>('');
+
+  // Internal field state — edit form (initialised when edit dialog opens)
+  const [editProcPriority, setEditProcPriority] = useState<string>('');
+  const [editRiskClass, setEditRiskClass] = useState<string>('');
+
   // Index: successorId → list of full TaktDependency objects
   const depsBySuccessor = useMemo(() => {
     const map = new Map<string, TaktDependency[]>();
@@ -482,12 +490,16 @@ export default function ProjectDetail() {
 
   function handleOpenEdit() {
     if (!selectedTaktId) return;
+    const takt = takte?.find(t => t.id === selectedTaktId);
     setEditTargetId(selectedTaktId);
     setSelectedTaktId(null);
     setIsVergabeOpen(false);
     setEditTab('details');
     setNewDepPredecessorId('');
     setNewDepLag(0);
+    // Initialise controlled internal-field selects from current takt values
+    setEditProcPriority((takt as any)?.procurementPriority ?? '');
+    setEditRiskClass((takt as any)?.riskClassification ?? '');
     setIsEditOpen(true);
   }
 
@@ -530,12 +542,19 @@ export default function ProjectDetail() {
         plannedEnd: fd.get('plannedEnd') as string,
         earliestStart: (fd.get('earliestStart') as string) || undefined,
         latestEnd: (fd.get('latestEnd') as string) || undefined,
-      },
+        // GU-internal fields
+        internalNote: (fd.get('internalNote') as string) || undefined,
+        costEstimate: (fd.get('costEstimate') as string) || undefined,
+        procurementPriority: (createProcPriority as any) || undefined,
+        riskClassification: (createRiskClass as any) || undefined,
+      } as any,
     }, {
       onSuccess: () => {
         toast({ title: 'Takt angelegt' });
         invalidateTakte();
         setIsCreateOpen(false);
+        setCreateProcPriority('');
+        setCreateRiskClass('');
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
@@ -557,7 +576,12 @@ export default function ProjectDetail() {
         plannedEnd: fd.get('plannedEnd') as string,
         earliestStart: (fd.get('earliestStart') as string) || undefined,
         latestEnd: (fd.get('latestEnd') as string) || undefined,
-      },
+        // GU-internal fields
+        internalNote: (fd.get('internalNote') as string) || null,
+        costEstimate: (fd.get('costEstimate') as string) || null,
+        procurementPriority: (editProcPriority as any) || null,
+        riskClassification: (editRiskClass as any) || null,
+      } as any,
     }, {
       onSuccess: (result) => {
         toast({ title: 'Takt gespeichert' });
@@ -1107,6 +1131,48 @@ export default function ProjectDetail() {
                   </CardContent>
                 </Card>
 
+                {/* Internal fields read-only display */}
+                {((selectedTakt as any).internalNote || (selectedTakt as any).costEstimate || (selectedTakt as any).procurementPriority || (selectedTakt as any).riskClassification) && (
+                  <Card className="border-amber-500/20 bg-amber-500/5">
+                    <CardContent className="p-4 space-y-2.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm">🔒</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Intern — Nicht an AN übermittelt</span>
+                      </div>
+                      {((selectedTakt as any).procurementPriority || (selectedTakt as any).riskClassification) && (
+                        <div className="flex gap-3">
+                          {(selectedTakt as any).procurementPriority && (
+                            <div>
+                              <div className="text-[10px] text-muted-foreground mb-0.5">Vergabepriorität</div>
+                              <div className="text-xs font-medium">{
+                                { HIGH: 'Hoch', MEDIUM: 'Mittel', LOW: 'Niedrig' }[(selectedTakt as any).procurementPriority as string]
+                              }</div>
+                            </div>
+                          )}
+                          {(selectedTakt as any).riskClassification && (
+                            <div>
+                              <div className="text-[10px] text-muted-foreground mb-0.5">Risikoklasse</div>
+                              <div className="text-xs font-medium">{(selectedTakt as any).riskClassification}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(selectedTakt as any).costEstimate && (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground mb-0.5">Kostenschätzung</div>
+                          <div className="text-xs font-medium">{(selectedTakt as any).costEstimate}</div>
+                        </div>
+                      )}
+                      {(selectedTakt as any).internalNote && (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground mb-0.5">Interne Notiz</div>
+                          <div className="text-xs text-foreground/80">{(selectedTakt as any).internalNote}</div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* ── Anordnungsbeziehungen — read-only ─────────────────── */}
                 <div>
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -1363,6 +1429,53 @@ export default function ProjectDetail() {
                       <Input name="latestEnd" type="date" defaultValue={editTakt.latestEnd ?? ''} />
                     </div>
                   </div>
+
+                  {/* ── Interne Informationen ──────────────────────────── */}
+                  <div className="pt-3 border-t border-border/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm">🔒</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interne Informationen</span>
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Nicht an AN übermittelt</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Interne Notiz</Label>
+                        <Textarea name="internalNote" defaultValue={(editTakt as any).internalNote ?? ''} placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-16 text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
+                        <Input name="costEstimate" defaultValue={(editTakt as any).costEstimate ?? ''} placeholder="z.B. 45.000 €" className="text-sm" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Vergabepriorität</Label>
+                          <Select value={editProcPriority} onValueChange={setEditProcPriority}>
+                            <SelectTrigger className="text-sm h-9">
+                              <SelectValue placeholder="Keine" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="HIGH">Hoch</SelectItem>
+                              <SelectItem value="MEDIUM">Mittel</SelectItem>
+                              <SelectItem value="LOW">Niedrig</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Risikoklasse</Label>
+                          <Select value={editRiskClass} onValueChange={setEditRiskClass}>
+                            <SelectTrigger className="text-sm h-9">
+                              <SelectValue placeholder="Keine" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="A">A — Hoch</SelectItem>
+                              <SelectItem value="B">B — Mittel</SelectItem>
+                              <SelectItem value="C">C — Niedrig</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </form>
 
                 {deps && deps.some(d => d.predecessorId === editTakt.id || d.successorId === editTakt.id) && (
@@ -1544,6 +1657,54 @@ export default function ProjectDetail() {
                 <Input name="latestEnd" type="date" />
               </div>
             </div>
+
+            {/* ── Interne Informationen ────────────────────────── */}
+            <div className="pt-3 mt-2 border-t border-border/50">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-sm">🔒</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interne Informationen</span>
+                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Nicht an AN übermittelt</span>
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Interne Notiz</Label>
+                  <Textarea name="internalNote" placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-16 text-sm" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
+                  <Input name="costEstimate" placeholder="z.B. 45.000 €" className="text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Vergabepriorität</Label>
+                    <Select value={createProcPriority} onValueChange={setCreateProcPriority}>
+                      <SelectTrigger className="text-sm h-9">
+                        <SelectValue placeholder="Keine" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HIGH">Hoch</SelectItem>
+                        <SelectItem value="MEDIUM">Mittel</SelectItem>
+                        <SelectItem value="LOW">Niedrig</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Risikoklasse</Label>
+                    <Select value={createRiskClass} onValueChange={setCreateRiskClass}>
+                      <SelectTrigger className="text-sm h-9">
+                        <SelectValue placeholder="Keine" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">A — Hoch</SelectItem>
+                        <SelectItem value="B">B — Mittel</SelectItem>
+                        <SelectItem value="C">C — Niedrig</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <DialogFooter className="mt-6">
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Abbrechen</Button>
               <Button type="submit" disabled={createTakt.isPending}>Takt anlegen</Button>

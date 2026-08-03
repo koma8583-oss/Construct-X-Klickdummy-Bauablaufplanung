@@ -10,17 +10,26 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const messageTypeConfig: Record<HubMessageType, { label: string; color: string; icon: React.ComponentType<{ size?: number }> }> = {
-  DELEGATION_CREATED:      { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',    icon: Clock },
-  DELEGATION_CONFIRMED:    { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  DELEGATION_REJECTED:     { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',     icon: XCircle },
-  DELEGATION_ALTERNATIVE:  { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',   icon: AlertCircle },
-  DELEGATION_CANCELLED:    { label: 'Storniert',                  color: 'bg-gray-500 text-white',    icon: Ban },
-  AG_ACCEPTED_ALTERNATIVE: { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  AG_REJECTED_ALTERNATIVE: { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',     icon: XCircle },
-  TAKT_REQUEST_EXPIRED:    { label: 'Anfrage abgelaufen',          color: 'bg-gray-400 text-white',    icon: Ban },
-  TAKT_REQUEST_REMINDER:   { label: 'Erinnerung',                  color: 'bg-orange-400 text-white',  icon: AlertCircle },
+const messageTypeConfig: Record<string, { label: string; color: string; icon: React.ComponentType<{ size?: number }> }> = {
+  DELEGATION_CREATED:                  { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',      icon: Clock },
+  DELEGATION_CONFIRMED:                { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white',   icon: CheckCircle2 },
+  DELEGATION_REJECTED:                 { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',       icon: XCircle },
+  DELEGATION_ALTERNATIVE:              { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',     icon: AlertCircle },
+  DELEGATION_CANCELLED:                { label: 'Storniert',                  color: 'bg-gray-500 text-white',      icon: Ban },
+  AG_ACCEPTED_ALTERNATIVE:             { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white',   icon: CheckCircle2 },
+  AG_REJECTED_ALTERNATIVE:             { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',       icon: XCircle },
+  TAKT_REQUEST_EXPIRED:                { label: 'Anfrage abgelaufen',         color: 'bg-gray-400 text-white',      icon: Ban },
+  TAKT_REQUEST_REMINDER:               { label: 'Erinnerung',                 color: 'bg-orange-400 text-white',    icon: AlertCircle },
+  TAKT_REQUEST_SENT:                   { label: 'Anfrage gesendet',           color: 'bg-blue-500 text-white',      icon: Clock },
+  TAKT_REQUEST_ACCEPTED:               { label: 'Akzeptiert',                 color: 'bg-emerald-500 text-white',   icon: CheckCircle2 },
+  TAKT_REQUEST_ALTERNATIVES_PROPOSED:  { label: 'Alternativvorschlag',        color: 'bg-amber-500 text-white',     icon: AlertCircle },
+  TAKT_REQUEST_REJECTED:               { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',       icon: XCircle },
+  TAKT_REQUEST_CONFIRMED:              { label: 'GU bestätigt',               color: 'bg-emerald-600 text-white',   icon: CheckCircle2 },
+  TAKT_REQUEST_ALT_ACCEPTED:           { label: 'Alternative angenommen',     color: 'bg-teal-500 text-white',      icon: CheckCircle2 },
+  TAKT_REQUEST_CLOSED:                 { label: 'Ohne Einigung geschlossen',  color: 'bg-gray-500 text-white',      icon: Ban },
 };
+
+const DEFAULT_CONFIG = { label: 'Nachricht', color: 'bg-gray-400 text-white', icon: Clock };
 
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
@@ -148,7 +157,7 @@ export default function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {recentMessages.map(message => {
-                  const config = messageTypeConfig[message.type];
+                  const config = messageTypeConfig[message.type] ?? DEFAULT_CONFIG;
                   const Icon = config.icon;
                   return (
                     <TableRow

@@ -55,6 +55,62 @@ The detailed role distinction (`GU_ADMIN` vs `GENERAL_PLANNER`, `NU_ADMIN` vs `N
 
 ---
 
+## Takt field classification
+
+Every column in the `takte` database table is classified as either **GU-internal** (never leaves the GU) or **AN-visible via snapshot** (included in the `TaktRequestSnapshotPayload` released to the addressed NU).
+
+The classification is enforced technically by the **whitelist principle** in `buildTaktRequestSnapshot()` (`artifacts/api-server/src/lib/takt-request-snapshot-service.ts`): only fields explicitly copied into the snapshot payload are released. Any field not referenced in that function is excluded automatically — no blacklist required.
+
+### AN-visible fields (released in TaktRequestSnapshot)
+
+| `takte` column      | Snapshot field              | Notes                                    |
+| ------------------- | --------------------------- | ---------------------------------------- |
+| `gewerk`            | `trade`                     | Trade / Gewerk                           |
+| `takt_bezeichnung`  | `workPackage`               | Work package name                        |
+| `zone`              | `location.zone`             | Physical zone; building/storey reserved  |
+| `planned_start`     | `plannedTimeWindow.start`   | Date-only ISO string                     |
+| `planned_end`       | `plannedTimeWindow.end`     | Date-only ISO string                     |
+| `earliest_start`    | `bufferTimeWindow.earliestStart` | Only included when non-null         |
+| `latest_end`        | `bufferTimeWindow.latestEnd`     | Only included when non-null         |
+| `description`       | `requiredOutput`            | Free-text work-scope description         |
+| `required_resources`| `resourceRequirements[].notes` | Wrapped as `{ resourceType: "CREW", notes }` |
+| `lv_reference`      | `documentReferences.lvReference` | Document identifier only            |
+| `bim_reference`     | `documentReferences.bimReference` | Document identifier only           |
+| *(derived)*         | `predecessors[]`            | From `takt_dependencies`                 |
+| *(derived)*         | `successors[]`              | From `takt_dependencies`                 |
+
+### GU-internal fields (permanently excluded from snapshot)
+
+These fields are stored in the `takte` table and visible only to the owning GU organisation. They are **never** included in a `TaktRequestSnapshot` and therefore never reach an NU.
+
+| `takte` column          | UI label             | Type                    | Description                                   |
+| ----------------------- | -------------------- | ----------------------- | --------------------------------------------- |
+| `internal_note`         | Interne Notiz        | free text               | Internal notes for the GU planning team       |
+| `cost_estimate`         | Kostenschätzung      | free text               | Internal budget or cost estimate              |
+| `procurement_priority`  | Vergabepriorität     | enum: HIGH/MEDIUM/LOW   | Internal priority for procurement scheduling  |
+| `risk_classification`   | Risikoklasse         | enum: A/B/C             | Internal risk classification of the Takt      |
+
+Additionally, the following scheduling and status columns are GU-internal (not in snapshot):
+
+| `takte` column     | Notes                                              |
+| ------------------ | -------------------------------------------------- |
+| `status`           | Workflow status (GEPLANT/VERGEBEN/…) — GU-internal |
+| `lifecycle_status` | Coordination lifecycle — GU-internal               |
+| `version`          | Takt version counter — GU-internal                 |
+| `project_id`       | Project FK — never released                        |
+| `created_at`       | Internal audit timestamp                           |
+| `updated_at`       | Internal audit timestamp                           |
+
+### How exclusion is enforced
+
+`buildTaktRequestSnapshot()` constructs the payload by **explicit field assignment only**. The full `Takt` database row is passed as an argument but never spread (`...takt`) into the output. Every field in the snapshot must be mentioned by name. This means:
+
+- Adding a new column to `takte` does **not** automatically expose it to NUs.
+- To release a new field to NUs, it must be **explicitly added** to `buildTaktRequestSnapshot()` and documented in the AN-visible table above.
+- To keep a field GU-internal, no code change is required — omission is the default.
+
+---
+
 ## Information that must never leave the NU
 
 The following information must never appear in any response sent to the GU or in any Hub message:
@@ -114,9 +170,7 @@ The underlying internal resource and conflict analysis remains exclusively with 
 
 ---
 
----
-
-## Project-scoped AN assignment rules (Task 9.2)
+## Project-scoped AN assignment rules
 
 An AN may be assigned to multiple projects. However, the assignment is always project-specific — not global per AG.
 
@@ -151,7 +205,6 @@ An AN may be assigned to multiple projects. However, the assignment is always pr
 
 ## Planned extensions (not in PoC)
 
-- Formal `TaktRequestSnapshot` — immutable copy of released Takt data at request time
-- `AvailabilityCheck` record — NU-internal, never transmitted
 - Per-field access policies enforced at the transport layer via EDC
 - Verifiable Credentials per organisation for identity and authorisation
+- Fine-grained GU user roles (`GU_ADMIN` vs `GENERAL_PLANNER`) with field-level write permissions
