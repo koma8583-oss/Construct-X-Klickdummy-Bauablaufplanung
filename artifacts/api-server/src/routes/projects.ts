@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import {
   projectsTable,
@@ -7,21 +7,68 @@ import {
   delegationsTable,
   delegationResponsesTable,
 } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
 const router = Router();
 
-// GET /projects
+// ── Ownership helper ────────────────────────────────────────────────────────────
+/**
+ * Verify the calling AG organisation owns the project.
+ *
+ * - Non-AG callers (AN, Hub) → 403
+ * - Unknown project or project owned by a different AG → 404
+ *   (404 rather than 403 avoids leaking existence of other orgs' projects)
+ *
+ * Returns the project row on success, null (after sending the response) on failure.
+ * Callers must return immediately when null is returned.
+ */
+async function requireProjectOwner(
+  req: Request,
+  res: Response,
+  projectId: string,
+): Promise<{ id: string; agOrgId: string; status: string } | null> {
+  const caller = req.user!;
+
+  if (caller.orgType !== "AG" || !caller.orgId) {
+    res.status(403).json({ error: "Forbidden: only AG organisations may manage projects" });
+    return null;
+  }
+
+  const [project] = await db
+    .select({ id: projectsTable.id, agOrgId: projectsTable.agOrgId, status: projectsTable.status })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId))
+    .limit(1);
+
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return null;
+  }
+
+  if (project.agOrgId !== caller.orgId) {
+    // 404 — do not reveal that the project exists under a different org
+    res.status(404).json({ error: "Project not found" });
+    return null;
+  }
+
+  return project;
+}
+
+// ── GET /projects ───────────────────────────────────────────────────────────────
 router.get("/projects", requireJwt, async (req, res): Promise<void> => {
-  const orgId = req.user!.orgId!;
+  const caller = req.user!;
+  if (caller.orgType !== "AG" || !caller.orgId) {
+    res.status(403).json({ error: "Forbidden: only AG organisations may list projects" });
+    return;
+  }
+
+  const orgId = caller.orgId;
   const status = req.query.status as string | undefined;
 
   let query = db
-    .select({
-      project: projectsTable,
-    })
+    .select({ project: projectsTable })
     .from(projectsTable)
     .where(eq(projectsTable.agOrgId, orgId))
     .$dynamic();
@@ -37,7 +84,6 @@ router.get("/projects", requireJwt, async (req, res): Promise<void> => {
 
   const rows = await query;
 
-  // Enrich with counts
   const projectsWithCounts = await Promise.all(
     rows.map(async ({ project }) => {
       const [delCount] = await db
@@ -71,8 +117,14 @@ router.get("/projects", requireJwt, async (req, res): Promise<void> => {
   res.json(projectsWithCounts);
 });
 
-// POST /projects
+// ── POST /projects ──────────────────────────────────────────────────────────────
 router.post("/projects", requireJwt, async (req, res): Promise<void> => {
+  const caller = req.user!;
+  if (caller.orgType !== "AG" || !caller.orgId) {
+    res.status(403).json({ error: "Forbidden: only AG organisations may create projects" });
+    return;
+  }
+
   const schema = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
@@ -89,27 +141,19 @@ router.post("/projects", requireJwt, async (req, res): Promise<void> => {
 
   const [project] = await db
     .insert(projectsTable)
-    .values({ ...parsed.data, agOrgId: req.user!.orgId! })
+    .values({ ...parsed.data, agOrgId: caller.orgId })
     .returning();
 
   res.status(201).json({ ...project, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
 });
 
-// GET /projects/:projectId
+// ── GET /projects/:projectId ────────────────────────────────────────────────────
 router.get(
   "/projects/:projectId",
   requireJwt,
   async (req, res): Promise<void> => {
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, (req.params.projectId as string)))
-      .limit(1);
-
-    if (!project) {
-      res.status(404).json({ error: "Project not found" });
-      return;
-    }
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
 
     const [delCount] = await db
       .select({ count: count() })
@@ -130,8 +174,15 @@ router.get(
         ),
       );
 
+    // Re-fetch full row so the response includes all columns
+    const [full] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, project.id))
+      .limit(1);
+
     res.json({
-      ...project,
+      ...full,
       taktCount: 0,
       delegationCount: delCount?.count ?? 0,
       pendingResponseCount: pendingCount?.count ?? 0,
@@ -139,11 +190,14 @@ router.get(
   },
 );
 
-// PATCH /projects/:projectId
+// ── PATCH /projects/:projectId ──────────────────────────────────────────────────
 router.patch(
   "/projects/:projectId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
+
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
@@ -159,38 +213,48 @@ router.patch(
       return;
     }
 
-    const [project] = await db
+    const [updated] = await db
       .update(projectsTable)
       .set(parsed.data)
-      .where(eq(projectsTable.id, (req.params.projectId as string)))
+      .where(eq(projectsTable.id, project.id))
       .returning();
 
-    if (!project) {
+    if (!updated) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
 
-    res.json({ ...project, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
+    res.json({ ...updated, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
   },
 );
 
-// DELETE /projects/:projectId
+// ── DELETE /projects/:projectId ─────────────────────────────────────────────────
+// Soft-delete: transitions status to ARCHIVED so historical TaktRequests
+// that reference this project row are not orphaned.
 router.delete(
   "/projects/:projectId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
+
     await db
-      .delete(projectsTable)
-      .where(eq(projectsTable.id, (req.params.projectId as string)));
-    res.status(204).send();
+      .update(projectsTable)
+      .set({ status: "ARCHIVED" })
+      .where(eq(projectsTable.id, project.id));
+
+    res.status(200).json({ ok: true, status: "ARCHIVED" });
   },
 );
 
-// GET /projects/:projectId/contractors
+// ── GET /projects/:projectId/contractors ────────────────────────────────────────
 router.get(
   "/projects/:projectId/contractors",
   requireJwt,
   async (req, res): Promise<void> => {
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
+
     const contractors = await db
       .select({ org: organizationsTable })
       .from(projectContractorsTable)
@@ -198,31 +262,32 @@ router.get(
         organizationsTable,
         eq(projectContractorsTable.anOrgId, organizationsTable.id),
       )
-      .where(eq(projectContractorsTable.projectId, (req.params.projectId as string)));
+      .where(eq(projectContractorsTable.projectId, project.id));
 
     res.json(contractors.map((c) => c.org));
   },
 );
 
-// POST /projects/:projectId/contractors
+// ── POST /projects/:projectId/contractors ───────────────────────────────────────
 // Legacy endpoint — use POST /ag/projects/:projectId/subcontractors for full control.
 // Kept for backward compatibility; creates an ACTIVE assignment with no trade.
 router.post(
   "/projects/:projectId/contractors",
   requireJwt,
   async (req, res): Promise<void> => {
-    const { anOrgId } = req.body as { anOrgId: string };
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
 
+    const { anOrgId } = req.body as { anOrgId: string };
     if (!anOrgId) {
       res.status(400).json({ error: "anOrgId required" });
       return;
     }
 
-    // Upsert: if an ACTIVE assignment for this AN (no trade) already exists, do nothing
     try {
       await db
         .insert(projectContractorsTable)
-        .values({ projectId: (req.params.projectId as string), anOrgId })
+        .values({ projectId: project.id, anOrgId })
         .onConflictDoNothing();
     } catch {
       // Unique index violation on the trade-aware index — silently ignore
@@ -232,20 +297,38 @@ router.post(
   },
 );
 
-// DELETE /projects/:projectId/contractors/:anOrgId
+// ── DELETE /projects/:projectId/contractors/:anOrgId ───────────────────────────
+// Soft-delete: transitions assignmentStatus to INACTIVE so historical
+// TaktRequests that reference this contractor row are not orphaned.
 router.delete(
   "/projects/:projectId/contractors/:anOrgId",
   requireJwt,
   async (req, res): Promise<void> => {
-    await db
-      .delete(projectContractorsTable)
+    const project = await requireProjectOwner(req, res, req.params.projectId as string);
+    if (!project) return;
+
+    const anOrgId = req.params.anOrgId as string;
+
+    // Soft-delete all ACTIVE assignments for this AN on this project
+    const updated = await db
+      .update(projectContractorsTable)
+      .set({ assignmentStatus: "INACTIVE" })
       .where(
         and(
-          eq(projectContractorsTable.projectId, (req.params.projectId as string)),
-          eq(projectContractorsTable.anOrgId, (req.params.anOrgId as string)),
+          eq(projectContractorsTable.projectId, project.id),
+          eq(projectContractorsTable.anOrgId, anOrgId),
+          eq(projectContractorsTable.assignmentStatus, "ACTIVE"),
         ),
-      );
-    res.status(204).send();
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      // No active assignment found — treat as 404 (already removed or never existed)
+      res.status(404).json({ error: "No active contractor assignment found" });
+      return;
+    }
+
+    res.status(200).json({ ok: true, deactivated: updated.length });
   },
 );
 
