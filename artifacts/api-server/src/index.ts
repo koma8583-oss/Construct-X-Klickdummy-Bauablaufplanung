@@ -1,5 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startDeadlineWorker, stopDeadlineWorker } from "./lib/local-deadline-worker";
+import { loadDeadlineConfig } from "./services/deadline-config";
 
 // Fail fast if the JWT secret is missing or is the known insecure dev fallback in production.
 // In development the fallback is allowed so that `pnpm dev` works without pre-configuring secrets.
@@ -29,11 +31,67 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
   logger.info({ port }, "Server listening");
+
+  // ── Start deadline worker ────────────────────────────────────────────────
+  // Reads DEADLINE_WORKER_ENABLED and DEADLINE_WORKER_INTERVAL_MINUTES from env.
+  // startDeadlineWorker() is a no-op when workerEnabled is false.
+  const deadlineConfig = loadDeadlineConfig();
+  startDeadlineWorker(deadlineConfig);
+
+  if (deadlineConfig.workerEnabled) {
+    logger.info(
+      { intervalMinutes: deadlineConfig.workerIntervalMinutes },
+      "Deadline worker started",
+    );
+  } else {
+    logger.info(
+      "Deadline worker disabled (set DEADLINE_WORKER_ENABLED=true to enable)",
+    );
+  }
+});
+
+// ── Graceful shutdown ──────────────────────────────────────────────────────────
+//
+// On SIGTERM or SIGINT:
+//   1. Stop accepting new HTTP connections (server.close).
+//   2. Stop the deadline worker interval so no new ticks start.
+//   3. Await any in-progress deadline evaluation tick before exiting.
+//
+// This ensures a mid-flight evaluation is never interrupted, which could otherwise
+// leave TaktRequest rows in inconsistent states.
+
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, "Shutdown signal received — stopping server gracefully");
+
+  // Stop accepting new connections
+  server.close(() => {
+    logger.info("HTTP server closed");
+  });
+
+  // Stop deadline worker; awaits any currently-running tick
+  await stopDeadlineWorker();
+
+  logger.info("Graceful shutdown complete");
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => {
+  shutdown("SIGTERM").catch((err) => {
+    logger.error({ err }, "Error during SIGTERM shutdown");
+    process.exit(1);
+  });
+});
+
+process.on("SIGINT", () => {
+  shutdown("SIGINT").catch((err) => {
+    logger.error({ err }, "Error during SIGINT shutdown");
+    process.exit(1);
+  });
 });

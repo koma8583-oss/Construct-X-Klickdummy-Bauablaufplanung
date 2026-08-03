@@ -29,6 +29,26 @@ const ADVISORY_LOCK_KEY = 7272727272n; // "deadline-worker"
 
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Promise for the currently-in-progress evaluation, if any.
+ * Set at the start of each interval tick; cleared when the run finishes.
+ * stopDeadlineWorker() awaits this so SIGTERM does not interrupt mid-run.
+ *
+ * The in-flight guard (isTickRunning) ensures at most one tick is active at a
+ * time, which means currentRunPromise is never overwritten by a concurrent tick.
+ * Without the guard a slow first run could still be in flight when a second tick
+ * fires; the second tick's `finally` would then null the promise while the first
+ * is still running, causing stopDeadlineWorker() to see null and exit early.
+ */
+let currentRunPromise: Promise<WorkerRunResult> | null = null;
+
+/**
+ * True while an evaluation tick is in progress.
+ * Prevents overlapping interval callbacks: if the previous tick hasn't finished
+ * by the time the next interval fires, the next tick is skipped entirely.
+ */
+let isTickRunning = false;
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export interface WorkerRunResult {
@@ -120,15 +140,30 @@ export function startDeadlineWorker(config: DeadlineConfig): void {
   }
 
   const intervalMs = config.workerIntervalMinutes * 60 * 1000;
-  logger.info({ intervalMs }, "Starting periodic deadline worker");
+  logger.info({ intervalMs, intervalMinutes: config.workerIntervalMinutes }, "Starting periodic deadline worker");
 
   workerTimer = setInterval(async () => {
+    // Skip this tick if the previous one hasn't finished yet.
+    // Without this guard a slow DB call could cause a second tick to fire,
+    // overwrite currentRunPromise in its `finally`, and allow stopDeadlineWorker()
+    // to see null and exit while the original (slow) run is still in flight.
+    if (isTickRunning) {
+      logger.warn("Previous deadline worker tick still running — skipping this interval");
+      return;
+    }
+
+    isTickRunning = true;
+    const runPromise = runDeadlineEvaluationOnce(config);
+    currentRunPromise = runPromise;
     try {
-      await runDeadlineEvaluationOnce(config);
+      await runPromise;
     } catch (err) {
       // Belt-and-suspenders: runDeadlineEvaluationOnce should not throw,
       // but we guard here so the interval continues even if it does.
       logger.error({ err }, "Unhandled error in deadline worker interval");
+    } finally {
+      isTickRunning      = false;
+      currentRunPromise  = null;
     }
   }, intervalMs);
 
@@ -139,17 +174,55 @@ export function startDeadlineWorker(config: DeadlineConfig): void {
 }
 
 /**
- * Stop the periodic deadline worker. Safe to call even if not started.
+ * Stop the periodic deadline worker and wait for any in-progress run to finish.
+ * Safe to call even if the worker was never started.
+ *
+ * Awaiting this ensures SIGTERM / SIGINT do not interrupt a mid-flight
+ * deadline evaluation — the process only exits after the current tick completes.
  */
-export function stopDeadlineWorker(): void {
+export async function stopDeadlineWorker(): Promise<void> {
   if (workerTimer !== null) {
     clearInterval(workerTimer);
     workerTimer = null;
-    logger.info("Deadline worker stopped");
+    logger.info("Deadline worker stopped — waiting for in-progress run to finish");
+  }
+  // Await the current evaluation if one is running
+  if (currentRunPromise) {
+    try {
+      await currentRunPromise;
+    } catch {
+      // Errors are already logged inside the run; swallow here
+    }
+    currentRunPromise = null;
   }
 }
 
 /** @internal For tests only */
 export function _isWorkerRunning(): boolean {
   return workerTimer !== null;
+}
+
+/** @internal Reset module-level state between tests. */
+export function _resetWorkerForTests(): void {
+  if (workerTimer !== null) {
+    clearInterval(workerTimer);
+    workerTimer = null;
+  }
+  currentRunPromise = null;
+  isTickRunning     = false;
+}
+
+/**
+ * @internal
+ * Simulate an in-progress tick for tests that verify stopDeadlineWorker() waits.
+ * Sets both currentRunPromise and isTickRunning so the state exactly mirrors what
+ * the interval callback sets up when a real tick is running.
+ * The caller is responsible for resolving/rejecting the promise.
+ */
+export function _simulateInProgressTickForTests(p: Promise<WorkerRunResult>): void {
+  isTickRunning     = true;
+  currentRunPromise = p.finally(() => {
+    isTickRunning     = false;
+    currentRunPromise = null;
+  });
 }
