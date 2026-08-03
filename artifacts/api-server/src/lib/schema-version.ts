@@ -43,16 +43,44 @@ export function isSupportedMajorVersion(schemaVersion: string): boolean {
 }
 
 /**
- * Assert that the schemaVersion is supported; throw a descriptive Error if not.
+ * Assert that the schemaVersion is present, well-formed, and carries a
+ * supported major version. Two distinct error classes allow callers to
+ * surface different HTTP status codes:
  *
- * Intended for use in route handlers or transport boundaries where a clear
- * HTTP-compatible error is needed.
+ *   - Missing / malformed format → `MalformedSchemaVersionError`  (HTTP 400)
+ *   - Valid format but unsupported major → `UnsupportedSchemaVersionError` (HTTP 422)
  *
- * @throws {UnsupportedSchemaVersionError}
+ * @throws {MalformedSchemaVersionError} when the version is absent or does not
+ *   match the `<major>.<minor>` pattern.
+ * @throws {UnsupportedSchemaVersionError} when the format is valid but the
+ *   major version is not in {@link SUPPORTED_MAJOR_VERSIONS}.
  */
-export function assertSupportedSchemaVersion(schemaVersion: string): void {
+export function assertSupportedSchemaVersion(
+  schemaVersion: string | null | undefined,
+): void {
+  if (!schemaVersion || !/^\d+\.\d+$/.test(schemaVersion)) {
+    throw new MalformedSchemaVersionError(schemaVersion);
+  }
   if (!isSupportedMajorVersion(schemaVersion)) {
     throw new UnsupportedSchemaVersionError(schemaVersion);
+  }
+}
+
+/**
+ * Structured error thrown when a `schemaVersion` field is missing or does not
+ * match the expected `<major>.<minor>` format.
+ * Callers should surface this as HTTP 400 Bad Request.
+ */
+export class MalformedSchemaVersionError extends Error {
+  readonly received: string | null | undefined;
+
+  constructor(received: string | null | undefined) {
+    super(
+      `schemaVersion is missing or malformed. ` +
+      `Expected format: "<major>.<minor>" (e.g. "1.0"), received: ${JSON.stringify(received)}.`,
+    );
+    this.name = "MalformedSchemaVersionError";
+    this.received = received;
   }
 }
 

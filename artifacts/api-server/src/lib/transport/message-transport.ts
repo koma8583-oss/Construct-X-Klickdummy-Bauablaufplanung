@@ -111,6 +111,7 @@ export type TransportErrorCode =
   | "MESSAGE_NOT_FOUND"     // messageId does not exist in outbox or inbox
   | "RECIPIENT_FORBIDDEN"   // Caller is not the addressed recipient
   | "NOT_RETRYABLE"         // Message is in a terminal state (DELIVERED, READ)
+  | "IDEMPOTENCY_CONFLICT"  // Same messageId reused with different envelope fields
   | "TRANSPORT_FAILURE";    // Generic technical failure during send/delivery
 
 // ── The interface ─────────────────────────────────────────────────────────────

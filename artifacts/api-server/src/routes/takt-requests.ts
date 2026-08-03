@@ -54,6 +54,11 @@ import {
   ResponseStatusError,
 } from "../services/nu-response-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import { IdempotencyConflictError } from "../lib/transport/transport-errors";
+import {
+  MalformedSchemaVersionError,
+  UnsupportedSchemaVersionError,
+} from "../lib/schema-version";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
   runAvailabilityCheck,
@@ -75,6 +80,39 @@ import type { TaktCoordinationDecisionType } from "@workspace/db";
 
 // Module-level transport singleton — stateless, safe to share across requests.
 const transport = new LocalHubTransport();
+
+/**
+ * Wraps transport.send() and maps schema / idempotency errors to proper HTTP
+ * responses.  Returns null when an error response has already been sent (the
+ * caller must `return` immediately); returns the TransportResult on success.
+ *
+ * HTTP status mapping:
+ *   MalformedSchemaVersionError   → 400  (missing / invalid format)
+ *   UnsupportedSchemaVersionError → 422  (valid format, unsupported major)
+ *   IdempotencyConflictError      → 409  (same messageId, different fields)
+ */
+async function safeSend(
+  envelope: Parameters<(typeof transport)["send"]>[0],
+  res: import("express").Response,
+): Promise<Awaited<ReturnType<(typeof transport)["send"]>> | null> {
+  try {
+    return await transport.send(envelope);
+  } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      res.status(409).json({ error: err.message, conflictingFields: err.conflictingFields });
+      return null;
+    }
+    if (err instanceof UnsupportedSchemaVersionError) {
+      res.status(422).json({ error: err.message });
+      return null;
+    }
+    if (err instanceof MalformedSchemaVersionError) {
+      res.status(400).json({ error: err.message });
+      return null;
+    }
+    throw err;
+  }
+}
 
 /**
  * Returns a deterministic outbox messageId for a TaktRequest notification.
@@ -409,7 +447,8 @@ router.post(
       payload: notificationPayload,
     };
 
-    const transportResult = await transport.send(envelope);
+    const transportResult = await safeSend(envelope, res);
+    if (!transportResult) return;
 
     // ── 7. Update TaktRequest status based on transport outcome ────────────
     const now = new Date();
@@ -825,7 +864,8 @@ router.post(
       causationId:   null,
       payload:       guPayload,
     };
-    const transportResult = await transport.send(envelope);
+    const transportResult = await safeSend(envelope, res);
+    if (!transportResult) return;
 
     res.status(201).json({
       id:              result.response.id,
@@ -1095,7 +1135,8 @@ router.post(
       payload:        guPayload,
     };
 
-    const transportResult = await transport.send(envelope);
+    const transportResult = await safeSend(envelope, res);
+    if (!transportResult) return;
 
     // ── 8. Write audit events ─────────────────────────────────────────────────
     await writeAuditEvent({

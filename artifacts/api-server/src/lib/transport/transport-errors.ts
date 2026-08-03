@@ -11,6 +11,7 @@
  *     MessageNotFoundError      (404-level — messageId unknown)
  *     RecipientForbiddenError   (403-level — wrong org tried to act)
  *     NotRetryableError         (409-level — message is in a terminal state)
+ *     IdempotencyConflictError  (409-level — same messageId, different envelope fields)
  *     TransportFailureError     (502-level — technical delivery failure)
  */
 
@@ -89,6 +90,32 @@ export class NotRetryableError extends TransportDomainError {
     this.name = "NotRetryableError";
     this.messageId = messageId;
     this.currentStatus = currentStatus;
+  }
+}
+
+/**
+ * A previous message with the same `messageId` already exists in the outbox,
+ * but one or more envelope fields (schemaVersion, messageType, senderOrgId,
+ * recipientOrgId, correlationId, causationId, or payload) differ from the
+ * original.
+ *
+ * This indicates a misuse of the idempotency key — the caller is trying to
+ * reuse a messageId for a semantically different message.
+ * Callers should surface this as HTTP 409 Conflict.
+ */
+export class IdempotencyConflictError extends TransportDomainError {
+  readonly messageId: string;
+  readonly conflictingFields: string[];
+
+  constructor(messageId: string, conflictingFields: string[]) {
+    super(
+      "IDEMPOTENCY_CONFLICT",
+      `Idempotency conflict: messageId "${messageId}" already exists with different ` +
+      `content in fields: ${conflictingFields.join(", ")}.`,
+    );
+    this.name = "IdempotencyConflictError";
+    this.messageId = messageId;
+    this.conflictingFields = conflictingFields;
   }
 }
 

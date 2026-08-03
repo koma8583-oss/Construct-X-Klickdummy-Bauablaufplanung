@@ -33,11 +33,17 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import type { MessageEnvelope, MessageTransport, TransportResult, InboxMessage, InboxQueryOptions } from "./message-transport";
 import {
   InvalidEnvelopeError,
+  IdempotencyConflictError,
   MessageNotFoundError,
   RecipientForbiddenError,
   NotRetryableError,
   TransportFailureError,
 } from "./transport-errors";
+import {
+  assertSupportedSchemaVersion,
+  MalformedSchemaVersionError,
+  UnsupportedSchemaVersionError,
+} from "../schema-version";
 import type { MessageOutbox } from "@workspace/db";
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -58,11 +64,11 @@ function validateEnvelope(envelope: MessageEnvelope): void {
   if (!envelope.correlationId) {
     throw new InvalidEnvelopeError("correlationId is required");
   }
-  if (!envelope.schemaVersion || !/^\d+\.\d+$/.test(envelope.schemaVersion)) {
-    throw new InvalidEnvelopeError(
-      `schemaVersion must match major.minor format (e.g. "1.0"), got: ${envelope.schemaVersion}`,
-    );
-  }
+  // assertSupportedSchemaVersion throws MalformedSchemaVersionError (400-level)
+  // for missing/malformed format, and UnsupportedSchemaVersionError (422-level)
+  // for an unknown major version. Both extend Error and are NOT InvalidEnvelopeError —
+  // route handlers must catch them separately to return the correct HTTP status.
+  assertSupportedSchemaVersion(envelope.schemaVersion);
   if (!envelope.payload || typeof envelope.payload !== "object" || Array.isArray(envelope.payload)) {
     throw new InvalidEnvelopeError("payload must be a non-null object");
   }
@@ -91,10 +97,19 @@ function rowToTransportResult(row: MessageOutbox): TransportResult {
  * would give a different string than the original envelope payload even when
  * the contents are semantically identical. Sorting keys before stringifying
  * makes the comparison order-independent.
+ *
+ * Arrays are preserved in their original order (order matters for arrays),
+ * but each element is itself stably stringified — so nested object keys
+ * inside array elements are also sorted. This ensures that an alternatives
+ * array `[{b:1,a:2}]` produces the same string after a JSONB round-trip
+ * as the original (JSONB returns keys alphabetically, so `{a:2,b:1}`).
  */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${(value as unknown[]).map(stableStringify).join(",")}]`;
   }
   const sorted = Object.keys(value as Record<string, unknown>)
     .sort()
@@ -108,19 +123,41 @@ function stableStringify(value: unknown): string {
 
 /**
  * Deep-equal check for idempotency conflict detection.
- * Compares the key fields that identify a message's business identity.
+ * Compares ALL envelope identity fields — a mismatch in any of them indicates
+ * the caller is incorrectly reusing a messageId for a different message.
  */
 function envelopeMatchesRow(
   envelope: MessageEnvelope,
   row: MessageOutbox,
 ): boolean {
   return (
+    envelope.schemaVersion === row.schemaVersion &&
     envelope.messageType === row.messageType &&
     envelope.senderOrgId === row.senderOrgId &&
     envelope.recipientOrgId === row.recipientOrgId &&
     envelope.correlationId === row.correlationId &&
+    (envelope.causationId ?? null) === (row.causationId ?? null) &&
     stableStringify(envelope.payload) === stableStringify(row.payload)
   );
+}
+
+/**
+ * Return the names of envelope fields that differ between an incoming envelope
+ * and the stored outbox row. Used to populate `IdempotencyConflictError`.
+ */
+function findConflictingFields(
+  envelope: MessageEnvelope,
+  row: MessageOutbox,
+): string[] {
+  const conflicts: string[] = [];
+  if (envelope.schemaVersion !== row.schemaVersion) conflicts.push("schemaVersion");
+  if (envelope.messageType !== row.messageType) conflicts.push("messageType");
+  if (envelope.senderOrgId !== row.senderOrgId) conflicts.push("senderOrgId");
+  if (envelope.recipientOrgId !== row.recipientOrgId) conflicts.push("recipientOrgId");
+  if (envelope.correlationId !== row.correlationId) conflicts.push("correlationId");
+  if ((envelope.causationId ?? null) !== (row.causationId ?? null)) conflicts.push("causationId");
+  if (stableStringify(envelope.payload) !== stableStringify(row.payload)) conflicts.push("payload");
+  return conflicts;
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -142,10 +179,8 @@ export class LocalHubTransport implements MessageTransport {
     if (existing.length > 0) {
       const row = existing[0];
       if (!envelopeMatchesRow(envelope, row)) {
-        throw new InvalidEnvelopeError(
-          `Idempotency conflict: messageId "${envelope.messageId}" already exists with different content. ` +
-          `Check messageType, senderOrgId, recipientOrgId, correlationId, and payload.`,
-        );
+        const conflictingFields = findConflictingFields(envelope, row);
+        throw new IdempotencyConflictError(envelope.messageId, conflictingFields);
       }
       // Same content — return existing result without re-sending
       return rowToTransportResult(row);

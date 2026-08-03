@@ -11,6 +11,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import {
   InvalidEnvelopeError,
+  IdempotencyConflictError,
   MessageNotFoundError,
   RecipientForbiddenError,
   NotRetryableError,
@@ -149,21 +150,21 @@ describe("LocalHubTransport.send()", () => {
     expect(result1.messageId).toBe(result2.messageId);
   });
 
-  it("same messageId with different payload is rejected with InvalidEnvelopeError", async () => {
+  it("same messageId with different payload is rejected with IdempotencyConflictError", async () => {
     const envelope = makeEnvelope();
     await transport.send(envelope);
 
     const modified = { ...envelope, payload: { ...BASE_PAYLOAD, extra: "conflict" } };
 
-    await expect(transport.send(modified)).rejects.toBeInstanceOf(InvalidEnvelopeError);
+    await expect(transport.send(modified)).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
-  it("same messageId with different recipientOrgId is rejected", async () => {
+  it("same messageId with different recipientOrgId is rejected with IdempotencyConflictError", async () => {
     const envelope = makeEnvelope();
     await transport.send(envelope);
 
     const conflicting = { ...envelope, recipientOrgId: OTHER_ORG };
-    await expect(transport.send(conflicting)).rejects.toBeInstanceOf(InvalidEnvelopeError);
+    await expect(transport.send(conflicting)).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
   it("stores a failed delivery as FAILED in the outbox when inbox insert fails", async () => {

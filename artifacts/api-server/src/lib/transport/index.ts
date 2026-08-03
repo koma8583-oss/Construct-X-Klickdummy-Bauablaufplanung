@@ -14,6 +14,7 @@ export type {
 export {
   TransportDomainError,
   InvalidEnvelopeError,
+  IdempotencyConflictError,
   MessageNotFoundError,
   RecipientForbiddenError,
   NotRetryableError,
