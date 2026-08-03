@@ -4,6 +4,7 @@ import {
   useGetMyProfile, 
   useUpdateMyProfile, 
   useGetMyOrganizations,
+  useUpdateOrganization,
   useListOrganizationMembers,
   useAddOrganizationMember,
   useRemoveOrganizationMember,
@@ -13,6 +14,7 @@ import {
   useDeleteWebhook,
   useListWebhookEvents,
   getGetMyProfileQueryKey,
+  getGetMyOrganizationsQueryKey,
   getListOrganizationMembersQueryKey,
   getListWebhooksQueryKey
 } from "@workspace/api-client-react";
@@ -40,10 +42,15 @@ export default function Settings() {
   // Org
   const { data: orgs } = useGetMyOrganizations();
   const myOrgId = user?.orgId;
+  const myOrg = orgs?.find(o => o.organization.id === myOrgId)?.organization;
   const { data: members } = useListOrganizationMembers(myOrgId || "", { query: { enabled: !!myOrgId, queryKey: getListOrganizationMembersQueryKey(myOrgId || "") }});
   const addMember = useAddOrganizationMember();
   const removeMember = useRemoveOrganizationMember();
+  const updateOrg = useUpdateOrganization();
   const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [orgDescription, setOrgDescription] = useState("");
+  const [orgSaved, setOrgSaved] = useState(false);
 
   // Webhooks
   const { data: webhooks } = useListWebhooks({ query: { enabled: !!myOrgId, queryKey: getListWebhooksQueryKey() }});
@@ -54,6 +61,14 @@ export default function Settings() {
   
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
+
+  const handleOrgSave = async () => {
+    if (!myOrgId) return;
+    await updateOrg.mutateAsync({ orgId: myOrgId, data: { name: orgName || myOrg?.name || "", description: orgDescription || undefined } });
+    queryClient.invalidateQueries({ queryKey: getGetMyOrganizationsQueryKey() });
+    setOrgSaved(true);
+    setTimeout(() => setOrgSaved(false), 2500);
+  };
 
   const handleProfileSave = async () => {
     await updateProfile.mutateAsync({ data: { name, preferredLanguage: lang as any } });
@@ -88,6 +103,7 @@ export default function Settings() {
       <Tabs defaultValue="profile">
         <TabsList className="bg-sidebar-accent border-b border-border rounded-none w-full justify-start">
           <TabsTrigger value="profile" className="data-[state=active]:bg-card">{t("settings.profile")}</TabsTrigger>
+          <TabsTrigger value="organisation" className="data-[state=active]:bg-card">Organisation</TabsTrigger>
           <TabsTrigger value="team" className="data-[state=active]:bg-card">{t("settings.team")}</TabsTrigger>
           <TabsTrigger value="webhooks" className="data-[state=active]:bg-card">{t("settings.webhooks")}</TabsTrigger>
         </TabsList>
@@ -122,6 +138,47 @@ export default function Settings() {
                 {updateProfile.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {t("common.save")}
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="organisation" className="mt-6 space-y-6">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Firmendaten</CardTitle>
+              <CardDescription>Bezeichnung und Beschreibung Ihrer Organisation.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 max-w-md">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Firmenbezeichnung</label>
+                <Input
+                  value={orgName !== "" ? orgName : (myOrg?.name ?? "")}
+                  onChange={e => setOrgName(e.target.value)}
+                  placeholder={myOrg?.name ?? "Firmenname"}
+                  className="bg-background"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Beschreibung</label>
+                <textarea
+                  value={orgDescription !== "" ? orgDescription : (myOrg?.description ?? "")}
+                  onChange={e => setOrgDescription(e.target.value)}
+                  placeholder="Kurze Beschreibung Ihres Unternehmens …"
+                  rows={4}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={handleOrgSave}
+                  disabled={updateOrg.isPending}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white"
+                >
+                  {updateOrg.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {t("common.save")}
+                </Button>
+                {orgSaved && <span className="text-sm text-emerald-500">Gespeichert ✓</span>}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

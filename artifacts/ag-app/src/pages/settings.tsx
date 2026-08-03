@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { 
   useGetMyProfile,
   useUpdateMyProfile,
+  useGetMyOrganizations,
+  useUpdateOrganization,
   useListOrganizationMembers,
   useAddOrganizationMember,
   useRemoveOrganizationMember,
@@ -10,6 +12,7 @@ import {
   useCreateWebhook,
   useDeleteWebhook,
   useListWebhookEvents,
+  getGetMyOrganizationsQueryKey,
   getListOrganizationMembersQueryKey,
   getListWebhooksQueryKey,
   getListWebhookEventsQueryKey
@@ -46,6 +49,10 @@ export default function Settings() {
             <UserCircle className="w-4 h-4 mr-2" />
             {t('settings.profile')}
           </TabsTrigger>
+          <TabsTrigger value="organisation" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+            <Globe className="w-4 h-4 mr-2" />
+            Organisation
+          </TabsTrigger>
           <TabsTrigger value="team" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
             <Users className="w-4 h-4 mr-2" />
             {t('settings.team')}
@@ -58,6 +65,10 @@ export default function Settings() {
 
         <TabsContent value="profile">
           <ProfileSettings />
+        </TabsContent>
+
+        <TabsContent value="organisation">
+          {user?.orgId && <OrganisationSettings orgId={user.orgId} />}
         </TabsContent>
 
         <TabsContent value="team">
@@ -261,6 +272,74 @@ function TeamSettings({ orgId }: { orgId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function OrganisationSettings({ orgId }: { orgId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: orgs } = useGetMyOrganizations();
+  const updateOrg = useUpdateOrganization();
+
+  const myOrg = orgs?.find(o => o.organization.id === orgId)?.organization;
+
+  const [name, setName] = React.useState('');
+  const [description, setDescription] = React.useState('');
+
+  React.useEffect(() => {
+    if (myOrg) {
+      setName(myOrg.name);
+      setDescription(myOrg.description ?? '');
+    }
+  }, [myOrg]);
+
+  const handleSave = () => {
+    updateOrg.mutate({ orgId, data: { name, description: description || undefined } }, {
+      onSuccess: () => {
+        toast({ title: 'Gespeichert' });
+        queryClient.invalidateQueries({ queryKey: getGetMyOrganizationsQueryKey() });
+      },
+      onError: (err) => {
+        toast({ title: 'Fehler', description: err.message, variant: 'destructive' });
+      }
+    });
+  };
+
+  return (
+    <Card className="bg-card">
+      <CardHeader>
+        <CardTitle>Firmendaten</CardTitle>
+        <CardDescription>Bezeichnung und Beschreibung Ihrer Organisation.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 max-w-md">
+        <div className="space-y-2">
+          <Label htmlFor="org-name">Firmenbezeichnung</Label>
+          <Input
+            id="org-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Firmenname"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="org-desc">Beschreibung</Label>
+          <textarea
+            id="org-desc"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Kurze Beschreibung Ihres Unternehmens …"
+            rows={4}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+          />
+        </div>
+      </CardContent>
+      <CardFooter className="border-t border-border/50 pt-6">
+        <Button onClick={handleSave} disabled={updateOrg.isPending || !name}>
+          {updateOrg.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          Speichern
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
