@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useListResourceAssignments,
-  useListDelegations,
+  useListTaktRequests,
+  getListTaktRequestsQueryKey,
 } from "@workspace/api-client-react";
 import { Gantt, Task, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
@@ -11,19 +12,33 @@ import { Loader2 } from "lucide-react";
 
 // ── status colours ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
-  PENDING:              "#f59e0b",
-  CONFIRMED:            "#10b981",
-  ALTERNATIVE_PROPOSED: "#3b82f6",
-  REJECTED:             "#6b7280",
+  SENT:                 "#f59e0b",
+  DELIVERED:            "#f59e0b",
+  DETAILS_RETRIEVED:    "#f59e0b",
+  UNDER_REVIEW:         "#f59e0b",
+  ACCEPTED:             "#10b981",
+  ALTERNATIVES_PROPOSED:"#3b82f6",
+  REJECTED:             "#ef4444",
+  REVISION_REQUIRED:    "#f97316",
   CANCELLED:            "#9ca3af",
+  EXPIRED:              "#6b7280",
+  SUPERSEDED:           "#6b7280",
+  DRAFT:                "#d1d5db",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING:              "Ausstehend",
-  CONFIRMED:            "Bestätigt",
-  ALTERNATIVE_PROPOSED: "Gegenvorschlag",
+  SENT:                 "Gesendet",
+  DELIVERED:            "Zugestellt",
+  DETAILS_RETRIEVED:    "Abgerufen",
+  UNDER_REVIEW:         "In Prüfung",
+  ACCEPTED:             "Angenommen",
+  ALTERNATIVES_PROPOSED:"Gegenvorschlag",
   REJECTED:             "Abgelehnt",
+  REVISION_REQUIRED:    "Überarbeitung",
   CANCELLED:            "Storniert",
+  EXPIRED:              "Abgelaufen",
+  SUPERSEDED:           "Ersetzt",
+  DRAFT:                "Entwurf",
 };
 
 /** Ensure end is always strictly after start (gantt-task-react requirement). */
@@ -42,21 +57,31 @@ export default function GanttPage() {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
 
   const { data: assignments, isLoading: loadingAssignments } = useListResourceAssignments();
-  const { data: delegations, isLoading: loadingDelegations  } = useListDelegations();
+  const { data: taktRequests, isLoading: loadingTaktRequests } = useListTaktRequests(
+    { role: "nu" } as any,
+    {
+      query: {
+        queryKey: getListTaktRequestsQueryKey({ role: "nu" } as any),
+        refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
+      },
+    },
+  );
 
-  // ── delegation tasks ────────────────────────────────────────────────────────
-  const delegationTasks = useMemo((): Task[] => {
-    if (!delegations || delegations.length === 0) return [];
+  // ── TaktRequest tasks ────────────────────────────────────────────────────────
+  const taktRequestTasks = useMemo((): Task[] => {
+    if (!taktRequests || taktRequests.length === 0) return [];
 
-    // Filter out cancelled/rejected so the chart stays readable;
-    // keep them but grey them out instead.
     const projectMap = new Map<string, { name: string; start: Date; end: Date }>();
 
-    delegations.forEach((d) => {
-      const projId   = (d as any).project?.id ?? "unknown";
-      const projName = (d as any).project?.name ?? "Unbekanntes Projekt";
-      const start    = new Date(d.requestedStart);
-      const end      = safeEnd(start, new Date(d.requestedEnd));
+    taktRequests.forEach((req) => {
+      const projId   = req.projectId ?? "unknown";
+      const projName = req.projectName ?? "Unbekanntes Projekt";
+      // Use sentAt/createdAt as bar start; responseRequiredBy/expiresAt as bar end.
+      const startStr = req.sentAt ?? req.createdAt;
+      const start    = new Date(startStr);
+      const endStr   = req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
+      const end      = safeEnd(start, new Date(endStr));
 
       const existing = projectMap.get(projId);
       if (!existing) {
@@ -80,42 +105,43 @@ export default function GanttPage() {
         progress:     100,
         hideChildren: false,
         styles: {
-          backgroundColor:     "transparent",
-          progressColor:       "transparent",
+          backgroundColor:         "transparent",
+          progressColor:           "transparent",
           backgroundSelectedColor: "transparent",
         },
       });
     });
 
-    // Delegation bars
-    delegations.forEach((d) => {
-      const projId = (d as any).project?.id ?? "unknown";
-      const takt   = (d as any).takt;
-      const label  = [takt?.gewerk, takt?.zone, takt?.taktBezeichnung]
+    // TaktRequest bars
+    taktRequests.forEach((req) => {
+      const projId   = req.projectId ?? "unknown";
+      const startStr = req.sentAt ?? req.createdAt;
+      const start    = new Date(startStr);
+      const endStr   = req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
+      const end      = safeEnd(start, new Date(endStr));
+      const color    = STATUS_COLOR[req.status] ?? "#6b7280";
+      const label    = [req.taktBezeichnung, req.requestNumber]
         .filter(Boolean)
         .join(" · ");
-      const start  = new Date(d.requestedStart);
-      const end    = safeEnd(start, new Date(d.requestedEnd));
-      const color  = STATUS_COLOR[d.status] ?? "#6b7280";
 
       tasks.push({
-        id:       d.id,
-        name:     label || "Takt",
-        type:     "task",
+        id:      req.id,
+        name:    label || "Takt",
+        type:    "task",
         start,
         end,
         progress: 100,
-        project:  `proj_${projId}`,
+        project: `proj_${projId}`,
         styles: {
-          backgroundColor:          color,
-          progressColor:            color,
-          backgroundSelectedColor:  color,
+          backgroundColor:         color,
+          progressColor:           color,
+          backgroundSelectedColor: color,
         },
       });
     });
 
     return tasks;
-  }, [delegations]);
+  }, [taktRequests]);
 
   // ── resource assignment tasks ───────────────────────────────────────────────
   const assignmentTasks = useMemo((): Task[] => {
@@ -150,8 +176,8 @@ export default function GanttPage() {
         progress:     100,
         hideChildren: false,
         styles: {
-          backgroundColor:     "transparent",
-          progressColor:       "transparent",
+          backgroundColor:         "transparent",
+          progressColor:           "transparent",
           backgroundSelectedColor: "transparent",
         },
       });
@@ -184,8 +210,8 @@ export default function GanttPage() {
     return tasks;
   }, [assignments]);
 
-  const isLoading = tab === "requests" ? loadingDelegations : loadingAssignments;
-  const tasks     = tab === "requests" ? delegationTasks    : assignmentTasks;
+  const isLoading = tab === "requests" ? loadingTaktRequests : loadingAssignments;
+  const tasks     = tab === "requests" ? taktRequestTasks    : assignmentTasks;
 
   const colWidth = viewMode === ViewMode.Day ? 60
                  : viewMode === ViewMode.Week ? 200
