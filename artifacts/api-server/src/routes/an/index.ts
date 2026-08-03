@@ -13,6 +13,7 @@ import resourcesRouter from "../resources";
 import organizationsRouter from "../organizations";
 import webhooksRouter from "../webhooks";
 import healthRouter from "../health";
+import taktRequestsRouter from "../takt-requests";
 
 const router: IRouter = Router();
 
@@ -24,6 +25,7 @@ router.use(delegationsRouter);
 router.use(resourcesRouter);
 router.use(organizationsRouter);
 router.use(webhooksRouter);
+router.use(taktRequestsRouter);
 
 // AN dashboard at /api/an/dashboard/an
 router.use(dashboardRouter);

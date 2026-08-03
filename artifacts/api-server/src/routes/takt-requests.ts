@@ -17,7 +17,7 @@
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { takteTable, projectsTable, messageOutboxTable } from "@workspace/db";
+import { takteTable, projectsTable, messageOutboxTable, hubMessagesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
@@ -454,6 +454,15 @@ router.post(
         .set({ lifecycleStatus: "IN_COORDINATION" })
         .where(eq(takteTable.id, existing.taktId));
 
+      // ── 9. Write hub audit message ─────────────────────────────────────
+      await db.insert(hubMessagesTable).values({
+        type: "TAKT_REQUEST_SENT",
+        senderOrgId: guOrgId,
+        recipientOrgId: existing.nuOrgId,
+        correlationId: id,
+        payload: { taktRequestId: id, taktId: existing.taktId },
+      });
+
       const [taktAfter] = await db
         .select()
         .from(takteTable)
@@ -767,6 +776,21 @@ router.post(
       }
       throw err;
     }
+
+    // Write hub audit message
+    const responseHubType =
+      decision === "ACCEPTED"
+        ? "TAKT_REQUEST_ACCEPTED"
+        : decision === "ALTERNATIVES_PROPOSED"
+          ? "TAKT_REQUEST_ALTERNATIVES_PROPOSED"
+          : "TAKT_REQUEST_REJECTED";
+    await db.insert(hubMessagesTable).values({
+      type: responseHubType as any,
+      senderOrgId: nuOrgId,
+      recipientOrgId: existing.guOrgId,
+      correlationId: id,
+      payload: { taktRequestId: id, decision, reasonCode, comment },
+    });
 
     res.status(201).json(result);
   },
@@ -1262,6 +1286,27 @@ router.post(
       });
 
       const { decision, updatedRequest, newTaktVersion, idempotent } = result;
+
+      // Write hub audit message (skip for idempotent replays)
+      if (!idempotent) {
+        const guDecisionHubType =
+          decisionType === "CONFIRM_ACCEPTED"     ? "TAKT_REQUEST_CONFIRMED"
+          : decisionType === "ACCEPT_ALTERNATIVE" ? "TAKT_REQUEST_ALT_ACCEPTED"
+          : decisionType === "CLOSE_WITHOUT_AGREEMENT" ? "TAKT_REQUEST_CLOSED"
+          : null; // REQUEST_REVISION — no hub message needed (new round will have its own SENT)
+        if (guDecisionHubType) {
+          const taktReq = await getTaktRequestById(id);
+          if (taktReq) {
+            await db.insert(hubMessagesTable).values({
+              type: guDecisionHubType as any,
+              senderOrgId: guOrgId,
+              recipientOrgId: taktReq.nuOrgId,
+              correlationId: id,
+              payload: { taktRequestId: id, decisionType, comment: comment ?? null },
+            });
+          }
+        }
+      }
 
       res.status(idempotent ? 200 : 201).json({
         decisionId:              decision.id,
