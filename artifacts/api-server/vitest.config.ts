@@ -5,12 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/*.test.ts"],
-    env: {
-      // Fixed token used in all test runs. Production must set INTERNAL_JOB_TOKEN
-      // via environment secrets to a cryptographically secure value.
-      INTERNAL_JOB_TOKEN: "ci-test-internal-token-do-not-use-in-prod",
-      // Allow internal routes in test environment
-      INTERNAL_ROUTES_ENABLED: "true",
-    },
+    // Runs in every worker before any test file — sets env vars that tests need.
+    setupFiles: ["./src/__tests__/setup.ts"],
   },
 });

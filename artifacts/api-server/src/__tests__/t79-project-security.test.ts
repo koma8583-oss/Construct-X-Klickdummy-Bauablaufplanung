@@ -341,24 +341,96 @@ describe("E — Soft-delete: contractor row persists as INACTIVE after DELETE", 
   });
 });
 
+// ── E2) Contractor soft-delete: regression — list excludes INACTIVE, re-add reactivates ─
+
+describe("E2 — Contractor soft-delete regression: list and re-add", () => {
+  const REGR_PROJECT = "t79-regr-project";
+  const REGR_AN      = "t79-regr-an";
+
+  beforeAll(async () => {
+    await db.insert(organizationsTable).values({
+      id: REGR_AN, name: "T79 Regression AN", type: "AN",
+    }).onConflictDoNothing();
+
+    await db.insert(projectsTable).values({
+      id: REGR_PROJECT, agOrgId: AG_ORG, name: "T79 Regression Project",
+    }).onConflictDoNothing();
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM project_contractors WHERE project_id = ${REGR_PROJECT}`).catch(() => {});
+    await db.execute(sql`DELETE FROM projects      WHERE id = ${REGR_PROJECT}`).catch(() => {});
+    await db.execute(sql`DELETE FROM organizations WHERE id = ${REGR_AN}`).catch(() => {});
+  });
+
+  it("Add → then contractor appears in the GET list", async () => {
+    await request(app)
+      .post(`/api/projects/${REGR_PROJECT}/contractors`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({ anOrgId: REGR_AN });
+
+    const list = await request(app)
+      .get(`/api/projects/${REGR_PROJECT}/contractors`)
+      .set("Authorization", `Bearer ${agToken}`);
+
+    expect(list.status).toBe(200);
+    const found = (list.body as any[]).some((c: any) => c.id === REGR_AN);
+    expect(found).toBe(true);
+  });
+
+  it("Soft-delete → contractor disappears from the GET list", async () => {
+    await request(app)
+      .delete(`/api/projects/${REGR_PROJECT}/contractors/${REGR_AN}`)
+      .set("Authorization", `Bearer ${agToken}`);
+
+    const list = await request(app)
+      .get(`/api/projects/${REGR_PROJECT}/contractors`)
+      .set("Authorization", `Bearer ${agToken}`);
+
+    expect(list.status).toBe(200);
+    const found = (list.body as any[]).some((c: any) => c.id === REGR_AN);
+    expect(found).toBe(false);
+  });
+
+  it("Re-add after soft-delete reactivates the row (contractor reappears in list)", async () => {
+    const addRes = await request(app)
+      .post(`/api/projects/${REGR_PROJECT}/contractors`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({ anOrgId: REGR_AN });
+
+    expect([200, 201]).toContain(addRes.status);
+    // reactivated flag indicates the existing row was restored
+    expect(addRes.body.ok).toBe(true);
+
+    const list = await request(app)
+      .get(`/api/projects/${REGR_PROJECT}/contractors`)
+      .set("Authorization", `Bearer ${agToken}`);
+
+    expect(list.status).toBe(200);
+    const found = (list.body as any[]).some((c: any) => c.id === REGR_AN);
+    expect(found).toBe(true);
+  });
+});
+
 // ── F) Internal deadline endpoint auth ────────────────────────────────────────
 
 describe("F — POST /api/internal/jobs/deadlines/run — token auth", () => {
+  // The internal router is mounted at /internal (not /api/internal)
   it("Missing Authorization header → 401", async () => {
-    const res = await request(app).post("/api/internal/jobs/deadlines/run");
+    const res = await request(app).post("/internal/jobs/deadlines/run");
     expect(res.status).toBe(401);
   });
 
   it("Wrong token → 403", async () => {
     const res = await request(app)
-      .post("/api/internal/jobs/deadlines/run")
+      .post("/internal/jobs/deadlines/run")
       .set("Authorization", "Bearer wrong-token-value");
     expect(res.status).toBe(403);
   });
 
   it("Correct token → runs and returns result", async () => {
     const res = await request(app)
-      .post("/api/internal/jobs/deadlines/run")
+      .post("/internal/jobs/deadlines/run")
       .set("Authorization", `Bearer ${INTERNAL_TOKEN}`)
       .send({});
     // Should be 200 (ran or locked, not auth error)
@@ -368,7 +440,7 @@ describe("F — POST /api/internal/jobs/deadlines/run — token auth", () => {
 
   it("Non-Bearer Authorization format → 401", async () => {
     const res = await request(app)
-      .post("/api/internal/jobs/deadlines/run")
+      .post("/internal/jobs/deadlines/run")
       .set("Authorization", `Basic ${INTERNAL_TOKEN}`);
     expect(res.status).toBe(401);
   });

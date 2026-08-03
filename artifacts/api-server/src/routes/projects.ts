@@ -7,7 +7,7 @@ import {
   delegationsTable,
   delegationResponsesTable,
 } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
 
@@ -248,6 +248,7 @@ router.delete(
 );
 
 // ── GET /projects/:projectId/contractors ────────────────────────────────────────
+// Returns only ACTIVE assignments so that soft-deleted contractors are hidden.
 router.get(
   "/projects/:projectId/contractors",
   requireJwt,
@@ -262,7 +263,12 @@ router.get(
         organizationsTable,
         eq(projectContractorsTable.anOrgId, organizationsTable.id),
       )
-      .where(eq(projectContractorsTable.projectId, project.id));
+      .where(
+        and(
+          eq(projectContractorsTable.projectId, project.id),
+          eq(projectContractorsTable.assignmentStatus, "ACTIVE"),
+        ),
+      );
 
     res.json(contractors.map((c) => c.org));
   },
@@ -271,6 +277,8 @@ router.get(
 // ── POST /projects/:projectId/contractors ───────────────────────────────────────
 // Legacy endpoint — use POST /ag/projects/:projectId/subcontractors for full control.
 // Kept for backward compatibility; creates an ACTIVE assignment with no trade.
+// Re-adding a previously soft-deleted (INACTIVE) contractor reactivates the row
+// rather than inserting a duplicate or silently ignoring the request.
 router.post(
   "/projects/:projectId/contractors",
   requireJwt,
@@ -284,16 +292,42 @@ router.post(
       return;
     }
 
-    try {
+    // Check for an existing row (any status) for this AN with no trade
+    const [existing] = await db
+      .select({ id: projectContractorsTable.id, assignmentStatus: projectContractorsTable.assignmentStatus })
+      .from(projectContractorsTable)
+      .where(
+        and(
+          eq(projectContractorsTable.projectId, project.id),
+          eq(projectContractorsTable.anOrgId, anOrgId),
+          // Legacy endpoint manages the no-trade slot only
+          sql`${projectContractorsTable.trade} IS NULL`,
+          sql`${projectContractorsTable.workPackageReference} IS NULL`,
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      if (existing.assignmentStatus === "ACTIVE") {
+        // Already active — idempotent success
+        res.status(200).json({ ok: true, reactivated: false });
+        return;
+      }
+      // Reactivate the inactive/cancelled assignment
       await db
-        .insert(projectContractorsTable)
-        .values({ projectId: project.id, anOrgId })
-        .onConflictDoNothing();
-    } catch {
-      // Unique index violation on the trade-aware index — silently ignore
+        .update(projectContractorsTable)
+        .set({ assignmentStatus: "ACTIVE" })
+        .where(eq(projectContractorsTable.id, existing.id));
+      res.status(200).json({ ok: true, reactivated: true });
+      return;
     }
 
-    res.status(201).json({ ok: true });
+    // No existing row — insert fresh
+    await db
+      .insert(projectContractorsTable)
+      .values({ projectId: project.id, anOrgId });
+
+    res.status(201).json({ ok: true, reactivated: false });
   },
 );
 
