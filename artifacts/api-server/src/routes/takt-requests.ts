@@ -20,6 +20,7 @@ import { db } from "@workspace/db";
 import { takteTable, projectsTable, messageOutboxTable, hubMessagesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
+import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
 import {
   createTaktRequestDraft,
@@ -139,6 +140,7 @@ router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
 router.post(
   "/projects/:projectId/takt-requests",
   requireJwt,
+  requireRole("AG_ADMIN", "GENERAL_PLANNER"),
   async (req, res): Promise<void> => {
     const guOrgId = req.user!.orgId!;
     const userId = req.user!.userId!;
@@ -236,7 +238,7 @@ router.get(
 // GU creates a TaktRequest in DRAFT status with an immutable Takt snapshot.
 // Uses createTaktRequestWithSnapshot() — atomic, whitelist-scoped, validated.
 // No message is sent; call /takt-requests/:id/send to deliver the notification.
-router.post("/takt-requests", requireJwt, async (req, res): Promise<void> => {
+router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res): Promise<void> => {
   const guOrgId = req.user!.orgId!;
   const userId = req.user!.userId!;
 
@@ -318,6 +320,7 @@ router.post("/takt-requests", requireJwt, async (req, res): Promise<void> => {
 router.post(
   "/takt-requests/:id/send",
   requireJwt,
+  requireRole("AG_ADMIN", "GENERAL_PLANNER"),
   async (req, res): Promise<void> => {
     const guOrgId = req.user!.orgId!;
     const id = req.params.id as string;
@@ -696,6 +699,7 @@ router.get(
 router.post(
   "/takt-requests/:id/response",
   requireJwt,
+  requireRole("AN_ADMIN", "AN_DISPATCHER"),
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
     const userId  = req.user!.userId!;
@@ -848,6 +852,7 @@ router.post(
 router.post(
   "/takt-requests/:id/availability-checks",
   requireJwt,
+  requireRole("AN_ADMIN", "AN_DISPATCHER"),
   async (req, res): Promise<void> => {
     const user = req.user!;
     const id = req.params.id as string;
@@ -947,6 +952,7 @@ router.get(
 router.post(
   "/takt-requests/:id/responses",
   requireJwt,
+  requireRole("AN_ADMIN", "AN_DISPATCHER"),
   async (req, res): Promise<void> => {
     const user = req.user!;
     const id   = req.params.id as string;

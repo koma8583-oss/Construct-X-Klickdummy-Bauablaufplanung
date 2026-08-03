@@ -2,6 +2,13 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { useQueryClient } from '@tanstack/react-query';
 import { setToken } from '@/lib/auth-token';
 
+export type UserRole =
+  | 'AG_ADMIN'
+  | 'GENERAL_PLANNER'
+  | 'AN_ADMIN'
+  | 'AN_DISPATCHER'
+  | 'HUB_ADMIN';
+
 export type AuthUser = {
   id: string;
   name: string;
@@ -11,6 +18,8 @@ export type AuthUser = {
   orgName: string | null;
   orgType: 'AG' | 'AN' | null;
   hubAdmin: boolean;
+  /** Fine-grained role assignments. Empty = legacy / unassigned. */
+  roles: UserRole[];
 };
 
 interface AuthContextType {
@@ -19,6 +28,8 @@ interface AuthContextType {
   login: (data: { email: string; password: string }) => Promise<void>;
   register: (data: { name: string; email: string; password: string; companyName: string }) => Promise<void>;
   logout: () => Promise<void>;
+  /** Returns true if the current user has at least one of the given roles. */
+  hasRole: (...roles: UserRole[]) => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,6 +44,10 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return res.json() as Promise<T>;
+}
+
+function normaliseUser(raw: AuthUser): AuthUser {
+  return { ...raw, roles: raw.roles ?? [] };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -57,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       setToken(accessToken);
-      setUser(userData);
+      setUser(normaliseUser(userData));
     } catch {
       setUser(null);
     } finally {
@@ -84,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setToken(accessToken);
-    setUser(userData);
+    setUser(normaliseUser(userData));
   };
 
   const register = async (data: {
@@ -102,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ ...data, orgType: 'AN' }),
     });
     setToken(accessToken);
-    setUser(userData);
+    setUser(normaliseUser(userData));
   };
 
   const logout = async () => {
@@ -117,8 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const hasRole = (...roles: UserRole[]): boolean => {
+    if (!user || user.roles.length === 0) return false;
+    return roles.some((r) => user.roles.includes(r));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, hasRole }}>
       {children}
     </AuthContext.Provider>
   );

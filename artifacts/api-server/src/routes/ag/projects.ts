@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, and, count, sql, inArray, max } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
+import { requireRole } from "../../middlewares/requireRole";
 import { z } from "zod";
 
 const router = Router();
@@ -316,7 +317,7 @@ const createAssignmentSchema = z.object({
   validTo:              z.string().optional(),
 });
 
-router.post("/ag/projects/:projectId/subcontractors", async (req, res): Promise<void> => {
+router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("AG_ADMIN"), async (req, res): Promise<void> => {
   const agOrgId   = getAgOrgId(req, res);
   if (!agOrgId) return;
   const projectId = req.params.projectId as string;
@@ -386,6 +387,8 @@ const patchAssignmentSchema = z.object({
 
 router.patch(
   "/ag/projects/:projectId/subcontractors/:assignmentId",
+  requireJwt,
+  requireRole("AG_ADMIN"),
   async (req, res): Promise<void> => {
     const agOrgId      = getAgOrgId(req, res);
     if (!agOrgId) return;
@@ -437,6 +440,8 @@ router.patch(
 
 router.post(
   "/ag/projects/:projectId/subcontractors/:assignmentId/deactivate",
+  requireJwt,
+  requireRole("AG_ADMIN"),
   async (req, res): Promise<void> => {
     const agOrgId      = getAgOrgId(req, res);
     if (!agOrgId) return;

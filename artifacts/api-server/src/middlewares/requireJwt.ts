@@ -7,6 +7,10 @@ const JWT_SECRET =
 /**
  * JWT bearer-token middleware — replaces the old session-based requireAuth.
  * Reads `Authorization: Bearer <token>`, verifies it, and sets req.user.
+ *
+ * The `roles` field is optional in the token (older tokens omit it) — when
+ * absent we default to an empty array, which triggers soft-enforcement in
+ * requireRole (i.e. legacy tokens are not blocked by role checks).
  */
 export function requireJwt(
   req: Request,
@@ -27,6 +31,7 @@ export function requireJwt(
       orgId: string | null;
       orgType: "AG" | "AN" | null;
       hubAdmin: boolean;
+      roles?: string[];
     };
 
     req.user = {
@@ -34,6 +39,7 @@ export function requireJwt(
       orgId: payload.orgId,
       orgType: payload.orgType,
       hubAdmin: payload.hubAdmin ?? false,
+      roles: payload.roles ?? [],
     };
 
     next();

@@ -82,6 +82,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
 
 import {
   useGetAgProjectOverview,
@@ -288,6 +289,12 @@ export default function ProjectDetail() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user, hasRole } = useAuth();
+
+  // Soft-enforce: if user has no roles (legacy/unassigned), allow all actions.
+  // If user has roles, check that the right role is present.
+  const canManageContractors = !user?.roles.length || hasRole('AG_ADMIN');
+  const canManageTaktRequests = !user?.roles.length || hasRole('AG_ADMIN', 'GENERAL_PLANNER');
 
   const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan'>('gantt');
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
@@ -804,6 +811,7 @@ export default function ProjectDetail() {
               {t('projects.proposals')}
             </Button>
           </Link>
+          {canManageContractors && (
           <Button variant="outline" onClick={() => setIsContractorMgmtOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
             Nachunternehmer
@@ -813,6 +821,7 @@ export default function ProjectDetail() {
               </span>
             )}
           </Button>
+          )}
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Neuer Takt
@@ -1291,22 +1300,24 @@ export default function ProjectDetail() {
                         </div>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => setIsVergabeOpen(v => !v)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-sm font-medium text-primary"
-                          >
-                            <span className="flex items-center gap-2">
-                              <Send className="w-3.5 h-3.5" />
-                              Takt vergeben
-                            </span>
-                            {isVergabeOpen
-                              ? <ChevronUp className="w-4 h-4" />
-                              : <ChevronDown className="w-4 h-4" />
-                            }
-                          </button>
+                          {canManageTaktRequests && (
+                            <button
+                              type="button"
+                              onClick={() => setIsVergabeOpen(v => !v)}
+                              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-sm font-medium text-primary"
+                            >
+                              <span className="flex items-center gap-2">
+                                <Send className="w-3.5 h-3.5" />
+                                Takt vergeben
+                              </span>
+                              {isVergabeOpen
+                                ? <ChevronUp className="w-4 h-4" />
+                                : <ChevronDown className="w-4 h-4" />
+                              }
+                            </button>
+                          )}
 
-                          {isVergabeOpen && (
+                          {canManageTaktRequests && isVergabeOpen && (
                             <form onSubmit={handleDelegateTakt} className="mt-3 space-y-3 p-3 rounded-lg border border-border/60 bg-muted/10">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Nachunternehmer</Label>

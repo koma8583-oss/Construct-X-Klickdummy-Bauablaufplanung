@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export default function TaktRequestDetailPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user, hasRole } = useAuth();
 
   // Form state
   const [decision, setDecision] = useState('');
@@ -196,6 +198,8 @@ export default function TaktRequestDetailPage() {
 
   const respond   = canRespond(details.status);
   const isExpired = details.status === 'EXPIRED';
+  // Role guard (soft): if user has no roles (legacy), allow; otherwise require AN_ADMIN or AN_DISPATCHER.
+  const canActOnRequest = !user?.roles.length || hasRole('AN_ADMIN', 'AN_DISPATCHER');
   const hasResponded = ['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(details.status);
 
   return (
@@ -288,7 +292,7 @@ export default function TaktRequestDetailPage() {
       </Card>
 
       {/* Availability check */}
-      {respond && (
+      {respond && canActOnRequest && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -316,7 +320,7 @@ export default function TaktRequestDetailPage() {
       )}
 
       {/* Response form */}
-      {respond && (
+      {respond && canActOnRequest && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

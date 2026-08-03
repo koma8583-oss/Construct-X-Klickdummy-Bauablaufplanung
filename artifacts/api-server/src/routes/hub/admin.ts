@@ -12,11 +12,12 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
+import { requireRole } from "../../middlewares/requireRole";
 
 const router = Router();
 
 // GET /admin/users — list all users with their org and hub role
-router.get("/users", requireJwt, async (req, res): Promise<void> => {
+router.get("/users", requireJwt, requireRole("HUB_ADMIN"), async (req, res): Promise<void> => {
   if (!req.user?.hubAdmin) {
     res.status(403).json({ error: "Admin access required" });
     return;
@@ -69,7 +70,7 @@ router.get("/users", requireJwt, async (req, res): Promise<void> => {
 });
 
 // GET /admin/orgs — list all organisations
-router.get("/orgs", requireJwt, async (req, res): Promise<void> => {
+router.get("/orgs", requireJwt, requireRole("HUB_ADMIN"), async (req, res): Promise<void> => {
   if (!req.user?.hubAdmin) {
     res.status(403).json({ error: "Admin access required" });
     return;

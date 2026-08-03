@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
+import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
 
 const router = Router();
@@ -282,6 +283,7 @@ router.get(
 router.post(
   "/projects/:projectId/contractors",
   requireJwt,
+  requireRole("AG_ADMIN"),
   async (req, res): Promise<void> => {
     const project = await requireProjectOwner(req, res, req.params.projectId as string);
     if (!project) return;
@@ -337,6 +339,7 @@ router.post(
 router.delete(
   "/projects/:projectId/contractors/:anOrgId",
   requireJwt,
+  requireRole("AG_ADMIN"),
   async (req, res): Promise<void> => {
     const project = await requireProjectOwner(req, res, req.params.projectId as string);
     if (!project) return;

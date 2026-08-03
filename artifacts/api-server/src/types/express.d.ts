@@ -13,6 +13,8 @@ declare global {
         orgId: string | null;
         orgType: "AG" | "AN" | null;
         hubAdmin: boolean;
+        /** Fine-grained role assignments (e.g. AG_ADMIN, AN_DISPATCHER). Empty = legacy / unassigned. */
+        roles: string[];
       };
     }
   }

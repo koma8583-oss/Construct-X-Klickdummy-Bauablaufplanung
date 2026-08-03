@@ -38,6 +38,7 @@ interface TokenPayload {
   orgId: string | null;
   orgType: "AG" | "AN" | null;
   hubAdmin: boolean;
+  roles: string[];
 }
 
 interface UserProfile {
@@ -49,6 +50,7 @@ interface UserProfile {
   orgName: string | null;
   orgType: "AG" | "AN" | null;
   hubAdmin: boolean;
+  roles: string[];
 }
 
 function signAccessToken(payload: TokenPayload): string {
@@ -100,6 +102,7 @@ async function buildUserProfile(userId: string): Promise<UserProfile | null> {
       orgName: null,
       orgType: null,
       hubAdmin: true,
+      roles: user.roles ?? [],
     };
   }
 
@@ -127,6 +130,7 @@ async function buildUserProfile(userId: string): Promise<UserProfile | null> {
     orgName: membership?.orgName ?? null,
     orgType: membership?.orgType ?? null,
     hubAdmin: false,
+    roles: user.roles ?? [],
   };
 }
 
@@ -197,6 +201,7 @@ router.post("/register", async (req, res): Promise<void> => {
     orgId: org.id,
     orgType,
     hubAdmin: false,
+    roles: [],  // new users start with no roles; an admin assigns them later
   };
 
   const accessToken = signAccessToken(tokenPayload);
@@ -212,6 +217,7 @@ router.post("/register", async (req, res): Promise<void> => {
     orgName: org.name,
     orgType,
     hubAdmin: false,
+    roles: [],
   };
 
   res.status(201).json({ accessToken, user: profile });
@@ -265,6 +271,7 @@ router.post("/login", async (req, res): Promise<void> => {
     orgId: profile.orgId,
     orgType: profile.orgType,
     hubAdmin: profile.hubAdmin,
+    roles: profile.roles,
   };
 
   const accessToken = signAccessToken(tokenPayload);
@@ -314,6 +321,7 @@ router.post("/refresh", async (req, res): Promise<void> => {
     orgId: profile.orgId,
     orgType: profile.orgType,
     hubAdmin: profile.hubAdmin,
+    roles: profile.roles,
   };
 
   const accessToken = signAccessToken(tokenPayload);
