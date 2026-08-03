@@ -1,17 +1,18 @@
 /**
  * AN dashboard route — mounted at /api/an/dashboard/an
- * (path mirrors the generated hook URL so the fetch interceptor maps correctly)
+ * Counts TaktRequests (new coordination model) for KPI cards.
+ * Legacy delegation counts are preserved as 0 to avoid breaking the frontend contract.
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
-  delegationsTable,
+  taktRequestsTable,
   takteTable,
   organizationsTable,
   resourcesTable,
   resourceAssignmentsTable,
 } from "@workspace/db";
-import { eq, and, count, gte, lte } from "drizzle-orm";
+import { eq, and, count, gte, lte, inArray } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
 
 const router = Router();
@@ -19,54 +20,67 @@ const router = Router();
 router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
   const orgId = req.user!.orgId!;
 
+  // Pending = requests awaiting NU response (SENT, DELIVERED, DETAILS_RETRIEVED, UNDER_REVIEW)
   const [pendingRow] = await db
     .select({ count: count() })
-    .from(delegationsTable)
+    .from(taktRequestsTable)
     .where(
       and(
-        eq(delegationsTable.anOrgId, orgId),
-        eq(delegationsTable.status, "PENDING"),
+        eq(taktRequestsTable.nuOrgId, orgId),
+        inArray(taktRequestsTable.status, [
+          "SENT",
+          "DELIVERED",
+          "DETAILS_RETRIEVED",
+          "UNDER_REVIEW",
+        ] as const),
       ),
     );
 
+  // Confirmed = GU has confirmed an accepted NU response (CONFIRM_ACCEPTED decision closes the loop)
+  // We approximate "confirmed work" as requests where NU responded ACCEPTED and await GU confirmation
   const [confirmedRow] = await db
     .select({ count: count() })
-    .from(delegationsTable)
+    .from(taktRequestsTable)
     .where(
       and(
-        eq(delegationsTable.anOrgId, orgId),
-        eq(delegationsTable.status, "CONFIRMED"),
+        eq(taktRequestsTable.nuOrgId, orgId),
+        eq(taktRequestsTable.status, "ACCEPTED"),
       ),
     );
 
-  const today = new Date().toISOString().split("T")[0]!;
-  const in14Days = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split("T")[0]!;
+  const nowDate    = new Date();
+  const today      = nowDate.toISOString().split("T")[0]!;
+  const in14Date   = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
-  const upcomingDeadlinesRaw = await db
+  // Upcoming: active requests with responseRequiredBy in the next 14 days
+  const upcomingRaw = await db
     .select({
-      delegation: delegationsTable,
+      request: taktRequestsTable,
       takt: takteTable,
-      agOrganization: organizationsTable,
+      guOrganization: organizationsTable,
     })
-    .from(delegationsTable)
-    .leftJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
-    .leftJoin(organizationsTable, eq(delegationsTable.agOrgId, organizationsTable.id))
+    .from(taktRequestsTable)
+    .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(organizationsTable, eq(taktRequestsTable.guOrgId, organizationsTable.id))
     .where(
       and(
-        eq(delegationsTable.anOrgId, orgId),
-        eq(delegationsTable.status, "CONFIRMED"),
-        gte(delegationsTable.requestedStart, today),
-        lte(delegationsTable.requestedStart, in14Days),
+        eq(taktRequestsTable.nuOrgId, orgId),
+        inArray(taktRequestsTable.status, [
+          "SENT",
+          "DELIVERED",
+          "DETAILS_RETRIEVED",
+          "UNDER_REVIEW",
+        ] as const),
+        gte(taktRequestsTable.responseRequiredBy, nowDate),
+        lte(taktRequestsTable.responseRequiredBy, in14Date),
       ),
     )
     .limit(10);
 
-  const upcomingDeadlines = upcomingDeadlinesRaw.map(({ delegation, takt, agOrganization }) => ({
-    ...delegation,
+  const upcomingDeadlines = upcomingRaw.map(({ request, takt, guOrganization }) => ({
+    ...request,
     takt,
-    agOrganization,
+    agOrganization: guOrganization,
   }));
 
   const resources = await db
@@ -77,7 +91,7 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
   const resourceUtilization = await Promise.all(
     resources.slice(0, 10).map(async (resource) => {
       const monthStart = today.substring(0, 8) + "01";
-      const monthEnd = today.substring(0, 8) + "31";
+      const monthEnd   = today.substring(0, 8) + "31";
       const [assignCount] = await db
         .select({ count: count() })
         .from(resourceAssignmentsTable)
@@ -89,8 +103,8 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
           ),
         );
 
-      const days = assignCount?.count ?? 0;
-      const capacityDays = ((resource.dailyCapacityHours ?? 8) / 8) * 22;
+      const days           = assignCount?.count ?? 0;
+      const capacityDays   = ((resource.dailyCapacityHours ?? 8) / 8) * 22;
       const utilizationPercent = Math.min(
         100,
         Math.round((days / Math.max(capacityDays, 1)) * 100),
@@ -100,28 +114,29 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
     }),
   );
 
-  const recentRequestsRaw = await db
+  // Recent requests (latest 10 across all statuses)
+  const recentRaw = await db
     .select({
-      delegation: delegationsTable,
+      request: taktRequestsTable,
       takt: takteTable,
-      agOrganization: organizationsTable,
+      guOrganization: organizationsTable,
     })
-    .from(delegationsTable)
-    .leftJoin(takteTable, eq(delegationsTable.taktId, takteTable.id))
-    .leftJoin(organizationsTable, eq(delegationsTable.agOrgId, organizationsTable.id))
-    .where(eq(delegationsTable.anOrgId, orgId))
-    .orderBy(delegationsTable.createdAt)
+    .from(taktRequestsTable)
+    .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(organizationsTable, eq(taktRequestsTable.guOrgId, organizationsTable.id))
+    .where(eq(taktRequestsTable.nuOrgId, orgId))
+    .orderBy(taktRequestsTable.createdAt)
     .limit(10);
 
-  const recentRequests = recentRequestsRaw.map(({ delegation, takt, agOrganization }) => ({
-    ...delegation,
+  const recentRequests = recentRaw.map(({ request, takt, guOrganization }) => ({
+    ...request,
     takt,
-    agOrganization,
+    agOrganization: guOrganization,
   }));
 
   res.json({
     pendingRequests: pendingRow?.count ?? 0,
-    confirmedWork: confirmedRow?.count ?? 0,
+    confirmedWork:   confirmedRow?.count ?? 0,
     upcomingDeadlines,
     resourceUtilization,
     recentRequests,

@@ -106,7 +106,7 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground">{t("requests.empty")}</p>
             ) : (
               (dashboard.recentRequests as any[]).slice(0, 5).map((req) => (
-                <Link key={req.id} href={`/requests/${req.id}`} className="block">
+                <Link key={req.id} href={`/takt-requests/${req.id}`} className="block">
                   <div className="flex items-center justify-between p-3 rounded hover:bg-sidebar-accent transition-colors border border-border">
                     <div>
                       <div className="font-medium text-sm text-foreground">

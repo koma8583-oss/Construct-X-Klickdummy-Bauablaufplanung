@@ -13,14 +13,15 @@ import {
   useAddProjectContractor,
   useRemoveProjectContractor,
   useListOrganizations,
-  useCreateDelegation,
-  useUpdateDelegation,
-  useListDelegations,
+  useListTaktRequests,
+  useCreateTaktRequestWithSnapshot,
+  useSendTaktRequest,
+  useCreateGuDecision,
   useListTaktDependencies,
   useCreateTaktDependency,
   useDeleteTaktDependency,
   getListTakteQueryKey,
-  getListDelegationsQueryKey,
+  getListTaktRequestsQueryKey,
   getGetProjectQueryKey,
   getListProjectContractorsQueryKey,
   getListOrganizationsQueryKey,
@@ -29,7 +30,7 @@ import {
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult, RescheduledTakt } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -327,8 +328,8 @@ export default function ProjectDetail() {
     { type: 'AN' },
     { query: { queryKey: getListOrganizationsQueryKey({ type: 'AN' }) } },
   );
-  const { data: delegations } = useListDelegations({ projectId }, {
-    query: { enabled: !!projectId, queryKey: getListDelegationsQueryKey({ projectId }) },
+  const { data: taktRequests } = useListTaktRequests(undefined, {
+    query: { enabled: !!projectId, queryKey: getListTaktRequestsQueryKey() },
   });
   const { data: deps } = useListTaktDependencies(projectId, {
     query: { enabled: !!projectId, queryKey: getListTaktDependenciesQueryKey(projectId) },
@@ -341,8 +342,9 @@ export default function ProjectDetail() {
   const createTakt = useCreateTakt();
   const updateTakt = useUpdateTakt();
   const deleteTakt = useDeleteTakt();
-  const createDelegation = useCreateDelegation();
-  const updateDelegation = useUpdateDelegation();
+  const createTaktRequest = useCreateTaktRequestWithSnapshot();
+  const sendTaktRequest = useSendTaktRequest();
+  const closeRequest = useCreateGuDecision();
   const addContractor = useAddProjectContractor();
   const removeContractor = useRemoveProjectContractor();
   const createDep = useCreateTaktDependency();
@@ -351,6 +353,8 @@ export default function ProjectDetail() {
   const createAssignment = useCreateProjectSubcontractor();
   const updateAssignment = useUpdateProjectSubcontractor();
   const deactivateAssignment = useDeactivateProjectSubcontractor();
+
+  const [isDelegating, setIsDelegating] = useState(false);
 
   // State for new AN assignment dialog
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
@@ -442,11 +446,13 @@ export default function ProjectDetail() {
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
 
-  // Active delegation for the selected takt (info panel)
-  const taktDelegation = useMemo(
-    () => delegations?.find(d => d.taktId === selectedTaktId && d.status !== 'CANCELLED'),
-    [delegations, selectedTaktId],
-  );
+  // Active TaktRequest for the selected takt (info panel)
+  const activeTaktRequest = useMemo<TaktRequestListItem | undefined>(() => {
+    if (!taktRequests || !selectedTaktId) return undefined;
+    return taktRequests
+      .filter(r => r.taktId === selectedTaktId && r.status !== 'EXPIRED')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  }, [taktRequests, selectedTaktId]);
 
   // Predecessors for the info panel (read-only display)
   const selectedTaktPredecessors = useMemo(
@@ -487,7 +493,7 @@ export default function ProjectDetail() {
 
   const invalidateTakte = () => {
     queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(projectId) });
-    queryClient.invalidateQueries({ queryKey: getListDelegationsQueryKey({ projectId }) });
+    queryClient.invalidateQueries({ queryKey: getListTaktRequestsQueryKey() });
     queryClient.invalidateQueries({ queryKey: ['getAgProjectOverview', projectId] });
     queryClient.invalidateQueries({ queryKey: getListTaktDependenciesQueryKey(projectId) });
   };
@@ -564,29 +570,27 @@ export default function ProjectDetail() {
     });
   };
 
-  // Delegation is now initiated from the info panel only
-  const handleDelegateTakt = (e: React.FormEvent<HTMLFormElement>) => {
+  // TaktRequest is created + sent in two steps (snapshot → send)
+  const handleDelegateTakt = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedTakt) return;
+    if (!selectedTakt || isDelegating) return;
     const fd = new FormData(e.currentTarget);
-    createDelegation.mutate({
-      data: {
-        taktId: selectedTakt.id,
-        anOrgId: fd.get('anOrgId') as string,
-        requestedStart: fd.get('requestedStart') as string,
-        requestedEnd: fd.get('requestedEnd') as string,
-        earliestStart: selectedTakt.earliestStart || undefined,
-        latestEnd: selectedTakt.latestEnd || undefined,
-        message: (fd.get('message') as string) || undefined,
-      },
-    }, {
-      onSuccess: () => {
-        toast({ title: 'Takt vergeben' });
-        invalidateTakte();
-        setIsVergabeOpen(false);
-      },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
-    });
+    const nuOrgId = fd.get('anOrgId') as string;
+    const message  = (fd.get('message') as string) || undefined;
+    setIsDelegating(true);
+    try {
+      const created = await createTaktRequest.mutateAsync({
+        data: { taktId: selectedTakt.id, nuOrgId, message },
+      });
+      await sendTaktRequest.mutateAsync({ requestId: (created as { id: string }).id });
+      toast({ title: 'TaktAnfrage gesendet' });
+      invalidateTakte();
+      setIsVergabeOpen(false);
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setIsDelegating(false);
+    }
   };
 
   const handleDeleteTakt = () => {
@@ -622,17 +626,17 @@ export default function ProjectDetail() {
     });
   };
 
-  const handleCancelDelegation = () => {
-    if (!taktDelegation) return;
-    updateDelegation.mutate({
-      delegationId: taktDelegation.id,
-      data: { status: 'CANCELLED' },
+  const handleCloseRequest = () => {
+    if (!activeTaktRequest) return;
+    closeRequest.mutate({
+      requestId: activeTaktRequest.id,
+      data: { decisionType: 'CLOSE_WITHOUT_AGREEMENT' },
     }, {
       onSuccess: () => {
-        toast({ title: 'Vergabe storniert' });
+        toast({ title: 'Anfrage ohne Einigung geschlossen' });
         invalidateTakte();
       },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+      onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' }),
     });
   };
 
@@ -1150,64 +1154,58 @@ export default function ProjectDetail() {
                     Vergabe
                   </h3>
 
-                  {taktDelegation ? (
-                    /* Existing delegation — show status */
+                  {activeTaktRequest ? (
+                    /* Existing TaktRequest — show status */
                     <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-card">
-                        <div className="text-sm font-medium mb-1">Aktuelle Vergabe</div>
-                        <div className="text-sm text-muted-foreground mb-4">
-                          AN: <span className="text-foreground">{taktDelegation.anOrganization?.name ?? 'Nachunternehmer'}</span>
+                        <div className="text-sm font-medium mb-0.5">TaktAnfrage</div>
+                        <div className="text-xs text-muted-foreground font-mono mb-2">{activeTaktRequest.requestNumber}</div>
+                        <div className="text-sm text-muted-foreground mb-3">
+                          AN: <span className="text-foreground">{activeTaktRequest.nuOrgName ?? '—'}</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-1">Angefragt Start</div>
-                            <div className="text-sm">{format(new Date(taktDelegation.requestedStart), 'dd.MM.yyyy')}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-1">Angefragt Ende</div>
-                            <div className="text-sm">{format(new Date(taktDelegation.requestedEnd), 'dd.MM.yyyy')}</div>
-                          </div>
-                        </div>
-                        {taktDelegation.status === 'PENDING' && (
+                        {['SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW'].includes(activeTaktRequest.status) && (
                           <div className="flex items-center justify-center p-3 rounded bg-amber-500/10 text-amber-500 text-sm font-medium">
                             <Clock className="w-4 h-4 mr-2" /> Warte auf Antwort
                           </div>
                         )}
-                        {taktDelegation.status === 'CONFIRMED' && (
+                        {activeTaktRequest.status === 'ACCEPTED' && (
                           <div className="flex items-center justify-center p-3 rounded bg-emerald-500/10 text-emerald-500 text-sm font-medium">
-                            <CheckCircle className="w-4 h-4 mr-2" /> Termin bestätigt
+                            <CheckCircle className="w-4 h-4 mr-2" /> Termin bestätigt — Entscheidung ausstehend
                           </div>
                         )}
-                        {taktDelegation.status === 'ALTERNATIVE_PROPOSED' && (
-                          <div className="mt-4 pt-4 border-t border-border">
-                            <Link href={`/projects/${projectId}/proposals`}>
-                              <Button variant="outline" className="w-full border-blue-500 text-blue-500 hover:bg-blue-500/10">
-                                Gegenvorschlag prüfen
-                              </Button>
-                            </Link>
+                        {activeTaktRequest.status === 'ALTERNATIVES_PROPOSED' && (
+                          <div className="flex items-center justify-center p-3 rounded bg-blue-500/10 text-blue-500 text-sm font-medium">
+                            Gegenvorschlag eingegangen
                           </div>
                         )}
-                        {taktDelegation.status === 'REJECTED' && (
+                        {activeTaktRequest.status === 'REJECTED' && (
                           <div className="flex items-center justify-center p-3 rounded bg-red-500/10 text-red-500 text-sm font-medium">
                             <XCircle className="w-4 h-4 mr-2" /> Abgelehnt
                           </div>
                         )}
+                        {['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(activeTaktRequest.status) && (
+                          <Link href={`/takt-requests/${activeTaktRequest.id}`}>
+                            <Button variant="outline" size="sm" className="w-full mt-3">
+                              Details / Entscheidung treffen
+                            </Button>
+                          </Link>
+                        )}
                       </div>
 
-                      {(taktDelegation.status === 'PENDING' || taktDelegation.status === 'ALTERNATIVE_PROPOSED') && (
+                      {['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(activeTaktRequest.status) && (
                         <Button
                           variant="outline"
                           className="w-full border-red-500/50 text-red-500 hover:bg-red-500/10"
-                          onClick={handleCancelDelegation}
-                          disabled={updateDelegation.isPending}
+                          onClick={handleCloseRequest}
+                          disabled={closeRequest.isPending}
                         >
                           <XCircle className="w-4 h-4 mr-2" />
-                          {updateDelegation.isPending ? 'Storniere…' : 'Vergabe stornieren'}
+                          {closeRequest.isPending ? 'Schließe…' : 'Ohne Einigung schließen'}
                         </Button>
                       )}
                     </div>
                   ) : (
-                    /* No active delegation — offer inline form */
+                    /* No active request — offer inline form */
                     <div>
                       {!contractors?.length ? (
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
@@ -1261,16 +1259,6 @@ export default function ProjectDetail() {
                                   </SelectContent>
                                 </Select>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs">Anfrage-Start</Label>
-                                  <Input type="date" name="requestedStart" defaultValue={selectedTakt.plannedStart} required />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs">Anfrage-Ende</Label>
-                                  <Input type="date" name="requestedEnd" defaultValue={selectedTakt.plannedEnd} required />
-                                </div>
-                              </div>
                               <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
                               <div className="flex gap-2">
                                 <Button
@@ -1286,10 +1274,10 @@ export default function ProjectDetail() {
                                   type="submit"
                                   size="sm"
                                   className="flex-1"
-                                  disabled={createDelegation.isPending}
+                                  disabled={isDelegating}
                                 >
                                   <Send className="w-3.5 h-3.5 mr-1.5" />
-                                  {createDelegation.isPending ? 'Vergabe läuft…' : 'Vergeben'}
+                                  {isDelegating ? 'Vergabe läuft…' : 'Vergeben'}
                                 </Button>
                               </div>
                             </form>

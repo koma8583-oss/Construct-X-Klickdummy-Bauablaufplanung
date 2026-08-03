@@ -346,7 +346,7 @@ export default function TaktRequestsInboxPage() {
                       </TableCell>
                       <TableCell>
                         {respond ? (
-                          <Link href={`/request-detail/${item.id}`}>
+                          <Link href={`/takt-requests/${item.id}`}>
                             <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Antworten">
                               <ChevronRight size={14} />
                             </Button>

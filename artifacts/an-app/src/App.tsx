@@ -15,6 +15,7 @@ import Dashboard from '@/pages/dashboard';
 import Requests from '@/pages/requests';
 import RequestDetail from '@/pages/request-detail';
 import TaktRequestsInbox from '@/pages/takt-requests-inbox';
+import TaktRequestDetail from '@/pages/takt-request-detail';
 import GanttPage from '@/pages/gantt';
 import Resources from '@/pages/resources';
 import Settings from '@/pages/settings';
@@ -54,6 +55,7 @@ function AuthRoutedApp() {
         <Route path="/requests" component={Requests} />
         <Route path="/requests/:delegationId" component={RequestDetail} />
         <Route path="/takt-requests" component={TaktRequestsInbox} />
+        <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
         <Route path="/gantt" component={GanttPage} />
         <Route path="/resources" component={Resources} />
         <Route path="/settings" component={Settings} />
