@@ -103,14 +103,21 @@ export default function TaktRequestDetailPage() {
   const runCheck      = useRunAvailabilityCheck();
   const submitResponse = useSubmitNuResponse();
 
-  // Snapshot payload (shape defined in docs/json-contracts.md)
+  // Snapshot payload — supports both legacy flat shape and current nested shape.
   const snap = details?.snapshotPayload as Record<string, unknown> | undefined;
-  const snapStart    = snap?.plannedStart as string | undefined;
-  const snapEnd      = snap?.plannedEnd   as string | undefined;
-  const snapBez      = snap?.taktBezeichnung as string | undefined;
-  const snapZone     = snap?.zone         as string | undefined;
-  const snapGewerk   = snap?.gewerk       as string | undefined;
-  const snapDesc     = snap?.description  as string | undefined;
+  const timeWindow = snap?.plannedTimeWindow as Record<string, unknown> | undefined;
+  const location   = snap?.location         as Record<string, unknown> | undefined;
+  // Current format uses plannedTimeWindow.{start,end}, legacy uses plannedStart/End directly.
+  const snapStart  = (timeWindow?.start ?? snap?.plannedStart) as string | undefined;
+  const snapEnd    = (timeWindow?.end   ?? snap?.plannedEnd)   as string | undefined;
+  // Current format: workPackage; legacy: taktBezeichnung
+  const snapBez    = (snap?.workPackage ?? snap?.taktBezeichnung) as string | undefined;
+  // Current format: location.zone; legacy: zone
+  const snapZone   = (location?.zone ?? snap?.zone) as string | undefined;
+  // Current format: trade; legacy: gewerk
+  const snapGewerk = (snap?.trade ?? snap?.gewerk) as string | undefined;
+  // Current format: requiredOutput; legacy: description
+  const snapDesc   = (snap?.requiredOutput ?? snap?.description) as string | undefined;
 
   const handleDecisionChange = (val: string) => {
     setDecision(val);
