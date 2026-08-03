@@ -15,6 +15,8 @@ export const hubMessageTypeEnum = pgEnum("hub_message_type", [
   "DELEGATION_CANCELLED",
   "AG_ACCEPTED_ALTERNATIVE",
   "AG_REJECTED_ALTERNATIVE",
+  "TAKT_REQUEST_EXPIRED",
+  "TAKT_REQUEST_REMINDER",
 ]);
 
 /** Central message log — every delegation event is written here by the broker middleware */
@@ -29,6 +31,11 @@ export const hubMessagesTable = pgTable("hub_messages", {
   recipientOrgId: text("recipient_org_id").notNull(),
   /** Which delegation this message belongs to (plain text, no FK to avoid circular deps) */
   delegationId: text("delegation_id"),
+  /**
+   * Correlation ID links messages to their TaktRequest (= taktRequestId).
+   * Null for delegation-based messages.
+   */
+  correlationId: text("correlation_id"),
   /** Full event payload for display in the hub */
   payload: json("payload").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true })

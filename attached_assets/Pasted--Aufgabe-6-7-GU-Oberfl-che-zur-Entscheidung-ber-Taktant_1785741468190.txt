@@ -1,0 +1,649 @@
+# Aufgabe 6.7 – GU-Oberfläche zur Entscheidung über Taktantworten implementieren
+
+Erweitere die GU-Antwortansicht um verbindliche Entscheidungsaktionen.
+
+Verwende den Endpunkt:
+
+```http
+POST /takt-requests/{requestId}/gu-decisions
+```
+
+## Verfügbare Aktionen nach Response-Typ
+
+### Response `ACCEPTED`
+
+Zeige:
+
+```text
+Bestätigung übernehmen
+Überarbeitung anfordern
+Abstimmung schließen
+```
+
+### Response `ALTERNATIVES_PROPOSED`
+
+Zeige:
+
+```text
+Alternative auswählen
+Überarbeitung anfordern
+Abstimmung schließen
+```
+
+### Response `REJECTED`
+
+Zeige:
+
+```text
+Überarbeitung anfordern
+Abstimmung schließen
+```
+
+Keine fachlich unzulässigen Schaltflächen anzeigen.
+
+## Auswahl einer Alternative
+
+Die Vergleichsansicht zeigt:
+
+```text
+Originalplanung
+Alternative 1
+Alternative 2
+Alternative 3
+```
+
+Vergleichsfelder:
+
+```text
+Beginn
+Ende
+Dauer
+Verschiebung
+Kolonnenstärke
+Bedingungen
+Rang
+```
+
+Der Benutzer muss genau eine Alternative auswählen.
+
+## Bestätigungsdialog
+
+Vor der verbindlichen Entscheidung anzeigen:
+
+* gewählte Aktion
+* ausgewähltes Zeitfenster
+* betroffener Takt
+* aktuelle Taktversion
+* erwartete neue Taktversion
+* Auswirkungen auf Takt- und Requeststatus
+* Kommentar
+* Hinweis auf Benachrichtigung des NU
+
+## Dialog „Überarbeitung anfordern“
+
+Eingaben:
+
+```text
+Kommentar
+```
+
+Noch keine Taktänderung in diesem Dialog vornehmen.
+
+Nach erfolgreicher Entscheidung:
+
+```text
+Requeststatus = REVISION_REQUIRED
+```
+
+Anschließend Aktion anbieten:
+
+```text
+Neue Taktversion erstellen
+```
+
+## Dialog „Abstimmung schließen“
+
+Zeige ausdrücklich:
+
+```text
+Nur die aktuelle Abstimmungsrunde wird geschlossen.
+Der Takt selbst wird nicht automatisch storniert.
+```
+
+## Idempotenz und Ladeverhalten
+
+* Entscheidungsschaltfläche nach Klick deaktivieren
+* Idempotency-Key verwenden
+* doppeltes Absenden verhindern
+* bei unklarem Netzwerkstatus Entscheidung erneut laden
+* keine zweite Entscheidung erzeugen
+
+## Transportstatus
+
+Nach fachlicher Entscheidung getrennt anzeigen:
+
+```text
+Fachliche Entscheidung gespeichert
+Nachricht an NU zugestellt
+```
+
+Bei Transportfehler:
+
+* fachliche Entscheidung bleibt sichtbar
+* Zustellfehler anzeigen
+* Retry anbieten
+* keine erneute Entscheidungsaktion anbieten
+
+## Datenschutz
+
+Die GU-Ansicht darf weiterhin nicht zeigen:
+
+```text
+lokale NU-Projekte
+Ressourcen-IDs
+Mitarbeiternamen
+interne Konflikte
+interne Kosten
+interne Prioritäten
+```
+
+## Berechtigungen
+
+* nur GU des Requests
+* nur `GU_ADMIN` oder `GENERAL_PLANNER`
+* fremder GU erhält keinen Zugriff
+* NU und Hub erhalten keinen Zugriff
+
+## Tests
+
+Ergänze:
+
+* akzeptierte Response kann bestätigt werden
+* genau eine Alternative kann ausgewählt werden
+* unzulässige Aktion wird nicht angezeigt
+* Überarbeitung kann angefordert werden
+* Abstimmung kann geschlossen werden
+* Warnhinweis zum Taktstatus wird angezeigt
+* doppeltes Absenden wird verhindert
+* Transportfehler erzeugt keine zweite Entscheidung
+* fremder GU kann nicht entscheiden
+* keine internen NU-Daten sichtbar
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Entscheidungsaktionen
+* Bestätigungsdialoge
+* Alternative-Auswahl
+* Idempotenz
+* Transportstatus
+* Berechtigungen
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 6.8 – GU-Oberfläche für Revisionen und vollständige Historie implementieren
+
+Implementiere in der GU-Anwendung:
+
+* Erstellung einer neuen Taktversion
+* Erstellung einer neuen Revisionsanfrage
+* Darstellung der vollständigen Abstimmungshistorie
+
+## Einstieg
+
+Bei Requeststatus:
+
+```text
+REVISION_REQUIRED
+```
+
+zeige:
+
+```text
+Neue Taktversion erstellen
+```
+
+## Revisionsdialog
+
+Zeige als Ausgangspunkt:
+
+* ursprünglichen Takt-Snapshot
+* letzte Taktversion
+* NU-Antwort
+* vorgeschlagene Alternativen
+* GU-Kommentar zur Überarbeitung
+
+## Bearbeitbare Felder
+
+Mindestens:
+
+```text
+geplanter Beginn
+geplantes Ende
+Antwortfrist
+Betreff
+Nachricht
+```
+
+Weitere fachlich vorhandene Taktfelder können ergänzt werden.
+
+## Vergleich
+
+Zeige:
+
+```text
+Bisherige Version
+Neue Version
+```
+
+Markiere geänderte Felder.
+
+## Datenfreigabe
+
+Zeige getrennt:
+
+```text
+Neue Notification
+Neuer abrufbarer Snapshot
+Interne GU-Informationen
+```
+
+Interne GU-Informationen werden nicht übertragen.
+
+## Aktionen
+
+Unterstütze:
+
+```text
+Neue Version als Entwurf speichern
+Neue Version speichern und senden
+Abbrechen
+```
+
+## Ablauf
+
+1. Revisionsendpunkt aufrufen.
+2. neue Taktversion erhalten.
+3. neuen Request erhalten.
+4. alte Anfrage als `SUPERSEDED` anzeigen.
+5. bei sofortigem Versand Zustellstatus anzeigen.
+6. zur neuen Request-Detailseite wechseln.
+
+## Historienansicht
+
+Zeige eine zusammenhängende Prozesskette:
+
+```text
+Taktversion 1
+→ Request 1
+→ Response 1
+→ GU-Entscheidung
+→ Taktversion 2
+→ Request 2
+→ Response 2
+```
+
+Je Eintrag anzeigen:
+
+* Typ
+* Version
+* Status
+* Organisation
+* Zeitstempel
+* verknüpfte Nachricht
+* Aktion zum Öffnen
+
+## Versionen vergleichen
+
+Erlaube einen einfachen Vergleich zweier Taktversionen.
+
+Mindestens:
+
+```text
+Zeitraum
+Gewerk
+Arbeitspaket
+Ort
+Ressourcenanforderungen
+Randbedingungen
+```
+
+Keine komplexe generische JSON-Diff-Bibliothek einführen, wenn eine einfache fachliche Darstellung genügt.
+
+## NU- und Hub-Sicht
+
+Die GU-Historienseite darf keine lokalen NU-Daten nachladen.
+
+Die Hub-Anwendung darf nur Nachrichtenkette und Metadaten darstellen, nicht die vollständige Versionshistorie.
+
+## Tests
+
+Ergänze:
+
+* Revision kann aus `REVISION_REQUIRED` gestartet werden
+* neue Version wird angezeigt
+* alter Request wird `SUPERSEDED`
+* neuer Request verweist auf Vorgänger
+* Entwurf kann gespeichert werden
+* Revision kann sofort gesendet werden
+* Versionen können verglichen werden
+* Historie ist chronologisch korrekt
+* fremder GU erhält keinen Zugriff
+* keine internen NU-Daten werden angezeigt
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Revisionsdialog
+* Versionsvergleich
+* Historienansicht
+* Entwurfs- und Versandablauf
+* Berechtigungen
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 6.9 – Entscheidungs-, Versions- und Revisionsprozess abschließend prüfen
+
+Prüfe alle Änderungen aus Aufgabe 6 und korrigiere nur festgestellte Inkonsistenzen.
+
+## Szenario A – Ursprünglichen Takt bestätigen
+
+1. GU sendet Taktanfrage.
+2. NU bestätigt mit `ACCEPTED`.
+3. GU wählt `CONFIRM_ACCEPTED`.
+4. Request bleibt beziehungsweise wird `ACCEPTED`.
+5. Takt wird `CONFIRMED`.
+6. Keine unnötige neue Inhaltsversion entsteht.
+7. NU erhält `TAKT_RESPONSE_ACCEPTED`.
+
+## Szenario B – Alternative übernehmen
+
+1. NU sendet zwei Alternativen.
+2. GU wählt eine Alternative.
+3. GU-Entscheidung wird gespeichert.
+4. Request wird `ACCEPTED`.
+5. neue Taktversion `n + 1` entsteht.
+6. ausgewähltes Zeitfenster wird übernommen.
+7. Takt wird `CONFIRMED`.
+8. NU erhält die Bestätigung.
+9. nicht ausgewählte Alternative bleibt historisch erhalten.
+
+## Szenario C – Überarbeitung nach Alternativen
+
+1. NU schlägt Alternativen vor.
+2. GU fordert Überarbeitung an.
+3. Request wird `REVISION_REQUIRED`.
+4. GU erstellt neue Taktversion.
+5. neue Taktanfrage wird erstellt.
+6. alter Request wird `SUPERSEDED`.
+7. neue Notification verwendet `TAKT_REQUEST_REVISED`.
+8. NU sieht den neuen Request mit Vorgängerreferenz.
+
+## Szenario D – Überarbeitung nach Ablehnung
+
+1. NU lehnt ab.
+2. GU fordert Überarbeitung an.
+3. neue Version und neue Anfrage entstehen.
+4. alte Response und GU-Entscheidung bleiben unverändert.
+5. vollständige Historie bleibt navigierbar.
+
+## Szenario E – Abschluss ohne Vereinbarung
+
+1. NU lehnt ab.
+2. GU schließt die Abstimmung.
+3. Request wird `CANCELLED`.
+4. Takt wird nicht automatisch `CANCELLED`.
+5. NU erhält eine Abschlussnachricht.
+
+## Datenintegrität prüfen
+
+Teste:
+
+* pro Response maximal eine GU-Entscheidung
+* ausgewählte Alternative gehört zur Response
+* jede Taktversion ist eindeutig
+* Versionen werden nie überschrieben
+* alte Snapshots bleiben unverändert
+* neuer Request referenziert den Vorgänger
+* alte Anfrage wird nur einmal `SUPERSEDED`
+* Retry erzeugt keine zweite Entscheidung
+* Retry erzeugt keine zweite Taktversion
+* parallele Entscheidungen erzeugen keinen doppelten Versionsstand
+
+## Datenhoheit prüfen
+
+Keine GU-Entscheidung, Taktversion oder Hub-Nachricht darf enthalten:
+
+```text
+localProjectId
+customerAlias
+resourceId
+resourceName
+employeeId
+employeeName
+internalConflicts
+internalCost
+internalPriority
+```
+
+## Statusketten prüfen
+
+### Bestätigung
+
+```text
+UNDER_REVIEW
+→ ACCEPTED
+```
+
+### Alternative
+
+```text
+ALTERNATIVES_PROPOSED
+→ ACCEPTED
+```
+
+### Revision
+
+```text
+ALTERNATIVES_PROPOSED oder REJECTED
+→ REVISION_REQUIRED
+→ SUPERSEDED
+```
+
+### Abschluss
+
+```text
+REJECTED oder ALTERNATIVES_PROPOSED
+→ CANCELLED
+```
+
+## End-to-End-Test
+
+Implementiere mindestens einen vollständigen Test:
+
+1. GU erstellt Taktanfrage Version 1.
+2. NU ruft Snapshot ab.
+3. NU schlägt zwei Alternativen vor.
+4. GU lehnt beide ab und fordert Revision.
+5. GU erstellt Version 2.
+6. GU sendet revidierte Anfrage.
+7. NU bestätigt Version 2.
+8. GU bestätigt die Antwort.
+9. Takt ist `CONFIRMED`.
+10. Historie enthält beide Versionen, Requests, Responses und Entscheidungen.
+11. Hub zeigt die korrelierten Nachrichten.
+12. keine internen NU-Daten sind außerhalb des NU-Systems sichtbar.
+
+## Hub-Prozessansicht
+
+Erweitere bei Bedarf die Prozesskette um:
+
+```text
+TAKT_REQUEST_NOTIFICATION
+→ TAKT_RESPONSE_SUBMITTED
+→ TAKT_RESPONSE_REVISION_REQUESTED
+→ TAKT_REQUEST_REVISED
+→ TAKT_RESPONSE_SUBMITTED
+→ TAKT_RESPONSE_ACCEPTED
+```
+
+Nur Nachrichtenmetadaten und kleine Payloads anzeigen.
+
+## Seed- und Demo-Daten
+
+Ergänze reproduzierbare Demo-Fälle für:
+
+* ursprüngliche Bestätigung
+* Annahme einer Alternative
+* eine vollständige Revisionsrunde
+* Abschluss ohne Vereinbarung
+
+## Dokumentation
+
+Aktualisiere:
+
+```text
+docs/coordination-decision.md
+docs/database-model.md
+docs/state-model.md
+docs/message-flow.md
+docs/transport-architecture.md
+docs/frontend-concept.md
+README.md
+```
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* alte Delegation-Endpunkte bleiben vorhanden
+* alte Delegation-Ansichten bleiben erreichbar
+* bestehende Ressourcenplanung bleibt funktionsfähig
+* bestehende GU-, NU- und Hub-Anwendungen starten
+* generierte Dateien wurden nicht manuell bearbeitet
+* kein EDC wurde implementiert
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Seed und Demo-Reset
+* OpenAPI-Codegenerierung
+* Datenbanktests
+* Service-Tests
+* API-Tests
+* Transporttests
+* Frontendtests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+### Neue Datenbankobjekte
+
+Liste:
+
+```text
+takt_response_decisions
+takt_versions
+```
+
+### Neue Enums
+
+Liste:
+
+```text
+TaktCoordinationDecisionType
+TaktVersionSourceType
+```
+
+### Neue oder erweiterte Endpunkte
+
+Liste mindestens:
+
+```text
+POST /takt-requests/{requestId}/gu-decisions
+POST /takt-requests/{requestId}/revisions
+```
+
+### Neue Nachrichten
+
+Liste:
+
+```text
+TAKT_RESPONSE_ACCEPTED
+TAKT_RESPONSE_REVISION_REQUESTED
+TAKT_REQUEST_REVISED
+TAKT_REQUEST_CANCELLED
+```
+
+### Neue GU-Funktionen
+
+Liste:
+
+* ursprüngliche Antwort bestätigen
+* Alternative auswählen
+* Überarbeitung anfordern
+* Abstimmung schließen
+* neue Taktversion erstellen
+* neue Revisionsanfrage senden
+* Versionen und Prozesshistorie vergleichen
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Datenbankmigration
+* Seed
+* Codegenerierung
+* Backendtests
+* Frontendtests
+* Transporttests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* automatische Fristen und Erinnerungen
+* Ablaufbehandlung offener Requests
+* Benachrichtigungen außerhalb der Anwendung
+* Reporting und Export
+* semantische Harmonisierung der JSON-Strukturen
+* echte EDC- und Tractus-X-Anbindung

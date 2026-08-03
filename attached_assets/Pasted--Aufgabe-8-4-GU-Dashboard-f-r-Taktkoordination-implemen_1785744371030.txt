@@ -1,0 +1,538 @@
+# Aufgabe 8.4 – GU-Dashboard für Taktkoordination implementieren
+
+Erweitere die bestehende GU-Anwendung um ein Reporting-Dashboard.
+
+Verwende vorhandene Layouts, Karten, Tabellen, Diagrammkomponenten und generierte API-Hooks.
+
+## Route
+
+Implementiere sinngemäß:
+
+```text
+/reports
+```
+
+oder:
+
+```text
+/dashboard
+```
+
+Falls bereits ein Dashboard existiert, erweitere dieses nicht brechend.
+
+## Filterbereich
+
+Unterstütze:
+
+```text
+Zeitraum
+Projekt
+Nachunternehmer
+Gewerk
+Requeststatus
+```
+
+Voreinstellung:
+
+```text
+letzte 30 Tage
+```
+
+Zusätzliche Schnellfilter:
+
+```text
+letzte 7 Tage
+letzte 30 Tage
+aktuelles Quartal
+aktuelles Jahr
+```
+
+## KPI-Karten
+
+Zeige mindestens:
+
+```text
+Taktanfragen gesamt
+offene Anfragen
+überfällige Anfragen
+abgelaufene Anfragen
+fristgerechte Antwortquote
+mediane Antwortzeit
+bestätigte Takte
+laufende Revisionsrunden
+```
+
+## Diagramme
+
+Implementiere mindestens:
+
+### Statusverteilung
+
+Darstellung der Requeststatus.
+
+### Antwortentscheidungen
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+```
+
+### Antwortzeit im Verlauf
+
+Zeitliche Entwicklung der durchschnittlichen oder medianen NU-Antwortzeit.
+
+### Fristgerechte Antworten
+
+Anteil fristgerecht und verspätet.
+
+## Tabellen
+
+### Projekte mit offenen Vorgängen
+
+Spalten:
+
+```text
+Projekt
+offene Requests
+überfällige Requests
+laufende Revisionen
+mediane Antwortzeit
+```
+
+### Nachunternehmerübersicht
+
+Spalten:
+
+```text
+Nachunternehmer
+Anfragen
+fristgerechte Antworten
+Bestätigungen
+Alternativen
+Ablehnungen
+mediane Antwortzeit
+```
+
+Wichtig:
+
+* keine NU-internen Ressourcen- oder Konfliktdaten anzeigen
+* keine personenbezogene Rangliste erstellen
+
+## Drill-down
+
+Von Dashboard-Elementen verlinken zu:
+
+* gefilterter Taktanfragenübersicht
+* Projektbericht
+* Nachunternehmerbericht
+* Audit-Trail eines Requests
+
+## Zeitdarstellung
+
+* konkrete Zeitzone anzeigen
+* intern UTC verwenden
+* UI gemäß vorhandener lokaler Zeitdarstellung formatieren
+* keine irreführende Tagesgruppierung durch Zeitzonenwechsel
+
+## Lade- und Fehlerzustände
+
+Implementiere:
+
+* Skeleton oder Ladeanzeige
+* leere Auswertung
+* Fehleranzeige
+* erneutes Laden
+* teilweise Fehler einzelner Widgets dürfen nicht zwingend das gesamte Dashboard blockieren
+
+## Datenschutz
+
+Nicht anzeigen:
+
+```text
+lokale NU-Projekte
+Ressourcenbezeichnungen
+Mitarbeiternamen
+interne Konflikte
+interne Kosten
+interne Prioritäten
+```
+
+## Tests
+
+Ergänze:
+
+* Dashboard lädt
+* Zeitraumfilter funktioniert
+* Projektfilter funktioniert
+* KPI-Werte stimmen mit API-Daten überein
+* leere Datenmenge wird sinnvoll dargestellt
+* Diagramme behandeln fehlende Statuswerte
+* Drill-down setzt korrekte Filter
+* fremder GU sieht keine Daten
+* keine NU-internen Daten erscheinen
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue oder erweiterte Route
+* KPI-Karten
+* Diagramme
+* Tabellen
+* Drill-down
+* Datenschutz
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 8.5 – NU-Dashboard für Anfragen, Prüfungen und Ressourcen implementieren
+
+Erweitere die NU-Anwendung um ein ausschließlich lokal sichtbares Reporting-Dashboard.
+
+Verwende die NU-Reporting-Endpunkte.
+
+## Route
+
+Implementiere sinngemäß:
+
+```text
+/reports
+```
+
+oder erweitere ein vorhandenes NU-Dashboard.
+
+## Filter
+
+Unterstütze mindestens:
+
+```text
+Zeitraum
+Generalunternehmer
+lokales Projekt
+Gewerk
+Requeststatus
+Reason Code
+```
+
+Generalunternehmer dürfen im NU-internen Dashboard angezeigt werden.
+
+Diese Informationen dürfen nicht in GU- oder Hub-Berichte gelangen.
+
+## KPI-Karten
+
+Zeige mindestens:
+
+```text
+eingegangene Taktanfragen
+offene Anfragen
+bald fällige Anfragen
+überfällige Anfragen
+fristgerechte Antwortquote
+mediane Prüfzeit
+Antworten mit Alternativen
+abgelehnte Anfragen
+```
+
+## Antwortverteilung
+
+Diagramm für:
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+```
+
+## Reason-Code-Auswertung
+
+Zeige nur generische Reason Codes:
+
+```text
+RESOURCE_CONFLICT
+NO_CAPACITY
+EQUIPMENT_UNAVAILABLE
+QUALIFICATION_MISSING
+TIME_WINDOW_TOO_SHORT
+OUTSIDE_PLANNING_HORIZON
+OTHER
+```
+
+## Ressourcenbereich
+
+Nur NU-intern anzeigen:
+
+```text
+durchschnittliche Ressourcenauslastung
+überlastete Zeiträume
+Anzahl erkannter Konflikte
+Geräteengpässe
+Qualifikationsengpässe
+```
+
+Keine personenbezogenen Leistungskennzahlen erstellen.
+
+## Fälligkeitsübersicht
+
+Zeige eine priorisierte Tabelle:
+
+```text
+Request
+GU
+Projekt-Referenz
+Antwortfrist
+Friststatus
+Prüfstatus
+empfohlene nächste Aktion
+```
+
+## Lokale Mehrprojektübersicht
+
+Zeige aggregiert:
+
+```text
+lokales Projekt
+Zeitraum
+gebuchte Ressourcen
+Auslastung
+Konfliktanzahl
+```
+
+Diese Tabelle bleibt ausschließlich im NU-System.
+
+## Drill-down
+
+Verlinke zu:
+
+* TaktRequest-Detail
+* Machbarkeitsprüfung
+* lokaler Ressourcenplanung
+* lokaler Projektansicht
+
+## Datenschutz
+
+Das Dashboard darf nicht über:
+
+* Hub-Endpunkte
+* GU-Endpunkte
+* externe Taktantworten
+
+zugänglich sein.
+
+## Tests
+
+Ergänze:
+
+* NU sieht eigene Kennzahlen
+* NU sieht keine Daten anderer NU
+* GU kann Dashboard nicht öffnen
+* Fälligkeitsliste ist korrekt sortiert
+* Reason-Code-Auswertung ist korrekt
+* Ressourcenkennzahlen bleiben NU-intern
+* keine Mitarbeiter-Rangliste wird erzeugt
+* Drill-down funktioniert
+* leere Daten werden sinnvoll dargestellt
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* KPI-Karten
+* Diagramme
+* Fälligkeitsübersicht
+* lokale Ressourcenkennzahlen
+* Organisationsschutz
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 8.6 – Hub-Dashboard für Transport- und Zustellkennzahlen implementieren
+
+Erweitere die Hub-Anwendung um ein technisches Betriebsdashboard.
+
+Das Dashboard darf keine vollständigen fachlichen Daten darstellen.
+
+## Route
+
+Implementiere sinngemäß:
+
+```text
+/reports
+```
+
+oder:
+
+```text
+/system-dashboard
+```
+
+## KPI-Karten
+
+Zeige mindestens:
+
+```text
+Nachrichten gesamt
+zugestellte Nachrichten
+fehlgeschlagene Nachrichten
+ausstehende Nachrichten
+Zustellquote
+mediane Zustellzeit
+Retries
+erfolgreiche Retries
+```
+
+## Diagramme
+
+### Nachrichten nach Typ
+
+Beispielsweise:
+
+```text
+TAKT_REQUEST_NOTIFICATION
+TAKT_RESPONSE_SUBMITTED
+TAKT_RESPONSE_ACCEPTED
+TAKT_REQUEST_REVISED
+TAKT_REQUEST_EXPIRED
+Reminder-Nachrichten
+```
+
+### Nachrichten nach Status
+
+```text
+PENDING
+SENT
+DELIVERED
+READ
+FAILED
+```
+
+### Zustellzeiten
+
+Zeitlicher Verlauf der:
+
+```text
+durchschnittlichen Zustellzeit
+medianen Zustellzeit
+```
+
+### Fehlerentwicklung
+
+Fehlgeschlagene Zustellungen nach Zeitraum.
+
+## Fehlerliste
+
+Zeige:
+
+```text
+messageId
+messageType
+senderOrgId
+recipientOrgId
+correlationId
+attemptCount
+failureReason
+lastAttemptAt
+nextAttemptAt
+```
+
+Keine Stacktraces oder Secrets anzeigen.
+
+## Drill-down
+
+Verlinke zu:
+
+* bestehender Nachrichtendetailansicht
+* Prozesskette über `correlationId`
+* Retry-Aktion
+* gefilterter Nachrichtenliste
+
+## Datenschutz
+
+Nicht laden oder anzeigen:
+
+```text
+vollständige Takt-Snapshots
+NU-Ressourcenplanung
+AvailabilityCheck.internalResultPayload
+lokale Projekte
+Mitarbeiterdaten
+interne Konflikte
+interne Kosten
+```
+
+## Hinweis
+
+Zeige:
+
+```text
+Simulierter Datenraumtransport – kein EDC
+```
+
+## Rollen
+
+Nur:
+
+```text
+HUB_ADMIN
+```
+
+## Tests
+
+Ergänze:
+
+* Hub-Dashboard lädt technische Kennzahlen
+* GU erhält keinen Zugriff
+* NU erhält keinen Zugriff
+* Zustellquote wird korrekt dargestellt
+* Retry-Kennzahlen sind korrekt
+* Fehlerliste enthält keine Secrets
+* keine vollständigen Fachdaten werden geladen
+* Drill-down zur Prozesskette funktioniert
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Route
+* KPI-Karten
+* Diagramme
+* Fehlerliste
+* Drill-down
+* Datenschutz
+* Testergebnisse
+* Ergebnisse von Typecheck und Build

@@ -396,6 +396,186 @@ paths:
         "204":
           description: Removed
 
+  # ──────────── AG Project Overview (Task 9.2) ────────────
+  /ag/projects/overview:
+    get:
+      operationId: getAgProjectsOverview
+      tags: [ag-projects]
+      summary: Summary KPIs for all projects of the authenticated AG
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of project summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgProjectSummary"
+        "403":
+          description: AG organisation required
+
+  /ag/projects/{projectId}/overview:
+    get:
+      operationId: getAgProjectOverview
+      tags: [ag-projects]
+      summary: Detailed overview of a single project (AN assignments + coordination KPIs)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project detail overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgProjectDetailOverview"
+        "403":
+          description: AG organisation required
+        "404":
+          description: Project not found
+
+  /ag/projects/{projectId}/subcontractors:
+    get:
+      operationId: listProjectSubcontractors
+      tags: [ag-projects]
+      summary: List all AN assignments for a project (all statuses)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSubcontractorAssignment"
+        "403":
+          description: AG organisation required
+        "404":
+          description: Project not found
+    post:
+      operationId: createProjectSubcontractor
+      tags: [ag-projects]
+      summary: Assign an AN organisation to a project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectSubcontractorRequest"
+      responses:
+        "201":
+          description: Assignment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSubcontractorAssignment"
+        "400":
+          description: Validation error
+        "403":
+          description: AG organisation required
+        "404":
+          description: Project or AN not found
+        "409":
+          description: Assignment already exists for this project/AN/trade/workPackage combination
+
+  /ag/projects/{projectId}/subcontractors/{assignmentId}:
+    patch:
+      operationId: updateProjectSubcontractor
+      tags: [ag-projects]
+      summary: Update an AN assignment (trade, status, validity period)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchProjectSubcontractorRequest"
+      responses:
+        "200":
+          description: Updated assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSubcontractorAssignment"
+        "400":
+          description: Validation error or no fields to update
+        "403":
+          description: AG organisation required
+        "404":
+          description: Assignment not found
+
+  /ag/projects/{projectId}/subcontractors/{assignmentId}/deactivate:
+    post:
+      operationId: deactivateProjectSubcontractor
+      tags: [ag-projects]
+      summary: Soft-deactivate an AN assignment (sets status to INACTIVE)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assignment deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  assignmentId:
+                    type: string
+                  assignmentStatus:
+                    type: string
+        "403":
+          description: AG organisation required
+        "404":
+          description: Assignment not found
+
   # ──────────── Takte ────────────
   /projects/{projectId}/takte:
     get:
@@ -1325,6 +1505,192 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: TaktRequest not found, or belongs to a different GU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/gu-decisions:
+    post:
+      operationId: createGuDecision
+      tags: [takt-requests]
+      summary: GU creates a business decision on a TaktResponse
+      description: >
+        Allows the creating GU organisation to record a formal decision on the
+        NU's TaktResponse. The decision type must match the NU response decision:
+
+
+        | NU response  | Allowed GU decision types |
+        |---|---|
+        | ACCEPTED | CONFIRM_ACCEPTED, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT |
+        | ALTERNATIVES_PROPOSED | ACCEPT_ALTERNATIVE, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT |
+        | REJECTED | REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT |
+
+
+        Idempotency: Supply an optional `Idempotency-Key` header or include
+        `idempotencyKey` in the body. Identical key + identical content returns
+        200 with the existing decision. Identical key + different content returns
+        409.
+
+
+        A second decision for the same response always returns 409 regardless of
+        idempotency key.
+
+
+        Transactions: decision insert and TaktRequest status update are atomic.
+
+
+        Permissions: GU (AG) organisation that created the TaktRequest only.
+        NU organisations and hub admins receive 403.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: >
+            Optional client-supplied idempotency key. Same key + same body returns
+            the existing decision (HTTP 200). Same key + different body returns 409.
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuDecisionCreate"
+      responses:
+        "201":
+          description: GU decision created and TaktRequest status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionResponse"
+        "200":
+          description: Idempotent retry — existing decision returned unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionResponse"
+        "400":
+          description: >
+            Invalid request — decision type not allowed for this NU response,
+            missing acceptedAlternativeId for ACCEPT_ALTERNATIVE, or
+            acceptedAlternativeId set for non-ACCEPT_ALTERNATIVE decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the creating GU organisation, is a NU, or is a hub admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            A decision already exists for this response, or the idempotency key
+            was already used with different content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /takt-requests/{requestId}/revisions:
+    post:
+      operationId: createRevision
+      tags: [takt-requests]
+      summary: Start a new coordination round after a REQUEST_REVISION decision
+      description: >
+        Creates a new Takt version (REVISION), a new TaktRequest (DRAFT), and an
+        immutable snapshot. The old request is set to SUPERSEDED. All steps are
+        atomic. Optionally sends a TAKT_REQUEST_REVISED notification immediately.
+
+        Preconditions:
+          - Old request must have status REVISION_REQUIRED
+          - Caller must be the GU organisation that created the old request
+          - A REQUEST_REVISION GU decision must exist
+          - No successor request may already exist
+
+        Idempotency:
+          - supersedesRequestId is unique — a duplicate call returns 409
+          - If sendImmediately fails the version/request/snapshot are preserved;
+            retry will send the same new request
+
+        Predecessor chain:
+          Request 1 → Response 1 → GU decision REQUEST_REVISION →
+          Takt version N+1 → Request 2 (new)
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevisionCreate"
+      responses:
+        "201":
+          description: New revision round created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionResponse"
+        "400":
+          description: >
+            Invalid request — bad time window, responseRequiredBy in the past,
+            old request has no response, or missing REQUEST_REVISION decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not the GU organisation that created the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest or Takt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            Old request is not in REVISION_REQUIRED status, a successor already
+            exists, or a concurrent version conflict was detected
           content:
             application/json:
               schema:
@@ -2626,6 +2992,285 @@ components:
           type: string
       required: [anOrgId]
 
+    ProjectContractorStatus:
+      type: string
+      enum: [PLANNED, ACTIVE, INACTIVE, COMPLETED, CANCELLED]
+
+    ProjectSubcontractorAssignment:
+      type: object
+      description: >
+        An AN organisation assigned to a project for a specific trade or work package.
+        Only ACTIVE assignments may receive new TaktRequests.
+        Historical assignments (INACTIVE/CANCELLED) are never physically deleted.
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        anOrgId:
+          type: string
+        anName:
+          type: string
+        trade:
+          type: string
+          nullable: true
+        workPackageReference:
+          type: string
+          nullable: true
+        assignmentStatus:
+          $ref: "#/components/schemas/ProjectContractorStatus"
+        validFrom:
+          type: string
+          format: date
+          nullable: true
+        validTo:
+          type: string
+          format: date
+          nullable: true
+        addedAt:
+          type: string
+          format: date-time
+      required: [id, projectId, anOrgId, assignmentStatus]
+
+    CreateProjectSubcontractorRequest:
+      type: object
+      properties:
+        anOrgId:
+          type: string
+          description: ID of the AN organisation to assign
+        trade:
+          type: string
+          nullable: true
+          description: Gewerk / trade for this assignment (null = all trades)
+        workPackageReference:
+          type: string
+          nullable: true
+        assignmentStatus:
+          $ref: "#/components/schemas/ProjectContractorStatus"
+        validFrom:
+          type: string
+          format: date
+          nullable: true
+        validTo:
+          type: string
+          format: date
+          nullable: true
+      required: [anOrgId]
+
+    PatchProjectSubcontractorRequest:
+      type: object
+      description: All fields optional — only provided fields are updated
+      properties:
+        trade:
+          type: string
+          nullable: true
+        workPackageReference:
+          type: string
+          nullable: true
+        assignmentStatus:
+          $ref: "#/components/schemas/ProjectContractorStatus"
+        validFrom:
+          type: string
+          format: date
+          nullable: true
+        validTo:
+          type: string
+          format: date
+          nullable: true
+
+    AgProjectSummary:
+      type: object
+      description: >
+        Coordination KPI summary for one project, as seen by the AG.
+        Only coordination-relevant data — no NU-internal fields.
+      properties:
+        projectId:
+          type: string
+        projectName:
+          type: string
+        projectStatus:
+          type: string
+          enum: [ACTIVE, COMPLETED, ARCHIVED]
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        assignedAnCount:
+          type: integer
+          description: Number of distinct ACTIVE AN organisations on this project
+        assignedTrades:
+          type: array
+          items:
+            type: string
+          description: Unique trades from ACTIVE assignments
+        totalTaktRequests:
+          type: integer
+        openTaktRequests:
+          type: integer
+        overdueTaktRequests:
+          type: integer
+        acceptedTaktRequests:
+          type: integer
+        alternativeTaktRequests:
+          type: integer
+        rejectedTaktRequests:
+          type: integer
+        revisionRequiredRequests:
+          type: integer
+        expiredTaktRequests:
+          type: integer
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - projectId
+        - projectName
+        - projectStatus
+        - assignedAnCount
+        - assignedTrades
+        - totalTaktRequests
+        - openTaktRequests
+        - overdueTaktRequests
+        - acceptedTaktRequests
+        - alternativeTaktRequests
+        - rejectedTaktRequests
+        - revisionRequiredRequests
+        - expiredTaktRequests
+
+    AgAnCoordinationStats:
+      type: object
+      description: >
+        Per-AN coordination KPIs within a project.
+        No NU-internal data (no resource IDs, employee names, local project IDs, costs).
+      properties:
+        assignmentId:
+          type: string
+        anOrgId:
+          type: string
+        anName:
+          type: string
+        trade:
+          type: string
+          nullable: true
+        workPackageReference:
+          type: string
+          nullable: true
+        assignmentStatus:
+          $ref: "#/components/schemas/ProjectContractorStatus"
+        validFrom:
+          type: string
+          format: date
+          nullable: true
+        validTo:
+          type: string
+          format: date
+          nullable: true
+        totalRequests:
+          type: integer
+        openRequests:
+          type: integer
+        acceptedRequests:
+          type: integer
+        alternativeRequests:
+          type: integer
+        rejectedRequests:
+          type: integer
+        lastResponseAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [assignmentId, anOrgId, anName, assignmentStatus, totalRequests, openRequests]
+
+    AgProjectCoordinationSummary:
+      type: object
+      properties:
+        numberOfTakts:
+          type: integer
+        confirmedTakts:
+          type: integer
+        taktsInCoordination:
+          type: integer
+        openRequests:
+          type: integer
+        overdueRequests:
+          type: integer
+        expiredRequests:
+          type: integer
+        revisionRounds:
+          type: integer
+      required:
+        - numberOfTakts
+        - confirmedTakts
+        - taktsInCoordination
+        - openRequests
+        - overdueRequests
+        - expiredRequests
+        - revisionRounds
+
+    AgRecentTaktRequest:
+      type: object
+      properties:
+        taktRequestId:
+          type: string
+        requestNumber:
+          type: string
+        taktReference:
+          type: string
+        taktVersion:
+          type: integer
+        anOrgId:
+          type: string
+        anName:
+          type: string
+        requestStatus:
+          type: string
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        lastActivityAt:
+          type: string
+          format: date-time
+      required: [taktRequestId, requestNumber, taktReference, anOrgId, anName, requestStatus]
+
+    AgProjectDetailOverview:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            projectId:
+              type: string
+            projectName:
+              type: string
+            status:
+              type: string
+            startDate:
+              type: string
+              format: date
+              nullable: true
+            endDate:
+              type: string
+              format: date
+              nullable: true
+          required: [projectId, projectName, status]
+        assignedAn:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgAnCoordinationStats"
+        coordination:
+          $ref: "#/components/schemas/AgProjectCoordinationSummary"
+        recentRequests:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgRecentTaktRequest"
+      required: [project, assignedAn, coordination, recentRequests]
+
     UpdateDelegationResponseDecisionRequest:
       type: object
       properties:
@@ -2992,6 +3637,8 @@ components:
         - TAKT_RESPONSE_SUBMITTED
         - TAKT_RESPONSE_ACCEPTED
         - TAKT_RESPONSE_REVISION_REQUESTED
+        - TAKT_REQUEST_EXPIRED
+        - TAKT_REQUEST_REMINDER
 
     DataspaceMessageStatus:
       type: string
@@ -3406,6 +4053,30 @@ components:
           format: date-time
           nullable: true
           description: "Deadline by which the NU must respond"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Hard expiry — request auto-expires at this time if NU has not responded"
+        expiredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Set when the request was actually expired"
+        guDecisionRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Deadline by which the GU must decide on the NU response"
+        lastReminderAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Timestamp of the last dispatched reminder"
+        reminderCount:
+          type: integer
+          minimum: 0
+          description: "Total number of reminders dispatched"
         sentAt:
           type: string
           format: date-time
@@ -3428,6 +4099,7 @@ components:
         - nuOrgId
         - nuOrgName
         - status
+        - reminderCount
         - createdAt
         - updatedAt
 
@@ -3568,6 +4240,107 @@ components:
         - createdAt
         - alternatives
 
+    GuDecisionCreate:
+      type: object
+      description: >
+        Request body for POST /takt-requests/{requestId}/gu-decisions.
+        The decisionType must be valid for the current NU response decision.
+      properties:
+        decisionType:
+          type: string
+          enum:
+            - CONFIRM_ACCEPTED
+            - ACCEPT_ALTERNATIVE
+            - REQUEST_REVISION
+            - CLOSE_WITHOUT_AGREEMENT
+          description: >
+            CONFIRM_ACCEPTED: confirm the NU's accepted time window.
+            ACCEPT_ALTERNATIVE: select one of the NU's proposed alternatives.
+            REQUEST_REVISION: request a revised coordination round.
+            CLOSE_WITHOUT_AGREEMENT: close this round without agreement.
+        acceptedAlternativeId:
+          type: string
+          minLength: 1
+          description: >
+            Required and only valid for ACCEPT_ALTERNATIVE.
+            Must be the DB id of an alternative belonging to the NU response
+            for this TaktRequest.
+        comment:
+          type: string
+          maxLength: 2000
+          description: Optional free-text comment from the GU planner.
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: >
+            Optional client-supplied idempotency key. Alternatively supply the
+            Idempotency-Key HTTP header. Body field takes precedence.
+      required:
+        - decisionType
+
+    GuDecisionResponse:
+      type: object
+      description: Created or existing GU decision with updated TaktRequest status.
+      properties:
+        decisionId:
+          type: string
+          description: Primary key of the takt_response_decisions row
+        taktRequestId:
+          type: string
+        responseId:
+          type: string
+          description: FK to the takt_responses row this decision refers to
+        decisionType:
+          type: string
+          enum:
+            - CONFIRM_ACCEPTED
+            - ACCEPT_ALTERNATIVE
+            - REQUEST_REVISION
+            - CLOSE_WITHOUT_AGREEMENT
+        acceptedAlternativeId:
+          type: string
+          nullable: true
+          description: >
+            Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row.
+        comment:
+          type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedRequestStatus:
+          type: string
+          enum:
+            - DRAFT
+            - SENT
+            - DELIVERED
+            - DETAILS_RETRIEVED
+            - UNDER_REVIEW
+            - ACCEPTED
+            - ALTERNATIVES_PROPOSED
+            - REJECTED
+            - REVISION_REQUIRED
+            - CANCELLED
+            - EXPIRED
+            - SUPERSEDED
+          description: The TaktRequest status after this decision was applied.
+        idempotent:
+          type: boolean
+          description: true when this was an idempotent retry returning an existing decision.
+      required:
+        - decisionId
+        - taktRequestId
+        - responseId
+        - decisionType
+        - decidedAt
+        - createdAt
+        - updatedRequestStatus
+        - idempotent
+
     TaktRequestDetail:
       type: object
       description: >
@@ -3649,6 +4422,21 @@ components:
             - $ref: "#/components/schemas/TaktRequestDetailResponse"
         timeline:
           $ref: "#/components/schemas/TaktRequestDetailTimeline"
+        taktLifecycleStatus:
+          type: string
+          enum:
+            - DRAFT
+            - PLANNED
+            - IN_COORDINATION
+            - CONFIRMED
+            - CANCELLED
+          nullable: true
+          description: Current lifecycle status of the referenced Takt. Null only for legacy rows.
+        guDecision:
+          nullable: true
+          description: Existing GU decision on the NU response for this request, if one has been recorded.
+          allOf:
+            - $ref: "#/components/schemas/GuDecisionResponse"
       required:
         - id
         - requestNumber
@@ -3661,6 +4449,7 @@ components:
         - nuOrgId
         - nuOrgName
         - status
+        - taktLifecycleStatus
         - createdAt
         - updatedAt
         - transport
@@ -4311,3 +5100,227 @@ components:
         - limit
         - offset
         - count
+
+    RevisionCreate:
+      type: object
+      description: >
+        Request body for POST /takt-requests/{requestId}/revisions.
+        Creates a new Takt version and a new TaktRequest for a revised
+        coordination round after a REQUEST_REVISION decision.
+      properties:
+        plannedTimeWindow:
+          type: object
+          description: New planned time window for the Takt
+          properties:
+            start:
+              type: string
+              description: ISO date or datetime string (YYYY-MM-DD or ISO 8601)
+            end:
+              type: string
+              description: ISO date or datetime string (YYYY-MM-DD or ISO 8601)
+          required: [start, end]
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+          description: Deadline by which the NU must respond. Must be in the future.
+        subject:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: Human-readable subject for the coordination notification
+        message:
+          type: string
+          nullable: true
+          maxLength: 4000
+          description: Free-text message from GU to NU
+        sendImmediately:
+          type: boolean
+          default: false
+          description: >
+            If true, sends a TAKT_REQUEST_REVISED notification immediately
+            after the transaction commits. New request transitions to DELIVERED.
+            If the send fails, new request stays DRAFT.
+        idempotencyKey:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: Optional client-supplied idempotency key
+        taktUpdates:
+          type: object
+          description: Optional Takt field updates to include in the new version
+          properties:
+            taktBezeichnung:   { type: string }
+            zone:              { type: string }
+            gewerk:            { type: string }
+            description:       { type: string, nullable: true }
+            earliestStart:     { type: string, nullable: true }
+            latestEnd:         { type: string, nullable: true }
+            lvReference:       { type: string, nullable: true }
+            bimReference:      { type: string, nullable: true }
+            requiredResources: { type: string, nullable: true }
+      required:
+        - plannedTimeWindow
+
+    RevisionResponse:
+      type: object
+      description: >
+        Result of a successful POST /takt-requests/{requestId}/revisions call.
+        Describes the predecessor chain: old request → new request → new Takt version.
+      properties:
+        oldRequestId:
+          type: string
+          description: The original TaktRequest that was superseded
+        oldRequestStatus:
+          type: string
+          enum: [SUPERSEDED]
+        newRequestId:
+          type: string
+          description: The new TaktRequest (DRAFT or DELIVERED)
+        newRequestNumber:
+          type: string
+          description: Human-readable reference for the new request
+        newRequestStatus:
+          type: string
+          enum: [DRAFT, DELIVERED]
+          description: DRAFT if sendImmediately=false, DELIVERED if send succeeded
+        newTaktVersion:
+          type: integer
+          minimum: 2
+          description: The new Takt version number (old version + 1)
+        newTaktVersionId:
+          type: string
+          description: PK of the new takt_versions row
+        snapshotId:
+          type: string
+          description: PK of the new TaktRequestSnapshot
+        sent:
+          type: boolean
+          description: true if TAKT_REQUEST_REVISED was delivered to the NU
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - oldRequestId
+        - oldRequestStatus
+        - newRequestId
+        - newRequestNumber
+        - newRequestStatus
+        - newTaktVersion
+        - newTaktVersionId
+        - snapshotId
+        - sent
+        - createdAt
+
+    TaktResponseAcceptedPayload:
+      type: object
+      description: >
+        Payload of a TAKT_RESPONSE_ACCEPTED message sent from GU to NU after
+        CONFIRM_ACCEPTED or ACCEPT_ALTERNATIVE decision.
+        Contains only public coordination data — no internal GU notes,
+        no full Takt, no NU resources, no internal conflicts or cost.
+      properties:
+        taktRequestId:
+          type: string
+        decisionType:
+          type: string
+          enum: [CONFIRM_ACCEPTED, ACCEPT_ALTERNATIVE]
+        acceptedAlternativeId:
+          type: string
+          nullable: true
+        confirmedTimeWindow:
+          type: object
+          nullable: true
+          properties:
+            start: { type: string }
+            end:   { type: string }
+          required: [start, end]
+        taktVersion:
+          type: integer
+        comment:
+          type: string
+          nullable: true
+      required:
+        - taktRequestId
+        - decisionType
+        - taktVersion
+
+    TaktResponseRevisionRequestedPayload:
+      type: object
+      description: >
+        Payload of a TAKT_RESPONSE_REVISION_REQUESTED message sent from GU to
+        NU after a REQUEST_REVISION decision.
+      properties:
+        taktRequestId:
+          type: string
+        decisionType:
+          type: string
+          enum: [REQUEST_REVISION]
+        comment:
+          type: string
+          nullable: true
+      required:
+        - taktRequestId
+        - decisionType
+
+    TaktRequestRevisedPayload:
+      type: object
+      description: >
+        Payload of a TAKT_REQUEST_REVISED message sent from GU to NU when a
+        revised TaktRequest is dispatched (sendImmediately=true on /revisions).
+        Contains standard TaktRequest notification fields plus predecessor chain.
+        No full snapshot is included.
+      properties:
+        taktRequestId:
+          type: string
+          description: New (successor) TaktRequest ID
+        supersedesRequestId:
+          type: string
+          description: The old TaktRequest that was superseded
+        previousTaktVersion:
+          type: integer
+          description: Takt version before the revision
+        taktVersion:
+          type: integer
+          description: New Takt version after the revision
+        projectReference:
+          type: string
+        taktReference:
+          type: string
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        detailsRef:
+          type: string
+        subject:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+      required:
+        - taktRequestId
+        - supersedesRequestId
+        - previousTaktVersion
+        - taktVersion
+        - taktReference
+
+    TaktRequestCancelledPayload:
+      type: object
+      description: >
+        Payload of a TAKT_REQUEST_CANCELLED message sent from GU to NU after a
+        CLOSE_WITHOUT_AGREEMENT decision. Contains only minimal coordination
+        data — no internal GU data, no full Takt, no NU resources.
+      properties:
+        taktRequestId:
+          type: string
+        comment:
+          type: string
+          nullable: true
+        closedAt:
+          type: string
+          format: date-time
+      required:
+        - taktRequestId
+        - closedAt

@@ -1,0 +1,565 @@
+# Aufgabe 6.4 – Bestätigte Planung oder ausgewählte Alternative auf den Takt anwenden
+
+Erweitere den GU-Entscheidungsservice um die fachliche Übernahme einer bestätigten Planung oder einer ausgewählten Alternative.
+
+## Ziel
+
+Bei einer abschließenden Annahme wird der Takt fachlich bestätigt.
+
+Dabei gilt:
+
+* Bestätigung des ursprünglichen Zeitfensters verändert den Taktinhalt normalerweise nicht.
+* Annahme einer abweichenden Alternative verändert den Taktinhalt.
+* Jede inhaltliche Änderung erzeugt eine neue Taktversion.
+* Frühere Versionen bleiben unverändert.
+
+## Fall 1 – `CONFIRM_ACCEPTED`
+
+Der NU hat den ursprünglichen Takt bestätigt.
+
+Verarbeitung:
+
+1. aktuellen Takt laden
+2. Request und Response prüfen
+3. prüfen, dass die Response `ACCEPTED` ist
+4. angenommenes Zeitfenster mit dem Request-Snapshot vergleichen
+5. Takt auf `CONFIRMED` setzen
+6. keine neue Inhaltsversion erzeugen, wenn sich keine Taktinhalte ändern
+7. falls sich bestätigte Werte unterscheiden, neue Version erzeugen
+8. Entscheidung mit dem bestätigten Taktstand verknüpfen
+
+## Fall 2 – `ACCEPT_ALTERNATIVE`
+
+Verarbeitung:
+
+1. ausgewählte Alternative laden
+2. aktuelle Taktversion laden
+3. neuen Taktinhalt auf Basis der Alternative erzeugen
+4. Versionsnummer um genau `1` erhöhen
+5. unveränderlichen Eintrag in `takt_versions` anlegen
+6. aktuellen Takt auf die neue Version aktualisieren
+7. geplanten Beginn und das geplante Ende übernehmen
+8. gegebenenfalls bestätigte Kolonnenstärke übernehmen, sofern das Taktmodell dies vorsieht
+9. Bedingungen als freigegebene Koordinationshinweise übernehmen, nicht als interne NU-Daten
+10. Takt auf `CONFIRMED` setzen
+11. Request auf `ACCEPTED` setzen
+12. Entscheidung mit der neuen Version verknüpfen
+
+## Whitelist für die Übernahme
+
+Von der Alternative dürfen nur übernommen werden:
+
+```text
+timeWindow.start
+timeWindow.end
+crewSize
+conditions
+```
+
+Nicht übernehmen:
+
+```text
+resourceId
+resourceName
+localProjectId
+customerAlias
+internalConflicts
+internalPriority
+internalCost
+```
+
+## Taktversions-Snapshot
+
+Der neue Eintrag in `takt_versions.snapshotPayload` muss den vollständigen fachlichen Taktstand nach der Änderung enthalten.
+
+Nicht nur die Alternative speichern.
+
+Zusätzliche Herkunftsinformationen:
+
+```text
+sourceType = ACCEPTED_ALTERNATIVE
+sourceRequestId
+sourceResponseId
+sourceDecisionId
+```
+
+## Parallelität
+
+Verhindere, dass zwei Entscheidungen gleichzeitig dieselbe nächste Versionsnummer erzeugen.
+
+Verwende:
+
+* Datenbanktransaktion
+* Unique Constraint
+* gegebenenfalls Row Lock oder vorhandenes optimistisches Locking
+* Prüfung der erwarteten aktuellen Version
+
+Bei Versionskonflikt:
+
+* keine teilweise Änderung speichern
+* klaren Konfliktfehler ausgeben
+* Benutzer zur Aktualisierung auffordern
+
+## Taktstatus
+
+Nach erfolgreicher Übernahme:
+
+```text
+lifecycleStatus = CONFIRMED
+```
+
+Das alte technische Statusfeld darf aus Kompatibilitätsgründen weiterhin gepflegt werden, sofern nötig.
+
+Dokumentiere das Mapping.
+
+## Tests
+
+Ergänze:
+
+* Bestätigung ohne Inhaltsänderung erzeugt keine unnötige neue Version
+* bestätigter Takt wird `CONFIRMED`
+* ausgewählte Alternative erzeugt Version `n + 1`
+* früherer Versionssnapshot bleibt unverändert
+* ausgewähltes Zeitfenster wird korrekt übernommen
+* fremde Alternative wird nicht übernommen
+* interne NU-Daten werden nicht in den Takt übernommen
+* parallele Versionsänderung erzeugt einen Konflikt
+* Transaktionsfehler hinterlässt keinen teilweise aktualisierten Takt
+* Entscheidung ist mit der erzeugten Version verknüpft
+
+## Dokumentation
+
+Aktualisiere:
+
+* `docs/coordination-decision.md`
+* `docs/database-model.md`
+* `docs/state-model.md`
+
+## Einschränkungen
+
+* Noch keine neue Revisionsanfrage.
+* Noch keine Nachricht an den NU.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbanktests
+* Service-Tests
+* API-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Übernahmelogik für bestätigte Planung
+* Übernahmelogik für Alternativen
+* Versionsstrategie
+* Parallelitätsschutz
+* Statusänderungen
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 6.5 – Neue Revisionsrunde und neue Taktanfrage implementieren
+
+Implementiere den Backendprozess für eine neue Abstimmungsrunde nach `REQUEST_REVISION`.
+
+## Ziel
+
+Der GU kann einen Takt überarbeiten und daraus:
+
+* eine neue Taktversion
+* einen neuen TaktRequest
+* einen neuen unveränderlichen Snapshot
+
+erzeugen.
+
+Die alte Anfrage bleibt historisch erhalten und wird `SUPERSEDED`.
+
+## Endpunkt
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests/{requestId}/revisions
+```
+
+## Request-Body
+
+Unterstütze mindestens:
+
+```json
+{
+  "plannedTimeWindow": {
+    "start": "2026-09-21T05:00:00Z",
+    "end": "2026-09-25T14:00:00Z"
+  },
+  "responseRequiredBy": "2026-08-14T10:00:00Z",
+  "subject": "Überarbeitete Taktanfrage",
+  "message": "Bitte prüfen Sie die überarbeitete Planung.",
+  "sendImmediately": false
+}
+```
+
+Weitere fachlich vorhandene Taktfelder dürfen ergänzt werden.
+
+## Voraussetzungen
+
+* alte Anfrage existiert
+* GU besitzt Anfrage und Takt
+* Benutzer ist berechtigt
+* alte Anfrage besitzt Status `REVISION_REQUIRED`
+* vorhandene GU-Entscheidung ist `REQUEST_REVISION`
+* alte Anfrage besitzt eine Response
+* keine bereits bestehende Nachfolgeanfrage, sofern nicht bewusst unterstützt
+
+## Verarbeitung
+
+1. alte Anfrage laden
+2. aktuellen Takt laden
+3. erwartete Taktversion prüfen
+4. überarbeitete Daten validieren
+5. neue Taktversion `n + 1` erzeugen
+6. `takt_versions`-Snapshot speichern
+7. aktuellen Takt aktualisieren
+8. neuen TaktRequest im Status `DRAFT` anlegen
+9. `supersedesRequestId` auf die alte Anfrage setzen
+10. neuen unveränderlichen Request-Snapshot erzeugen
+11. alte Anfrage auf `SUPERSEDED` setzen
+12. Takt auf `IN_COORDINATION` setzen
+13. optional neuen Request sofort versenden
+
+## Versionsherkunft
+
+Für die neue Version:
+
+```text
+sourceType = REVISION
+sourceRequestId = alte Request-ID
+sourceResponseId = alte Response-ID
+sourceDecisionId = REQUEST_REVISION-Entscheidung
+```
+
+## Neue Anfrage
+
+Die neue Anfrage:
+
+* verwendet dieselbe GU- und NU-Organisation
+* verweist auf die neue Taktversion
+* erhält eine neue `requestNumber`
+* besitzt eine neue `messageId` erst beim Versand
+* besitzt einen neuen Snapshot
+* korreliert fachlich mit der Vorgängeranfrage
+
+## Vorgängerkette
+
+Die Historie muss navigierbar sein:
+
+```text
+Request 1
+→ Response 1
+→ GU-Entscheidung REQUEST_REVISION
+→ Taktversion 2
+→ Request 2
+```
+
+## Versand
+
+Bei `sendImmediately = true`:
+
+* vorhandenen Send-Service wiederverwenden
+* Nachrichtentyp `TAKT_REQUEST_REVISED`
+* neue Notification versenden
+* keine Sonderlogik direkt in der Route duplizieren
+
+Bei `false`:
+
+* neuer Request bleibt `DRAFT`
+* später normal versendbar
+
+## Idempotenz
+
+* identischer Idempotency-Key erzeugt keine zweite Version und keinen zweiten Request
+* identischer Key mit verändertem Inhalt wird abgelehnt
+* bei Versandfehler bleiben Version, Request und Snapshot erhalten
+* Retry versendet denselben neuen Request
+
+## Transaktion
+
+Folgende Schritte müssen gemeinsam transaktional sein:
+
+* neue Taktversion
+* Aktualisierung des aktuellen Takts
+* neuer TaktRequest
+* neuer Snapshot
+* alte Anfrage auf `SUPERSEDED`
+
+Der optionale Transport darf nach erfolgreichem Commit erfolgen.
+
+## Fehlerfälle
+
+* Request nicht in `REVISION_REQUIRED`
+* Nachfolgeanfrage existiert bereits
+* Versionskonflikt
+* ungültiges Zeitfenster
+* Antwortfrist in der Vergangenheit
+* fremder GU
+* nicht berechtigter Benutzer
+* fehlender Snapshot
+* fehlende GU-Entscheidung
+
+## Tests
+
+Ergänze:
+
+* neue Revision erzeugt Taktversion `n + 1`
+* neue Taktanfrage verweist auf neue Version
+* alte Anfrage wird `SUPERSEDED`
+* neuer Snapshot ist unveränderlich
+* Vorgängerkette ist vollständig
+* sofortiger Versand verwendet `TAKT_REQUEST_REVISED`
+* Versandfehler erzeugt keine zweite Revision
+* zweiter Revisionsversuch mit gleichem Key ist idempotent
+* nicht berechtigter GU wird abgelehnt
+* parallele Revisionen erzeugen keinen doppelten Versionsstand
+
+## OpenAPI
+
+Ergänze:
+
+* Revisions-Request
+* Response
+* Endpunkt
+* Fehlerantworten
+* Idempotenz
+* Beschreibung der Versions- und Vorgängerkette
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Datenbanktests
+* Service-Tests
+* API-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neuer Revisionsendpunkt
+* Versions- und Request-Erzeugung
+* Vorgängerkette
+* Transaktionsverhalten
+* Idempotenz
+* Versandverhalten
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 6.6 – GU-Entscheidungen und Revisionen an den NU übermitteln
+
+Erweitere den simulierten Datenraumtransport um Nachrichten für GU-Entscheidungen und Revisionsrunden.
+
+Verwende:
+
+* `MessageTransport`
+* `LocalHubTransport`
+* Outbox und Inbox
+* bestehende Idempotenz- und Retry-Logik
+
+## Nachrichtentyp `TAKT_RESPONSE_ACCEPTED`
+
+Wird versendet bei:
+
+```text
+CONFIRM_ACCEPTED
+ACCEPT_ALTERNATIVE
+```
+
+Payload enthält nur:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "decisionType": "ACCEPT_ALTERNATIVE",
+  "acceptedAlternativeId": "ALT-01",
+  "confirmedTimeWindow": {
+    "start": "2026-09-16T05:00:00Z",
+    "end": "2026-09-22T14:00:00Z"
+  },
+  "taktVersion": 2,
+  "comment": "Alternative 1 wird übernommen."
+}
+```
+
+Nicht enthalten:
+
+* GU-interne Notizen
+* vollständiger Takt
+* NU-Ressourcen
+* interne Konflikte
+* interne Kalkulation
+
+## Nachrichtentyp `TAKT_RESPONSE_REVISION_REQUESTED`
+
+Wird versendet bei:
+
+```text
+REQUEST_REVISION
+```
+
+Payload:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "decisionType": "REQUEST_REVISION",
+  "comment": "Bitte neuen Zeitraum vorbereiten."
+}
+```
+
+## Nachrichtentyp `TAKT_REQUEST_REVISED`
+
+Wird beim Versand der neuen Revisionsanfrage verwendet.
+
+Payload entspricht grundsätzlich der normalen TaktRequest-Notification und enthält zusätzlich:
+
+```text
+supersedesRequestId
+previousTaktVersion
+```
+
+Keinen vollständigen Snapshot mitsenden.
+
+## Nachricht bei Abschluss ohne Vereinbarung
+
+Verwende vorhandenen Typ:
+
+```text
+TAKT_REQUEST_CANCELLED
+```
+
+Payload enthält nur:
+
+```text
+taktRequestId
+comment
+closedAt
+```
+
+## Versandzeitpunkt
+
+### Annahme
+
+Nach erfolgreichem Speichern von:
+
+* GU-Entscheidung
+* Taktänderung
+* neuer Version, sofern erforderlich
+
+Anschließend Nachricht versenden.
+
+### Überarbeitung
+
+Nach erfolgreichem Speichern der Entscheidung `REQUEST_REVISION`.
+
+Die neue `TAKT_REQUEST_REVISED`-Nachricht wird erst beim Versand der neuen Anfrage erzeugt.
+
+### Schließen
+
+Nach erfolgreichem Abschluss der Request-Statusänderung.
+
+## Transportfehler
+
+Bei fehlgeschlagener Nachricht:
+
+* fachliche Entscheidung bleibt gespeichert
+* Taktänderung bleibt gespeichert
+* Outbox-Nachricht erhält `FAILED`
+* Retry verwendet dieselbe `messageId`
+* keine zweite GU-Entscheidung erzeugen
+* keine zweite Taktversion erzeugen
+
+## NU-Inbox
+
+NU muss folgende Nachrichten sehen können:
+
+```text
+TAKT_RESPONSE_ACCEPTED
+TAKT_RESPONSE_REVISION_REQUESTED
+TAKT_REQUEST_REVISED
+TAKT_REQUEST_CANCELLED
+```
+
+## Verarbeitung beim NU
+
+Die NU-Anwendung beziehungsweise Backendlogik darf:
+
+* technische Zustellung speichern
+* bestätigtes Zeitfenster anzeigen
+* neuen Revisionsrequest verknüpfen
+* alte Anfrage als abgeschlossen darstellen
+
+Sie darf nicht automatisch interne Ressourcenbuchungen verändern, sofern keine eindeutige lokale Ressourcenentscheidung vorliegt.
+
+Automatische Buchung bleibt außerhalb dieses Schritts.
+
+## OpenAPI
+
+Ergänze typisierte Payloads und Nachrichtenmodelle für:
+
+* Annahme
+* Überarbeitungsanforderung
+* revidierte Anfrage
+* Abschluss ohne Vereinbarung
+
+## Tests
+
+Ergänze:
+
+* Annahme erzeugt genau eine Nachricht
+* bestätigtes Zeitfenster wird korrekt übertragen
+* Überarbeitungsanforderung wird zugestellt
+* revidierte Anfrage enthält Vorgängerreferenz
+* Abschlussnachricht enthält keine Fachdaten
+* Transportfehler erzeugt keine zweite Entscheidung oder Version
+* Retry stellt dieselbe Nachricht zu
+* NU sieht nur Nachrichten seiner Organisation
+* Hub sieht nur kleine Payloads
+* keine internen Daten werden übertragen
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Transporttests
+* API-Tests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Nachrichtenmodelle
+* Versandzeitpunkte
+* Fehler- und Retry-Verhalten
+* NU-Inbox-Erweiterung
+* Datenschutzfilter
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build

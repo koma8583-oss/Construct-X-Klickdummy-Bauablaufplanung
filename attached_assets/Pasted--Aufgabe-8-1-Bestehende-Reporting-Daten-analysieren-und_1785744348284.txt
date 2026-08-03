@@ -1,0 +1,746 @@
+# Aufgabe 8.1 – Bestehende Reporting-Daten analysieren und KPI-Konzept dokumentieren
+
+Analysiere die aktuelle Implementierung des Repositorys. Untersuche insbesondere:
+
+* vorhandene Dashboard-Kennzahlen
+* bestehende Statistik- oder Reporting-Endpunkte
+* vorhandene Diagrammkomponenten
+* TaktRequest-Zeitstempel
+* TaktResponse-Zeitstempel
+* GU-Entscheidungen
+* Taktversionen
+* Erinnerungen und Fristen
+* Outbox- und Inbox-Zustellinformationen
+* Audit- oder Ereignisprotokolle
+* vorhandene Exportfunktionen
+* Organisations- und Rollenfilter
+* bestehende Datenbankabfragen für Übersichten
+
+Erstelle anschließend ausschließlich:
+
+`docs/reporting-and-kpis.md`
+
+Nimm in diesem Schritt keine Änderungen an Datenbank, OpenAPI, Services, Endpunkten oder Benutzeroberflächen vor.
+
+## Ziel
+
+Dokumentiere ein Reporting-Konzept für:
+
+* Generalunternehmer
+* Nachunternehmer
+* Hub-Administration
+* projektbezogene Prozessberichte
+* revisionssichere Audit-Auswertungen
+
+## Grundsätze
+
+Dokumentiere verbindlich:
+
+1. Jede Organisation sieht nur ihre eigenen fachlichen Daten.
+2. GU-Berichte enthalten keine internen NU-Ressourcendaten.
+3. NU-Berichte dürfen lokale Mehrprojekt- und Ressourcendaten enthalten, bleiben aber ausschließlich im NU-System.
+4. Der Hub sieht nur technische Nachrichten- und Zustellkennzahlen.
+5. Personenbezogene Kennzahlen werden vermieden.
+6. Keine Ranglisten einzelner Mitarbeiter erstellen.
+7. Kennzahlen müssen fachlich eindeutig definiert sein.
+8. Durchschnitt und Median sollen unterschieden werden.
+9. Alle Berechnungen erfolgen intern auf Basis von UTC-Zeitstempeln.
+10. Berichte müssen einen klaren Auswertungszeitraum besitzen.
+11. Technische Zustellung und fachliche Bearbeitung bleiben getrennte Kennzahlengruppen.
+12. Historische Versionen und abgeschlossene Prozesse bleiben auswertbar.
+
+## GU-Kennzahlen
+
+Dokumentiere mindestens:
+
+```text
+Anzahl Taktanfragen
+offene Taktanfragen
+überfällige Taktanfragen
+abgelaufene Taktanfragen
+bestätigte Taktanfragen
+Anfragen mit Alternativen
+abgelehnte Taktanfragen
+durchschnittliche Antwortzeit des NU
+mediane Antwortzeit des NU
+fristgerechte Antwortquote
+Anteil bestätigter Anfragen
+Anteil vorgeschlagener Alternativen
+Anteil abgelehnter Anfragen
+durchschnittliche Anzahl Abstimmungsrunden
+Zeit von Anfrage bis Taktbestätigung
+Anzahl laufender Revisionsrunden
+```
+
+Mögliche Gruppierungen:
+
+```text
+Projekt
+Nachunternehmer
+Gewerk
+Takt
+Zeitraum
+Requeststatus
+```
+
+## NU-Kennzahlen
+
+Dokumentiere mindestens:
+
+```text
+eingegangene Taktanfragen
+offene Prüfungen
+bald fällige Anfragen
+überfällige Anfragen
+fristgerechte Antwortquote
+durchschnittliche Prüfzeit
+mediane Prüfzeit
+Anteil ACCEPTED
+Anteil ALTERNATIVES_PROPOSED
+Anteil REJECTED
+häufigste generische Reason Codes
+Anzahl erzeugter Alternativen
+durchschnittliche Anzahl Alternativen
+Auslastung lokaler Ressourcen
+Anzahl erkannter Ressourcenüberschneidungen
+```
+
+Wichtig:
+
+* NU-interne Auslastungs- und Konfliktkennzahlen dürfen niemals über GU- oder Hub-Endpunkte ausgegeben werden.
+* Andere GU-Kunden dürfen in externen Berichten nicht identifizierbar sein.
+
+## Hub-Kennzahlen
+
+Dokumentiere mindestens:
+
+```text
+Anzahl Nachrichten
+Nachrichten nach Typ
+Nachrichten nach technischem Status
+Zustellquote
+Fehlerquote
+durchschnittliche Zustellzeit
+mediane Zustellzeit
+Anzahl Retries
+Erfolgsquote nach Retry
+Anzahl ausstehender Nachrichten
+älteste ausstehende Nachricht
+```
+
+Keine fachlichen Ressourcen- oder Projektinhalte auswerten.
+
+## Definitionen zentraler Zeitkennzahlen
+
+### NU-Antwortzeit
+
+Empfohlene Definition:
+
+```text
+taktResponse.createdAt - taktRequest.deliveredAt
+```
+
+Falls `deliveredAt` fehlt:
+
+* Kennzahl nicht berechnen
+* nicht ersatzweise einen ungeeigneten Zeitstempel verwenden
+* Datenqualitätsproblem kennzeichnen
+
+### Prüfzeit
+
+Empfohlene Definition:
+
+```text
+availabilityCheck.checkedAt - taktRequest.detailsRetrievedAt
+```
+
+### Zeit bis Taktbestätigung
+
+Empfohlene Definition:
+
+```text
+guDecision.decidedAt - taktRequest.createdAt
+```
+
+oder alternativ ab `sentAt`.
+
+Wähle eine Definition und dokumentiere sie eindeutig.
+
+### Zustellzeit
+
+```text
+message.deliveredAt - message.createdAt
+```
+
+## Fristgerechte Antwort
+
+Eine Antwort ist fristgerecht, wenn:
+
+```text
+taktResponse.createdAt <= taktRequest.responseRequiredBy
+```
+
+Nicht automatisch als verspätet werten, wenn keine Antwortfrist gesetzt wurde.
+
+## Abstimmungsrunde
+
+Definiere:
+
+* Ein TaktRequest entspricht einer Abstimmungsrunde.
+* Revisionsrequests sind neue Abstimmungsrunden.
+* Über `supersedesRequestId` werden die Runden verbunden.
+
+## Datenqualitätskennzahlen
+
+Dokumentiere zusätzlich:
+
+```text
+Requests ohne Snapshot
+Requests ohne Zustellzeit
+Responses ohne gültigen Request
+Nachrichten ohne Correlation-ID
+inkonsistente Statuskombinationen
+fehlende Antwortfristen
+```
+
+Diese Kennzahlen sind primär für Administration und Entwicklung bestimmt.
+
+## Abgrenzung
+
+Noch nicht implementieren:
+
+* keine Datenbankänderungen
+* keine Reporting-Services
+* keine Dashboards
+* keine Exporte
+* keine externen BI-Systeme
+* kein Data Warehouse
+* kein EDC
+
+## Abschlussbericht
+
+Berichte:
+
+* welche vorhandenen Reporting-Funktionen gefunden wurden
+* welche Zeitstempel für Kennzahlen verfügbar sind
+* welche Datenlücken bestehen
+* welche KPI-Definitionen dokumentiert wurden
+* welche Datenschutzrisiken erkannt wurden
+
+======================================================================
+
+# Aufgabe 8.2 – Reporting-Read-Model und KPI-Service implementieren
+
+Implementiere eine ausschließlich lesende Reporting- und KPI-Service-Schicht.
+
+Nutze die bestehende Datenbankstruktur und den vorhandenen Architektur- und Fehlerbehandlungsstil.
+
+Es sollen noch keine öffentlichen Reporting-Endpunkte implementiert werden.
+
+## Ziel
+
+Die Reporting-Logik soll nicht direkt in Routes oder Frontend-Komponenten implementiert werden.
+
+Erstelle klar abgegrenzte Services für:
+
+```text
+GU-Kennzahlen
+NU-Kennzahlen
+Hub-Kennzahlen
+Prozessdauer
+Fristkennzahlen
+Datenqualitätskennzahlen
+```
+
+## Zeitraumfilter
+
+Alle Reporting-Funktionen unterstützen mindestens:
+
+```text
+from
+to
+```
+
+Anforderungen:
+
+* ISO-8601-Zeitangaben
+* intern UTC
+* `to` muss nach `from` liegen
+* klar dokumentieren, ob `to` inklusive oder exklusiv ist
+* bevorzugt halb offenes Intervall:
+
+```text
+from <= timestamp < to
+```
+
+## GU-Reporting-Service
+
+Implementiere sinngemäß:
+
+```ts
+getGuKpiSummary(...)
+getGuRequestStatusDistribution(...)
+getGuResponseTimeMetrics(...)
+getGuDeadlineMetrics(...)
+getGuCoordinationRoundMetrics(...)
+getGuProjectBreakdown(...)
+getGuSubcontractorBreakdown(...)
+```
+
+## NU-Reporting-Service
+
+Implementiere sinngemäß:
+
+```ts
+getNuKpiSummary(...)
+getNuResponseTimeMetrics(...)
+getNuAvailabilityMetrics(...)
+getNuReasonCodeDistribution(...)
+getNuDeadlineMetrics(...)
+getNuResourceUtilizationMetrics(...)
+```
+
+NU-interne Ressourcenkennzahlen müssen streng nach `nuOrgId` gefiltert sein.
+
+## Hub-Reporting-Service
+
+Implementiere sinngemäß:
+
+```ts
+getHubTransportSummary(...)
+getMessageStatusDistribution(...)
+getMessageTypeDistribution(...)
+getDeliveryLatencyMetrics(...)
+getRetryMetrics(...)
+getFailedMessageMetrics(...)
+```
+
+Keine fachlichen Snapshots oder Ressourcenpayloads laden.
+
+## Statistische Kennzahlen
+
+Unterstütze mindestens:
+
+```text
+count
+minimum
+maximum
+average
+median
+```
+
+Für Zeitdauern bevorzugt Ausgabe in:
+
+```text
+seconds
+```
+
+Das Frontend kann daraus Minuten, Stunden oder Tage darstellen.
+
+## Median
+
+Implementiere Median korrekt.
+
+Nicht den Durchschnitt als Median ausgeben.
+
+Nutze:
+
+* PostgreSQL-Funktionen, falls sinnvoll
+* oder eine getestete Anwendungslösung
+
+Dokumentiere die gewählte Methode.
+
+## Statusverteilungen
+
+Ergebnisse beispielsweise:
+
+```json
+{
+  "ACCEPTED": 12,
+  "ALTERNATIVES_PROPOSED": 7,
+  "REJECTED": 3,
+  "EXPIRED": 2
+}
+```
+
+Fehlende Statuswerte können mit `0` zurückgegeben werden, damit Diagramme stabil bleiben.
+
+## Organisationsfilter
+
+Jede fachliche Reporting-Funktion verlangt eine Organisations-ID.
+
+Nicht zulässig:
+
+* ungefilterte GU-Auswertung
+* ungefilterte NU-Auswertung
+* clientseitige nachträgliche Organisationsfilterung
+* organisationsübergreifende fachliche Vergleiche
+
+Hub-Auswertungen sind nur technischen Administratoren vorbehalten.
+
+## Gruppierungen
+
+Unterstütze, soweit Daten vorhanden:
+
+```text
+projectId
+nuOrgId
+trade
+requestStatus
+decision
+reasonCode
+messageType
+messageStatus
+```
+
+## Datenschutz
+
+GU-Auswertungen dürfen nicht enthalten:
+
+```text
+NU-Ressourcen
+lokale Projekte
+interne Konflikte
+Mitarbeiterdaten
+interne Kosten
+interne Prioritäten
+```
+
+NU-Auswertungen dürfen lokale Daten enthalten, aber ausschließlich im NU-Service und nur für die eigene Organisation.
+
+## Performance
+
+* keine N+1-Abfragen
+* Aggregationen möglichst datenbankseitig
+* geeignete bestehende Indizes verwenden
+* keine vollständigen Snapshot-Payloads laden
+* keine vollständigen Nachrichtenpayloads laden, wenn Metadaten genügen
+
+Falls notwendige Indizes fehlen:
+
+* dokumentieren
+* nur eindeutig erforderliche Indizes ergänzen
+* keine unnötige Voroptimierung
+
+## Caching
+
+Ein komplexes Cache-System ist nicht erforderlich.
+
+Optional:
+
+* kurze serverseitige Cache-Dauer
+* React-Query-Cache im Frontend
+
+Berichte dürfen keine veralteten Zustände als Echtzeitdaten ausgeben, ohne dies kenntlich zu machen.
+
+## Tests
+
+Ergänze:
+
+* GU-Kennzahlen sind nach GU gefiltert
+* NU-Kennzahlen sind nach NU gefiltert
+* fremde Organisationen werden nicht einbezogen
+* Hub-Kennzahlen enthalten keine Fachdaten
+* Durchschnitt wird korrekt berechnet
+* Median wird korrekt berechnet
+* leere Datenmenge wird sinnvoll behandelt
+* Fristquote ignoriert Requests ohne Frist
+* Responses ohne `deliveredAt` werden nicht falsch berechnet
+* Revisionsrunden werden korrekt gezählt
+* Zeiträume werden korrekt begrenzt
+
+## Einschränkungen
+
+* Noch keine öffentlichen Endpunkte.
+* Noch keine Dashboards.
+* Noch keine Exportfunktion.
+* Kein Data Warehouse.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Service-Tests
+* Datenbanktests
+* Performanceprüfung der wichtigsten Abfragen
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Reporting-Services
+* implementierte Kennzahlen
+* Medianberechnung
+* Organisationsfilter
+* Datenschutzmaßnahmen
+* verwendete oder ergänzte Indizes
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 8.3 – Reporting- und Audit-REST-Endpunkte implementieren
+
+Implementiere organisationsgeschützte REST-Endpunkte für Reporting und Prozessauswertungen.
+
+Verwende:
+
+* die Services aus Aufgabe 8.2
+* bestehende Authentifizierung
+* Organisations- und Rollenprüfung
+* OpenAPI und generierte Clients
+
+## GU-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET /reports/gu/summary
+GET /reports/gu/request-status
+GET /reports/gu/response-times
+GET /reports/gu/deadlines
+GET /reports/gu/coordination-rounds
+GET /reports/gu/projects
+GET /reports/gu/subcontractors
+```
+
+Passe die Pfade an den vorhandenen API-Stil an.
+
+## NU-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET /reports/nu/summary
+GET /reports/nu/response-times
+GET /reports/nu/deadlines
+GET /reports/nu/availability
+GET /reports/nu/reason-codes
+GET /reports/nu/resource-utilization
+```
+
+## Hub-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET /reports/hub/transport-summary
+GET /reports/hub/message-status
+GET /reports/hub/message-types
+GET /reports/hub/delivery-latency
+GET /reports/hub/retries
+GET /reports/hub/failures
+```
+
+## Gemeinsame Query-Parameter
+
+Unterstütze mindestens:
+
+```text
+from
+to
+projectId
+status
+trade
+```
+
+Nur Parameter anbieten, die für den jeweiligen Bericht sinnvoll sind.
+
+## Organisationsableitung
+
+* GU-Organisation aus dem angemeldeten Benutzer bestimmen.
+* NU-Organisation aus dem angemeldeten Benutzer bestimmen.
+* Keine freie `organizationId` aus dem Client akzeptieren.
+* Hub-Endpunkte nur für `HUB_ADMIN`.
+
+## Rollen
+
+### GU-Reporting
+
+Zulässig:
+
+```text
+GU_ADMIN
+GENERAL_PLANNER
+```
+
+### NU-Reporting
+
+Zulässig:
+
+```text
+NU_ADMIN
+NU_DISPATCHER
+```
+
+### Hub-Reporting
+
+Zulässig:
+
+```text
+HUB_ADMIN
+```
+
+## Response-Metadaten
+
+Jede Reporting-Response enthält mindestens:
+
+```text
+generatedAt
+from
+to
+timezone
+filters
+data
+```
+
+Beispiel:
+
+```json
+{
+  "generatedAt": "2026-08-03T08:00:00Z",
+  "from": "2026-07-01T00:00:00Z",
+  "to": "2026-08-01T00:00:00Z",
+  "timezone": "UTC",
+  "filters": {
+    "projectId": "PROJECT-001"
+  },
+  "data": {}
+}
+```
+
+## Audit-Endpunkt für einen Prozess
+
+Implementiere sinngemäß:
+
+```http
+GET /takt-requests/{requestId}/audit-trail
+```
+
+## Audit-Trail
+
+Liefere eine chronologische Liste aus:
+
+```text
+Request erstellt
+Snapshot erstellt
+Notification erstellt
+Notification versendet
+Notification zugestellt
+Details abgerufen
+Machbarkeitsprüfung durchgeführt
+Response erstellt
+Response versendet
+GU-Entscheidung erstellt
+Taktversion erzeugt
+Revision erzeugt
+Reminder gesendet
+Request abgelaufen oder abgeschlossen
+```
+
+Jeder Eintrag enthält mindestens:
+
+```text
+eventType
+occurredAt
+actorType
+actorReference
+organizationReference
+objectType
+objectReference
+messageId
+correlationId
+summary
+```
+
+## Audit-Datenschutz
+
+Nicht ausgeben:
+
+```text
+vollständige Snapshot-Payloads
+interne Availability-Payloads
+lokale NU-Projekte
+Mitarbeiterdaten
+interne Konflikte
+interne Kosten
+```
+
+Die Audit-Ausgabe enthält Referenzen und fachlich reduzierte Zusammenfassungen.
+
+## Audit-Berechtigungen
+
+* GU sieht Audit-Trail eigener Requests.
+* adressierter NU sieht den für ihn relevanten Audit-Trail.
+* NU darf keine GU-internen Notizen sehen.
+* GU darf keine NU-internen Prüfinformationen sehen.
+* Hub sieht nur technische Nachrichteneinträge.
+
+Falls notwendig, unterschiedliche Audit-Sichten verwenden.
+
+## Pagination
+
+Für lange Audit-Trails:
+
+```text
+limit
+offset
+```
+
+oder Cursor-Pagination gemäß bestehendem API-Stil.
+
+## OpenAPI
+
+Ergänze:
+
+* alle Reporting-Endpunkte
+* Filterparameter
+* KPI-Schemas
+* Audit-Event-Schema
+* Fehlerantworten
+* Rollen- und Organisationsbeschreibung
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze:
+
+* GU erhält nur eigene Kennzahlen
+* NU erhält nur eigene Kennzahlen
+* Hub erhält nur technische Kennzahlen
+* fremde Organisation wird abgelehnt
+* ungültiger Zeitraum wird abgelehnt
+* leere Auswertung liefert gültige Struktur
+* Audit-Trail ist chronologisch
+* GU-Audit enthält keine NU-internen Daten
+* NU-Audit enthält keine GU-internen Daten
+* Hub-Audit enthält keine Fachdaten
+* Response-Metadaten sind vollständig
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* API-Tests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Endpunkte
+* Query-Parameter
+* Rollen- und Organisationsschutz
+* Audit-Trail
+* Datenschutzfilter
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build

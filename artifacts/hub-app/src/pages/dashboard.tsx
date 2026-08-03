@@ -1,6 +1,7 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
-import { hubApi, type HubMessage } from '@/lib/api';
+import { hubApi, type HubMessage, type HubMessageType } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -9,14 +10,16 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const messageTypeConfig = {
-  DELEGATION_CREATED: { label: 'Vergabe erstellt', color: 'bg-blue-500 text-white', icon: Clock },
-  DELEGATION_CONFIRMED: { label: 'Bestätigt', color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  DELEGATION_REJECTED: { label: 'Abgelehnt', color: 'bg-red-500 text-white', icon: XCircle },
-  DELEGATION_ALTERNATIVE: { label: 'Gegenvorschlag', color: 'bg-amber-500 text-white', icon: AlertCircle },
-  DELEGATION_CANCELLED: { label: 'Storniert', color: 'bg-gray-500 text-white', icon: Ban },
-  AG_ACCEPTED_ALTERNATIVE: { label: 'Gegenvorschlag angenommen', color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  AG_REJECTED_ALTERNATIVE: { label: 'Gegenvorschlag abgelehnt', color: 'bg-red-500 text-white', icon: XCircle },
+const messageTypeConfig: Record<HubMessageType, { label: string; color: string; icon: React.ComponentType<{ size?: number }> }> = {
+  DELEGATION_CREATED:      { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',    icon: Clock },
+  DELEGATION_CONFIRMED:    { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
+  DELEGATION_REJECTED:     { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',     icon: XCircle },
+  DELEGATION_ALTERNATIVE:  { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',   icon: AlertCircle },
+  DELEGATION_CANCELLED:    { label: 'Storniert',                  color: 'bg-gray-500 text-white',    icon: Ban },
+  AG_ACCEPTED_ALTERNATIVE: { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
+  AG_REJECTED_ALTERNATIVE: { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',     icon: XCircle },
+  TAKT_REQUEST_EXPIRED:    { label: 'Anfrage abgelaufen',          color: 'bg-gray-400 text-white',    icon: Ban },
+  TAKT_REQUEST_REMINDER:   { label: 'Erinnerung',                  color: 'bg-orange-400 text-white',  icon: AlertCircle },
 };
 
 export default function DashboardPage() {

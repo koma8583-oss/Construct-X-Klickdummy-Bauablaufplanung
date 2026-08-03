@@ -194,6 +194,134 @@
       "cancelConfirmYes": "Ja, stornieren",
       "cancelConfirmNo": "Abbrechen"
     },
+    "guDecision": {
+      "title": "GU-Entscheidung",
+      "alreadyDecided": "Entscheidung bereits getroffen",
+      "taktConfirmed": "Takt wurde bestätigt (CONFIRMED)",
+      "decisionType": "Entscheidungstyp",
+      "decidedAt": "Entschieden am",
+      "transportStatus": {
+        "title": "Zustellstatus",
+        "decisionSaved": "Fachliche Entscheidung gespeichert",
+        "notified": "Nachricht an NU zugestellt",
+        "notifyFailed": "Zustellung fehlgeschlagen – NU wurde nicht benachrichtigt"
+      },
+      "actions": {
+        "confirmAccepted": "Bestätigung übernehmen",
+        "acceptAlternative": "Alternative auswählen",
+        "requestRevision": "Überarbeitung anfordern",
+        "closeWithoutAgreement": "Abstimmung schließen"
+      },
+      "decisionTypes": {
+        "CONFIRM_ACCEPTED": "Bestätigung übernommen",
+        "ACCEPT_ALTERNATIVE": "Alternative akzeptiert",
+        "REQUEST_REVISION": "Überarbeitung angefordert",
+        "CLOSE_WITHOUT_AGREEMENT": "Abstimmung geschlossen"
+      },
+      "error": {
+        "title": "Entscheidung konnte nicht gespeichert werden",
+        "retry": "Erneut versuchen"
+      },
+      "confirm": {
+        "title": "Entscheidung verbindlich bestätigen",
+        "notifyHint": "Nach der Entscheidung wird der NU automatisch benachrichtigt.",
+        "action": "Aktion",
+        "timeWindow": "Wirksames Zeitfenster",
+        "takt": "Takt",
+        "currentVersion": "Aktuelle Taktversion",
+        "newVersion": "Neue Taktversion",
+        "requestStatus": "Anfragestatus danach",
+        "taktStatus": "Taktstatus danach",
+        "statusHint": "Neuer Anfragestatus: {{status}}",
+        "comment": "Kommentar (optional)",
+        "commentPlaceholder": "Begründung oder Hinweis an den NU …",
+        "submit": "Verbindlich entscheiden",
+        "cancel": "Abbrechen"
+      },
+      "alternative": {
+        "title": "Alternative auswählen",
+        "original": "Originalplanung",
+        "selectHint": "Wählen Sie genau eine Alternative aus:",
+        "start": "Beginn",
+        "end": "Ende",
+        "duration": "Dauer",
+        "shift": "Verschiebung",
+        "crew": "Kolonnenstärke",
+        "conditions": "Bedingungen",
+        "rank": "Rang",
+        "next": "Weiter zur Bestätigung",
+        "back": "Zurück zur Auswahl",
+        "noAlternatives": "Keine Alternativen vorhanden."
+      },
+      "revision": {
+        "title": "Überarbeitung anfordern",
+        "description": "Der NU wird gebeten, einen überarbeiteten Vorschlag einzureichen.",
+        "noTaktChange": "Taktdaten werden in diesem Schritt nicht geändert. Die neue Version wird im nächsten Schritt erstellt.",
+        "comment": "Begründung / Hinweis an den NU (optional)",
+        "commentPlaceholder": "Was soll der NU überarbeiten? …",
+        "submit": "Überarbeitung anfordern",
+        "afterTitle": "Überarbeitung angefordert",
+        "afterHint": "Der Anfragestatus wurde auf \"Überarbeitung erforderlich\" gesetzt.",
+        "createNewVersion": "Neue Taktversion erstellen"
+      },
+      "close": {
+        "title": "Abstimmung schließen",
+        "warning": "Nur die aktuelle Abstimmungsrunde wird geschlossen.",
+        "taktWarning": "Der Takt selbst wird nicht automatisch storniert.",
+        "comment": "Kommentar (optional)",
+        "commentPlaceholder": "Begründung für den Abschluss …",
+        "submit": "Abstimmung schließen",
+        "cancel": "Abbrechen"
+      }
+    },
+    "revisionDialog": {
+      "title": "Neue Taktversion erstellen",
+      "description": "Erstellen Sie eine neue Abstimmungsrunde mit aktualisierten Taktdaten.",
+      "context": "Ausgangssituation",
+      "nuComment": "NU-Kommentar",
+      "guComment": "GU-Kommentar zur Überarbeitung",
+      "fields": {
+        "plannedStart": "Geplanter Beginn",
+        "plannedEnd": "Geplantes Ende",
+        "responseRequiredBy": "Antwortfrist",
+        "subject": "Betreff",
+        "message": "Nachricht an NU"
+      },
+      "comparison": {
+        "title": "Änderungen im Überblick",
+        "field": "Feld",
+        "before": "Bisherige Version",
+        "after": "Neue Version"
+      },
+      "dataSharing": {
+        "title": "Was wird übertragen?",
+        "notification": "Neue Benachrichtigung (Betreff, Nachricht, Antwortfrist)",
+        "snapshot": "Neuer abrufbarer Snapshot (Taktdaten)",
+        "internal": "Interne GU-Informationen werden nicht übertragen"
+      },
+      "submit": "Als Entwurf speichern",
+      "submitAndSend": "Erstellen und senden",
+      "cancel": "Abbrechen",
+      "success": {
+        "title": "Neue Version erstellt",
+        "newRequest": "Neue Anfragenummer",
+        "newVersion": "Neue Taktversion",
+        "sent": "Versandstatus",
+        "sentYes": "Versendet",
+        "sentNo": "Entwurf",
+        "openNew": "Neue Anfrage öffnen"
+      }
+    },
+    "coordinationHistory": {
+      "title": "Abstimmungshistorie",
+      "request": "Anfrage",
+      "response": "NU-Antwort",
+      "decision": "GU-Entscheidung",
+      "showPrevious": "Vorherige Abstimmungsrunden anzeigen",
+      "previousRound": "Runde {{number}}",
+      "supersedesNote": "Ersetzt eine frühere Anfrage",
+      "noHistory": "Keine Vorläufer gefunden."
+    },
     "overdue": "Überfällig",
     "noDeadline": "Keine Frist"
   },

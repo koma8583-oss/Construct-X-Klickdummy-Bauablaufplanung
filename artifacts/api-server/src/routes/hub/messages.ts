@@ -61,7 +61,14 @@ router.get("/", requireJwt, async (req, res): Promise<void> => {
   void userId;
 
   res.json(rows.map(msg => ({
-    ...msg,
+    id: msg.id,
+    type: msg.type,
+    senderOrgId: msg.senderOrgId,
+    recipientOrgId: msg.recipientOrgId,
+    delegationId: msg.delegationId,
+    correlationId: msg.correlationId,
+    payload: msg.payload,
+    createdAt: msg.createdAt,
     senderOrg: orgMap.get(msg.senderOrgId),
     recipientOrg: orgMap.get(msg.recipientOrgId),
   })));

@@ -343,6 +343,11 @@ export async function createTaktRequestWithSnapshot(
     throw new NuNotContractorError(input.nuOrgId, takt.projectId);
   }
 
+  // Only ACTIVE assignments may receive new TaktRequests (Task 9.2)
+  if (contractorRow.assignmentStatus !== "ACTIVE") {
+    throw new NuNotContractorError(input.nuOrgId, takt.projectId);
+  }
+
   // ── Step 5: Load dependencies ─────────────────────────────────────────────
   const predecessors = await db
     .select()

@@ -1,0 +1,333 @@
+# Aufgabe 9.2 – Projektbezogene AN-Zuordnungen und AG-Übersichten implementieren
+
+Analysiere zunächst die bestehende Beziehung zwischen:
+
+* AG-Organisation
+* Projekten
+* AN-Organisationen
+* Gewerken beziehungsweise Arbeitspaketen
+* Taktanfragen
+
+Ein AG kann mehrere Projekte besitzen.
+
+Für jedes Projekt können unterschiedliche AN beauftragt sein.
+
+Ein AN darf in mehreren Projekten desselben AG oder verschiedener AG tätig sein.
+
+Die AN-Zuordnung darf daher nicht global für den gesamten AG angenommen werden.
+
+## Zielmodell
+
+Jedes Projekt besitzt eine eigene Liste zugeordneter AN.
+
+Beispiel:
+
+```text
+AG 1
+├── Projekt A
+│   ├── AN Trockenbau
+│   ├── AN Elektro
+│   └── AN Haustechnik
+├── Projekt B
+│   ├── AN Rohbau
+│   └── AN Fassade
+└── Projekt C
+    ├── AN Trockenbau
+    └── AN Elektro
+```
+
+Der gleiche AN kann mehreren Projekten zugeordnet sein.
+
+## Bestehendes Modell prüfen
+
+Falls bereits eine geeignete Projektteilnehmer- oder Partnerzuordnung existiert:
+
+* diese wiederverwenden
+* nicht parallel unnötig eine zweite Tabelle anlegen
+* erforderliche Felder ergänzen
+* bestehende Funktionen nicht brechen
+
+Falls keine geeignete Zuordnung existiert, ergänze eine Tabelle sinngemäß:
+
+```text
+project_subcontractors
+```
+
+## Vorgesehene Felder
+
+```text
+id
+projectId
+agOrgId
+anOrgId
+trade
+workPackageReference
+status
+validFrom
+validTo
+createdByUserId
+createdAt
+updatedAt
+```
+
+## Status
+
+Verwende beispielsweise:
+
+```text
+PLANNED
+ACTIVE
+INACTIVE
+COMPLETED
+CANCELLED
+```
+
+## Constraints
+
+Mindestens:
+
+* Projekt gehört zur angegebenen AG-Organisation.
+* AN-Organisation muss existieren.
+* Ein AN darf mehreren Projekten zugeordnet sein.
+* Mehrere AN dürfen demselben Projekt zugeordnet sein.
+* Ein Projekt darf je Gewerk mehrere AN besitzen, falls fachlich erforderlich.
+* Doppelte identische Zuordnungen verhindern.
+
+Ein geeigneter Unique Constraint kann beispielsweise enthalten:
+
+```text
+projectId + anOrgId + trade + workPackageReference
+```
+
+Passe den Constraint an das tatsächlich vorhandene Modell an.
+
+## Taktanfragen
+
+Beim Erstellen einer Taktanfrage darf der AG nur AN auswählen, die:
+
+* dem konkreten Projekt zugeordnet sind
+* einen aktiven Zuordnungsstatus besitzen
+* gegebenenfalls zum Gewerk oder Arbeitspaket passen
+
+Nicht zulässig:
+
+* Auswahl aller global bekannten AN
+* Auswahl eines AN, der nur einem anderen Projekt zugeordnet ist
+* freie Eingabe einer beliebigen Organisations-ID
+
+## AG-Übersicht über alle Projekte
+
+Implementiere einen organisationsgeschützten Endpunkt sinngemäß:
+
+```http
+GET /ag/projects/overview
+```
+
+oder passend zur bestehenden Namenskonvention:
+
+```http
+GET /gu/projects/overview
+```
+
+Der Endpunkt liefert ausschließlich Projekte des angemeldeten AG.
+
+Je Projekt mindestens:
+
+```text
+projectId
+projectReference
+projectName
+projectStatus
+startDate
+endDate
+assignedAnCount
+assignedTrades
+totalTaktRequests
+openTaktRequests
+overdueTaktRequests
+acceptedTaktRequests
+alternativeTaktRequests
+rejectedTaktRequests
+revisionRequiredRequests
+confirmedTakts
+lastActivityAt
+```
+
+Optional zusätzlich:
+
+```text
+coordinationStatus
+nextDueDate
+```
+
+## AG-Übersicht eines einzelnen Projekts
+
+Implementiere sinngemäß:
+
+```http
+GET /ag/projects/{projectId}/overview
+```
+
+Die Response enthält mindestens:
+
+### Projektinformationen
+
+```text
+projectId
+projectReference
+projectName
+status
+startDate
+endDate
+```
+
+### Zugeordnete AN
+
+Je AN:
+
+```text
+anOrgId
+anName
+trade
+workPackageReference
+assignmentStatus
+validFrom
+validTo
+totalRequests
+openRequests
+acceptedRequests
+alternativeRequests
+rejectedRequests
+lastResponseAt
+```
+
+### Taktkoordination
+
+```text
+numberOfTakts
+confirmedTakts
+taktsInCoordination
+openRequests
+overdueRequests
+expiredRequests
+revisionRounds
+```
+
+### Aktuelle Vorgänge
+
+Liste der relevanten offenen oder zuletzt geänderten Taktanfragen:
+
+```text
+taktRequestId
+requestNumber
+taktReference
+taktVersion
+anOrgId
+anName
+requestStatus
+responseRequiredBy
+lastActivityAt
+```
+
+## Projektfilterung
+
+Alle Abfragen müssen serverseitig prüfen:
+
+```text
+project.agOrgId = authenticatedUser.agOrgId
+```
+
+Der Client darf keine fremde AG-Organisation angeben.
+
+## Datenhoheit
+
+Der AG darf je AN nur projektbezogene Koordinationsinformationen sehen.
+
+Nicht anzeigen:
+
+```text
+andere Projekte des AN
+andere Auftraggeber des AN
+lokale Projektbezeichnungen des AN
+interne Ressourcenplanung
+Ressourcen-IDs
+Mitarbeiterdaten
+interne Konflikte
+interne Kosten
+interne Prioritäten
+```
+
+## AN-Sicht
+
+Der AN sieht weiterhin:
+
+* eigene Projektzuordnungen
+* eigene Taktanfragen
+* eigene lokalen Ressourcen
+
+Ein AN darf aus seiner Projektzuordnung keine Übersicht über andere AN desselben AG-Projekts erhalten, sofern dies nicht ausdrücklich erforderlich ist.
+
+## Verwaltungsendpunkte
+
+Falls noch nicht vorhanden, implementiere AG-seitig sinngemäß:
+
+```http
+GET /ag/projects/{projectId}/subcontractors
+POST /ag/projects/{projectId}/subcontractors
+PATCH /ag/projects/{projectId}/subcontractors/{assignmentId}
+POST /ag/projects/{projectId}/subcontractors/{assignmentId}/deactivate
+```
+
+Kein physisches Löschen historisch verwendeter Zuordnungen.
+
+## OpenAPI
+
+Ergänze:
+
+* Projekt-AN-Zuordnung
+* Gesamtprojektübersicht
+* Einzelprojektübersicht
+* AN-Kennzahlen innerhalb eines Projekts
+* Rollen- und Organisationsschutz
+* Filterparameter
+
+## Tests
+
+Ergänze:
+
+* AG sieht alle eigenen Projekte
+* AG sieht keine Projekte eines anderen AG
+* Projektübersicht enthält nur projektbezogene AN
+* unterschiedlicher AN-Bestand je Projekt wird korrekt dargestellt
+* derselbe AN kann mehreren Projekten zugeordnet werden
+* AN eines anderen Projekts kann nicht für eine Anfrage ausgewählt werden
+* deaktivierte Zuordnung kann nicht für neue Anfragen verwendet werden
+* bestehende historische Requests bleiben sichtbar
+* AG sieht keine internen AN-Daten
+* AN sieht keine fremden AN-Zuordnungen
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push, falls erforderlich
+* OpenAPI-Codegenerierung
+* Datenbanktests
+* Service-Tests
+* API-Tests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* wiederverwendetes oder neues Zuordnungsmodell
+* Projekt-AN-Constraints
+* neue Übersichts-Endpunkte
+* serverseitige Organisationsfilter
+* Datenschutzregeln
+* Testergebnisse
+* Ergebnisse von Migration, Codegenerierung, Typecheck und Build

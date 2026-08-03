@@ -19,6 +19,7 @@ import {
   messageInboxTable,
   taktResponsesTable,
   taktResponseAlternativesTable,
+  taktResponseDecisionsTable,
   type TaktRequest,
   type InsertTaktRequest,
   type TaktRequestSnapshot,
@@ -107,6 +108,19 @@ export interface TaktRequestDetail {
   } | null;
   response: TaktRequestDetailResponse | null;
   timeline: TaktRequestDetailTimeline;
+  taktLifecycleStatus: string | null;
+  guDecision: {
+    decisionId: string;
+    taktRequestId: string;
+    responseId: string;
+    decisionType: string;
+    acceptedAlternativeId: string | null;
+    comment: string | null;
+    decidedAt: Date;
+    createdAt: Date;
+    updatedRequestStatus: string;
+    idempotent: boolean;
+  } | null;
 }
 
 /**
@@ -161,6 +175,17 @@ export async function getTaktRequestDetailForGu(
       responseAcceptedEnd: taktResponsesTable.acceptedEnd,
       responseNextAvailableDate: taktResponsesTable.nextAvailableDate,
       responseCreatedAt: taktResponsesTable.createdAt,
+      // ── Takt lifecycle ────────────────────────────────────────────────────
+      taktLifecycleStatus: takteTable.lifecycleStatus,
+      // ── GU Decision ───────────────────────────────────────────────────────
+      guDecisionId: taktResponseDecisionsTable.id,
+      guDecisionType: taktResponseDecisionsTable.decisionType,
+      guDecisionAcceptedAlternativeId: taktResponseDecisionsTable.acceptedAlternativeId,
+      guDecisionComment: taktResponseDecisionsTable.comment,
+      guDecisionDecidedAt: taktResponseDecisionsTable.decidedAt,
+      guDecisionCreatedAt: taktResponseDecisionsTable.createdAt,
+      guDecisionResponseId: taktResponseDecisionsTable.responseId,
+      guDecisionUpdatedRequestStatus: taktRequestsTable.status,
     })
     .from(taktRequestsTable)
     .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
@@ -187,6 +212,10 @@ export async function getTaktRequestDetailForGu(
     .leftJoin(
       taktResponsesTable,
       eq(taktResponsesTable.taktRequestId, taktRequestsTable.id),
+    )
+    .leftJoin(
+      taktResponseDecisionsTable,
+      eq(taktResponseDecisionsTable.responseId, taktResponsesTable.id),
     )
     .where(
       and(
@@ -262,6 +291,21 @@ export async function getTaktRequestDetailForGu(
           nextAvailableDate: row.responseNextAvailableDate ?? null,
           createdAt: row.responseCreatedAt!,
           alternatives,
+        }
+      : null,
+    taktLifecycleStatus: (row.taktLifecycleStatus ?? null) as string | null,
+    guDecision: row.guDecisionId
+      ? {
+          decisionId: row.guDecisionId,
+          taktRequestId: row.id,
+          responseId: row.guDecisionResponseId!,
+          decisionType: row.guDecisionType as string,
+          acceptedAlternativeId: row.guDecisionAcceptedAlternativeId ?? null,
+          comment: row.guDecisionComment ?? null,
+          decidedAt: row.guDecisionDecidedAt!,
+          createdAt: row.guDecisionCreatedAt!,
+          updatedRequestStatus: row.guDecisionUpdatedRequestStatus as string,
+          idempotent: false,
         }
       : null,
     timeline: {
@@ -453,6 +497,11 @@ export async function listTaktRequestsForGuEnriched(
       status: taktRequestsTable.status,
       outboxStatus: messageOutboxTable.status,
       responseRequiredBy: taktRequestsTable.responseRequiredBy,
+      expiresAt: taktRequestsTable.expiresAt,
+      expiredAt: taktRequestsTable.expiredAt,
+      guDecisionRequiredBy: taktRequestsTable.guDecisionRequiredBy,
+      lastReminderAt: taktRequestsTable.lastReminderAt,
+      reminderCount: taktRequestsTable.reminderCount,
       sentAt: taktRequestsTable.sentAt,
       createdAt: taktRequestsTable.createdAt,
       updatedAt: taktRequestsTable.updatedAt,

@@ -157,7 +157,44 @@ The `takt_requests.supersedesRequestId` field links the new request back to the 
 
 ---
 
-## 5 — Implementation Location
+## 5 — GU Decision and Revision Flows (implemented Tasks 6.3–6.6)
+
+### GU decisions (`POST /api/takt-requests/:id/gu-decisions`)
+
+After a NU responds, the GU makes one of four decisions:
+
+| Decision type | From status | Request → | Takt lifecycle → |
+|---|---|---|---|
+| `CONFIRM_ACCEPTED` | `ACCEPTED` | stays `ACCEPTED` | `CONFIRMED` |
+| `ACCEPT_ALTERNATIVE` | `ALTERNATIVES_PROPOSED` | → `ACCEPTED` | `CONFIRMED` |
+| `REQUEST_REVISION` | any open status | → `REVISION_REQUIRED` | unchanged |
+| `CLOSE_WITHOUT_AGREEMENT` | any open status | → `CANCELLED` | → `PLANNED` |
+
+Service: `artifacts/api-server/src/services/gu-decision-service.ts`  
+Version logic: `artifacts/api-server/src/services/takt-version-service.ts`
+
+`CONFIRM_ACCEPTED` creates a new `takt_versions` entry only when the accepted window differs from current takt dates.  
+`ACCEPT_ALTERNATIVE` always creates a new `takt_versions` entry (sourceType = `ACCEPTED_ALTERNATIVE`).
+
+### Revision round (`POST /api/takt-requests/:id/revisions`)
+
+After `REQUEST_REVISION`, the GU starts a new coordination round:
+
+```
+Old TaktRequest (REVISION_REQUIRED) → SUPERSEDED
+New TaktRequest (DRAFT) created, supersedesRequestId = old ID
+New takt_versions entry (sourceType = REVISION)
+takte.version++, planned_start/end updated
+takte.lifecycle_status → IN_COORDINATION
+```
+
+`sendImmediately=true`: new request is sent immediately → status → `DELIVERED`.
+
+Service: `artifacts/api-server/src/services/revision-service.ts`
+
+---
+
+## 6 — Implementation Location
 
 ### Transition validation function
 

@@ -1,0 +1,757 @@
+# Aufgabe 8.7 – CSV- und JSON-Exporte implementieren
+
+Implementiere organisationsgeschützte Exportfunktionen für Reporting- und Audit-Daten.
+
+Unterstütze zunächst:
+
+```text
+CSV
+JSON
+```
+
+Keine komplexe PDF-Generierung erforderlich.
+
+## Export-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET /reports/gu/export
+GET /reports/nu/export
+GET /reports/hub/export
+GET /takt-requests/{requestId}/audit-trail/export
+```
+
+## Query-Parameter
+
+Mindestens:
+
+```text
+format
+from
+to
+reportType
+projectId
+status
+trade
+```
+
+Zulässige Formate:
+
+```text
+csv
+json
+```
+
+## GU-Reporttypen
+
+Mindestens:
+
+```text
+REQUESTS
+RESPONSES
+DEADLINES
+COORDINATION_ROUNDS
+PROJECT_SUMMARY
+SUBCONTRACTOR_SUMMARY
+```
+
+## NU-Reporttypen
+
+Mindestens:
+
+```text
+REQUESTS
+RESPONSES
+DEADLINES
+AVAILABILITY
+REASON_CODES
+RESOURCE_UTILIZATION
+```
+
+NU-Ressourcenexporte bleiben ausschließlich für die eigene NU-Organisation verfügbar.
+
+## Hub-Reporttypen
+
+Mindestens:
+
+```text
+MESSAGES
+DELIVERY_STATUS
+DELIVERY_LATENCY
+FAILURES
+RETRIES
+```
+
+## CSV-Anforderungen
+
+* UTF-8
+* klare Spaltenüberschriften
+* konsistente Datumsformate
+* ISO-8601-Zeitstempel
+* korrektes Escaping
+* keine Formeln aus Benutzereingaben ausführen lassen
+
+Schütze gegen CSV-Formula-Injection.
+
+Werte, die mit folgenden Zeichen beginnen, müssen sicher behandelt werden:
+
+```text
+=
++
+-
+@
+```
+
+## JSON-Anforderungen
+
+* gültiges JSON
+* Metadaten zum Auswertungszeitraum
+* Filter
+* generierter Zeitpunkt
+* Schema-Version
+* Datenarray oder strukturierte Aggregation
+
+Beispiel:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "generatedAt": "2026-08-03T08:00:00Z",
+  "from": "2026-07-01T00:00:00Z",
+  "to": "2026-08-01T00:00:00Z",
+  "reportType": "REQUESTS",
+  "filters": {},
+  "data": []
+}
+```
+
+## Audit-Export
+
+Der Audit-Export darf enthalten:
+
+```text
+eventType
+occurredAt
+organizationReference
+actorType
+objectType
+objectReference
+messageId
+correlationId
+summary
+```
+
+Nicht enthalten:
+
+```text
+vollständige Snapshots
+interne Availability-Payloads
+lokale NU-Ressourcen
+interne Konflikte
+Mitarbeiterdaten
+Secrets
+```
+
+## Dateinamen
+
+Erzeuge verständliche Dateinamen, beispielsweise:
+
+```text
+gu-takt-requests-2026-07-01_2026-07-31.csv
+nu-availability-2026-Q3.json
+takt-request-REQ-001-audit.csv
+```
+
+## Größenbegrenzung
+
+* maximale Zeitraumgröße oder maximale Zeilenanzahl definieren
+* bei großen Datenmengen Pagination oder Streaming verwenden
+* keine unbegrenzten Exporte
+* verständliche Fehlermeldung bei Überschreitung
+
+## Berechtigungen
+
+* GU nur eigene fachliche Daten
+* NU nur eigene fachliche und lokale Daten
+* Hub nur technische Daten
+* Organisations-ID niemals frei aus dem Client übernehmen
+
+## Frontend
+
+Ergänze in den jeweiligen Dashboards:
+
+```text
+Exportieren
+```
+
+Der Benutzer wählt:
+
+* Bericht
+* Zeitraum
+* Format
+
+## Tests
+
+Ergänze:
+
+* GU-CSV enthält nur eigene Daten
+* NU-Ressourcenexport ist nur für NU verfügbar
+* Hub-Export enthält keine Fachdaten
+* JSON ist gültig
+* CSV-Escaping funktioniert
+* CSV-Formula-Injection wird verhindert
+* ungültiges Format wird abgelehnt
+* zu großer Export wird kontrolliert abgelehnt
+* Dateiname ist korrekt
+* Audit-Export enthält keine sensiblen Payloads
+
+## OpenAPI
+
+Ergänze:
+
+* Export-Endpunkte
+* Query-Parameter
+* Content Types
+* Fehlerantworten
+* Größenbegrenzungen
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Exporttests
+* Sicherheits- und Datenschutztests
+* Frontendtests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Export-Endpunkte
+* unterstützte Reporttypen
+* CSV- und JSON-Struktur
+* Sicherheitsmaßnahmen
+* Größenbegrenzung
+* Frontend-Integration
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 8.8 – Reporting-Performance, Datenschutz und Auditierbarkeit absichern
+
+Prüfe und verbessere gezielt die technische Qualität der Reporting-Funktionen.
+
+Implementiere keine neuen fachlichen Kennzahlen, sofern sie nicht zur Korrektur erforderlich sind.
+
+## Performanceprüfung
+
+Prüfe die wichtigsten Abfragen für:
+
+```text
+GU-Dashboard
+NU-Dashboard
+Hub-Dashboard
+Audit-Trail
+CSV-Export
+JSON-Export
+```
+
+## Anforderungen
+
+* keine N+1-Abfragen
+* keine vollständigen JSONB-Payloads laden, wenn Metadaten genügen
+* keine ungefilterten Organisationsabfragen
+* Zeitraumfilter muss datenbankseitig angewendet werden
+* Pagination muss vor dem Laden großer Datenmengen greifen
+* Aggregationen bevorzugt datenbankseitig durchführen
+
+## Indizes
+
+Prüfe bestehende Indizes für:
+
+```text
+takt_requests.guOrgId
+takt_requests.nuOrgId
+takt_requests.status
+takt_requests.createdAt
+takt_requests.responseRequiredBy
+takt_responses.createdAt
+takt_response_decisions.decidedAt
+message_outbox.status
+message_outbox.createdAt
+message_outbox.deliveredAt
+message_inbox.recipientOrgId
+availability_checks.nuOrgId
+availability_checks.checkedAt
+resource_bookings.nuOrgId
+resource_bookings.startAt
+resource_bookings.endAt
+```
+
+Ergänze nur nachweisbar sinnvolle Indizes.
+
+## Abfragegrenzen
+
+Definiere zentral:
+
+```text
+defaultReportingPeriodDays
+maximumReportingPeriodDays
+defaultPageSize
+maximumPageSize
+maximumExportRows
+```
+
+Keine Magic Numbers über mehrere Dateien verteilen.
+
+## Datenschutztests
+
+Erstelle automatisierte Negativtests.
+
+### GU darf nicht erhalten
+
+```text
+internalResultPayload
+resourceId
+resourceName
+localProjectId
+customerAlias
+employeeName
+internalCost
+internalPriority
+```
+
+### Hub darf nicht erhalten
+
+```text
+snapshotPayload
+fullTaktPlan
+resourcePlanning
+availabilityDetails
+localProjects
+employeeData
+```
+
+### NU einer fremden Organisation darf nicht erhalten
+
+```text
+Ressourcen
+Buchungen
+Projekte
+Availability Checks
+Reportingdaten
+```
+
+## Auditierbarkeit
+
+Jede Export- oder Reporting-Anfrage muss mindestens serverseitig nachvollziehbar sein durch:
+
+```text
+requestingUserId
+organizationId
+reportType
+from
+to
+generatedAt
+resultCount
+```
+
+Keine vollständigen exportierten Inhalte in Logs speichern.
+
+## Logging
+
+Nicht protokollieren:
+
+```text
+vollständige Exporte
+Snapshot-Payloads
+Ressourcenpayloads
+interne Konflikte
+Tokens
+Passwörter
+Secrets
+```
+
+## Datenqualität
+
+Implementiere oder ergänze Tests für:
+
+* fehlende Zeitstempel
+* negative Zeitdauern
+* Endzeit vor Startzeit
+* inkonsistente Request- und Responsestatus
+* fehlende Organisationsreferenzen
+* Nachrichten ohne Correlation-ID
+
+Kennzahlen sollen fehlerhafte Datensätze:
+
+* nicht stillschweigend falsch berechnen
+* entweder ausschließen und als Datenqualitätsproblem zählen
+* oder mit klarer Regel behandeln
+
+## Lasttest
+
+Führe einen einfachen reproduzierbaren Last- oder Performancetest mit Demo-Daten aus.
+
+Mindestens:
+
+```text
+mehrere Projekte
+mehrere NU
+mehrere hundert TaktRequests
+mehrere Nachrichten je Request
+mehrere Revisionsrunden
+```
+
+Keine aufwendige neue Lasttestplattform einführen.
+
+## Zielwerte
+
+Definiere realistische PoC-Zielwerte, beispielsweise:
+
+```text
+Dashboard-Aggregation unter 2 Sekunden
+paginiertes Audit-Trail unter 1 Sekunde
+Export bis zur maximalen Zeilengrenze ohne Speicherfehler
+```
+
+Keine erfolgreichen Werte behaupten, wenn sie nicht gemessen wurden.
+
+## Tests
+
+Ergänze:
+
+* Organisationsleakage wird verhindert
+* große Zeiträume werden abgelehnt
+* maximale Seitengröße wird eingehalten
+* Exporte überschreiten nicht die Zeilengrenze
+* Datenqualitätsprobleme werden korrekt behandelt
+* Reporting-Logs enthalten keine sensiblen Daten
+* wichtige Abfragen verwenden geeignete Filter
+
+## Dokumentation
+
+Aktualisiere:
+
+```text
+docs/reporting-and-kpis.md
+docs/data-ownership.md
+README.md
+```
+
+## Prüfungen
+
+Führe aus:
+
+* Datenschutztests
+* Sicherheitsprüfungen
+* Datenqualitätstests
+* Performancetest
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* geprüfte Abfragen
+* ergänzte Indizes
+* definierte Grenzen
+* Datenschutztests
+* Datenqualitätsbehandlung
+* gemessene Performancewerte
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 8.9 – Reporting, Audit und Export abschließend prüfen
+
+Prüfe alle Änderungen aus Aufgabe 8 und korrigiere nur festgestellte Inkonsistenzen.
+
+## Szenario A – GU-Projektbericht
+
+1. GU besitzt mehrere Projekte.
+2. Requests mit unterschiedlichen Status sind vorhanden.
+3. Dashboard zeigt korrekte Summen.
+4. Zeitraumfilter wird angewendet.
+5. Projektfilter wird angewendet.
+6. Antwortzeiten werden korrekt berechnet.
+7. GU exportiert einen CSV-Bericht.
+8. Export enthält keine NU-internen Daten.
+
+## Szenario B – NU-internes Reporting
+
+1. NU besitzt lokale Projekte und Ressourcenbuchungen.
+2. mehrere Taktanfragen unterschiedlicher GU sind vorhanden.
+3. NU-Dashboard zeigt Fälligkeiten und Prüfzeiten.
+4. Ressourcenkennzahlen werden lokal dargestellt.
+5. Reason Codes werden ausgewertet.
+6. GU kann diese Daten nicht abrufen.
+7. Hub kann diese Daten nicht abrufen.
+
+## Szenario C – Hub-Betriebsbericht
+
+1. Nachrichten mit unterschiedlichen Status sind vorhanden.
+2. Zustellzeiten werden berechnet.
+3. fehlgeschlagene Zustellungen werden dargestellt.
+4. Retry-Kennzahlen sind korrekt.
+5. Hub exportiert technische Metadaten.
+6. Export enthält keine Takt-Snapshots oder Ressourceninformationen.
+
+## Szenario D – Audit-Trail
+
+1. Request wird erstellt.
+2. Notification wird versendet.
+3. NU ruft Details ab.
+4. NU führt Prüfung aus.
+5. NU sendet Alternativen.
+6. GU fordert Revision.
+7. neue Taktversion und neuer Request entstehen.
+8. NU bestätigt.
+9. GU bestätigt.
+10. Audit-Trail zeigt die gesamte chronologische Prozesskette.
+11. jede Organisation sieht nur ihre zulässige Audit-Sicht.
+
+## Szenario E – Fristen und Erinnerungen
+
+1. Request wird fällig.
+2. Reminder wird erzeugt.
+3. NU antwortet verspätet oder Request läuft ab.
+4. Dashboardwerte ändern sich korrekt.
+5. Reminder und Ablauf sind im Audit-Trail sichtbar.
+6. technische Zustellfehler werden getrennt ausgewertet.
+
+## Kennzahlen prüfen
+
+Validiere mindestens:
+
+```text
+Anzahl Requests
+offene Requests
+überfällige Requests
+abgelaufene Requests
+fristgerechte Antwortquote
+durchschnittliche Antwortzeit
+mediane Antwortzeit
+Entscheidungsverteilung
+Anzahl Revisionsrunden
+Zeit bis Taktbestätigung
+Zustellquote
+mediane Zustellzeit
+Retry-Erfolgsquote
+```
+
+## Mathematische Prüfung
+
+Erstelle Testdatensätze mit bekannten Werten.
+
+Prüfe ausdrücklich:
+
+* Durchschnitt
+* Median bei gerader Anzahl
+* Median bei ungerader Anzahl
+* Prozentwerte
+* leere Grundgesamtheit
+* Requests ohne Antwortfrist
+* Requests ohne Zustellzeit
+* negative oder inkonsistente Zeitwerte
+
+## Organisationsschutz prüfen
+
+### GU
+
+Sieht nur:
+
+* eigene Projekte
+* eigene Requests
+* Antworten zu eigenen Requests
+* reduzierte NU-Daten
+
+### NU
+
+Sieht nur:
+
+* eigene Requests
+* eigene Ressourcen
+* eigene lokalen Projekte
+* eigene Availability Checks
+
+### Hub
+
+Sieht nur:
+
+* technische Nachrichtenmetadaten
+* technische Zustellkennzahlen
+
+## Exportprüfung
+
+Teste:
+
+* GU-CSV
+* GU-JSON
+* NU-CSV
+* NU-JSON
+* Hub-CSV
+* Hub-JSON
+* Audit-CSV
+* Audit-JSON
+
+Prüfe:
+
+* gültiges Format
+* korrekte Kodierung
+* sichere CSV-Werte
+* verständliche Dateinamen
+* korrekte Filter
+* keine sensiblen Daten
+
+## Demo-Daten
+
+Ergänze reproduzierbare Reporting-Daten für:
+
+```text
+mehrere GU-Projekte
+mindestens zwei NU
+fristgerechte Antwort
+verspätete Antwort
+abgelaufener Request
+Bestätigung
+Alternativen
+Ablehnung
+Revisionsrunde
+fehlgeschlagene Zustellung
+erfolgreicher Retry
+```
+
+## Dokumentation
+
+Aktualisiere:
+
+```text
+docs/reporting-and-kpis.md
+docs/frontend-concept.md
+docs/data-ownership.md
+docs/message-flow.md
+README.md
+replit.md
+```
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* bestehende TaktRequest-Prozesse funktionieren
+* bestehende Delegation-Seiten bleiben erreichbar
+* GU-, NU- und Hub-Anwendungen starten
+* bestehende Demo-Daten bleiben nutzbar
+* generierte Dateien wurden nicht manuell bearbeitet
+* keine externe BI-Plattform ist zum Start erforderlich
+* kein EDC wurde implementiert
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push, falls erforderlich
+* Seed und Demo-Reset
+* OpenAPI-Codegenerierung
+* Reporting-Service-Tests
+* API-Tests
+* Audit-Tests
+* Exporttests
+* Datenschutztests
+* Performanceprüfungen
+* Frontendtests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+### Neue Reporting-Services
+
+Liste sinngemäß:
+
+```text
+GuReportingService
+NuReportingService
+HubReportingService
+AuditTrailService
+ReportExportService
+```
+
+Passe die Namen an die tatsächliche Implementierung an.
+
+### Neue Endpunkte
+
+Liste alle:
+
+```text
+GU-Reporting-Endpunkte
+NU-Reporting-Endpunkte
+Hub-Reporting-Endpunkte
+Audit-Trail-Endpunkt
+Export-Endpunkte
+```
+
+### Neue Benutzeroberflächen
+
+Liste:
+
+```text
+GU-Dashboard
+NU-Dashboard
+Hub-Betriebsdashboard
+Audit-Trail
+Exportdialoge
+```
+
+### Kennzahlen
+
+Liste alle tatsächlich implementierten Kennzahlen und ihre Definition.
+
+### Datenschutz
+
+Bestätige:
+
+* GU sieht keine internen NU-Ressourcen.
+* NU-Daten verschiedener Organisationen bleiben getrennt.
+* Hub sieht keine vollständigen Fachdaten.
+* Exporte folgen denselben Berechtigungsregeln wie die APIs.
+* Audit-Logs enthalten keine sensiblen Payloads.
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Codegenerierung
+* Reportingtests
+* Audit-Tests
+* Exporttests
+* Datenschutztests
+* Performancewerte
+* Frontendtests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* semantische Harmonisierung der JSON-Strukturen
+* Schema Registry
+* Schema-Kompatibilitätsregeln
+* automatisierte Schema-Migration
+* EDC- und Tractus-X-Vorbereitung
+* vollständige PoC-Abnahme

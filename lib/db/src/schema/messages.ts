@@ -43,6 +43,10 @@ export const dataspaceMessageTypeEnum = pgEnum("dataspace_message_type", [
   "TAKT_RESPONSE_SUBMITTED",
   "TAKT_RESPONSE_ACCEPTED",
   "TAKT_RESPONSE_REVISION_REQUESTED",
+  /** Sent to both GU and NU when an open TaktRequest passes its expiresAt (Task 7.4) */
+  "TAKT_REQUEST_EXPIRED",
+  /** Generic reminder envelope — reminderType in payload distinguishes sub-types (Task 7.5) */
+  "TAKT_REQUEST_REMINDER",
 ]);
 
 /**

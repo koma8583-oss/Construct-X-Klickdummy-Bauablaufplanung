@@ -1,0 +1,564 @@
+# Aufgabe 7.4 – Kontrollierte Ablaufbehandlung offener Taktanfragen implementieren
+
+Implementiere die fachliche Ablaufbehandlung für unbeantwortete Taktanfragen.
+
+Verwende:
+
+* `responseRequiredBy`
+* `expiresAt`
+* `expiredAt`
+* `TaktRequestStatus`
+* bestehende Statusübergangslogik
+* `DeadlineEvaluationService`
+
+## Ablaufbare Requeststatus
+
+Automatisch ablaufen dürfen grundsätzlich nur unbeantwortete Requests in geeigneten Zuständen.
+
+Unterstütze mindestens:
+
+```text
+SENT
+DELIVERED
+DETAILS_RETRIEVED
+```
+
+Prüfe die in Aufgabe 7.2 dokumentierte Regel für:
+
+```text
+UNDER_REVIEW
+```
+
+Empfehlung:
+
+* `UNDER_REVIEW` nicht automatisch auf `EXPIRED` setzen.
+* Stattdessen als überfällig behandeln und Reminder beziehungsweise Eskalation erzeugen.
+* Dadurch geht eine bereits begonnene lokale Prüfung nicht durch einen automatischen Statuswechsel verloren.
+
+## Nicht automatisch ablaufen
+
+```text
+DRAFT
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+REVISION_REQUIRED
+CANCELLED
+EXPIRED
+SUPERSEDED
+```
+
+## Ablaufregel
+
+Ein Request läuft ab, wenn:
+
+```text
+now >= expiresAt
+```
+
+und:
+
+* Request noch unbeantwortet ist
+* kein fachlicher TaktResponse-Datensatz existiert
+* Request nicht storniert oder ersetzt wurde
+* keine fachliche Sperre gegen Ablauf besteht
+
+## Verarbeitung
+
+1. Request mit Sperre laden.
+2. aktuellen Status erneut prüfen.
+3. prüfen, ob Response vorhanden ist.
+4. Ablaufzeitpunkt prüfen.
+5. gültigen Übergang zu `EXPIRED` ausführen.
+6. `expiredAt` setzen.
+7. ausstehende Reminder stornieren.
+8. kleine Ablaufnachricht erzeugen.
+9. Taktstatus neu bewerten.
+
+## Taktstatus
+
+Wenn ein Request abläuft:
+
+* Takt nicht automatisch `CANCELLED`.
+* Prüfen, ob weitere offene Requests für denselben Takt existieren.
+* Wenn keine offene Abstimmung mehr besteht, kann der Takt von `IN_COORDINATION` auf `PLANNED` wechseln.
+* Bereits `CONFIRMED` gesetzte Takte nicht zurücksetzen.
+
+## Neue Nachricht
+
+Ergänze einen Nachrichtentyp:
+
+```text
+TAKT_REQUEST_EXPIRED
+```
+
+Payload:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "requestNumber": "TR-2026-001",
+  "expiredAt": "2026-08-09T10:00:00Z",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014"
+}
+```
+
+Die Nachricht wird an:
+
+* adressierten NU
+* GU-Organisation
+
+gesendet beziehungsweise in deren In-App-Inbox bereitgestellt.
+
+Keine vollständigen Taktdetails mitsenden.
+
+## Verhalten nach Ablauf
+
+Der NU darf:
+
+* Notification und Snapshot weiterhin historisch lesen
+* keine neue reguläre Antwort mehr absenden
+
+Der GU darf:
+
+* Anfragehistorie lesen
+* neue Revision beziehungsweise neue Taktanfrage erstellen
+* abgelaufene Anfrage nicht erneut normal versenden
+
+## Parallelität
+
+Verhindere:
+
+* gleichzeitige Response-Erstellung und Ablauf
+* doppeltes Ablaufen
+* doppelte Ablaufnachrichten
+
+Verwende Transaktion und Sperrstrategie.
+
+Prioritätsregel:
+
+* Wurde die Response vor dem Ablaufzeitpunkt fachlich gespeichert, darf der Request nicht ablaufen.
+* Kommt die Response erst nach dem Ablauf und ist der Status bereits `EXPIRED`, wird sie abgelehnt.
+
+## Tests
+
+Ergänze:
+
+* zugestellter unbeantworteter Request läuft ab
+* Request vor `expiresAt` läuft nicht ab
+* beantworteter Request läuft nicht ab
+* `UNDER_REVIEW` wird gemäß dokumentierter Regel behandelt
+* `EXPIRED` setzt `expiredAt`
+* ausstehende Reminder werden storniert
+* Ablauf erzeugt genau eine Nachricht
+* NU kann nach Ablauf nicht antworten
+* Snapshot bleibt historisch abrufbar
+* Takt wird nicht storniert
+* parallele Response vor Ablauf verhindert `EXPIRED`
+* parallele Response nach Ablauf wird abgelehnt
+
+## OpenAPI
+
+Ergänze:
+
+* Nachrichtentyp
+* typisiertes Payload
+* gegebenenfalls Response-Darstellung für abgelaufene Requests
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Statusübergangstests
+* Parallelitätstests
+* Transporttests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Ablaufregeln
+* Behandlung von `UNDER_REVIEW`
+* Taktstatus nach Ablauf
+* neue Ablaufnachricht
+* Parallelitätsregel
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 7.5 – Fachliche Erinnerungen als In-App-Nachrichten implementieren
+
+Implementiere den idempotenten Versand fachlicher Erinnerungen über den bestehenden lokalen Nachrichtentransport.
+
+Verwende:
+
+* `takt_request_reminders`
+* `MessageTransport`
+* `LocalHubTransport`
+* Outbox und Inbox
+* bestehende Retry-Logik
+
+## Neue Nachrichtentypen
+
+Ergänze typisierte Nachrichtentypen:
+
+```text
+TAKT_RESPONSE_DUE_SOON
+TAKT_RESPONSE_DUE_TODAY
+TAKT_RESPONSE_OVERDUE
+TAKT_GU_DECISION_DUE_SOON
+TAKT_GU_DECISION_OVERDUE
+```
+
+Alternativ kann ein generischer Typ verwendet werden:
+
+```text
+TAKT_REQUEST_REMINDER
+```
+
+mit einem typisierten `reminderType`.
+
+Bevorzuge die Variante, die sich gut mit der vorhandenen OpenAPI-Codegenerierung abbilden lässt.
+
+## Reminder-Payload
+
+Der Payload enthält nur:
+
+```json
+{
+  "taktRequestId": "REQ-001",
+  "requestNumber": "TR-2026-001",
+  "reminderType": "RESPONSE_DUE_SOON",
+  "dueAt": "2026-08-07T10:00:00Z",
+  "projectReference": "PROJECT-001",
+  "taktReference": "TAKT-014",
+  "deepLink": "/takt-requests/REQ-001"
+}
+```
+
+Nicht enthalten:
+
+```text
+vollständiger Snapshot
+lokale Ressourcen
+interne Konflikte
+Mitarbeiterdaten
+andere Auftraggeber
+interne Kosten
+```
+
+## Empfänger
+
+### NU-Antworterinnerungen
+
+Empfänger:
+
+* NU-Organisation des Requests
+* optional Benutzer mit Rolle `NU_ADMIN` oder `NU_DISPATCHER`
+
+### GU-Entscheidungserinnerungen
+
+Empfänger:
+
+* GU-Organisation des Requests
+* optional `GU_ADMIN` und `GENERAL_PLANNER`
+
+## Generierungsregeln
+
+### `RESPONSE_DUE_SOON`
+
+Erzeugen, wenn:
+
+```text
+now >= responseRequiredBy - firstReminderOffset
+```
+
+und Request unbeantwortet ist.
+
+### `RESPONSE_DUE_TODAY`
+
+Erzeugen, wenn die Frist innerhalb des konfigurierten zweiten Fensters liegt.
+
+### `RESPONSE_OVERDUE`
+
+Erzeugen, wenn:
+
+```text
+now > responseRequiredBy
+```
+
+aber Request noch nicht `EXPIRED` ist.
+
+### GU-Entscheidung
+
+Nur erzeugen, wenn:
+
+* NU-Response vorhanden
+* noch keine GU-Entscheidung vorhanden
+* `guDecisionRequiredBy` gesetzt
+* Requeststatus passend ist
+
+## Idempotenz
+
+* pro Reminder-Stufe genau eine Erinnerung
+* Retry verwendet dieselbe `messageId`
+* erneuter Worker-Lauf erzeugt keinen zweiten Reminder
+* nach Friständerung alte ausstehende Reminder stornieren
+* abgeschlossene Requests erhalten keine weiteren Reminder
+
+## Status der Erinnerung
+
+Empfohlene Folge:
+
+```text
+PENDING
+→ SENT
+→ DELIVERED
+```
+
+Bei Fehler:
+
+```text
+PENDING oder SENT
+→ FAILED
+```
+
+Retry:
+
+```text
+FAILED
+→ SENT
+→ DELIVERED
+```
+
+## Technische Zustellung
+
+Das Senden einer Erinnerung:
+
+* verändert keinen TaktRequest-Fachstatus
+* verändert keine NU-Response
+* verändert keine GU-Entscheidung
+* erhöht nur Reminder-Metadaten
+
+## Tests
+
+Ergänze:
+
+* erste Erinnerung wird zum korrekten Zeitpunkt erzeugt
+* zweite Erinnerung wird zum korrekten Zeitpunkt erzeugt
+* überfällige Erinnerung wird erzeugt
+* abgeschlossener Request erhält keine Erinnerung
+* doppelter Worker-Lauf erzeugt keine doppelte Erinnerung
+* Friständerung storniert alte Reminder
+* Retry verwendet dieselbe Nachricht
+* Reminder verändert keinen fachlichen Status
+* NU-Reminder geht nur an NU
+* GU-Reminder geht nur an GU
+* Payload enthält keine verbotenen Daten
+
+## OpenAPI
+
+Ergänze:
+
+* Reminder-Payload
+* Nachrichtentypen
+* Inbox-Darstellung
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Reminder-Service-Tests
+* Transporttests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Nachrichtentypen
+* Erinnerungsregeln
+* Empfängerlogik
+* Idempotenz
+* Friständerungsverhalten
+* Datenschutz
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 7.6 – Eskalations- und externe Notification-Abstraktion vorbereiten
+
+Implementiere eine Abstraktion für Benachrichtigungen außerhalb der Anwendung.
+
+Im PoC muss noch kein echter E-Mail-, SMS- oder Teams-Dienst angebunden werden.
+
+## Ziel
+
+Fachliche Reminder sollen später zusätzlich über externe Kanäle versendet werden können, ohne die Deadline- oder Requestlogik zu verändern.
+
+## Interface `ExternalNotificationProvider`
+
+Implementiere sinngemäß:
+
+```ts
+interface ExternalNotificationProvider {
+  send(
+    notification: ExternalNotification
+  ): Promise<ExternalNotificationResult>;
+}
+```
+
+## Typ `ExternalNotification`
+
+Mindestens:
+
+```text
+notificationId
+channel
+recipient
+subject
+body
+deepLink
+correlationId
+```
+
+## Enum `ExternalNotificationChannel`
+
+```text
+IN_APP
+EMAIL
+WEBHOOK
+```
+
+Noch nicht implementieren:
+
+```text
+SMS
+MESSENGER
+```
+
+## PoC-Implementierungen
+
+### `InAppNotificationProvider`
+
+* verwendet vorhandene Inbox beziehungsweise `MessageTransport`
+* kann als bestehender primärer Kanal dienen
+
+### `LoggingExternalNotificationProvider`
+
+* nur für Entwicklung und Tests
+* protokolliert Metadaten
+* keine vollständigen Fachdaten
+* keine realen Nachrichten versenden
+
+### Optional `WebhookNotificationProvider`
+
+Nur implementieren, wenn bereits eine sichere Webhook-Infrastruktur vorhanden ist.
+
+Ansonsten als spätere Implementierung dokumentieren.
+
+## Keine echten personenbezogenen Empfänger erzwingen
+
+Für den PoC genügt zunächst:
+
+* organisationsbezogene Benachrichtigung
+* vorhandene Benutzer-ID
+* optionale gespeicherte E-Mail-Adresse, falls im System bereits vorhanden
+
+Keine neuen sensiblen Kontaktdaten sammeln, wenn dies nicht erforderlich ist.
+
+## Nachrichtentemplates
+
+Definiere kleine Templates für:
+
+```text
+Antwortfrist nähert sich
+Antwortfrist überschritten
+GU-Entscheidung ausstehend
+technische Zustellung fehlgeschlagen
+Taktanfrage abgelaufen
+```
+
+Templates dürfen nur kleine Referenzinformationen enthalten.
+
+## Zustellpräferenzen
+
+Bereite ein einfaches Modell vor, falls mit vertretbarem Aufwand möglich:
+
+```text
+organizationId
+userId
+channel
+reminderType
+enabled
+```
+
+Keine komplexe Preference-UI in diesem Schritt.
+
+## Fehlerbehandlung
+
+* externer Kanalfehler darf In-App-Erinnerung nicht verhindern
+* jeder Kanal besitzt eigenen Zustellstatus
+* Retry eines Kanals erzeugt keine neue fachliche Erinnerung
+* externe Fehler verändern keinen TaktRequeststatus
+
+## Sicherheit
+
+* keine Secrets im Repository
+* externe Zugangsdaten ausschließlich über Umgebungsvariablen
+* Webhook-Ziele nicht frei aus Reminder-Payloads übernehmen
+* URLs validieren und auf gespeicherte Konfiguration beschränken
+* keine vollständigen Snapshots versenden
+
+## Tests
+
+Ergänze:
+
+* In-App-Provider funktioniert
+* Logging-Provider enthält keine sensiblen Payloads
+* externer Fehler verhindert In-App-Zustellung nicht
+* Retry erzeugt keine zweite fachliche Erinnerung
+* deaktivierter Kanal wird übersprungen
+* unbekannter Kanal wird abgelehnt
+* Secrets erscheinen nicht in Logs
+
+## Einschränkungen
+
+* Kein realer E-Mail-Versand erforderlich.
+* Kein SMS-Versand.
+* Keine produktive Teams- oder Slack-Integration.
+* Keine umfangreiche Preference-UI.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Provider-Tests
+* Sicherheits- und Loggingtests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neues Provider-Interface
+* PoC-Implementierungen
+* unterstützte Kanäle
+* Fehlerisolierung
+* Sicherheitsmaßnahmen
+* Testergebnisse
+* Ergebnisse von Typecheck und Build

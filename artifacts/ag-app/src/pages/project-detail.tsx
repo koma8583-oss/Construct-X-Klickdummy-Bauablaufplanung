@@ -54,6 +54,7 @@ import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
+  AlertCircle, Building2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -80,6 +81,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+
+import {
+  useGetAgProjectOverview,
+  useListProjectSubcontractors,
+  useCreateProjectSubcontractor,
+  useUpdateProjectSubcontractor,
+  useDeactivateProjectSubcontractor,
+  getListProjectSubcontractorsQueryKey,
+} from '@workspace/api-client-react';
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -302,9 +312,11 @@ export default function ProjectDetail() {
   const [activeConflicts, setActiveConflicts] = useState<RescheduledTakt[]>([]);
 
   // Queries
-  const { data: project, isLoading: projectLoading } = useGetProject(projectId, {
-    query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) },
+  const { data: projectOverview, isLoading: projectLoading } = useGetAgProjectOverview(projectId, {
+    query: { enabled: !!projectId, queryKey: ['getAgProjectOverview', projectId] },
   });
+  const project = projectOverview?.project;
+  
   const { data: takte, isLoading: takteLoading } = useListTakte(projectId, {
     query: { enabled: !!projectId, queryKey: getListTakteQueryKey(projectId) },
   });
@@ -321,6 +333,9 @@ export default function ProjectDetail() {
   const { data: deps } = useListTaktDependencies(projectId, {
     query: { enabled: !!projectId, queryKey: getListTaktDependenciesQueryKey(projectId) },
   });
+  const { data: assignments } = useListProjectSubcontractors(projectId, {
+    query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
+  });
 
   // Mutations
   const createTakt = useCreateTakt();
@@ -332,6 +347,15 @@ export default function ProjectDetail() {
   const removeContractor = useRemoveProjectContractor();
   const createDep = useCreateTaktDependency();
   const deleteDep = useDeleteTaktDependency();
+  
+  const createAssignment = useCreateProjectSubcontractor();
+  const updateAssignment = useUpdateProjectSubcontractor();
+  const deactivateAssignment = useDeactivateProjectSubcontractor();
+
+  // State for new AN assignment dialog
+  const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
+  const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
+  const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
   // Index: successorId → list of full TaktDependency objects
   const depsBySuccessor = useMemo(() => {
@@ -464,7 +488,7 @@ export default function ProjectDetail() {
   const invalidateTakte = () => {
     queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(projectId) });
     queryClient.invalidateQueries({ queryKey: getListDelegationsQueryKey({ projectId }) });
-    queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+    queryClient.invalidateQueries({ queryKey: ['getAgProjectOverview', projectId] });
     queryClient.invalidateQueries({ queryKey: getListTaktDependenciesQueryKey(projectId) });
   };
 
@@ -649,10 +673,69 @@ export default function ProjectDetail() {
     });
   };
 
+  const handleDeactivateAssignment = (assignmentId: string) => {
+    if (confirm('Möchten Sie diese AN-Zuordnung wirklich deaktivieren?')) {
+      deactivateAssignment.mutate({ projectId, assignmentId }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
+          toast({ title: 'Zuordnung deaktiviert' });
+        },
+        onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+      });
+    }
+  };
+
+  const handleCreateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    createAssignment.mutate({
+      projectId,
+      data: {
+        anOrgId: fd.get('anOrgId') as string,
+        trade: (fd.get('trade') as string) || undefined,
+        workPackageReference: (fd.get('workPackageReference') as string) || undefined,
+        validFrom: (fd.get('validFrom') as string) || undefined,
+        validTo: (fd.get('validTo') as string) || undefined,
+        assignmentStatus: (fd.get('assignmentStatus') as 'PLANNED' | 'ACTIVE') || 'ACTIVE',
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
+        toast({ title: 'AN-Zuordnung angelegt' });
+        setIsAssignAnOpen(false);
+      },
+      onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    });
+  };
+
+  const handleUpdateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editAssignmentId) return;
+    const fd = new FormData(e.currentTarget);
+    updateAssignment.mutate({
+      projectId,
+      assignmentId: editAssignmentId,
+      data: {
+        trade: (fd.get('trade') as string) || undefined,
+        workPackageReference: (fd.get('workPackageReference') as string) || undefined,
+        validFrom: (fd.get('validFrom') as string) || undefined,
+        validTo: (fd.get('validTo') as string) || undefined,
+        assignmentStatus: (fd.get('assignmentStatus') as 'PLANNED' | 'ACTIVE' | 'INACTIVE') || 'ACTIVE',
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
+        toast({ title: 'AN-Zuordnung gespeichert' });
+        setEditAssignmentId(null);
+      },
+      onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    });
+  };
+
   if (projectLoading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-1/3" /><Skeleton className="h-64 w-full" /></div>;
   }
-  if (!project) return <div>Projekt nicht gefunden</div>;
+  if (!project || !projectOverview) return <div>Projekt nicht gefunden</div>;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
@@ -666,13 +749,10 @@ export default function ProjectDetail() {
           </Link>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+              <h1 className="text-3xl font-bold tracking-tight">{project.projectName}</h1>
               <Badge variant={project.status === 'ACTIVE' ? 'default' : 'secondary'}>{project.status}</Badge>
             </div>
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-              {project.location && (
-                <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1" /> {project.location}</span>
-              )}
               <span className="flex items-center">
                 <Calendar className="w-3.5 h-3.5 mr-1" />
                 {project.startDate ? format(new Date(project.startDate), 'dd.MM.yyyy') : 'TBD'} –{' '}
@@ -684,7 +764,7 @@ export default function ProjectDetail() {
         <div className="flex items-center gap-3">
           <Link href={`/projects/${projectId}/proposals`}>
             <Button variant="outline" className="relative">
-              {project.pendingResponseCount > 0 && (
+              {projectOverview.coordination.openRequests > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
@@ -708,6 +788,50 @@ export default function ProjectDetail() {
             Neuer Takt
           </Button>
         </div>
+      </div>
+
+      {/* KPI Bar */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card className="bg-card">
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Takte gesamt</span>
+            <span className="text-2xl font-bold">{projectOverview.coordination.numberOfTakts}</span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-emerald-500/20">
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Bestätigt</span>
+            <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{projectOverview.coordination.confirmedTakts}</span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-amber-500/20">
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider text-amber-600 dark:text-amber-400">In Abstimmung</span>
+            <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">{projectOverview.coordination.taktsInCoordination}</span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-blue-500/20">
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider text-blue-600 dark:text-blue-400">Offene Anfragen</span>
+            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{projectOverview.coordination.openRequests}</span>
+          </CardContent>
+        </Card>
+        <Card className={`bg-card ${projectOverview.coordination.overdueRequests > 0 ? 'border-red-500/50 shadow-sm shadow-red-500/10' : ''}`}>
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className={`text-xs font-medium mb-1 uppercase tracking-wider ${projectOverview.coordination.overdueRequests > 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+              Überfällig
+            </span>
+            <span className={`text-2xl font-bold ${projectOverview.coordination.overdueRequests > 0 ? 'text-red-600 dark:text-red-400 animate-pulse' : ''}`}>
+              {projectOverview.coordination.overdueRequests}
+            </span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card">
+          <CardContent className="p-4 flex flex-col items-center text-center">
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Revisionsrunden</span>
+            <span className="text-2xl font-bold">{projectOverview.coordination.revisionRounds}</span>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Status legend */}
@@ -769,6 +893,22 @@ export default function ProjectDetail() {
             >
               <Network className="w-4 h-4" />
               Netzplan
+            </button>
+            <button
+              onClick={() => setActiveChartTab('an-zuordnungen' as any)}
+              className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
+                activeChartTab === 'an-zuordnungen' as any
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              AN-Zuordnungen
+              {assignments && assignments.length > 0 && (
+                <span className="ml-1.5 text-xs bg-primary/15 text-primary rounded-full px-1.5 py-0.5 font-semibold">
+                  {assignments.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -1109,8 +1249,14 @@ export default function ProjectDetail() {
                                     <SelectValue placeholder="Auswählen…" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {contractors.map(c => (
-                                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    {Array.from(new Map(
+                                      (assignments || [])
+                                        .filter(a => a.assignmentStatus === 'ACTIVE')
+                                        .map(a => [a.anOrgId, a])
+                                    ).values()).map(a => (
+                                      <SelectItem key={a.id} value={a.anOrgId}>
+                                        {a.anName} – {a.trade || 'Alle Gewerke'}
+                                      </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
@@ -1422,7 +1568,7 @@ export default function ProjectDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
-              Nachunternehmer — {project?.name}
+              Nachunternehmer — {project?.projectName}
             </DialogTitle>
           </DialogHeader>
 
@@ -1513,6 +1659,123 @@ export default function ProjectDetail() {
                   </div>
                 )}
               </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+      {/* ── Assign AN Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={isAssignAnOpen} onOpenChange={setIsAssignAnOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>AN zuordnen</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateAssignment} className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nachunternehmen</Label>
+              <Select name="anOrgId" required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Wählen Sie ein Nachunternehmen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allAnOrgs?.map(org => (
+                    <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gewerk (optional)</Label>
+                <Input name="trade" placeholder="z.B. Trockenbau" />
+              </div>
+              <div className="space-y-2">
+                <Label>Arbeitspaket (optional)</Label>
+                <Input name="workPackageReference" placeholder="z.B. AP-12" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gültig ab (optional)</Label>
+                <Input type="date" name="validFrom" />
+              </div>
+              <div className="space-y-2">
+                <Label>Gültig bis (optional)</Label>
+                <Input type="date" name="validTo" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select name="assignmentStatus" defaultValue="PLANNED" required>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PLANNED">Geplant</SelectItem>
+                  <SelectItem value="ACTIVE">Aktiv</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="outline" onClick={() => setIsAssignAnOpen(false)}>Abbrechen</Button>
+              <Button type="submit" disabled={createAssignment.isPending}>Zuordnen</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Assignment Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={!!editAssignmentId} onOpenChange={(open) => { if (!open) setEditAssignmentId(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>AN-Zuordnung bearbeiten</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const assignment = assignments?.find(a => a.id === editAssignmentId);
+            if (!assignment) return null;
+            return (
+              <form onSubmit={handleUpdateAssignment} className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nachunternehmen</Label>
+                  <Input value={assignment.anName || 'Unbekannt'} disabled className="bg-muted" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Gewerk (optional)</Label>
+                    <Input name="trade" defaultValue={assignment.trade || ''} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Arbeitspaket (optional)</Label>
+                    <Input name="workPackageReference" defaultValue={assignment.workPackageReference || ''} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Gültig ab (optional)</Label>
+                    <Input type="date" name="validFrom" defaultValue={assignment.validFrom ? assignment.validFrom.substring(0, 10) : ''} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Gültig bis (optional)</Label>
+                    <Input type="date" name="validTo" defaultValue={assignment.validTo ? assignment.validTo.substring(0, 10) : ''} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select name="assignmentStatus" defaultValue={assignment.assignmentStatus} required>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PLANNED">Geplant</SelectItem>
+                      <SelectItem value="ACTIVE">Aktiv</SelectItem>
+                      <SelectItem value="INACTIVE">Inaktiv</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter className="mt-6">
+                  <Button type="button" variant="outline" onClick={() => setEditAssignmentId(null)}>Abbrechen</Button>
+                  <Button type="submit" disabled={updateAssignment.isPending}>Speichern</Button>
+                </DialogFooter>
+              </form>
             );
           })()}
         </DialogContent>

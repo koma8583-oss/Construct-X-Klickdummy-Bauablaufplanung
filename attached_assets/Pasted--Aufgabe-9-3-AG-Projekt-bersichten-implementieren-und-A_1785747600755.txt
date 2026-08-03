@@ -1,0 +1,453 @@
+# Aufgabe 9.3 – AG-Projektübersichten implementieren und Aufgabe 9 abschließen
+
+Erweitere die bestehende AG-Anwendung um:
+
+1. eine Übersicht über alle Projekte des angemeldeten AG
+2. eine Detailübersicht für ein einzelnes Projekt
+3. die projektbezogene Verwaltung der zugeordneten AN
+
+Verwende bestehende Layouts, Komponenten, Diagramme, Tabellen und generierte API-Hooks.
+
+## Begriffe
+
+Verwende in der Oberfläche die bereits im Repository etablierten Begriffe.
+
+Falls die Anwendung weiterhin `AG` und `AN` verwendet, behalte diese Bezeichnungen bei.
+
+Eine globale Umbenennung ist nicht Bestandteil dieser Aufgabe.
+
+## Übersicht über alle Projekte
+
+Implementiere sinngemäß die Route:
+
+```text
+/projects
+```
+
+Falls bereits eine Projektliste existiert, erweitere diese nicht brechend.
+
+## Projektkarten oder Projekttabelle
+
+Zeige je Projekt mindestens:
+
+```text
+Projektname
+Projektreferenz
+Projektstatus
+Beginn
+Ende
+Anzahl zugeordneter AN
+zugeordnete Gewerke
+Takte gesamt
+bestätigte Takte
+offene Taktanfragen
+überfällige Taktanfragen
+laufende Revisionsrunden
+letzte Aktivität
+nächste Frist
+```
+
+## Gesamtkennzahlen des AG
+
+Im Kopfbereich der Projektübersicht mindestens:
+
+```text
+Projekte gesamt
+aktive Projekte
+zugeordnete AN
+offene Taktanfragen
+überfällige Taktanfragen
+bestätigte Takte
+laufende Revisionen
+```
+
+Die Anzahl zugeordneter AN kann wahlweise darstellen:
+
+* eindeutige AN-Organisationen über alle Projekte
+* Summe der Projektzuordnungen
+
+Die gewählte Definition muss eindeutig beschriftet sein.
+
+Empfehlung:
+
+```text
+Eindeutige AN
+Projektbezogene AN-Zuordnungen
+```
+
+als zwei getrennte Werte, sofern beide relevant sind.
+
+## Filter über alle Projekte
+
+Unterstütze mindestens:
+
+```text
+Projektstatus
+Zeitraum
+AN
+Gewerk
+offene Taktanfragen
+überfällige Taktanfragen
+laufende Revision
+```
+
+Bei Filter nach AN werden nur Projekte angezeigt, denen dieser AN tatsächlich zugeordnet ist.
+
+## Sortierung
+
+Unterstütze:
+
+```text
+Projektname
+letzte Aktivität
+nächste Frist
+Anzahl offener Requests
+Anzahl überfälliger Requests
+```
+
+## Einzelprojektübersicht
+
+Implementiere sinngemäß:
+
+```text
+/projects/{projectId}
+```
+
+## Kopfbereich
+
+Zeige:
+
+```text
+Projektname
+Projektreferenz
+Status
+Zeitraum
+AG-Organisation
+Anzahl zugeordneter AN
+Anzahl Takte
+Koordinationsstatus
+```
+
+## Projektkennzahlen
+
+Zeige mindestens:
+
+```text
+Takte gesamt
+bestätigte Takte
+Takte in Abstimmung
+offene Taktanfragen
+überfällige Taktanfragen
+abgelaufene Taktanfragen
+laufende Revisionsrunden
+```
+
+## Bereich „Zugeordnete AN“
+
+Zeige je projektbezogenem AN:
+
+```text
+AN-Name
+Gewerk
+Arbeitspaket
+Zuordnungsstatus
+Gültigkeitszeitraum
+Anfragen gesamt
+offene Anfragen
+Bestätigungen
+Alternativen
+Ablehnungen
+letzte Antwort
+```
+
+## Aktionen für AN-Zuordnungen
+
+Nur für berechtigte AG-Benutzer:
+
+```text
+AN zuordnen
+Zuordnung bearbeiten
+Zuordnung deaktivieren
+Taktanfragen des AN anzeigen
+```
+
+Kein physisches Löschen historisch verwendeter Zuordnungen.
+
+## Dialog „AN zuordnen“
+
+Felder mindestens:
+
+```text
+AN-Organisation
+Gewerk
+Arbeitspaket
+gültig ab
+gültig bis
+Status
+```
+
+Die Auswahl darf nur tatsächlich vorhandene AN-Organisationen anbieten.
+
+## Bereich „Taktkoordination“
+
+Zeige eine Tabelle:
+
+```text
+Takt
+Taktversion
+AN
+Gewerk
+TaktRequest
+Requeststatus
+Antwortfrist
+NU-Entscheidung
+GU-Entscheidung
+letzte Aktivität
+```
+
+Unterstütze Filter:
+
+```text
+AN
+Gewerk
+Requeststatus
+überfällig
+Taktstatus
+```
+
+## Projektbezogene Erstellung einer Taktanfrage
+
+Beim Öffnen des Dialogs zum Erstellen einer Taktanfrage:
+
+* Projekt ist bereits festgelegt.
+* Es werden nur diesem Projekt zugeordnete aktive AN angeboten.
+* Gewerke- und Arbeitspaketfilter berücksichtigen die Projektzuordnung.
+* Ein AN eines anderen Projekts darf nicht erscheinen.
+* Bestehende historische Zuordnungen bleiben in alten Requests sichtbar.
+
+## Navigation
+
+Ergänze sinnvolle Verlinkungen:
+
+```text
+Alle Projekte
+→ Projekt
+→ AN innerhalb des Projekts
+→ Taktanfrage
+→ Response und Historie
+```
+
+## Datenschutz
+
+Die AG-Oberfläche darf nicht anzeigen:
+
+```text
+andere Projekte des AN
+andere AG-Kunden des AN
+interne AN-Projektcodes
+lokale Ressourcenbuchungen
+Ressourcennamen
+Mitarbeiterdaten
+interne Konfliktanalyse
+interne Kosten
+interne Prioritäten
+```
+
+## Lade- und Fehlerzustände
+
+Implementiere:
+
+* Ladeanzeige
+* leere Projektliste
+* Projekt ohne AN
+* Projekt ohne Takte
+* Projekt ohne Taktanfragen
+* API-Fehler
+* erneutes Laden
+* fehlende Berechtigung
+
+## Responsive-Verhalten
+
+* Desktop ist primärer Anwendungsfall.
+* Tabellen dürfen horizontal scrollbar sein.
+* KPI-Karten sollen umbrechen.
+* Kritische Aktionen dürfen nicht nur über Hover erreichbar sein.
+
+## Tests der Projektübersicht
+
+Ergänze:
+
+* AG sieht alle eigenen Projekte
+* Projekte mit unterschiedlichen AN werden korrekt dargestellt
+* Projekt A zeigt nicht die AN von Projekt B
+* derselbe AN wird in zwei Projekten korrekt dargestellt
+* Filter nach AN zeigt nur zugehörige Projekte
+* Projektkennzahlen stimmen mit API-Daten überein
+* fremder AG kann Projekt nicht öffnen
+* AN kann AG-Projektübersicht nicht öffnen
+* keine internen AN-Daten werden angezeigt
+
+## Abschlussprüfung der reduzierten Aufgabe 9
+
+Prüfe zusätzlich:
+
+### JSON-Verträge
+
+* alle externen Nachrichten besitzen `schemaVersion`
+* aktuelle Version ist `1.0`
+* nicht unterstützte Major-Version wird abgelehnt
+* Zeitfenster sind einheitlich
+* Identifikatoren sind konsistent
+
+### Projektzuordnungen
+
+* ein AG besitzt mehrere Projekte
+* jedes Projekt besitzt eine eigene AN-Zuordnung
+* verschiedene Projekte können unterschiedliche AN besitzen
+* derselbe AN kann in mehreren Projekten tätig sein
+* Taktanfragen nutzen nur projektbezogene AN
+
+### AG-Gesamtübersicht
+
+* enthält alle Projekte des AG
+* aggregiert offene und überfällige Requests
+* zeigt projektbezogene AN-Anzahlen
+* enthält keine Daten fremder AG
+
+### AG-Einzelprojektübersicht
+
+* enthält nur das gewählte Projekt
+* enthält alle diesem Projekt zugeordneten AN
+* enthält projektbezogene Takte und Taktanfragen
+* enthält keine anderen Projekte desselben AN
+
+## Keine zusätzlichen Plattformkomponenten
+
+Nicht implementieren:
+
+* keine Schema-Registry-Anwendung
+* keine automatische Schema-Migration
+* kein EDC
+* kein Dataspace Protocol
+* keine Wallet
+* keine Verifiable Credentials
+* keine externe BI-Plattform
+* keine globale organisationsübergreifende Projektübersicht
+
+## Dokumentation
+
+Aktualisiere:
+
+```text
+docs/schema-versioning.md
+docs/json-contracts.md
+docs/reporting-and-kpis.md
+docs/frontend-concept.md
+docs/data-ownership.md
+README.md
+replit.md
+```
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push, falls erforderlich
+* Seed und Demo-Reset
+* OpenAPI-Codegenerierung
+* Schema-Tests
+* Projektzuordnungstests
+* Service-Tests
+* API-Tests
+* Frontendtests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+### Schema-Versionierung
+
+Berichte:
+
+* unterstützte Version
+* validierte Verträge
+* bewusst nicht implementierte Registry-Funktionen
+
+### Projektbezogene AN
+
+Berichte:
+
+* Datenmodell
+* Constraints
+* Zuordnungslogik
+* Auswahlregeln bei Taktanfragen
+
+### AG-Übersichten
+
+Berichte:
+
+* Übersicht aller Projekte
+* Einzelprojektübersicht
+* projektbezogene AN-Darstellung
+* Filter und Drill-down
+
+### Datenschutz
+
+Bestätige:
+
+* AG sieht nur eigene Projekte.
+* AG sieht je Projekt nur zugeordnete AN.
+* AG sieht keine internen AN-Ressourcen.
+* AN sieht keine anderen AN desselben Projekts, sofern nicht ausdrücklich freigegeben.
+* Hub sieht keine vollständigen Projektdaten.
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Datenbankmigration
+* Codegenerierung
+* Schema-Tests
+* Projektzuordnungstests
+* API-Tests
+* Frontendtests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Abschluss des aktuellen PoC
+
+Bestätige, ob folgender Ablauf vollständig funktioniert:
+
+```text
+AG verwaltet mehrere Projekte
+→ jedes Projekt besitzt eigene AN
+→ AG sieht Übersicht über alle Projekte
+→ AG öffnet Einzelprojekt
+→ AG wählt einen projektbezogenen AN
+→ AG sendet Taktanfrage
+→ AN prüft lokal
+→ AN antwortet
+→ AG entscheidet
+→ Revisionen, Fristen und Reporting bleiben nachvollziehbar
+```
+
+### Nicht erforderlich für den aktuellen PoC
+
+Liste:
+
+```text
+EDC
+Tractus-X-Connector
+Dataspace Protocol
+Wallet
+Verifiable Credentials
+Policy Negotiation
+Schema Registry
+automatische Schema-Migration
+```

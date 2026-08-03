@@ -428,6 +428,59 @@ Ranked alternative time windows proposed by the NU.
 
 ---
 
+### 4.5 `takt_response_decisions`
+
+GU decision on a NU response. One decision per response (UNIQUE on `responseId`).
+
+| Column               | Type                                  | Constraints                                   |
+| -------------------- | ------------------------------------- | --------------------------------------------- |
+| `id`                 | text (UUID)                           | PK, `crypto.randomUUID()`                     |
+| `taktRequestId`      | text (UUID)                           | NOT NULL, FK → `takt_requests.id`             |
+| `responseId`         | text (UUID)                           | NOT NULL, UNIQUE, FK → `takt_responses.id` RESTRICT |
+| `guOrgId`            | text (UUID)                           | NOT NULL, FK → `organizations.id`             |
+| `decisionType`       | enum `gu_decision_type`               | NOT NULL                                      |
+| `acceptedAlternativeId` | text (UUID)                        | nullable, FK → `takt_response_alternatives.id` RESTRICT |
+| `comment`            | text                                  | nullable                                      |
+| `idempotencyKey`     | text                                  | nullable, UNIQUE per `(guOrgId, idempotencyKey)` |
+| `idempotencyHash`    | text                                  | nullable                                      |
+| `decidedByUserId`    | text (UUID)                           | NOT NULL, FK → `users.id`                     |
+| `decidedAt`          | timestamptz                           | NOT NULL                                      |
+| `createdAt`          | timestamptz                           | NOT NULL, DEFAULT now()                       |
+
+**Enum `gu_decision_type`**: `CONFIRM_ACCEPTED`, `ACCEPT_ALTERNATIVE`, `REQUEST_REVISION`, `CLOSE_WITHOUT_AGREEMENT`
+
+**UNIQUE on `responseId`**: at most one GU decision per NU response.  
+**FK `acceptedAlternativeId` RESTRICT**: alternative row cannot be deleted while a decision references it.  
+**No `updatedAt`**: decisions are write-once by design.
+
+---
+
+### 4.6 `takt_versions`
+
+Immutable content-version history for each Takt. Created when takt content changes.
+
+| Column                | Type                          | Constraints                                    |
+| --------------------- | ----------------------------- | ---------------------------------------------- |
+| `id`                  | text (UUID)                   | PK, `crypto.randomUUID()`                      |
+| `taktId`              | text (UUID)                   | NOT NULL, FK → `takte.id` RESTRICT             |
+| `version`             | integer                       | NOT NULL, min 1, UNIQUE per `(taktId, version)` |
+| `sourceType`          | enum `takt_version_source_type` | NOT NULL                                     |
+| `sourceRequestId`     | text (UUID)                   | nullable, FK → `takt_requests.id`              |
+| `sourceResponseId`    | text (UUID)                   | nullable, FK → `takt_responses.id`             |
+| `sourceDecisionId`    | text (UUID)                   | nullable, FK → `takt_response_decisions.id` RESTRICT |
+| `snapshotPayload`     | jsonb                         | NOT NULL                                       |
+| `contentHash`         | text                          | NOT NULL                                       |
+| `createdByUserId`     | text (UUID)                   | NOT NULL, FK → `users.id`                      |
+| `createdAt`           | timestamptz                   | NOT NULL, DEFAULT now()                        |
+
+**Enum `takt_version_source_type`**: `INITIAL`, `MANUAL_EDIT`, `ACCEPTED_ALTERNATIVE`, `REVISION`
+
+**UNIQUE on `(taktId, version)`**: one entry per version number per Takt.  
+**FK `sourceDecisionId` RESTRICT**: decision cannot be deleted while a version references it — must delete versions first.  
+**No `updatedAt`**: versions are write-once and never updated.
+
+---
+
 ## 5 — Mapping: Existing → Target
 
 ### Fields that can be reused
@@ -517,9 +570,9 @@ The six architecture constraints that governed the Sprint 2 implementation:
 
 `users`, `organizations`, `user_organizations`, `projects`, `project_contractors`, `takte`, `takt_dependencies`, `delegations`, `delegation_responses`, `resources`, `resource_assignments`, `hub_messages`, `hub_admins`, `refresh_tokens`
 
-### New tables now live (4 tables, implemented Sprint 2)
+### New tables now live (6 tables, Sprints 2 & 6)
 
-`takt_requests`, `takt_request_snapshots`, `takt_responses`, `takt_response_alternatives`
+`takt_requests`, `takt_request_snapshots`, `takt_responses`, `takt_response_alternatives`, `takt_response_decisions`, `takt_versions`
 
 ### New columns added to existing table (Sprint 2)
 

@@ -1,6 +1,6 @@
 # Frontend-Konzept – TaktKoord
 
-Stand: Sprint 4 (Analyse-Basis für Sprint 5)
+Stand: Sprint 9 (Task 9.3)
 
 ---
 
@@ -33,20 +33,25 @@ Stand: Sprint 4 (Analyse-Basis für Sprint 5)
 **Seitendetails:**
 
 - **Dashboard:** Projektkennzahlen (gesamt / ausstehend / kritisch / bestätigt), nächste 7 Tage Takte, Aktivitätsprotokoll.
-- **Projektdetail:** Haupt-Planungsansicht mit Tab-Umschalter Gantt ↔ Netzplan. Takt-CRUD via Sheet-Panel, Abhängigkeiten, Delegation starten.
+- **Projektliste (Task 9.3):** KPI-Summenleiste (gesamt, aktiv, offen, überfällig, bestätigt, AN-Zuordnungen). Filter: Status / offene Anfragen / überfällige Anfragen. Sortierung: Projektname / Aktivität / offene / überfällige Anfragen. Projektkarten mit Gewerken, Anfragestatus und letzter Aktivität.
+- **Projektdetail:** Haupt-Planungsansicht mit Tab-Umschalter Gantt ↔ Netzplan ↔ **AN-Zuordnungen**.
+  - KPI-Leiste direkt unter dem Projektkopf: Takte gesamt / Bestätigt / In Abstimmung / Offene Anfragen / Überfällig / Revisionsrunden. Daten aus `useGetAgProjectOverview`.
   - Gantt: `gantt-task-react`, eigene Tooltips mit Vorgängern.
   - Netzplan: `src/components/NetzplanView.tsx` — SVG-Eigenimplementierung mit Schichtlayoutalgorithmus (`computeLayout`), kritischer Pfad (`computeCriticalPath`), Zoom, interaktive Knoten.
+  - **AN-Zuordnungen (Task 9.3):** Tabelle aller Projektbezogenen AN-Zuordnungen mit CRUD (anlegen / bearbeiten / deaktivieren). Kein physisches Löschen — nur Deaktivierung.
 - **Proposals/ProjectProposals:** Delegationen mit Status `ALTERNATIVE_PROPOSED`. Polling alle 30 Sekunden (`refetchInterval: 30_000`).
 
 **Verwendete API-Hooks** (aus `@workspace/api-client-react`):
 
 | Bereich | Hooks |
 |---|---|
+| Projektübersicht | `useGetAgProjectsOverview`, `useGetAgProjectOverview` |
 | Projekte | `useGetProject`, `useListProjects`, `useCreateProject` |
 | Takte | `useListTakte`, `useCreateTakt`, `useUpdateTakt`, `useDeleteTakt` |
 | Abhängigkeiten | `useListTaktDependencies`, `useCreateTaktDependency`, `useDeleteTaktDependency` |
 | Delegation (alt) | `useCreateDelegation`, `useUpdateDelegation`, `useListDelegations`, `useListDelegationResponses`, `useUpdateDelegationResponse` |
 | TaktRequest (neu) | `useCreateTaktRequestWithSnapshot`, `useSendTaktRequest`, `useGetTaktRequestDetails` |
+| AN-Zuordnungen (neu) | `useListProjectSubcontractors`, `useCreateProjectSubcontractor`, `useUpdateProjectSubcontractor`, `useDeactivateProjectSubcontractor` |
 | Org/Auth | `useGetMyProfile`, `useListOrganizationMembers`, `useListOrganizations`, `useGetAgDashboard` |
 | Webhooks | `useListWebhooks`, `useCreateWebhook`, `useDeleteWebhook` |
 

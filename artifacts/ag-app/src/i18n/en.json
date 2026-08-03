@@ -194,6 +194,134 @@
       "cancelConfirmYes": "Yes, cancel",
       "cancelConfirmNo": "Keep request"
     },
+    "guDecision": {
+      "title": "GU Decision",
+      "alreadyDecided": "Decision already recorded",
+      "taktConfirmed": "Takt has been confirmed (CONFIRMED)",
+      "decisionType": "Decision type",
+      "decidedAt": "Decided at",
+      "transportStatus": {
+        "title": "Delivery status",
+        "decisionSaved": "Business decision saved",
+        "notified": "Notification delivered to contractor",
+        "notifyFailed": "Delivery failed — contractor was not notified"
+      },
+      "actions": {
+        "confirmAccepted": "Confirm acceptance",
+        "acceptAlternative": "Select alternative",
+        "requestRevision": "Request revision",
+        "closeWithoutAgreement": "Close without agreement"
+      },
+      "decisionTypes": {
+        "CONFIRM_ACCEPTED": "Acceptance confirmed",
+        "ACCEPT_ALTERNATIVE": "Alternative accepted",
+        "REQUEST_REVISION": "Revision requested",
+        "CLOSE_WITHOUT_AGREEMENT": "Closed without agreement"
+      },
+      "error": {
+        "title": "Decision could not be saved",
+        "retry": "Try again"
+      },
+      "confirm": {
+        "title": "Confirm decision",
+        "notifyHint": "After submitting, the contractor will be notified automatically.",
+        "action": "Action",
+        "timeWindow": "Effective time window",
+        "takt": "Takt",
+        "currentVersion": "Current Takt version",
+        "newVersion": "New Takt version",
+        "requestStatus": "Request status after",
+        "taktStatus": "Takt status after",
+        "statusHint": "New request status: {{status}}",
+        "comment": "Comment (optional)",
+        "commentPlaceholder": "Reason or note for the contractor …",
+        "submit": "Submit decision",
+        "cancel": "Cancel"
+      },
+      "alternative": {
+        "title": "Select alternative",
+        "original": "Original plan",
+        "selectHint": "Select exactly one alternative:",
+        "start": "Start",
+        "end": "End",
+        "duration": "Duration",
+        "shift": "Shift",
+        "crew": "Crew size",
+        "conditions": "Conditions",
+        "rank": "Rank",
+        "next": "Continue to confirmation",
+        "back": "Back to selection",
+        "noAlternatives": "No alternatives available."
+      },
+      "revision": {
+        "title": "Request revision",
+        "description": "The contractor will be asked to submit a revised proposal.",
+        "noTaktChange": "Takt data will not be changed in this step. The new version will be created in the next step.",
+        "comment": "Reason / note for the contractor (optional)",
+        "commentPlaceholder": "What should the contractor revise? …",
+        "submit": "Request revision",
+        "afterTitle": "Revision requested",
+        "afterHint": "Request status has been set to \"Revision required\".",
+        "createNewVersion": "Create new Takt version"
+      },
+      "close": {
+        "title": "Close coordination round",
+        "warning": "Only the current coordination round will be closed.",
+        "taktWarning": "The Takt itself will not be automatically cancelled.",
+        "comment": "Comment (optional)",
+        "commentPlaceholder": "Reason for closing …",
+        "submit": "Close round",
+        "cancel": "Cancel"
+      }
+    },
+    "revisionDialog": {
+      "title": "Create new Takt version",
+      "description": "Start a new coordination round with updated Takt data.",
+      "context": "Context",
+      "nuComment": "Contractor comment",
+      "guComment": "GU revision comment",
+      "fields": {
+        "plannedStart": "Planned start",
+        "plannedEnd": "Planned end",
+        "responseRequiredBy": "Response deadline",
+        "subject": "Subject",
+        "message": "Message to contractor"
+      },
+      "comparison": {
+        "title": "Changes overview",
+        "field": "Field",
+        "before": "Previous version",
+        "after": "New version"
+      },
+      "dataSharing": {
+        "title": "What gets transferred?",
+        "notification": "New notification (subject, message, deadline)",
+        "snapshot": "New retrievable snapshot (Takt data)",
+        "internal": "Internal GU information is not transferred"
+      },
+      "submit": "Save as draft",
+      "submitAndSend": "Create and send",
+      "cancel": "Cancel",
+      "success": {
+        "title": "New version created",
+        "newRequest": "New request number",
+        "newVersion": "New Takt version",
+        "sent": "Delivery status",
+        "sentYes": "Sent",
+        "sentNo": "Draft",
+        "openNew": "Open new request"
+      }
+    },
+    "coordinationHistory": {
+      "title": "Coordination history",
+      "request": "Request",
+      "response": "Contractor response",
+      "decision": "GU decision",
+      "showPrevious": "Show previous coordination rounds",
+      "previousRound": "Round {{number}}",
+      "supersedesNote": "Supersedes an earlier request",
+      "noHistory": "No predecessors found."
+    },
     "overdue": "Overdue",
     "noDeadline": "No deadline"
   },

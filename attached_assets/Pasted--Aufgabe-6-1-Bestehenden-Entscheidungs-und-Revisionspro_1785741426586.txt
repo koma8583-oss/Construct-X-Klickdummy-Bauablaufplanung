@@ -1,0 +1,616 @@
+# Aufgabe 6.1 – Bestehenden Entscheidungs- und Revisionsprozess analysieren
+
+Analysiere die aktuelle Implementierung des Repositorys. Untersuche insbesondere:
+
+* vorhandene Verarbeitung eingehender Taktantworten
+* bestehende GU-Aktionen auf Antworten und Alternativen
+* vorhandene Statusänderungen an TaktRequest und Takt
+* bisherige Annahme oder Ablehnung von Delegationsalternativen
+* vorhandene Taktversionierung
+* Beziehungen zwischen Takt, TaktRequest, TaktResponse und Alternativen
+* vorhandene Änderungs- und Auditinformationen
+* bestehende Hub-Nachrichten für Entscheidungen
+* vorhandene GU-Antwortansichten
+* bestehende Möglichkeiten zur Erstellung einer neuen Abstimmungsrunde
+
+Erstelle anschließend ausschließlich:
+
+`docs/coordination-decision.md`
+
+Nimm in diesem Schritt keine Änderungen an Datenbank, OpenAPI, Services, Routes oder Benutzeroberflächen vor.
+
+## Zielprozess
+
+Dokumentiere folgenden fachlichen Ablauf:
+
+```text
+NU sendet ACCEPTED
+→ GU bestätigt das Ergebnis
+→ Takt wird fachlich bestätigt
+
+NU sendet ALTERNATIVES_PROPOSED
+→ GU wählt eine Alternative
+→ Takt wird angepasst und bestätigt
+
+NU sendet ALTERNATIVES_PROPOSED
+→ keine Alternative passt
+→ GU fordert Überarbeitung an
+→ neue Taktversion und neue Taktanfrage
+
+NU sendet REJECTED
+→ GU überarbeitet den Takt
+→ neue Taktversion und neue Taktanfrage
+
+NU sendet REJECTED
+→ GU beendet die konkrete Abstimmung
+→ Takt wird nicht automatisch gelöscht
+```
+
+## Architekturregeln
+
+Dokumentiere verbindlich:
+
+1. Eine TaktResponse ist nach dem Versand unveränderlich.
+2. Eine GU-Entscheidung wird als eigenes fachliches Objekt gespeichert.
+3. Eine vorhandene TaktResponse wird nicht überschrieben.
+4. Pro TaktResponse darf nur eine abschließende GU-Entscheidung existieren.
+5. Eine akzeptierte Alternative muss zu genau dieser Response gehören.
+6. Eine akzeptierte Alternative darf keine internen NU-Daten enthalten.
+7. Eine Änderung von Taktinhalt oder Zeitraum erzeugt eine neue Taktversion.
+8. Eine reine Statusbestätigung muss nicht zwingend eine neue Inhaltsversion erzeugen.
+9. Eine neue Abstimmungsrunde erzeugt eine neue Taktanfrage.
+10. Die alte Taktanfrage wird beim Erstellen der neuen Runde `SUPERSEDED`.
+11. Alle bisherigen Requests, Responses, Alternativen und Entscheidungen bleiben historisch erhalten.
+12. GU-Entscheidungen werden über den simulierten Datenraum an den NU zurückgemeldet.
+13. Der Hub erhält keine zusätzlichen vollständigen Fachdaten.
+
+## Geplante GU-Entscheidungen
+
+Dokumentiere folgende Zielwerte:
+
+```text
+CONFIRM_ACCEPTED
+ACCEPT_ALTERNATIVE
+REQUEST_REVISION
+CLOSE_WITHOUT_AGREEMENT
+```
+
+### `CONFIRM_ACCEPTED`
+
+Der NU hat den ursprünglichen Takt bestätigt. Der GU übernimmt diese Bestätigung.
+
+### `ACCEPT_ALTERNATIVE`
+
+Der GU wählt genau eine vom NU vorgeschlagene Alternative.
+
+### `REQUEST_REVISION`
+
+Keine Antwortvariante passt. Der Takt soll überarbeitet und erneut versendet werden.
+
+### `CLOSE_WITHOUT_AGREEMENT`
+
+Die konkrete Abstimmungsrunde wird ohne Vereinbarung beendet. Der Takt wird dadurch nicht automatisch gelöscht.
+
+## Taktversionierung dokumentieren
+
+Dokumentiere:
+
+* aktuelle Taktversion
+* unveränderliche Historie früherer Versionen
+* Ursprung einer Version
+* Zusammenhang mit Request, Response und GU-Entscheidung
+* Unterschiede zwischen Inhaltsänderung und Statusänderung
+
+Empfohlene Ursprungsarten:
+
+```text
+INITIAL
+MANUAL_EDIT
+ACCEPTED_ALTERNATIVE
+REVISION
+```
+
+## Statusregeln dokumentieren
+
+### Bestätigung des ursprünglichen Zeitfensters
+
+```text
+TaktRequest bleibt ACCEPTED
+Takt wird CONFIRMED
+```
+
+### Annahme einer Alternative
+
+```text
+TaktRequest ALTERNATIVES_PROPOSED → ACCEPTED
+Takt erhält gegebenenfalls eine neue Version
+Takt wird CONFIRMED
+```
+
+### Überarbeitung
+
+```text
+ALTERNATIVES_PROPOSED oder REJECTED
+→ REVISION_REQUIRED
+→ nach Erstellung des Nachfolgerequests SUPERSEDED
+```
+
+### Abschluss ohne Vereinbarung
+
+```text
+Request → CANCELLED
+```
+
+Der Takt darf nur dann auf `CANCELLED` gesetzt werden, wenn der GU ausdrücklich den Takt selbst storniert. Das Schließen einer Abstimmungsrunde genügt dafür nicht.
+
+## Bestehende Implementierung bewerten
+
+Dokumentiere:
+
+* welche vorhandenen Funktionen wiederverwendet werden können
+* welche bisherige Logik Takt- und Requeststatus vermischt
+* ob Alternativen derzeit direkt den Takt verändern
+* ob historische Änderungen verloren gehen
+* welche bestehenden Endpunkte kompatibel bleiben müssen
+* welche Risiken bei der Umstellung bestehen
+
+## Einschränkungen
+
+* Nur `docs/coordination-decision.md` erstellen oder ändern.
+* Keine Datenbankänderungen.
+* Keine OpenAPI-Änderungen.
+* Keine neuen Endpunkte.
+* Keine UI-Änderungen.
+* Keine Transportänderungen.
+* Kein EDC.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche bestehende Entscheidungslogik analysiert wurde
+* welche Statusprobleme festgestellt wurden
+* wie die Taktversionierung aktuell funktioniert
+* welche Zielentscheidungen dokumentiert wurden
+* welche Migrationsrisiken bestehen
+
+======================================================================
+
+# Aufgabe 6.2 – Datenmodelle für GU-Entscheidungen und Taktversionen anlegen
+
+Ergänze das bestehende Drizzle-Datenbankschema um:
+
+* `takt_response_decisions`
+* `takt_versions`
+
+Verwende die vorhandene ID-, Zeitstempel- und Benennungskonvention.
+
+Ändere noch keine öffentlichen REST-Endpunkte und keine Benutzeroberflächen.
+
+## Enum `TaktCoordinationDecisionType`
+
+Definiere:
+
+```text
+CONFIRM_ACCEPTED
+ACCEPT_ALTERNATIVE
+REQUEST_REVISION
+CLOSE_WITHOUT_AGREEMENT
+```
+
+## Tabelle `takt_response_decisions`
+
+Ergänze mindestens:
+
+```text
+id
+taktRequestId
+responseId
+guOrgId
+decisionType
+acceptedAlternativeId
+comment
+idempotencyKey
+decidedByUserId
+decidedAt
+createdAt
+```
+
+## Anforderungen
+
+### Beziehungen
+
+* `taktRequestId` referenziert `takt_requests`.
+* `responseId` referenziert `takt_responses`.
+* `guOrgId` referenziert die entscheidende GU-Organisation.
+* `decidedByUserId` referenziert den entscheidenden Benutzer.
+* `acceptedAlternativeId` ist nullable und referenziert bei Bedarf eine Alternative.
+
+### Eindeutigkeit
+
+* Pro `responseId` maximal eine GU-Entscheidung.
+* Unique Constraint auf `responseId`.
+* Falls `idempotencyKey` gesetzt ist, muss er innerhalb der GU-Organisation eindeutig sein.
+* Gleicher Idempotency-Key mit anderem Inhalt darf später nicht akzeptiert werden.
+
+### `acceptedAlternativeId`
+
+* Nur bei `ACCEPT_ALTERNATIVE` zulässig.
+* Die Alternative muss zur referenzierten Response gehören.
+* Bei anderen Entscheidungstypen muss das Feld leer sein.
+
+### Unveränderlichkeit
+
+* GU-Entscheidungen werden nach ihrer Erstellung nicht überschrieben.
+* Keine allgemeine Update-Funktion für Entscheidungen vorsehen.
+* Korrekturen erfolgen über eine neue Abstimmungsrunde, nicht durch Überschreiben der Entscheidung.
+
+## Tabelle `takt_versions`
+
+Ergänze mindestens:
+
+```text
+id
+taktId
+version
+sourceType
+sourceRequestId
+sourceResponseId
+sourceDecisionId
+snapshotPayload
+contentHash
+createdByUserId
+createdAt
+```
+
+## Enum `TaktVersionSourceType`
+
+Definiere:
+
+```text
+INITIAL
+MANUAL_EDIT
+ACCEPTED_ALTERNATIVE
+REVISION
+```
+
+## Anforderungen an `takt_versions`
+
+### Version
+
+* `version` ist eine Ganzzahl mit Minimum `1`.
+* Unique Constraint auf `taktId + version`.
+* Versionen werden niemals überschrieben.
+
+### Snapshot
+
+* `snapshotPayload` wird als JSONB gespeichert.
+* Snapshot enthält den vollständigen fachlichen Taktstand dieser Version.
+* Frühere Versionen verändern sich nicht bei späteren Taktänderungen.
+
+### Herkunft
+
+* `sourceRequestId`, `sourceResponseId` und `sourceDecisionId` sind nullable.
+* Bei einer übernommenen Alternative sollen die zugehörigen Referenzen gesetzt werden.
+* Bei einer manuellen Änderung dürfen diese Referenzen leer sein.
+
+### `contentHash`
+
+* Optional, aber empfohlen.
+* Dient zum Erkennen identischer Inhaltsversionen.
+* Verwende einen deterministischen Hash über den kanonisch serialisierten Taktinhalt.
+* Keine sicherheitskritische kryptografische Nutzung erforderlich.
+
+## Bestehende Takte initialisieren
+
+Erzeuge für bestehende Takte jeweils eine initiale Version:
+
+```text
+version = aktueller Takt.version oder 1
+sourceType = INITIAL
+```
+
+Der Snapshot muss den aktuellen fachlichen Taktinhalt enthalten.
+
+Keine bestehenden Takte oder IDs verändern.
+
+## Beziehungen
+
+Ergänze Drizzle-Relations:
+
+* Takt zu Versionen
+* Request zu GU-Entscheidung
+* Response zu GU-Entscheidung
+* Entscheidung zu ausgewählter Alternative
+* Entscheidung zu erzeugter Taktversion
+* Benutzer zu Entscheidungen und Versionen
+
+## Löschverhalten
+
+Historische Versionen und Entscheidungen sollen erhalten bleiben.
+
+Bevorzugt:
+
+* kein unkontrolliertes Cascade Delete vom Takt auf Versionen
+* kein Löschen einer Response mit bestehender Entscheidung
+* keine Löschung einer ausgewählten Alternative
+* physisches Löschen historischer Daten verhindern
+
+Dokumentiere das tatsächlich implementierte Verhalten.
+
+## Tests
+
+Ergänze:
+
+* GU-Entscheidung kann gespeichert werden
+* zweite Entscheidung für dieselbe Response wird abgelehnt
+* Alternative aus fremder Response kann nicht referenziert werden
+* Taktversion kann gespeichert werden
+* doppelte Versionsnummer wird abgelehnt
+* frühere Version bleibt unverändert
+* bestehende Takte erhalten eine Initialversion
+* gesetzter Idempotency-Key ist je GU eindeutig
+
+## Einschränkungen
+
+* Keine neuen REST-Endpunkte.
+* Keine Entscheidungsservices.
+* Keine automatische Übernahme einer Alternative.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Datenbanktests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Tabellen
+* neue Enums
+* Unique Constraints
+* Foreign Keys
+* Initialisierung vorhandener Takte
+* Löschverhalten
+* Ergebnisse von Migration, Tests, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 6.3 – Service und REST-Endpunkt für GU-Entscheidungen implementieren
+
+Implementiere eine Service-Schicht und einen GU-seitigen REST-Endpunkt für Entscheidungen über eine TaktResponse.
+
+Verwende:
+
+* `takt_response_decisions`
+* `TaktCoordinationDecisionType`
+* vorhandene Statusübergangslogik
+* bestehende Authentifizierung
+* Organisationsabgrenzung
+* OpenAPI und Zod
+
+## Endpunkt
+
+Implementiere sinngemäß:
+
+```http
+POST /takt-requests/{requestId}/gu-decisions
+```
+
+## Request-Body
+
+### Bestätigung einer angenommenen Planung
+
+```json
+{
+  "decisionType": "CONFIRM_ACCEPTED",
+  "comment": "Die Bestätigung wird übernommen."
+}
+```
+
+### Auswahl einer Alternative
+
+```json
+{
+  "decisionType": "ACCEPT_ALTERNATIVE",
+  "acceptedAlternativeId": "ALT-01",
+  "comment": "Alternative 1 wird übernommen."
+}
+```
+
+### Überarbeitung anfordern
+
+```json
+{
+  "decisionType": "REQUEST_REVISION",
+  "comment": "Bitte neuen Zeitraum vorbereiten."
+}
+```
+
+### Abstimmung ohne Vereinbarung schließen
+
+```json
+{
+  "decisionType": "CLOSE_WITHOUT_AGREEMENT",
+  "comment": "Die aktuelle Abstimmungsrunde wird beendet."
+}
+```
+
+## Berechtigungen
+
+* nur die GU-Organisation des TaktRequests
+* nur berechtigte Rollen wie `GU_ADMIN` oder `GENERAL_PLANNER`
+* NU darf keine GU-Entscheidung erstellen
+* Hub darf keine GU-Entscheidung erstellen
+* anderer GU darf keine Entscheidung erstellen
+
+## Entscheidungsregeln
+
+### Response `ACCEPTED`
+
+Zulässig:
+
+```text
+CONFIRM_ACCEPTED
+REQUEST_REVISION
+CLOSE_WITHOUT_AGREEMENT
+```
+
+`ACCEPT_ALTERNATIVE` ist nicht zulässig.
+
+### Response `ALTERNATIVES_PROPOSED`
+
+Zulässig:
+
+```text
+ACCEPT_ALTERNATIVE
+REQUEST_REVISION
+CLOSE_WITHOUT_AGREEMENT
+```
+
+### Response `REJECTED`
+
+Zulässig:
+
+```text
+REQUEST_REVISION
+CLOSE_WITHOUT_AGREEMENT
+```
+
+Nicht zulässig:
+
+```text
+CONFIRM_ACCEPTED
+ACCEPT_ALTERNATIVE
+```
+
+## Prüfung einer Alternative
+
+Bei `ACCEPT_ALTERNATIVE`:
+
+1. Alternative muss existieren.
+2. Alternative muss zur Response des Requests gehören.
+3. Alternative darf nicht aus einer anderen Abstimmungsrunde stammen.
+4. Zeitfenster muss gültig sein.
+5. Die Alternative muss vollständig gespeichert sein.
+6. Keine internen NU-Daten dürfen übernommen werden.
+
+## Statusänderungen
+
+### `CONFIRM_ACCEPTED`
+
+* Request bleibt beziehungsweise wird `ACCEPTED`.
+* Takt kann in einem nachfolgenden Service auf `CONFIRMED` gesetzt werden.
+
+### `ACCEPT_ALTERNATIVE`
+
+```text
+ALTERNATIVES_PROPOSED → ACCEPTED
+```
+
+### `REQUEST_REVISION`
+
+```text
+ALTERNATIVES_PROPOSED → REVISION_REQUIRED
+```
+
+oder:
+
+```text
+REJECTED → REVISION_REQUIRED
+```
+
+### `CLOSE_WITHOUT_AGREEMENT`
+
+* Request wird `CANCELLED`.
+* Takt wird nicht automatisch `CANCELLED`.
+* Falls keine weitere offene Abstimmung besteht, kann der Takt auf `PLANNED` zurückgesetzt werden.
+
+## Idempotenz
+
+Unterstütze einen `Idempotency-Key` oder die bestehende Projektlösung.
+
+Regeln:
+
+* identischer Key und identischer Inhalt liefert vorhandene Entscheidung
+* identischer Key mit verändertem Inhalt wird abgelehnt
+* zweite Entscheidung für dieselbe Response wird abgelehnt
+* Transport-Retry erzeugt keine zweite Entscheidung
+
+## Transaktion
+
+Folgende Schritte müssen transaktional erfolgen:
+
+1. Entscheidungsberechtigung prüfen.
+2. Response und Alternative validieren.
+3. GU-Entscheidung speichern.
+4. Requeststatus aktualisieren.
+
+Die Taktänderung erfolgt in Aufgabe 6.4.
+
+## OpenAPI
+
+Ergänze:
+
+* Entscheidungstyp
+* Request- und Response-Schema
+* Endpunkt
+* Fehlerantworten
+* Idempotenzbeschreibung
+* zulässige Entscheidungen je Response-Typ
+
+Generierte Dateien nicht manuell bearbeiten.
+
+## Tests
+
+Ergänze:
+
+* akzeptierte NU-Antwort kann bestätigt werden
+* Alternative kann ausgewählt werden
+* Alternative einer anderen Response wird abgelehnt
+* abgelehnte Response kann nicht bestätigt werden
+* Überarbeitung kann angefordert werden
+* Abstimmung kann geschlossen werden
+* Takt wird beim Schließen nicht automatisch storniert
+* fremder GU wird abgelehnt
+* NU wird abgelehnt
+* identischer Retry erzeugt keine zweite Entscheidung
+* zweiter abweichender Entscheidungsversuch wird abgelehnt
+
+## Einschränkungen
+
+* Noch keine Taktversion aus Alternative erzeugen.
+* Noch keine neue Revisionsanfrage erzeugen.
+* Noch keine Transportnachricht an den NU.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Service-Tests
+* API-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* neuer Service und Endpunkt
+* Entscheidungsregeln
+* Statusänderungen
+* Transaktionsverhalten
+* Idempotenz
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build

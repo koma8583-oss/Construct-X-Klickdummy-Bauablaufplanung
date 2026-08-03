@@ -114,6 +114,41 @@ The underlying internal resource and conflict analysis remains exclusively with 
 
 ---
 
+---
+
+## Project-scoped AN assignment rules (Task 9.2)
+
+An AN may be assigned to multiple projects. However, the assignment is always project-specific — not global per AG.
+
+### Rules
+
+1. A GU may only assign ANs to a project that they own (enforced via `project.agOrgId = jwt.orgId`).
+2. Only ANs with `assignmentStatus = ACTIVE` may be selected when creating a TaktRequest.
+3. When a GU creates a TaktRequest, the backend verifies the NU is an ACTIVE contractor for that project (enforced in `takt-request-snapshot-service.ts`).
+4. The GU may view all AN assignments for their own projects. They may NOT view another GU's project assignments.
+5. Historical assignments (INACTIVE/CANCELLED) are preserved — no physical deletion.
+
+### Data visible to the GU per project
+
+| Field | Visible to GU |
+|---|---|
+| AN name | Yes |
+| Trade / Gewerk | Yes |
+| Work package reference | Yes |
+| Assignment status | Yes |
+| Validity period | Yes |
+| Coordination KPIs (request counts, acceptance rates) | Yes — project-scoped only |
+| Other projects of the AN | **No** |
+| Other GU clients of the AN | **No** |
+| AN-internal project codes | **No** |
+| Resource bookings | **No** |
+| Employee/equipment names | **No** |
+| Internal conflict analysis | **No** |
+| Internal costs | **No** |
+| Internal priorities | **No** |
+
+---
+
 ## Planned extensions (not in PoC)
 
 - Formal `TaktRequestSnapshot` — immutable copy of released Takt data at request time

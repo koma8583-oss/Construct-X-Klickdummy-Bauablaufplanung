@@ -31,6 +31,19 @@ export interface TaktRequestListItem {
   outboxStatus?: MessageOutboxStatus | null;
   /** Deadline by which the NU must respond */
   responseRequiredBy?: Date | null;
+  /** Hard expiry — request auto-expires at this time if NU has not responded */
+  expiresAt?: Date | null;
+  /** Set when the request was actually expired */
+  expiredAt?: Date | null;
+  /** Deadline by which the GU must decide on the NU response */
+  guDecisionRequiredBy?: Date | null;
+  /** Timestamp of the last dispatched reminder */
+  lastReminderAt?: Date | null;
+  /**
+     * Total number of reminders dispatched
+     * @minimum 0
+     */
+  reminderCount: number;
   sentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;

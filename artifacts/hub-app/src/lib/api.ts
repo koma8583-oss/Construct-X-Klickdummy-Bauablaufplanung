@@ -17,7 +17,9 @@ export type HubMessageType =
   | 'DELEGATION_ALTERNATIVE'
   | 'DELEGATION_CANCELLED'
   | 'AG_ACCEPTED_ALTERNATIVE'
-  | 'AG_REJECTED_ALTERNATIVE';
+  | 'AG_REJECTED_ALTERNATIVE'
+  | 'TAKT_REQUEST_EXPIRED'
+  | 'TAKT_REQUEST_REMINDER';
 
 export interface HubUser {
   id: string;
@@ -43,6 +45,8 @@ export interface HubMessage {
   senderOrgId: string;
   recipientOrgId: string;
   delegationId: string | null;
+  /** correlationId links messages to their TaktRequest (taktRequestId) */
+  correlationId: string | null;
   payload: Record<string, unknown> | null;
   createdAt: string;
   senderOrg?: HubOrg;

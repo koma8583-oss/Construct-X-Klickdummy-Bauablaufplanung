@@ -396,6 +396,145 @@ export interface AddProjectContractorRequest {
   anOrgId: string;
 }
 
+export type ProjectContractorStatus = typeof ProjectContractorStatus[keyof typeof ProjectContractorStatus];
+
+
+export const ProjectContractorStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE/CANCELLED) are never physically deleted.
+ */
+export interface ProjectSubcontractorAssignment {
+  id: string;
+  projectId: string;
+  anOrgId: string;
+  anName?: string;
+  trade?: string | null;
+  workPackageReference?: string | null;
+  assignmentStatus: ProjectContractorStatus;
+  validFrom?: string | null;
+  validTo?: string | null;
+  addedAt?: string;
+}
+
+export interface CreateProjectSubcontractorRequest {
+  /** ID of the AN organisation to assign */
+  anOrgId: string;
+  /** Gewerk / trade for this assignment (null = all trades) */
+  trade?: string | null;
+  workPackageReference?: string | null;
+  assignmentStatus?: ProjectContractorStatus;
+  validFrom?: string | null;
+  validTo?: string | null;
+}
+
+/**
+ * All fields optional — only provided fields are updated
+ */
+export interface PatchProjectSubcontractorRequest {
+  trade?: string | null;
+  workPackageReference?: string | null;
+  assignmentStatus?: ProjectContractorStatus;
+  validFrom?: string | null;
+  validTo?: string | null;
+}
+
+export type AgProjectSummaryProjectStatus = typeof AgProjectSummaryProjectStatus[keyof typeof AgProjectSummaryProjectStatus];
+
+
+export const AgProjectSummaryProjectStatus = {
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+/**
+ * Coordination KPI summary for one project, as seen by the AG. Only coordination-relevant data — no NU-internal fields.
+ */
+export interface AgProjectSummary {
+  projectId: string;
+  projectName: string;
+  projectStatus: AgProjectSummaryProjectStatus;
+  startDate?: string | null;
+  endDate?: string | null;
+  /** Number of distinct ACTIVE AN organisations on this project */
+  assignedAnCount: number;
+  /** Unique trades from ACTIVE assignments */
+  assignedTrades: string[];
+  totalTaktRequests: number;
+  openTaktRequests: number;
+  overdueTaktRequests: number;
+  acceptedTaktRequests: number;
+  alternativeTaktRequests: number;
+  rejectedTaktRequests: number;
+  revisionRequiredRequests: number;
+  expiredTaktRequests: number;
+  lastActivityAt?: string | null;
+}
+
+/**
+ * Per-AN coordination KPIs within a project. No NU-internal data (no resource IDs, employee names, local project IDs, costs).
+ */
+export interface AgAnCoordinationStats {
+  assignmentId: string;
+  anOrgId: string;
+  anName: string;
+  trade?: string | null;
+  workPackageReference?: string | null;
+  assignmentStatus: ProjectContractorStatus;
+  validFrom?: string | null;
+  validTo?: string | null;
+  totalRequests: number;
+  openRequests: number;
+  acceptedRequests?: number;
+  alternativeRequests?: number;
+  rejectedRequests?: number;
+  lastResponseAt?: string | null;
+}
+
+export interface AgProjectCoordinationSummary {
+  numberOfTakts: number;
+  confirmedTakts: number;
+  taktsInCoordination: number;
+  openRequests: number;
+  overdueRequests: number;
+  expiredRequests: number;
+  revisionRounds: number;
+}
+
+export interface AgRecentTaktRequest {
+  taktRequestId: string;
+  requestNumber: string;
+  taktReference: string;
+  taktVersion?: number;
+  anOrgId: string;
+  anName: string;
+  requestStatus: string;
+  responseRequiredBy?: string | null;
+  lastActivityAt?: string;
+}
+
+export type AgProjectDetailOverviewProject = {
+  projectId: string;
+  projectName: string;
+  status: string;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+
+export interface AgProjectDetailOverview {
+  project: AgProjectDetailOverviewProject;
+  assignedAn: AgAnCoordinationStats[];
+  coordination: AgProjectCoordinationSummary;
+  recentRequests: AgRecentTaktRequest[];
+}
+
 export type UpdateDelegationResponseDecisionRequestAgDecision = typeof UpdateDelegationResponseDecisionRequestAgDecision[keyof typeof UpdateDelegationResponseDecisionRequestAgDecision];
 
 
@@ -660,6 +799,8 @@ export const DataspaceMessageType = {
   TAKT_RESPONSE_SUBMITTED: 'TAKT_RESPONSE_SUBMITTED',
   TAKT_RESPONSE_ACCEPTED: 'TAKT_RESPONSE_ACCEPTED',
   TAKT_RESPONSE_REVISION_REQUESTED: 'TAKT_RESPONSE_REVISION_REQUESTED',
+  TAKT_REQUEST_EXPIRED: 'TAKT_REQUEST_EXPIRED',
+  TAKT_REQUEST_REMINDER: 'TAKT_REQUEST_REMINDER',
 } as const;
 
 /**
@@ -923,6 +1064,19 @@ export interface TaktRequestListItem {
   outboxStatus?: MessageOutboxStatus | null;
   /** Deadline by which the NU must respond */
   responseRequiredBy?: string | null;
+  /** Hard expiry — request auto-expires at this time if NU has not responded */
+  expiresAt?: string | null;
+  /** Set when the request was actually expired */
+  expiredAt?: string | null;
+  /** Deadline by which the GU must decide on the NU response */
+  guDecisionRequiredBy?: string | null;
+  /** Timestamp of the last dispatched reminder */
+  lastReminderAt?: string | null;
+  /**
+     * Total number of reminders dispatched
+     * @minimum 0
+     */
+  reminderCount: number;
   sentAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -993,12 +1147,115 @@ export interface TaktRequestDetailResponse {
   alternatives: TaktRequestDetailResponseAlt[];
 }
 
+/**
+ * CONFIRM_ACCEPTED: confirm the NU's accepted time window. ACCEPT_ALTERNATIVE: select one of the NU's proposed alternatives. REQUEST_REVISION: request a revised coordination round. CLOSE_WITHOUT_AGREEMENT: close this round without agreement.
+ */
+export type GuDecisionCreateDecisionType = typeof GuDecisionCreateDecisionType[keyof typeof GuDecisionCreateDecisionType];
+
+
+export const GuDecisionCreateDecisionType = {
+  CONFIRM_ACCEPTED: 'CONFIRM_ACCEPTED',
+  ACCEPT_ALTERNATIVE: 'ACCEPT_ALTERNATIVE',
+  REQUEST_REVISION: 'REQUEST_REVISION',
+  CLOSE_WITHOUT_AGREEMENT: 'CLOSE_WITHOUT_AGREEMENT',
+} as const;
+
+/**
+ * Request body for POST /takt-requests/{requestId}/gu-decisions. The decisionType must be valid for the current NU response decision.
+ */
+export interface GuDecisionCreate {
+  /** CONFIRM_ACCEPTED: confirm the NU's accepted time window. ACCEPT_ALTERNATIVE: select one of the NU's proposed alternatives. REQUEST_REVISION: request a revised coordination round. CLOSE_WITHOUT_AGREEMENT: close this round without agreement. */
+  decisionType: GuDecisionCreateDecisionType;
+  /**
+     * Required and only valid for ACCEPT_ALTERNATIVE. Must be the DB id of an alternative belonging to the NU response for this TaktRequest.
+     * @minLength 1
+     */
+  acceptedAlternativeId?: string;
+  /**
+     * Optional free-text comment from the GU planner.
+     * @maxLength 2000
+     */
+  comment?: string;
+  /**
+     * Optional client-supplied idempotency key. Alternatively supply the Idempotency-Key HTTP header. Body field takes precedence.
+     * @minLength 1
+     * @maxLength 255
+     */
+  idempotencyKey?: string;
+}
+
+export type GuDecisionResponseDecisionType = typeof GuDecisionResponseDecisionType[keyof typeof GuDecisionResponseDecisionType];
+
+
+export const GuDecisionResponseDecisionType = {
+  CONFIRM_ACCEPTED: 'CONFIRM_ACCEPTED',
+  ACCEPT_ALTERNATIVE: 'ACCEPT_ALTERNATIVE',
+  REQUEST_REVISION: 'REQUEST_REVISION',
+  CLOSE_WITHOUT_AGREEMENT: 'CLOSE_WITHOUT_AGREEMENT',
+} as const;
+
+/**
+ * The TaktRequest status after this decision was applied.
+ */
+export type GuDecisionResponseUpdatedRequestStatus = typeof GuDecisionResponseUpdatedRequestStatus[keyof typeof GuDecisionResponseUpdatedRequestStatus];
+
+
+export const GuDecisionResponseUpdatedRequestStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  DETAILS_RETRIEVED: 'DETAILS_RETRIEVED',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  ACCEPTED: 'ACCEPTED',
+  ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
+  REJECTED: 'REJECTED',
+  REVISION_REQUIRED: 'REVISION_REQUIRED',
+  CANCELLED: 'CANCELLED',
+  EXPIRED: 'EXPIRED',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+/**
+ * Created or existing GU decision with updated TaktRequest status.
+ */
+export interface GuDecisionResponse {
+  /** Primary key of the takt_response_decisions row */
+  decisionId: string;
+  taktRequestId: string;
+  /** FK to the takt_responses row this decision refers to */
+  responseId: string;
+  decisionType: GuDecisionResponseDecisionType;
+  /** Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row. */
+  acceptedAlternativeId?: string | null;
+  comment?: string | null;
+  decidedAt: string;
+  createdAt: string;
+  /** The TaktRequest status after this decision was applied. */
+  updatedRequestStatus: GuDecisionResponseUpdatedRequestStatus;
+  /** true when this was an idempotent retry returning an existing decision. */
+  idempotent: boolean;
+}
+
 export type TaktRequestDetailSnapshot = {
   id: string;
   schemaVersion: string;
   snapshotPayload: { [key: string]: unknown };
   createdAt: string;
 } | null;
+
+/**
+ * Current lifecycle status of the referenced Takt. Null only for legacy rows.
+ */
+export type TaktRequestDetailTaktLifecycleStatus = typeof TaktRequestDetailTaktLifecycleStatus[keyof typeof TaktRequestDetailTaktLifecycleStatus] | null;
+
+
+export const TaktRequestDetailTaktLifecycleStatus = {
+  DRAFT: 'DRAFT',
+  PLANNED: 'PLANNED',
+  IN_COORDINATION: 'IN_COORDINATION',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+} as const;
 
 /**
  * Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.
@@ -1026,6 +1283,10 @@ export interface TaktRequestDetail {
   snapshot?: TaktRequestDetailSnapshot;
   response?: TaktRequestDetailResponse | null;
   timeline: TaktRequestDetailTimeline;
+  /** Current lifecycle status of the referenced Takt. Null only for legacy rows. */
+  taktLifecycleStatus: TaktRequestDetailTaktLifecycleStatus;
+  /** Existing GU decision on the NU response for this request, if one has been recorded. */
+  guDecision?: GuDecisionResponse | null;
 }
 
 /**
@@ -1500,6 +1761,175 @@ export interface NuResourceBookingListResponse {
   count: number;
 }
 
+/**
+ * New planned time window for the Takt
+ */
+export type RevisionCreatePlannedTimeWindow = {
+  /** ISO date or datetime string (YYYY-MM-DD or ISO 8601) */
+  start: string;
+  /** ISO date or datetime string (YYYY-MM-DD or ISO 8601) */
+  end: string;
+};
+
+/**
+ * Optional Takt field updates to include in the new version
+ */
+export type RevisionCreateTaktUpdates = {
+  taktBezeichnung?: string;
+  zone?: string;
+  gewerk?: string;
+  description?: string | null;
+  earliestStart?: string | null;
+  latestEnd?: string | null;
+  lvReference?: string | null;
+  bimReference?: string | null;
+  requiredResources?: string | null;
+};
+
+/**
+ * Request body for POST /takt-requests/{requestId}/revisions. Creates a new Takt version and a new TaktRequest for a revised coordination round after a REQUEST_REVISION decision.
+ */
+export interface RevisionCreate {
+  /** New planned time window for the Takt */
+  plannedTimeWindow: RevisionCreatePlannedTimeWindow;
+  /** Deadline by which the NU must respond. Must be in the future. */
+  responseRequiredBy?: string | null;
+  /**
+     * Human-readable subject for the coordination notification
+     * @maxLength 500
+     */
+  subject?: string | null;
+  /**
+     * Free-text message from GU to NU
+     * @maxLength 4000
+     */
+  message?: string | null;
+  /** If true, sends a TAKT_REQUEST_REVISED notification immediately after the transaction commits. New request transitions to DELIVERED. If the send fails, new request stays DRAFT. */
+  sendImmediately?: boolean;
+  /**
+     * Optional client-supplied idempotency key
+     * @maxLength 255
+     */
+  idempotencyKey?: string | null;
+  /** Optional Takt field updates to include in the new version */
+  taktUpdates?: RevisionCreateTaktUpdates;
+}
+
+export type RevisionResponseOldRequestStatus = typeof RevisionResponseOldRequestStatus[keyof typeof RevisionResponseOldRequestStatus];
+
+
+export const RevisionResponseOldRequestStatus = {
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+/**
+ * DRAFT if sendImmediately=false, DELIVERED if send succeeded
+ */
+export type RevisionResponseNewRequestStatus = typeof RevisionResponseNewRequestStatus[keyof typeof RevisionResponseNewRequestStatus];
+
+
+export const RevisionResponseNewRequestStatus = {
+  DRAFT: 'DRAFT',
+  DELIVERED: 'DELIVERED',
+} as const;
+
+/**
+ * Result of a successful POST /takt-requests/{requestId}/revisions call. Describes the predecessor chain: old request → new request → new Takt version.
+ */
+export interface RevisionResponse {
+  /** The original TaktRequest that was superseded */
+  oldRequestId: string;
+  oldRequestStatus: RevisionResponseOldRequestStatus;
+  /** The new TaktRequest (DRAFT or DELIVERED) */
+  newRequestId: string;
+  /** Human-readable reference for the new request */
+  newRequestNumber: string;
+  /** DRAFT if sendImmediately=false, DELIVERED if send succeeded */
+  newRequestStatus: RevisionResponseNewRequestStatus;
+  /**
+     * The new Takt version number (old version + 1)
+     * @minimum 2
+     */
+  newTaktVersion: number;
+  /** PK of the new takt_versions row */
+  newTaktVersionId: string;
+  /** PK of the new TaktRequestSnapshot */
+  snapshotId: string;
+  /** true if TAKT_REQUEST_REVISED was delivered to the NU */
+  sent: boolean;
+  createdAt: string;
+}
+
+export type TaktResponseAcceptedPayloadDecisionType = typeof TaktResponseAcceptedPayloadDecisionType[keyof typeof TaktResponseAcceptedPayloadDecisionType];
+
+
+export const TaktResponseAcceptedPayloadDecisionType = {
+  CONFIRM_ACCEPTED: 'CONFIRM_ACCEPTED',
+  ACCEPT_ALTERNATIVE: 'ACCEPT_ALTERNATIVE',
+} as const;
+
+export type TaktResponseAcceptedPayloadConfirmedTimeWindow = {
+  start: string;
+  end: string;
+} | null;
+
+/**
+ * Payload of a TAKT_RESPONSE_ACCEPTED message sent from GU to NU after CONFIRM_ACCEPTED or ACCEPT_ALTERNATIVE decision. Contains only public coordination data — no internal GU notes, no full Takt, no NU resources, no internal conflicts or cost.
+ */
+export interface TaktResponseAcceptedPayload {
+  taktRequestId: string;
+  decisionType: TaktResponseAcceptedPayloadDecisionType;
+  acceptedAlternativeId?: string | null;
+  confirmedTimeWindow?: TaktResponseAcceptedPayloadConfirmedTimeWindow;
+  taktVersion: number;
+  comment?: string | null;
+}
+
+export type TaktResponseRevisionRequestedPayloadDecisionType = typeof TaktResponseRevisionRequestedPayloadDecisionType[keyof typeof TaktResponseRevisionRequestedPayloadDecisionType];
+
+
+export const TaktResponseRevisionRequestedPayloadDecisionType = {
+  REQUEST_REVISION: 'REQUEST_REVISION',
+} as const;
+
+/**
+ * Payload of a TAKT_RESPONSE_REVISION_REQUESTED message sent from GU to NU after a REQUEST_REVISION decision.
+ */
+export interface TaktResponseRevisionRequestedPayload {
+  taktRequestId: string;
+  decisionType: TaktResponseRevisionRequestedPayloadDecisionType;
+  comment?: string | null;
+}
+
+/**
+ * Payload of a TAKT_REQUEST_REVISED message sent from GU to NU when a revised TaktRequest is dispatched (sendImmediately=true on /revisions). Contains standard TaktRequest notification fields plus predecessor chain. No full snapshot is included.
+ */
+export interface TaktRequestRevisedPayload {
+  /** New (successor) TaktRequest ID */
+  taktRequestId: string;
+  /** The old TaktRequest that was superseded */
+  supersedesRequestId: string;
+  /** Takt version before the revision */
+  previousTaktVersion: number;
+  /** New Takt version after the revision */
+  taktVersion: number;
+  projectReference?: string;
+  taktReference: string;
+  responseRequiredBy?: string | null;
+  detailsRef?: string;
+  subject?: string | null;
+  message?: string | null;
+}
+
+/**
+ * Payload of a TAKT_REQUEST_CANCELLED message sent from GU to NU after a CLOSE_WITHOUT_AGREEMENT decision. Contains only minimal coordination data — no internal GU data, no full Takt, no NU resources.
+ */
+export interface TaktRequestCancelledPayload {
+  taktRequestId: string;
+  comment?: string | null;
+  closedAt: string;
+}
+
 export type ListOrganizationsParams = {
 type?: ListOrganizationsType;
 search?: string;
@@ -1525,6 +1955,12 @@ export const ListProjectsStatus = {
   COMPLETED: 'COMPLETED',
   ARCHIVED: 'ARCHIVED',
 } as const;
+
+export type DeactivateProjectSubcontractor200 = {
+  ok?: boolean;
+  assignmentId?: string;
+  assignmentStatus?: string;
+};
 
 export type ListDelegationsParams = {
 projectId?: string;

@@ -24,14 +24,16 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 
-const messageTypeConfig = {
-  DELEGATION_CREATED:       { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',    icon: Clock },
-  DELEGATION_CONFIRMED:     { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  DELEGATION_REJECTED:      { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',     icon: XCircle },
-  DELEGATION_ALTERNATIVE:   { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',   icon: AlertCircle },
-  DELEGATION_CANCELLED:     { label: 'Storniert',                  color: 'bg-gray-500 text-white',    icon: Ban },
-  AG_ACCEPTED_ALTERNATIVE:  { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white', icon: CheckCircle2 },
-  AG_REJECTED_ALTERNATIVE:  { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',     icon: XCircle },
+const messageTypeConfig: Record<HubMessageType, { label: string; color: string; icon: React.ComponentType<{ size?: number }> }> = {
+  DELEGATION_CREATED:       { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',      icon: Clock },
+  DELEGATION_CONFIRMED:     { label: 'Bestätigt',                  color: 'bg-emerald-500 text-white',   icon: CheckCircle2 },
+  DELEGATION_REJECTED:      { label: 'Abgelehnt',                  color: 'bg-red-500 text-white',       icon: XCircle },
+  DELEGATION_ALTERNATIVE:   { label: 'Gegenvorschlag',             color: 'bg-amber-500 text-white',     icon: AlertCircle },
+  DELEGATION_CANCELLED:     { label: 'Storniert',                  color: 'bg-gray-500 text-white',      icon: Ban },
+  AG_ACCEPTED_ALTERNATIVE:  { label: 'Gegenvorschlag angenommen',  color: 'bg-emerald-500 text-white',   icon: CheckCircle2 },
+  AG_REJECTED_ALTERNATIVE:  { label: 'Gegenvorschlag abgelehnt',   color: 'bg-red-500 text-white',       icon: XCircle },
+  TAKT_REQUEST_EXPIRED:     { label: 'Anfrage abgelaufen',          color: 'bg-gray-400 text-white',      icon: Ban },
+  TAKT_REQUEST_REMINDER:    { label: 'Erinnerung',                  color: 'bg-orange-400 text-white',    icon: AlertCircle },
 };
 
 export default function MessagesPage() {
@@ -106,6 +108,8 @@ export default function MessagesPage() {
                   <SelectItem value="DELEGATION_CANCELLED">Storniert</SelectItem>
                   <SelectItem value="AG_ACCEPTED_ALTERNATIVE">Gegenvorschlag angenommen</SelectItem>
                   <SelectItem value="AG_REJECTED_ALTERNATIVE">Gegenvorschlag abgelehnt</SelectItem>
+                  <SelectItem value="TAKT_REQUEST_EXPIRED">Anfrage abgelaufen</SelectItem>
+                  <SelectItem value="TAKT_REQUEST_REMINDER">Erinnerung</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -130,7 +134,8 @@ export default function MessagesPage() {
                     <TableHead>Typ</TableHead>
                     <TableHead>Von Org</TableHead>
                     <TableHead>An Org</TableHead>
-                    <TableHead className="hidden lg:table-cell">Vergabe-ID</TableHead>
+                    <TableHead className="hidden lg:table-cell">Vergabe / Anfrage</TableHead>
+                    <TableHead className="hidden xl:table-cell">Korrelation</TableHead>
                     <TableHead className="text-right">Zeitpunkt</TableHead>
                     {user?.hubAdmin && <TableHead className="w-10" />}
                   </TableRow>
@@ -162,7 +167,7 @@ export default function MessagesPage() {
                           {message.delegationId ? (
                             <div className="flex items-center gap-2">
                               <code className="text-xs text-muted-foreground font-mono">
-                                {message.delegationId.slice(0, 16)}...
+                                {message.delegationId.slice(0, 16)}…
                               </code>
                               <Button
                                 variant="ghost"
@@ -179,7 +184,16 @@ export default function MessagesPage() {
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-muted-foreground">-</span>
+                            <span className="text-muted-foreground">–</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden xl:table-cell">
+                          {message.correlationId ? (
+                            <code className="text-xs text-muted-foreground font-mono">
+                              {message.correlationId.slice(0, 12)}…
+                            </code>
+                          ) : (
+                            <span className="text-muted-foreground">–</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">

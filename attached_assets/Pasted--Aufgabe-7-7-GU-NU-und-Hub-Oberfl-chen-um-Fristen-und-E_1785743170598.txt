@@ -1,0 +1,422 @@
+# Aufgabe 7.7 – GU-, NU- und Hub-Oberflächen um Fristen und Erinnerungen erweitern
+
+Erweitere die bestehenden Frontends um verständliche Darstellungen für:
+
+* Antwortfristen
+* Entscheidungsfristen
+* Erinnerungen
+* Überfälligkeit
+* abgelaufene Requests
+* technische Zustellfehler
+
+## GU-Anwendung
+
+### Taktanfragenübersicht
+
+Ergänze:
+
+```text
+Antwortfrist
+Restzeit oder Fälligkeitsstatus
+GU-Entscheidungsfrist
+Erinnerungsstatus
+Ablaufstatus
+```
+
+Mögliche Darstellungen:
+
+```text
+Fällig in 2 Tagen
+Heute fällig
+Seit 1 Tag überfällig
+Abgelaufen
+Entscheidung des GU ausstehend
+```
+
+Keine sekundengenaue Countdown-Anzeige.
+
+### Filter
+
+Ergänze:
+
+```text
+bald fällig
+heute fällig
+überfällig
+abgelaufen
+GU-Entscheidung ausstehend
+technische Zustellung fehlgeschlagen
+```
+
+### Detailseite
+
+Zeige eine Fristenkarte:
+
+```text
+Antwortfrist
+Ablaufzeitpunkt
+letzte Erinnerung
+Anzahl Erinnerungen
+GU-Entscheidungsfrist
+```
+
+Zeige Erinnerungen in der Prozesszeitleiste.
+
+## NU-Anwendung
+
+### Inbox
+
+Zeige:
+
+* Antwortfrist
+* Fälligkeitsstatus
+* überfällige Kennzeichnung
+* abgelaufene Kennzeichnung
+* eingegangene Reminder
+* ob noch geantwortet werden kann
+
+### Abgelaufener Request
+
+* historisch lesbar
+* Snapshot weiterhin sichtbar
+* Antwortschaltfläche deaktiviert
+* klare Erklärung:
+
+```text
+Die Antwortfrist und der Ablaufzeitpunkt sind überschritten.
+Eine reguläre Antwort ist nicht mehr möglich.
+```
+
+### Erinnerung öffnen
+
+Die Reminder-Nachricht soll direkt zur zugehörigen Taktanfrage führen.
+
+## GU-Entscheidung
+
+Wenn eine NU-Antwort vorliegt und `guDecisionRequiredBy` gesetzt ist:
+
+* Entscheidung als fällig oder überfällig darstellen
+* direkten Link zur Antwortansicht anbieten
+* keine automatische Entscheidung treffen
+
+## Hub-Anwendung
+
+Zeige:
+
+* Reminder-Nachrichten
+* Ablaufnachrichten
+* technische Zustellstatus
+* Zustellversuche
+* Correlation-ID
+
+Nicht zeigen:
+
+* vollständige Snapshots
+* NU-Ressourcen
+* interne Konflikte
+
+## Statusdarstellung
+
+Trenne visuell:
+
+```text
+fachlicher Requeststatus
+Friststatus
+technischer Nachrichtenstatus
+```
+
+Beispiel:
+
+```text
+Requeststatus: Details abgerufen
+Friststatus: Seit 6 Stunden überfällig
+Nachrichtenstatus: Erinnerung zugestellt
+```
+
+## Barrierearme Darstellung
+
+* nicht nur Farbe verwenden
+* Text oder Symbol ergänzen
+* Fristen als konkretes Datum und Uhrzeit anzeigen
+* Zeitzone oder lokale Darstellung konsistent behandeln
+* kritische Aktionen per Tastatur erreichbar
+
+## Tests
+
+Ergänze:
+
+* bald fälliger Request wird korrekt dargestellt
+* heute fälliger Request wird korrekt dargestellt
+* überfälliger Request wird markiert
+* abgelaufener Request kann nicht beantwortet werden
+* GU-Entscheidungsfrist wird angezeigt
+* Reminder führt zur richtigen Anfrage
+* fachlicher, zeitlicher und technischer Status sind getrennt
+* Hub zeigt keine Fachdaten
+* fremde Organisation sieht keine Reminder
+
+## Prüfungen
+
+Führe aus:
+
+* Frontendtests
+* API-Integrationstests
+* Datenschutztests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+Berichte:
+
+* neue Fristdarstellungen
+* neue Filter
+* Verhalten abgelaufener Requests
+* GU-Entscheidungsanzeige
+* Hub-Erweiterungen
+* Barrierearme Darstellung
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
+
+======================================================================
+
+# Aufgabe 7.8 – Fristen-, Reminder- und Ablaufprozess abschließend prüfen
+
+Prüfe alle Änderungen aus Aufgabe 7 und korrigiere nur festgestellte Inkonsistenzen.
+
+## Szenario A – Rechtzeitige Antwort
+
+1. GU sendet Request.
+2. Antwortfrist liegt in drei Tagen.
+3. erste Erinnerung wird erzeugt.
+4. NU antwortet rechtzeitig.
+5. weitere Reminder werden storniert.
+6. Request läuft nicht ab.
+
+## Szenario B – Überfällige, aber noch nicht abgelaufene Anfrage
+
+1. Antwortfrist wird überschritten.
+2. Kulanzzeitraum läuft.
+3. NU erhält `RESPONSE_OVERDUE`.
+4. Request bleibt noch beantwortbar.
+5. NU antwortet innerhalb der Kulanzfrist.
+6. Request wird nicht `EXPIRED`.
+
+## Szenario C – Anfrage läuft ab
+
+1. GU sendet Request.
+2. NU antwortet nicht.
+3. Erinnerungen werden erzeugt.
+4. `expiresAt` wird erreicht.
+5. Request wird genau einmal `EXPIRED`.
+6. `expiredAt` wird gesetzt.
+7. GU und NU erhalten eine Ablaufnachricht.
+8. NU kann keine Response mehr senden.
+9. Snapshot bleibt historisch lesbar.
+10. Takt wird nicht automatisch storniert.
+
+## Szenario D – NU-Prüfung läuft bereits
+
+1. NU ruft Details ab.
+2. NU startet Machbarkeitsprüfung.
+3. Request ist `UNDER_REVIEW`.
+4. Antwortfrist wird überschritten.
+5. System folgt der dokumentierten `UNDER_REVIEW`-Regel.
+6. Keine begonnene Prüfung geht unkontrolliert verloren.
+
+## Szenario E – GU-Entscheidung überfällig
+
+1. NU sendet Alternativen.
+2. `guDecisionRequiredBy` wird gesetzt.
+3. GU entscheidet nicht rechtzeitig.
+4. GU erhält Reminder.
+5. NU-Response bleibt unverändert.
+6. Es wird keine automatische Alternative akzeptiert.
+
+## Szenario F – Technischer Fehler
+
+1. Reminder wird fachlich erzeugt.
+2. externe beziehungsweise technische Zustellung schlägt fehl.
+3. In-App-Kanal bleibt funktionsfähig.
+4. Reminderstatus ist nachvollziehbar.
+5. Retry verwendet dieselbe `messageId`.
+6. kein zweiter fachlicher Reminder entsteht.
+
+## Idempotenz prüfen
+
+Teste:
+
+* wiederholter Worker-Lauf
+* paralleler Worker-Lauf
+* wiederholte Reminder-Erzeugung
+* wiederholter Reminder-Versand
+* wiederholtes Ablauf-Processing
+* Retry nach Zustellfehler
+* Friständerung nach bereits geplantem Reminder
+
+## Parallelität prüfen
+
+Teste:
+
+* Response und Ablauf zum gleichen Zeitpunkt
+* Request-Stornierung und Reminder-Erzeugung gleichzeitig
+* Request-Superseding und Ablauf gleichzeitig
+* GU-Entscheidung und GU-Reminder gleichzeitig
+
+## Datenhoheit prüfen
+
+Reminder, Ablaufnachrichten und externe Notifications dürfen nicht enthalten:
+
+```text
+snapshotPayload
+resourcePlanning
+internalResultPayload
+localProjectId
+customerAlias
+resourceId
+employeeName
+internalCost
+internalPriority
+```
+
+## Demo-Daten
+
+Ergänze reproduzierbare Demo-Fälle:
+
+```text
+fällig in 48 Stunden
+heute fällig
+überfällig innerhalb Kulanzzeit
+abgelaufen
+GU-Entscheidung überfällig
+Reminder-Zustellung fehlgeschlagen
+```
+
+## Demo-Zeitsteuerung
+
+Für Entwicklungs- und Testumgebungen darf eine kontrollierte Testzeit verwendet werden.
+
+Nicht in Produktion ermöglichen.
+
+## Dokumentation
+
+Aktualisiere:
+
+```text
+docs/deadlines-and-reminders.md
+docs/state-model.md
+docs/message-flow.md
+docs/transport-architecture.md
+docs/frontend-concept.md
+docs/data-ownership.md
+README.md
+replit.md
+```
+
+## Rückwärtskompatibilität
+
+Bestätige:
+
+* bestehende Delegation-Endpunkte bleiben vorhanden
+* bestehende TaktRequest-Prozesse bleiben funktionsfähig
+* bestehende GU-, NU- und Hub-Anwendungen starten
+* keine generierten Dateien wurden manuell bearbeitet
+* kein EDC wurde implementiert
+* keine echte externe E-Mail- oder SMS-Abhängigkeit ist für den Start erforderlich
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Seed und Demo-Reset
+* OpenAPI-Codegenerierung
+* Worker-Tests
+* Statusübergangstests
+* Parallelitätstests
+* Transporttests
+* API-Tests
+* Frontendtests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build aller Anwendungen
+
+## Abschlussbericht
+
+### Erweiterte Datenbankobjekte
+
+Nenne:
+
+```text
+takt_requests
+takt_request_reminders
+gegebenenfalls deadline_events
+```
+
+### Neue Services
+
+Liste sinngemäß:
+
+```text
+DeadlineEvaluationService
+LocalDeadlineWorker
+ReminderService
+RequestExpirationService
+ExternalNotificationProvider
+```
+
+Passe die Namen an die tatsächliche Implementierung an.
+
+### Neue Nachrichten
+
+Liste mindestens:
+
+```text
+TAKT_REQUEST_EXPIRED
+TAKT_RESPONSE_DUE_SOON
+TAKT_RESPONSE_DUE_TODAY
+TAKT_RESPONSE_OVERDUE
+TAKT_GU_DECISION_DUE_SOON
+TAKT_GU_DECISION_OVERDUE
+```
+
+### Neue UI-Funktionen
+
+Liste:
+
+* Fristdarstellung
+* Überfälligkeitsfilter
+* Ablaufkennzeichnung
+* Reminder-Inbox
+* GU-Entscheidungserinnerung
+* Hub-Anzeige zeitabhängiger Nachrichten
+
+### Prüfungsergebnisse
+
+Nenne:
+
+* Datenbankmigration
+* Codegenerierung
+* Worker-Tests
+* Parallelitätstests
+* API-Tests
+* Frontendtests
+* Datenschutztests
+* End-to-End-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+### Offene Folgeaufgaben
+
+Nenne ausschließlich:
+
+* Reporting und Export
+* Prozesskennzahlen und Dashboards
+* semantische Harmonisierung der JSON-Strukturen
+* Schema Registry und Versionierung
+* echte externe E-Mail- oder Kollaborationskanäle
+* echte EDC- und Tractus-X-Anbindung

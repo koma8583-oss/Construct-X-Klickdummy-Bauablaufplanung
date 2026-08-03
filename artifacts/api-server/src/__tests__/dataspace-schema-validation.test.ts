@@ -1,5 +1,5 @@
 /**
- * Task 1.7 — Schema validation tests for dataspace message schemas.
+ * Task 1.7 / Task 9.1 — Schema validation tests for dataspace message schemas.
  *
  * The generated Orval Zod schemas in @workspace/api-zod only cover API
  * endpoint request/response shapes. The dataspace message schemas
@@ -8,11 +8,21 @@
  * generated export. This file defines equivalent Zod schemas inline — derived
  * directly from lib/api-spec/openapi.yaml — and validates:
  *   - All four canonical JSON examples from docs/json-contracts.md
- *   - Nine invalid cases covering every constraint listed in Task 1.7
+ *   - Invalid cases covering every constraint including schema version policy
+ *
+ * Schema version policy (Task 9.1):
+ *   - schemaVersion must match /^\d+\.\d+$/
+ *   - Major version must be 1 (currently supported)
+ *   - Major version 2+ is explicitly rejected at this boundary
  */
 
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import {
+  isSupportedMajorVersion,
+  SUPPORTED_MAJOR_VERSIONS,
+  CURRENT_SCHEMA_VERSION,
+} from "../lib/schema-version";
 
 // ── Derived Zod schemas (mirror of lib/api-spec/openapi.yaml) ─────────────────
 
@@ -24,6 +34,9 @@ const DataspaceMessageType = z.enum([
   "TAKT_RESPONSE_SUBMITTED",
   "TAKT_RESPONSE_ACCEPTED",
   "TAKT_RESPONSE_REVISION_REQUESTED",
+  // Added in Sprint 7 (Task 7.x) — deadline/reminder system
+  "TAKT_REQUEST_REMINDER",
+  "TAKT_REQUEST_EXPIRED",
 ]);
 
 const DataspaceMessageStatus = z.enum([
@@ -89,10 +102,21 @@ const TaktResponsePayload = z.object({
   nextAvailableDate: z.string().nullable().optional(),
 });
 
+/**
+ * Schema version field — shared refinement used by all envelope types.
+ * Format: /^\d+\.\d+$/  AND major version must be in SUPPORTED_MAJOR_VERSIONS.
+ */
+const SchemaVersionField = z
+  .string()
+  .regex(/^\d+\.\d+$/, "Format muss <major>.<minor> sein (z.B. \"1.0\")")
+  .refine(isSupportedMajorVersion, {
+    message: `Nicht unterstützte Major-Version. Unterstützte Major-Versionen: ${SUPPORTED_MAJOR_VERSIONS.join(", ")}`,
+  });
+
 /** Generic MessageEnvelope — payload is untyped (z.record) */
 const MessageEnvelope = z.object({
   messageId: z.string().min(1),
-  schemaVersion: z.string().regex(/^\d+\.\d+$/),
+  schemaVersion: SchemaVersionField,
   messageType: DataspaceMessageType,
   senderOrgId: z.string(),
   recipientOrgId: z.string(),
@@ -107,7 +131,7 @@ const MessageEnvelope = z.object({
 /** Typed message: envelope + typed TaktRequestNotificationPayload */
 const TaktRequestNotificationMessage = z.object({
   messageId: z.string().min(1),
-  schemaVersion: z.string().regex(/^\d+\.\d+$/),
+  schemaVersion: SchemaVersionField,
   messageType: z.literal("TAKT_REQUEST_NOTIFICATION"),
   senderOrgId: z.string(),
   recipientOrgId: z.string(),
@@ -122,7 +146,7 @@ const TaktRequestNotificationMessage = z.object({
 /** Typed message: envelope + typed TaktResponsePayload */
 const TaktResponseMessage = z.object({
   messageId: z.string().min(1),
-  schemaVersion: z.string().regex(/^\d+\.\d+$/),
+  schemaVersion: SchemaVersionField,
   messageType: z.literal("TAKT_RESPONSE_SUBMITTED"),
   senderOrgId: z.string(),
   recipientOrgId: z.string(),
@@ -381,8 +405,24 @@ describe("Invalid cases — MessageEnvelope field constraints", () => {
     expect(MessageEnvelope.safeParse(bad).success).toBe(false);
   });
 
-  it("accepts schemaVersion '2.1' (valid major.minor pattern)", () => {
-    const ok = { ...example1Notification, schemaVersion: "2.1" };
+  it("rejects schemaVersion '2.1' — unsupported major version", () => {
+    const bad = { ...example1Notification, schemaVersion: "2.1" };
+    const result = MessageEnvelope.safeParse(bad);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects schemaVersion '2.0' — unsupported major version", () => {
+    const bad = { ...example1Notification, schemaVersion: "2.0" };
+    expect(MessageEnvelope.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects missing schemaVersion — required field", () => {
+    const { schemaVersion: _, ...bad } = example1Notification as Record<string, unknown>;
+    expect(MessageEnvelope.safeParse(bad).success).toBe(false);
+  });
+
+  it("accepts schemaVersion '1.3' — minor bump within supported major", () => {
+    const ok = { ...example1Notification, schemaVersion: "1.3" };
     expect(MessageEnvelope.safeParse(ok).success).toBe(true);
   });
 });
@@ -481,5 +521,248 @@ describe("DELIVERED vs ACCEPTED — important distinction", () => {
   it("TaktDecision does not include DELIVERED", () => {
     const badDecision = TaktDecision.safeParse("DELIVERED");
     expect(badDecision.success).toBe(false);
+  });
+});
+
+// ── Task 9.1 — Schema version policy ─────────────────────────────────────────
+
+describe("Schema version policy (Task 9.1)", () => {
+  it("CURRENT_SCHEMA_VERSION is '1.0'", () => {
+    expect(CURRENT_SCHEMA_VERSION).toBe("1.0");
+  });
+
+  it("isSupportedMajorVersion accepts '1.0'", () => {
+    expect(isSupportedMajorVersion("1.0")).toBe(true);
+  });
+
+  it("isSupportedMajorVersion accepts '1.7' (minor bump)", () => {
+    expect(isSupportedMajorVersion("1.7")).toBe(true);
+  });
+
+  it("isSupportedMajorVersion rejects '2.0'", () => {
+    expect(isSupportedMajorVersion("2.0")).toBe(false);
+  });
+
+  it("isSupportedMajorVersion rejects '0.9'", () => {
+    expect(isSupportedMajorVersion("0.9")).toBe(false);
+  });
+
+  it("isSupportedMajorVersion rejects malformed string 'v1'", () => {
+    expect(isSupportedMajorVersion("v1")).toBe(false);
+  });
+
+  it("MessageEnvelope rejects schemaVersion '2.0' with clear failure", () => {
+    const bad = { ...example1Notification, schemaVersion: "2.0" };
+    const result = MessageEnvelope.safeParse(bad);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Error message must mention version (not just "invalid string")
+      const msg = result.error.issues.map(i => i.message).join(" ");
+      expect(msg.toLowerCase()).toMatch(/major|version|unterstützt/);
+    }
+  });
+
+  it("MessageEnvelope rejects missing schemaVersion", () => {
+    const { schemaVersion: _, ...bad } = example1Notification as Record<string, unknown>;
+    expect(MessageEnvelope.safeParse(bad).success).toBe(false);
+  });
+
+  it("MessageEnvelope accepts schemaVersion '1.0'", () => {
+    expect(MessageEnvelope.safeParse({ ...example1Notification, schemaVersion: "1.0" }).success).toBe(true);
+  });
+
+  it("MessageEnvelope accepts valid optional extension (unknown optional field)", () => {
+    // Adding a new optional field to the payload is a backward-compatible extension (minor bump)
+    const withExtension = {
+      ...example1Notification,
+      schemaVersion: "1.1",
+      payload: { ...example1Notification.payload, extensionField: "new-in-1.1" },
+    };
+    // The generic envelope accepts this (payload is z.record(z.unknown()))
+    expect(MessageEnvelope.safeParse(withExtension).success).toBe(true);
+  });
+});
+
+// ── Task 9.1 — Consistent identifiers ────────────────────────────────────────
+
+describe("Consistent identifiers (Task 9.1)", () => {
+  it("notification uses taktRequestId (not requestId or requestRef)", () => {
+    const result = TaktRequestNotificationMessage.safeParse(example1Notification);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.payload.taktRequestId).toBeDefined();
+    }
+  });
+
+  it("response uses taktRequestId matching the notification's correlationId", () => {
+    const result = TaktResponseMessage.safeParse(example2Acceptance);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // taktRequestId in payload should match the correlationId on the envelope
+      expect(result.data.payload.taktRequestId).toBe(result.data.correlationId);
+    }
+  });
+
+  it("envelope uses senderOrgId and recipientOrgId (not customerId or providerId)", () => {
+    const result = MessageEnvelope.safeParse(example1Notification);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.senderOrgId).toBeDefined();
+      expect(result.data.recipientOrgId).toBeDefined();
+      // The schema has no customerId or providerId fields
+      expect((result.data as Record<string, unknown>).customerId).toBeUndefined();
+      expect((result.data as Record<string, unknown>).providerId).toBeUndefined();
+    }
+  });
+
+  it("notification uses projectReference (not projectId) in the external payload", () => {
+    const result = TaktRequestNotificationMessage.safeParse(example1Notification);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.payload.projectReference).toBeDefined();
+    }
+  });
+
+  it("notification uses taktReference (not taktId) in the external payload", () => {
+    const result = TaktRequestNotificationMessage.safeParse(example1Notification);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.payload.taktReference).toBeDefined();
+    }
+  });
+});
+
+// ── Task 9.1 — Consistent time windows ───────────────────────────────────────
+
+describe("Consistent time windows (Task 9.1)", () => {
+  it("acceptedTimeWindow uses {start, end} — not startAt/endAt", () => {
+    const result = TaktResponseMessage.safeParse(example2Acceptance);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const tw = result.data.payload.acceptedTimeWindow!;
+      expect(tw.start).toBeDefined();
+      expect(tw.end).toBeDefined();
+      expect((tw as Record<string, unknown>).startAt).toBeUndefined();
+      expect((tw as Record<string, unknown>).endAt).toBeUndefined();
+    }
+  });
+
+  it("alternative timeWindow uses {start, end} — not plannedStart/plannedEnd", () => {
+    const result = TaktResponseMessage.safeParse(example3Alternatives);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const alt = result.data.payload.alternatives![0]!;
+      expect(alt.timeWindow.start).toBeDefined();
+      expect(alt.timeWindow.end).toBeDefined();
+      expect((alt.timeWindow as Record<string, unknown>).plannedStart).toBeUndefined();
+    }
+  });
+
+  it("time window rejects missing start field", () => {
+    const bad = {
+      ...example2Acceptance,
+      payload: {
+        ...example2Acceptance.payload,
+        acceptedTimeWindow: { end: "2026-09-05T16:00:00Z" }, // start missing
+      },
+    };
+    expect(TaktResponseMessage.safeParse(bad).success).toBe(false);
+  });
+
+  it("time window rejects missing end field", () => {
+    const bad = {
+      ...example2Acceptance,
+      payload: {
+        ...example2Acceptance.payload,
+        acceptedTimeWindow: { start: "2026-09-01T07:00:00Z" }, // end missing
+      },
+    };
+    expect(TaktResponseMessage.safeParse(bad).success).toBe(false);
+  });
+
+  it("time window accepts ISO 8601 UTC strings", () => {
+    const good = {
+      ...example2Acceptance,
+      payload: {
+        ...example2Acceptance.payload,
+        acceptedTimeWindow: {
+          start: "2026-09-01T07:00:00Z",
+          end: "2026-09-05T16:00:00Z",
+        },
+      },
+    };
+    expect(TaktResponseMessage.safeParse(good).success).toBe(true);
+  });
+});
+
+// ── Task 9.1 — Reminder and expiry message types ──────────────────────────────
+
+describe("Reminder and expiry message types (Task 9.1)", () => {
+  const baseEnvelope = {
+    messageId: "MSG-REMINDER-001",
+    schemaVersion: "1.0",
+    senderOrgId: "SYSTEM",
+    recipientOrgId: "NU-017",
+    correlationId: "REQ-2026-0042",
+    createdAt: "2026-08-03T08:00:00Z",
+    status: "DELIVERED",
+  };
+
+  it("accepts TAKT_REQUEST_REMINDER as a DataspaceMessageType", () => {
+    expect(DataspaceMessageType.safeParse("TAKT_REQUEST_REMINDER").success).toBe(true);
+  });
+
+  it("accepts TAKT_REQUEST_EXPIRED as a DataspaceMessageType", () => {
+    expect(DataspaceMessageType.safeParse("TAKT_REQUEST_EXPIRED").success).toBe(true);
+  });
+
+  it("MessageEnvelope accepts a reminder message with schemaVersion 1.0", () => {
+    const reminder = {
+      ...baseEnvelope,
+      messageType: "TAKT_REQUEST_REMINDER",
+      payload: {
+        taktRequestId: "REQ-2026-0042",
+        requestNumber: "REQ-2026-0042",
+        reminderType: "RESPONSE_DUE_SOON",
+        dueAt: "2026-08-05T17:00:00Z",
+        taktReference: "TAKT-A3-ELT",
+        deepLink: "/takt-requests/REQ-2026-0042",
+      },
+    };
+    expect(MessageEnvelope.safeParse(reminder).success).toBe(true);
+  });
+
+  it("MessageEnvelope accepts an expiry message with schemaVersion 1.0", () => {
+    const expiry = {
+      ...baseEnvelope,
+      messageType: "TAKT_REQUEST_EXPIRED",
+      recipientOrgId: "GU-001",
+      payload: {
+        taktRequestId: "REQ-2026-0042",
+        requestNumber: "REQ-2026-0042",
+        expiredAt: "2026-08-07T09:00:00Z",
+        projectReference: "PROJ-2026-HH-001",
+        taktReference: "TAKT-A3-ELT",
+      },
+    };
+    expect(MessageEnvelope.safeParse(expiry).success).toBe(true);
+  });
+
+  it("reminder payload does not contain internal NU resource fields", () => {
+    const reminderPayload = {
+      taktRequestId: "REQ-2026-0042",
+      requestNumber: "REQ-2026-0042",
+      reminderType: "RESPONSE_DUE_SOON",
+      dueAt: "2026-08-05T17:00:00Z",
+      taktReference: "TAKT-A3-ELT",
+      deepLink: "/takt-requests/REQ-2026-0042",
+    };
+    const forbiddenKeys = [
+      "internalResultPayload", "resourcePlanning", "localProjectId",
+      "customerAlias", "resourceId", "employeeName", "internalCost",
+    ];
+    for (const key of forbiddenKeys) {
+      expect(Object.keys(reminderPayload)).not.toContain(key);
+    }
   });
 });

@@ -22,6 +22,8 @@ import {
   Ban,
   Loader2,
 } from 'lucide-react';
+import { DeadlineStatusBadge } from '@/components/deadline-status-badge';
+import { classifyDeadline } from '@/lib/deadline-utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -44,6 +46,44 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type OpenClosedFilter = 'ALL' | 'OPEN' | 'CLOSED';
+
+type DeadlineFilter =
+  | 'ALL'
+  | 'DUE_SOON'           // bald fällig (≤ 48h)
+  | 'DUE_TODAY'          // heute fällig (≤ 8h)
+  | 'OVERDUE'            // Antwortfrist überschritten
+  | 'EXPIRED'            // abgelaufen
+  | 'GU_DECISION'        // GU-Entscheidung ausstehend (guDecisionRequiredBy gesetzt & keine Entscheidung)
+  | 'FAILED';            // technische Zustellung fehlgeschlagen
+
+const DEADLINE_FILTER_LABELS: Record<DeadlineFilter, string> = {
+  ALL:         'Alle Fristen',
+  DUE_SOON:    'Bald fällig',
+  DUE_TODAY:   'Heute fällig',
+  OVERDUE:     'Überfällig',
+  EXPIRED:     'Abgelaufen',
+  GU_DECISION: 'GU-Entscheidung ausstehend',
+  FAILED:      'Zustellung fehlgeschlagen',
+};
+
+function matchesDeadlineFilter(item: TaktRequestListItem, f: DeadlineFilter): boolean {
+  if (f === 'ALL') return true;
+  if (f === 'FAILED') return item.outboxStatus === 'FAILED';
+  if (f === 'EXPIRED') return item.status === 'EXPIRED' || !!(item as any).expiredAt;
+
+  const info = classifyDeadline({
+    responseRequiredBy:   (item as any).responseRequiredBy ?? null,
+    expiresAt:            (item as any).expiresAt ?? null,
+    expiredAt:            (item as any).expiredAt ?? null,
+    guDecisionRequiredBy: (item as any).guDecisionRequiredBy ?? null,
+  });
+
+  if (f === 'DUE_SOON')    return info.kind === 'due-soon' || info.kind === 'due-today';
+  if (f === 'DUE_TODAY')   return info.kind === 'due-today';
+  if (f === 'OVERDUE')     return info.kind === 'overdue';
+  if (f === 'GU_DECISION') return info.kind === 'gu-decision-overdue' || info.kind === 'gu-decision-due-soon';
+  return false;
+}
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -242,6 +282,7 @@ export default function TaktRequestsPage() {
   const [statusFilter, setStatusFilter] = useState<TaktRequestStatus | 'ALL'>('ALL');
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
   const [nuFilter, setNuFilter] = useState<string>('ALL');
+  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('ALL');
 
   // ── Data fetching ───────────────────────────────────────────────────────────
   // Pass server-side status filter when a specific status is chosen; otherwise
@@ -282,6 +323,7 @@ export default function TaktRequestsPage() {
         if (openClosed === 'CLOSED' && !CLOSED_STATUSES.has(s)) return false;
         if (projectFilter !== 'ALL' && r.projectId !== projectFilter) return false;
         if (nuFilter !== 'ALL' && r.nuOrgId !== nuFilter) return false;
+        if (!matchesDeadlineFilter(r, deadlineFilter)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -419,6 +461,18 @@ export default function TaktRequestsPage() {
             </SelectContent>
           </Select>
         )}
+
+        {/* Deadline filter */}
+        <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
+          <SelectTrigger className="h-8 w-[220px] text-sm">
+            <SelectValue placeholder="Friststatus" />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(DEADLINE_FILTER_LABELS) as DeadlineFilter[]).map((key) => (
+              <SelectItem key={key} value={key}>{DEADLINE_FILTER_LABELS[key]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
@@ -433,6 +487,7 @@ export default function TaktRequestsPage() {
                 <TableHead className="text-xs text-center">{t('taktRequests.columns.version')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.contractor')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.deadline')}</TableHead>
+                <TableHead className="text-xs">Friststatus</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.requestStatus')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.messageStatus')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.createdAt')}</TableHead>
@@ -470,6 +525,15 @@ export default function TaktRequestsPage() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <DeadlineCell date={item.responseRequiredBy ?? null} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <DeadlineStatusBadge
+                        responseRequiredBy={(item as any).responseRequiredBy}
+                        expiresAt={(item as any).expiresAt}
+                        expiredAt={(item as any).expiredAt}
+                        guDecisionRequiredBy={(item as any).guDecisionRequiredBy}
+                        compact
+                      />
                     </TableCell>
                     <TableCell>
                       <RequestStatusBadge status={item.status as TaktRequestStatus} />

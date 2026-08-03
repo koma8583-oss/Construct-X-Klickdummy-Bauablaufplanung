@@ -26,6 +26,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
     { href: "/requests", icon: Inbox, label: t("nav.requests") },
+    { href: "/takt-requests", icon: Inbox, label: "TaktAnfragen" },
     { href: "/gantt", icon: CalendarClock, label: t("nav.gantt") },
     { href: "/resources", icon: HardHat, label: t("nav.resources") },
     { href: "/settings", icon: Settings, label: t("nav.settings") },

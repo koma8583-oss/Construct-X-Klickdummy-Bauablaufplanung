@@ -351,6 +351,181 @@ export const RemoveProjectContractorResponse = zod.void()
 
 
 /**
+ * @summary Summary KPIs for all projects of the authenticated AG
+ */
+export const GetAgProjectsOverviewResponseItem = zod.object({
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "projectStatus": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish(),
+  "assignedAnCount": zod.number().describe('Number of distinct ACTIVE AN organisations on this project'),
+  "assignedTrades": zod.array(zod.string()).describe('Unique trades from ACTIVE assignments'),
+  "totalTaktRequests": zod.number(),
+  "openTaktRequests": zod.number(),
+  "overdueTaktRequests": zod.number(),
+  "acceptedTaktRequests": zod.number(),
+  "alternativeTaktRequests": zod.number(),
+  "rejectedTaktRequests": zod.number(),
+  "revisionRequiredRequests": zod.number(),
+  "expiredTaktRequests": zod.number(),
+  "lastActivityAt": zod.coerce.date().nullish()
+}).describe('Coordination KPI summary for one project, as seen by the AG. Only coordination-relevant data — no NU-internal fields.\n')
+export const GetAgProjectsOverviewResponse = zod.array(GetAgProjectsOverviewResponseItem)
+
+
+/**
+ * @summary Detailed overview of a single project (AN assignments + coordination KPIs)
+ */
+export const GetAgProjectOverviewParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const GetAgProjectOverviewResponse = zod.object({
+  "project": zod.object({
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "status": zod.string(),
+  "startDate": zod.coerce.date().nullish(),
+  "endDate": zod.coerce.date().nullish()
+}),
+  "assignedAn": zod.array(zod.object({
+  "assignmentId": zod.string(),
+  "anOrgId": zod.string(),
+  "anName": zod.string(),
+  "trade": zod.string().nullish(),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish(),
+  "totalRequests": zod.number(),
+  "openRequests": zod.number(),
+  "acceptedRequests": zod.number().optional(),
+  "alternativeRequests": zod.number().optional(),
+  "rejectedRequests": zod.number().optional(),
+  "lastResponseAt": zod.coerce.date().nullish()
+}).describe('Per-AN coordination KPIs within a project. No NU-internal data (no resource IDs, employee names, local project IDs, costs).\n')),
+  "coordination": zod.object({
+  "numberOfTakts": zod.number(),
+  "confirmedTakts": zod.number(),
+  "taktsInCoordination": zod.number(),
+  "openRequests": zod.number(),
+  "overdueRequests": zod.number(),
+  "expiredRequests": zod.number(),
+  "revisionRounds": zod.number()
+}),
+  "recentRequests": zod.array(zod.object({
+  "taktRequestId": zod.string(),
+  "requestNumber": zod.string(),
+  "taktReference": zod.string(),
+  "taktVersion": zod.number().optional(),
+  "anOrgId": zod.string(),
+  "anName": zod.string(),
+  "requestStatus": zod.string(),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "lastActivityAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary List all AN assignments for a project (all statuses)
+ */
+export const ListProjectSubcontractorsParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const ListProjectSubcontractorsResponseItem = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "anOrgId": zod.string(),
+  "anName": zod.string().optional(),
+  "trade": zod.string().nullish(),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish(),
+  "addedAt": zod.coerce.date().optional()
+}).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
+export const ListProjectSubcontractorsResponse = zod.array(ListProjectSubcontractorsResponseItem)
+
+
+/**
+ * @summary Assign an AN organisation to a project
+ */
+export const CreateProjectSubcontractorParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const CreateProjectSubcontractorBody = zod.object({
+  "anOrgId": zod.string().describe('ID of the AN organisation to assign'),
+  "trade": zod.string().nullish().describe('Gewerk \/ trade for this assignment (null = all trades)'),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish()
+})
+
+export const CreateProjectSubcontractorResponse = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "anOrgId": zod.string(),
+  "anName": zod.string().optional(),
+  "trade": zod.string().nullish(),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish(),
+  "addedAt": zod.coerce.date().optional()
+}).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
+
+
+/**
+ * @summary Update an AN assignment (trade, status, validity period)
+ */
+export const UpdateProjectSubcontractorParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "assignmentId": zod.coerce.string()
+})
+
+export const UpdateProjectSubcontractorBody = zod.object({
+  "trade": zod.string().nullish(),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish()
+}).describe('All fields optional — only provided fields are updated')
+
+export const UpdateProjectSubcontractorResponse = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "anOrgId": zod.string(),
+  "anName": zod.string().optional(),
+  "trade": zod.string().nullish(),
+  "workPackageReference": zod.string().nullish(),
+  "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
+  "validFrom": zod.coerce.date().nullish(),
+  "validTo": zod.coerce.date().nullish(),
+  "addedAt": zod.coerce.date().optional()
+}).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
+
+
+/**
+ * @summary Soft-deactivate an AN assignment (sets status to INACTIVE)
+ */
+export const DeactivateProjectSubcontractorParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "assignmentId": zod.coerce.string()
+})
+
+export const DeactivateProjectSubcontractorResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "assignmentId": zod.string().optional(),
+  "assignmentStatus": zod.string().optional()
+})
+
+
+/**
  * @summary List all Takte (schedule entries) for a project
  */
 export const ListTakteParams = zod.object({
@@ -1987,7 +2162,7 @@ export const listInboxMessagesQueryOffsetMin = 0;
 
 export const ListInboxMessagesQueryParams = zod.object({
   "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).optional(),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).optional(),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).optional(),
   "correlationId": zod.coerce.string().optional(),
   "limit": zod.coerce.number().min(1).max(listInboxMessagesQueryLimitMax).default(listInboxMessagesQueryLimitDefault),
   "offset": zod.coerce.number().min(listInboxMessagesQueryOffsetMin).default(listInboxMessagesQueryOffsetDefault)
@@ -1996,7 +2171,7 @@ export const ListInboxMessagesQueryParams = zod.object({
 export const ListInboxMessagesResponseItem = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
@@ -2019,7 +2194,7 @@ export const GetInboxMessageParams = zod.object({
 export const GetInboxMessageResponse = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
@@ -2058,6 +2233,8 @@ export const ListTaktRequestsQueryParams = zod.object({
 })
 
 
+export const listTaktRequestsResponseReminderCountMin = 0;
+
 
 
 export const ListTaktRequestsResponseItem = zod.object({
@@ -2074,6 +2251,11 @@ export const ListTaktRequestsResponseItem = zod.object({
   "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
   "outboxStatus": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message').nullish().describe('Transport delivery status of the notification message. Null if not yet sent.'),
   "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond'),
+  "expiresAt": zod.coerce.date().nullish().describe('Hard expiry — request auto-expires at this time if NU has not responded'),
+  "expiredAt": zod.coerce.date().nullish().describe('Set when the request was actually expired'),
+  "guDecisionRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the GU must decide on the NU response'),
+  "lastReminderAt": zod.coerce.date().nullish().describe('Timestamp of the last dispatched reminder'),
+  "reminderCount": zod.number().min(listTaktRequestsResponseReminderCountMin).describe('Total number of reminders dispatched'),
   "sentAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -2187,8 +2369,155 @@ export const GetTaktRequestDetailResponse = zod.object({
   "detailsRetrievedAt": zod.coerce.date().nullish(),
   "checkedAt": zod.coerce.date().nullish().describe('Not tracked from the GU side — always null'),
   "responseCreatedAt": zod.coerce.date().nullish()
-}).describe('All process timestamps in one flat object. Null = not yet occurred or not tracked.')
+}).describe('All process timestamps in one flat object. Null = not yet occurred or not tracked.'),
+  "taktLifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).nullable().describe('Current lifecycle status of the referenced Takt. Null only for legacy rows.'),
+  "guDecision": zod.object({
+  "decisionId": zod.string().describe('Primary key of the takt_response_decisions row'),
+  "taktRequestId": zod.string(),
+  "responseId": zod.string().describe('FK to the takt_responses row this decision refers to'),
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']),
+  "acceptedAlternativeId": zod.string().nullish().describe('Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row.\n'),
+  "comment": zod.string().nullish(),
+  "decidedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+}).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
 }).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
+
+
+/**
+ * Allows the creating GU organisation to record a formal decision on the NU's TaktResponse. The decision type must match the NU response decision:
+ *
+ * | NU response  | Allowed GU decision types | |---|---| | ACCEPTED | CONFIRM_ACCEPTED, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT | | ALTERNATIVES_PROPOSED | ACCEPT_ALTERNATIVE, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT | | REJECTED | REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT |
+ *
+ * Idempotency: Supply an optional `Idempotency-Key` header or include `idempotencyKey` in the body. Identical key + identical content returns 200 with the existing decision. Identical key + different content returns 409.
+ *
+ * A second decision for the same response always returns 409 regardless of idempotency key.
+ *
+ * Transactions: decision insert and TaktRequest status update are atomic.
+ *
+ * Permissions: GU (AG) organisation that created the TaktRequest only. NU organisations and hub admins receive 403.
+ * @summary GU creates a business decision on a TaktResponse
+ */
+export const CreateGuDecisionParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const createGuDecisionHeaderIdempotencyKeyMax = 255;
+
+
+
+export const CreateGuDecisionHeader = zod.object({
+  "Idempotency-Key": zod.string().max(createGuDecisionHeaderIdempotencyKeyMax).optional().describe('Optional client-supplied idempotency key. Same key + same body returns the existing decision (HTTP 200). Same key + different body returns 409.\n')
+})
+
+
+export const createGuDecisionBodyCommentMax = 2000;
+
+export const createGuDecisionBodyIdempotencyKeyMax = 255;
+
+
+
+export const CreateGuDecisionBody = zod.object({
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']).describe('CONFIRM_ACCEPTED: confirm the NU\'s accepted time window. ACCEPT_ALTERNATIVE: select one of the NU\'s proposed alternatives. REQUEST_REVISION: request a revised coordination round. CLOSE_WITHOUT_AGREEMENT: close this round without agreement.\n'),
+  "acceptedAlternativeId": zod.string().min(1).optional().describe('Required and only valid for ACCEPT_ALTERNATIVE. Must be the DB id of an alternative belonging to the NU response for this TaktRequest.\n'),
+  "comment": zod.string().max(createGuDecisionBodyCommentMax).optional().describe('Optional free-text comment from the GU planner.'),
+  "idempotencyKey": zod.string().min(1).max(createGuDecisionBodyIdempotencyKeyMax).optional().describe('Optional client-supplied idempotency key. Alternatively supply the Idempotency-Key HTTP header. Body field takes precedence.\n')
+}).describe('Request body for POST \/takt-requests\/{requestId}\/gu-decisions. The decisionType must be valid for the current NU response decision.\n')
+
+export const CreateGuDecisionResponse = zod.object({
+  "decisionId": zod.string().describe('Primary key of the takt_response_decisions row'),
+  "taktRequestId": zod.string(),
+  "responseId": zod.string().describe('FK to the takt_responses row this decision refers to'),
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']),
+  "acceptedAlternativeId": zod.string().nullish().describe('Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row.\n'),
+  "comment": zod.string().nullish(),
+  "decidedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+}).describe('Created or existing GU decision with updated TaktRequest status.')
+
+
+/**
+ * Creates a new Takt version (REVISION), a new TaktRequest (DRAFT), and an immutable snapshot. The old request is set to SUPERSEDED. All steps are atomic. Optionally sends a TAKT_REQUEST_REVISED notification immediately.
+ * Preconditions:
+ *   - Old request must have status REVISION_REQUIRED
+ *   - Caller must be the GU organisation that created the old request
+ *   - A REQUEST_REVISION GU decision must exist
+ *   - No successor request may already exist
+ *
+ * Idempotency:
+ *   - supersedesRequestId is unique — a duplicate call returns 409
+ *   - If sendImmediately fails the version/request/snapshot are preserved;
+ *     retry will send the same new request
+ *
+ * Predecessor chain:
+ *   Request 1 → Response 1 → GU decision REQUEST_REVISION →
+ *   Takt version N+1 → Request 2 (new)
+ * @summary Start a new coordination round after a REQUEST_REVISION decision
+ */
+export const CreateRevisionParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const createRevisionHeaderIdempotencyKeyMax = 255;
+
+
+
+export const CreateRevisionHeader = zod.object({
+  "Idempotency-Key": zod.string().max(createRevisionHeaderIdempotencyKeyMax).optional()
+})
+
+export const createRevisionBodySubjectMax = 500;
+
+export const createRevisionBodyMessageMax = 4000;
+
+export const createRevisionBodySendImmediatelyDefault = false;
+export const createRevisionBodyIdempotencyKeyMax = 255;
+
+
+
+export const CreateRevisionBody = zod.object({
+  "plannedTimeWindow": zod.object({
+  "start": zod.string().describe('ISO date or datetime string (YYYY-MM-DD or ISO 8601)'),
+  "end": zod.string().describe('ISO date or datetime string (YYYY-MM-DD or ISO 8601)')
+}).describe('New planned time window for the Takt'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond. Must be in the future.'),
+  "subject": zod.string().max(createRevisionBodySubjectMax).nullish().describe('Human-readable subject for the coordination notification'),
+  "message": zod.string().max(createRevisionBodyMessageMax).nullish().describe('Free-text message from GU to NU'),
+  "sendImmediately": zod.boolean().default(createRevisionBodySendImmediatelyDefault).describe('If true, sends a TAKT_REQUEST_REVISED notification immediately after the transaction commits. New request transitions to DELIVERED. If the send fails, new request stays DRAFT.\n'),
+  "idempotencyKey": zod.string().max(createRevisionBodyIdempotencyKeyMax).nullish().describe('Optional client-supplied idempotency key'),
+  "taktUpdates": zod.object({
+  "taktBezeichnung": zod.string().optional(),
+  "zone": zod.string().optional(),
+  "gewerk": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "earliestStart": zod.string().nullish(),
+  "latestEnd": zod.string().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish()
+}).optional().describe('Optional Takt field updates to include in the new version')
+}).describe('Request body for POST \/takt-requests\/{requestId}\/revisions. Creates a new Takt version and a new TaktRequest for a revised coordination round after a REQUEST_REVISION decision.\n')
+
+export const createRevisionResponseNewTaktVersionMin = 2;
+
+
+
+export const CreateRevisionResponse = zod.object({
+  "oldRequestId": zod.string().describe('The original TaktRequest that was superseded'),
+  "oldRequestStatus": zod.enum(['SUPERSEDED']),
+  "newRequestId": zod.string().describe('The new TaktRequest (DRAFT or DELIVERED)'),
+  "newRequestNumber": zod.string().describe('Human-readable reference for the new request'),
+  "newRequestStatus": zod.enum(['DRAFT', 'DELIVERED']).describe('DRAFT if sendImmediately=false, DELIVERED if send succeeded'),
+  "newTaktVersion": zod.number().min(createRevisionResponseNewTaktVersionMin).describe('The new Takt version number (old version + 1)'),
+  "newTaktVersionId": zod.string().describe('PK of the new takt_versions row'),
+  "snapshotId": zod.string().describe('PK of the new TaktRequestSnapshot'),
+  "sent": zod.boolean().describe('true if TAKT_REQUEST_REVISED was delivered to the NU'),
+  "createdAt": zod.coerce.date()
+}).describe('Result of a successful POST \/takt-requests\/{requestId}\/revisions call. Describes the predecessor chain: old request → new request → new Takt version.\n')
 
 
 /**

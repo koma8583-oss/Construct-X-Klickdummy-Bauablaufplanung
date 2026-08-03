@@ -67,8 +67,9 @@ No global code rename is performed in this step. Both term sets may appear in th
 | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Project**               | A construction project owned by a GU organisation. Contains the Takt schedule and a list of invited NUs.    |
 | **Takt**                  | One schedule entry (cycle) within a project. Has trade (`gewerk`), zone, planned dates, and status.          |
+| **ProjectContractor**     | A project-scoped assignment of an AN organisation to a GU project. Has status (PLANNED/ACTIVE/INACTIVE/COMPLETED/CANCELLED), trade, work package reference, and validity period. Only ACTIVE assignments may receive TaktRequests. |
 | **TaktRequest**           | (current: `Delegation`) A request from GU to NU to take on a specific Takt. Contains the requested window.  |
-| **TaktRequestSnapshot**   | An immutable copy of the Takt data at the moment of the request. Not yet implemented; planned for later.     |
+| **TaktRequestSnapshot**   | An immutable copy of the Takt data at the moment of the request.                                             |
 | **TaktResponse**          | (current: `DelegationResponse`) The NU's answer — confirmed, alternative proposed, or rejected.              |
 | **TaktResponseAlternative** | A ranked alternative time window proposed by the NU when it cannot accept the original window.             |
 | **DataspaceMessage**      | (current: `HubMessage`) Transport envelope with typed payload, routing IDs, and correlation/causation IDs.   |

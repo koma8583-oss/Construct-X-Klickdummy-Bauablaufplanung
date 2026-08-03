@@ -20,19 +20,24 @@ import {
   Ban,
   ArrowRightLeft,
   ChevronRight,
-  PlusCircle,
   Lock,
   Loader2,
   FileText,
   Bell,
   Activity,
+  GitBranch,
+  History,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
+import { GUDecisionPanel } from '@/components/gu-decision-panel';
+import { RevisionTrigger } from '@/components/revision-dialog';
+import { CoordinationHistory } from '@/components/coordination-history';
+import { DeadlineCard } from '@/components/deadline-card';
 
-// ── Status badge helpers (reused from list page) ──────────────────────────────
+// ── Status badge helpers ───────────────────────────────────────────────────────
 
 const REQUEST_STATUS_STYLES: Record<string, string> = {
   DRAFT:                 'text-muted-foreground bg-muted/60',
@@ -116,7 +121,6 @@ interface TimelineEvent {
 
 function Timeline({ events }: { events: TimelineEvent[] }) {
   const { t } = useTranslation();
-
   return (
     <div className="space-y-0">
       {events.map((ev, i) => {
@@ -124,7 +128,6 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
         const isLast = i === events.length - 1;
         return (
           <div key={i} className="flex gap-3">
-            {/* Connector column */}
             <div className="flex flex-col items-center">
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
@@ -142,7 +145,6 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
                 <div className={`w-0.5 flex-1 my-1 ${done ? 'bg-primary/30' : 'bg-border'}`} />
               )}
             </div>
-            {/* Content */}
             <div className={`pb-4 ${isLast ? 'pb-0' : ''}`}>
               <p className={`text-sm font-medium leading-7 ${done ? 'text-foreground' : 'text-muted-foreground'}`}>
                 {ev.label}
@@ -178,7 +180,6 @@ function SnapshotPreview({ snapshot }: { snapshot: TaktRequestDetail['snapshot']
 
   const p = snapshot.snapshotPayload as Record<string, unknown>;
 
-  // Helper to render any JSON value in a human-readable way
   function renderValue(v: unknown): React.ReactNode {
     if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
     if (Array.isArray(v)) {
@@ -216,12 +217,10 @@ function SnapshotPreview({ snapshot }: { snapshot: TaktRequestDetail['snapshot']
 
   return (
     <div className="space-y-3">
-      {/* Immutability notice */}
       <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/20">
         <Lock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-amber-700">{t('taktRequestDetail.snapshot.immutableHint')}</p>
       </div>
-
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         {rows.map(({ label, value }) => {
           if (value === null || value === undefined) return null;
@@ -391,83 +390,27 @@ function ResponsePanel({ detail }: { detail: TaktRequestDetail }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// ── Actions panel ─────────────────────────────────────────────────────────────
+      {/* ── GU Decision Panel (Task 6.7) ──────────────────────────────── */}
+      <Separator />
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-foreground">
+          {t('taktRequestDetail.guDecision.title')}
+        </p>
+        <GUDecisionPanel detail={detail} />
+      </div>
 
-const OPEN_STATUSES = new Set<TaktRequestStatus>([
-  'DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED',
-  'UNDER_REVIEW', 'ALTERNATIVES_PROPOSED', 'REVISION_REQUIRED',
-]);
-
-const CLOSED_STATUSES = new Set<TaktRequestStatus>([
-  'ACCEPTED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED',
-]);
-
-function ActionsPanel({ detail }: { detail: TaktRequestDetail }) {
-  const { t } = useTranslation();
-  const { status } = detail;
-  const outboxFailed = detail.transport.status === 'FAILED';
-  const hasResponse = !!detail.response;
-
-  const actions: React.ReactNode[] = [];
-
-  if (status === 'DRAFT') {
-    actions.push(
-      <Button key="send" size="default">
-        <Send className="w-4 h-4 mr-2" />
-        {t('taktRequestDetail.actions.send')}
-      </Button>,
-    );
-  }
-
-  if (outboxFailed) {
-    actions.push(
-      <Button key="resend" variant="outline">
-        <RefreshCw className="w-4 h-4 mr-2" />
-        {t('taktRequestDetail.actions.resend')}
-      </Button>,
-    );
-  }
-
-  if (hasResponse || status === 'ALTERNATIVES_PROPOSED') {
-    actions.push(
-      <Button key="response" variant="outline">
-        <ChevronRight className="w-4 h-4 mr-2" />
-        {t('taktRequestDetail.actions.viewResponse')}
-      </Button>,
-    );
-  }
-
-  if (OPEN_STATUSES.has(status) && status !== 'DRAFT') {
-    actions.push(
-      <Button key="cancel" variant="outline" className="text-destructive hover:text-destructive">
-        <Ban className="w-4 h-4 mr-2" />
-        {t('taktRequestDetail.actions.cancel')}
-      </Button>,
-    );
-  }
-
-  if (CLOSED_STATUSES.has(status) && status !== 'CANCELLED') {
-    /* "Neue Version erstellen" — backend not yet implemented; show as disabled with tooltip */
-    actions.push(
-      <div key="newversion" className="flex flex-col gap-1">
-        <Button variant="outline" disabled>
-          <PlusCircle className="w-4 h-4 mr-2" />
-          {t('taktRequestDetail.actions.newVersion')}
-        </Button>
-        <p className="text-xs text-muted-foreground">{t('taktRequestDetail.actions.newVersionHint')}</p>
-      </div>,
-    );
-  }
-
-  if (actions.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap gap-3 items-start">
-      {actions}
+      {/* ── Revision trigger (Task 6.8 — shown when REVISION_REQUIRED) ── */}
+      {detail.status === 'REVISION_REQUIRED' && !detail.guDecision && (
+        <div className="pt-1">
+          <RevisionTrigger detail={detail} />
+        </div>
+      )}
+      {detail.status === 'REVISION_REQUIRED' && detail.guDecision?.decisionType === 'REQUEST_REVISION' && (
+        <div className="pt-1">
+          <RevisionTrigger detail={detail} />
+        </div>
+      )}
     </div>
   );
 }
@@ -494,6 +437,13 @@ function Section({
     </div>
   );
 }
+
+// ── Open statuses ─────────────────────────────────────────────────────────────
+
+const OPEN_STATUSES = new Set<TaktRequestStatus>([
+  'DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED',
+  'UNDER_REVIEW', 'ALTERNATIVES_PROPOSED', 'REVISION_REQUIRED',
+]);
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -546,7 +496,7 @@ export default function TaktRequestDetailPage() {
     );
   }
 
-  // ── Build timeline events ─────────────────────────────────────────────────
+  // ── Timeline events ────────────────────────────────────────────────────────
   const tl = detail.timeline;
   const timelineEvents: TimelineEvent[] = [
     { label: t('taktRequestDetail.timeline.requestCreated'), timestamp: tl.requestCreatedAt },
@@ -557,7 +507,7 @@ export default function TaktRequestDetailPage() {
     { label: t('taktRequestDetail.timeline.detailsRetrieved'), timestamp: tl.detailsRetrievedAt },
     { label: t('taktRequestDetail.timeline.reviewStarted'), timestamp: tl.checkedAt, notTracked: tl.checkedAt === null },
     { label: t('taktRequestDetail.timeline.responseReceived'), timestamp: tl.responseCreatedAt },
-    { label: t('taktRequestDetail.timeline.decisionMade'), timestamp: tl.responseCreatedAt },
+    { label: t('taktRequestDetail.timeline.decisionMade'), timestamp: detail.guDecision?.decidedAt ?? null },
   ];
 
   const outboxFailed = detail.transport.status === 'FAILED';
@@ -595,7 +545,21 @@ export default function TaktRequestDetailPage() {
             )}
           </div>
         </div>
-        <ActionsPanel detail={detail} />
+        {/* Quick send / resend actions */}
+        <div className="flex flex-wrap gap-2">
+          {detail.status === 'DRAFT' && (
+            <Button size="sm">
+              <Send className="w-4 h-4 mr-2" />
+              {t('taktRequestDetail.actions.send')}
+            </Button>
+          )}
+          {outboxFailed && (
+            <Button size="sm" variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('taktRequestDetail.actions.resend')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Transport Error Panel */}
@@ -630,31 +594,46 @@ export default function TaktRequestDetailPage() {
         </dl>
       </div>
 
-      {/* Two-column layout for timeline + content */}
+      {/* Deadline card — Fristen & Erinnerungen */}
+      <DeadlineCard
+        responseRequiredBy={(detail as any).responseRequiredBy}
+        expiresAt={(detail as any).expiresAt}
+        expiredAt={(detail as any).expiredAt}
+        lastReminderAt={(detail as any).lastReminderAt}
+        reminderCount={(detail as any).reminderCount}
+        guDecisionRequiredBy={(detail as any).guDecisionRequiredBy}
+      />
+
+      {/* Two-column layout: timeline + content */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* Timeline */}
         <Section icon={<Activity className="w-4 h-4" />} title={t('taktRequestDetail.timeline.title')}>
           <Timeline events={timelineEvents} />
         </Section>
 
-        {/* Right column: snapshot + notification + response */}
+        {/* Right column */}
         <div className="space-y-6">
           {/* Snapshot */}
           <Section icon={<Lock className="w-4 h-4" />} title={t('taktRequestDetail.snapshot.title')}>
             <SnapshotPreview snapshot={detail.snapshot ?? null} />
           </Section>
 
-          {/* Notification (separate from snapshot) */}
+          {/* Notification */}
           <Section icon={<Bell className="w-4 h-4" />} title={t('taktRequestDetail.notification.title')}>
             <NotificationPreview detail={detail} />
           </Section>
 
-          {/* Response */}
+          {/* Response + GU Decision panel */}
           <Section icon={<FileText className="w-4 h-4" />} title={t('taktRequestDetail.response.title')}>
             <ResponsePanel detail={detail} />
           </Section>
         </div>
       </div>
+
+      {/* Coordination History (Task 6.8) */}
+      <Section icon={<History className="w-4 h-4" />} title={t('taktRequestDetail.coordinationHistory.title')}>
+        <CoordinationHistory detail={detail} />
+      </Section>
     </div>
   );
 }

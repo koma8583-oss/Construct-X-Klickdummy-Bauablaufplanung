@@ -5,8 +5,10 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { GuDecisionResponse } from './guDecisionResponse';
 import type { TaktRequestDetailResponse } from './taktRequestDetailResponse';
 import type { TaktRequestDetailSnapshot } from './taktRequestDetailSnapshot';
+import type { TaktRequestDetailTaktLifecycleStatus } from './taktRequestDetailTaktLifecycleStatus';
 import type { TaktRequestDetailTimeline } from './taktRequestDetailTimeline';
 import type { TaktRequestDetailTransport } from './taktRequestDetailTransport';
 import type { TaktRequestStatus } from './taktRequestStatus';
@@ -37,4 +39,8 @@ export interface TaktRequestDetail {
   snapshot?: TaktRequestDetailSnapshot;
   response?: TaktRequestDetailResponse | null;
   timeline: TaktRequestDetailTimeline;
+  /** Current lifecycle status of the referenced Takt. Null only for legacy rows. */
+  taktLifecycleStatus: TaktRequestDetailTaktLifecycleStatus;
+  /** Existing GU decision on the NU response for this request, if one has been recorded. */
+  guDecision?: GuDecisionResponse | null;
 }

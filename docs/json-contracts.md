@@ -163,12 +163,151 @@ This example shows a **separate** TaktRequest (`correlationId: REQ-2026-0043`). 
 
 ---
 
+---
+
+## Example 5 — Deadline reminder (System → NU)
+
+`messageType: TAKT_REQUEST_REMINDER`
+
+Sent by the deadline worker when a response deadline is approaching. The payload contains only public request metadata — no NU-internal resource or project data.
+
+```json
+{
+  "messageId": "reminder-a1b2c3d4-0001",
+  "schemaVersion": "1.0",
+  "messageType": "TAKT_REQUEST_REMINDER",
+  "senderOrgId": "SYSTEM",
+  "recipientOrgId": "NU-017",
+  "correlationId": "REQ-2026-0042",
+  "causationId": null,
+  "createdAt": "2026-08-03T09:00:00Z",
+  "expiresAt": null,
+  "status": "DELIVERED",
+  "payload": {
+    "taktRequestId": "REQ-2026-0042",
+    "requestNumber": "REQ-2026-0042",
+    "reminderType": "RESPONSE_DUE_SOON",
+    "dueAt": "2026-08-05T17:00:00Z",
+    "taktReference": "TAKT-A3-ELT",
+    "deepLink": "/takt-requests/REQ-2026-0042"
+  }
+}
+```
+
+**Reminder types:** `RESPONSE_DUE_SOON` · `RESPONSE_DUE_TODAY` · `RESPONSE_OVERDUE` · `GU_DECISION_DUE_SOON` · `GU_DECISION_OVERDUE`
+
+**What this payload must NOT contain:**
+- NU-internal resource identifiers or names
+- Local NU project IDs
+- Availability check results
+- Internal conflict details
+
+---
+
+## Example 6 — Request expired (System → GU + NU)
+
+`messageType: TAKT_REQUEST_EXPIRED`
+
+Sent to both GU and NU when a request transitions to `EXPIRED` status. Both organisations receive the same public payload.
+
+```json
+{
+  "messageId": "expired-b2c3d4e5-0001",
+  "schemaVersion": "1.0",
+  "messageType": "TAKT_REQUEST_EXPIRED",
+  "senderOrgId": "SYSTEM",
+  "recipientOrgId": "GU-001",
+  "correlationId": "REQ-2026-0042",
+  "causationId": null,
+  "createdAt": "2026-08-07T09:01:00Z",
+  "expiresAt": null,
+  "status": "DELIVERED",
+  "payload": {
+    "taktRequestId": "REQ-2026-0042",
+    "requestNumber": "REQ-2026-0042",
+    "expiredAt": "2026-08-07T09:00:00Z",
+    "projectReference": "PROJ-2026-HH-001",
+    "taktReference": "TAKT-A3-ELT"
+  }
+}
+```
+
+---
+
+## Identifier rules (Task 9.1)
+
+These rules are verbindlich for all external JSON contracts.
+
+### Technical vs. fachliche Identifikatoren
+
+| Feld | Typ | Bedeutung |
+|------|-----|-----------|
+| `taktId` | Technische DB-ID | Interner UUID eines Takts — **nicht** in externen Payloads |
+| `taktReference` | Fachliche Referenz | Lesbare Taktreferenz für externe Payloads (`TAKT-A3-ELT`) |
+| `projectId` | Technische DB-ID | Interner UUID eines Projekts — **nicht** in externen Payloads |
+| `projectReference` | Fachliche Referenz | Lesbare Projektreferenz für externe Payloads (`PROJ-2026-HH-001`) |
+| `taktRequestId` | Abstimmungsrunden-ID | Identifiziert eine einzelne Abstimmungsrunde |
+| `correlationId` | Thread-ID | Verbindet alle Nachrichten derselben Abstimmungsrunde |
+| `causationId` | Kausal-ID | Referenziert die auslösende Nachricht in derselben Chain |
+| `supersedesRequestId` | Vorgänger-ID | Verbindet Revisionsrequests mit dem Vorgänger |
+| `messageId` | Nachrichten-ID | Global eindeutiger Identifier einer einzelnen Nachricht |
+
+### Organisationsbezeichner
+
+| Feld | Verwendung |
+|------|-----------|
+| `senderOrgId` | Sendende Organisation in Nachrichtenumschlägen |
+| `recipientOrgId` | Empfangende Organisation in Nachrichtenumschlägen |
+| `agOrgId` / `guOrgId` | GU-Organisation in projektbezogenen Kontexten |
+| `anOrgId` / `nuOrgId` | NU-Organisation in projektbezogenen Kontexten |
+
+**Nicht verwenden** in externen JSON-Verträgen: `customerId`, `contractorId`, `clientId`, `providerId`, `receiverId`
+
+### Zeitfenster-Struktur
+
+Alle externen Zeitfenster verwenden einheitlich:
+
+```json
+{ "start": "2026-09-01T07:00:00Z", "end": "2026-09-05T16:00:00Z" }
+```
+
+Nicht: `startAt`/`endAt`, `from`/`to`, `plannedStart`/`plannedEnd` in externen Payloads.
+
+### Zeitstempel
+
+Alle technischen Zeitstempel: ISO 8601, UTC, `date-time` Format (`…T…Z`).
+Reine Datumsfelder: ISO 8601, `date` Format (`YYYY-MM-DD`), z.B. `nextAvailableDate`.
+
+---
+
+## Rückwärtskompatibilitätsregeln (Task 9.1)
+
+### Kompatible Änderungen (Minor-Bump 1.x → 1.(x+1))
+
+- Neues **optionales** Feld in einem Payload hinzufügen
+- Neuer **optionaler** Enum-Wert (sofern Clients unbekannte Werte ignorieren)
+- Zusätzliche Response-Metadaten
+- Neue optionale Nachrichtentypen
+
+### Brechende Änderungen (Major-Bump 1.x → 2.0)
+
+- Pflichtfeld entfernen
+- Pflichtfeld umbenennen
+- Datentyp eines Feldes ändern
+- Enum-Wert in seiner Bedeutung verändern
+- Feld mit neuer fachlicher Bedeutung wiederverwenden
+- Interne Daten in bisher öffentliche Payloads aufnehmen
+
+---
+
 ## Schema validation notes
 
-All four examples above are validated against the following OpenAPI schemas in `lib/api-spec/openapi.yaml`:
+All examples are validated against the OpenAPI schemas in `lib/api-spec/openapi.yaml`.
 
-- `MessageEnvelope` — envelope structure, required fields, enum values
-- `DataspaceMessageType` — `messageType` enum
+### Validated schemas
+
+- `MessageEnvelope` — envelope structure, required fields, enum values, schema version
+- `DataspaceMessageType` — `messageType` enum (incl. `TAKT_REQUEST_REMINDER`, `TAKT_REQUEST_EXPIRED`)
 - `DataspaceMessageStatus` — `status` enum
 - `TaktRequestNotificationPayload` — Example 1 payload
 - `TaktResponsePayload` — Examples 2–4 payload
@@ -177,18 +316,23 @@ All four examples above are validated against the following OpenAPI schemas in `
 - `TaktResponseAlternative` — alternatives array items
 - `TimeWindow` — `acceptedTimeWindow` and alternative `timeWindow` fields
 
-Zod schemas generated from these OpenAPI definitions are available in `lib/api-zod/src/generated/`.
+Zod schemas are defined in `artifacts/api-server/src/__tests__/dataspace-schema-validation.test.ts`
+and use the version utility from `artifacts/api-server/src/lib/schema-version.ts`.
 
 ### Key constraints checked
 
-| Constraint                          | Rule                                    |
-| ----------------------------------- | --------------------------------------- |
-| `messageId`                         | Non-empty string                        |
-| `schemaVersion`                     | Matches pattern `\d+\.\d+` (e.g. `1.0`) |
-| `createdAt`, `expiresAt`            | ISO 8601 date-time                      |
-| `taktVersion`                       | Integer ≥ 1                             |
-| `alternatives`                      | Maximum 3 items                         |
-| `crewSize`                          | Integer ≥ 1                             |
-| `comment`                           | Maximum 2000 characters                 |
-| `nextAvailableDate`                 | ISO 8601 date (`YYYY-MM-DD`)            |
-| Internal NU data                    | Must not appear in any payload          |
+| Constraint                          | Rule                                                        |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `messageId`                         | Non-empty string                                            |
+| `schemaVersion`                     | Format `\d+\.\d+` AND major version must be 1              |
+| `schemaVersion` (unsupported major) | Major ≥ 2 rejected with `UnsupportedSchemaVersionError`     |
+| `createdAt`, `expiresAt`            | ISO 8601 date-time (UTC)                                    |
+| `taktVersion`                       | Integer ≥ 1                                                 |
+| `alternatives`                      | Maximum 3 items                                             |
+| `crewSize`                          | Integer ≥ 1                                                 |
+| `comment`                           | Maximum 2000 characters                                     |
+| `nextAvailableDate`                 | ISO 8601 date (`YYYY-MM-DD`)                                |
+| Time window                         | `{start, end}` — not `startAt/endAt` or `from/to`          |
+| Internal NU data                    | Must not appear in any payload                              |
+
+See `docs/schema-versioning.md` for the full version policy.

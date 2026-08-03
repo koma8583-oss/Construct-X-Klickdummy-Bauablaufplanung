@@ -205,6 +205,8 @@ router.get(
 );
 
 // POST /projects/:projectId/contractors
+// Legacy endpoint — use POST /ag/projects/:projectId/subcontractors for full control.
+// Kept for backward compatibility; creates an ACTIVE assignment with no trade.
 router.post(
   "/projects/:projectId/contractors",
   requireJwt,
@@ -216,10 +218,15 @@ router.post(
       return;
     }
 
-    await db
-      .insert(projectContractorsTable)
-      .values({ projectId: (req.params.projectId as string), anOrgId })
-      .onConflictDoNothing();
+    // Upsert: if an ACTIVE assignment for this AN (no trade) already exists, do nothing
+    try {
+      await db
+        .insert(projectContractorsTable)
+        .values({ projectId: (req.params.projectId as string), anOrgId })
+        .onConflictDoNothing();
+    } catch {
+      // Unique index violation on the trade-aware index — silently ignore
+    }
 
     res.status(201).json({ ok: true });
   },

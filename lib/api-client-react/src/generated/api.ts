@@ -23,21 +23,27 @@ import type {
   AddMemberRequest,
   AddProjectContractorRequest,
   AgDashboard,
+  AgProjectDetailOverview,
+  AgProjectSummary,
   AnDashboard,
   AvailabilityCheckResponse,
   CreateDelegationRequest,
   CreateDelegationResponseRequest,
   CreateOrganizationRequest,
   CreateProjectRequest,
+  CreateProjectSubcontractorRequest,
   CreateResourceAssignmentRequest,
   CreateResourceRequest,
   CreateTaktDependencyRequest,
   CreateTaktRequest,
   CreateTaktRequestBody,
   CreateWebhookRequest,
+  DeactivateProjectSubcontractor200,
   Delegation,
   DelegationResponse,
   ErrorResponse,
+  GuDecisionCreate,
+  GuDecisionResponse,
   HealthStatus,
   InboxMarkReadResponse,
   InboxMessageItem,
@@ -64,9 +70,13 @@ import type {
   Organization,
   OrganizationMember,
   OrganizationMembership,
+  PatchProjectSubcontractorRequest,
   Project,
+  ProjectSubcontractorAssignment,
   Resource,
   ResourceAssignment,
+  RevisionCreate,
+  RevisionResponse,
   Takt,
   TaktDependency,
   TaktDependencyCreateResult,
@@ -1541,6 +1551,456 @@ export const useRemoveProjectContractor = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRemoveProjectContractorMutationOptions(options));
+    }
+
+export const getGetAgProjectsOverviewUrl = () => {
+
+
+
+
+  return `/api/ag/projects/overview`
+}
+
+/**
+ * @summary Summary KPIs for all projects of the authenticated AG
+ */
+export const getAgProjectsOverview = async ( options?: RequestInit): Promise<AgProjectSummary[]> => {
+
+  return customFetch<AgProjectSummary[]>(getGetAgProjectsOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgProjectsOverviewQueryKey = () => {
+    return [
+    `/api/ag/projects/overview`
+    ] as const;
+    }
+
+
+export const getGetAgProjectsOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getAgProjectsOverview>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgProjectsOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgProjectsOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgProjectsOverview>>> = ({ signal }) => getAgProjectsOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgProjectsOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgProjectsOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getAgProjectsOverview>>>
+export type GetAgProjectsOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Summary KPIs for all projects of the authenticated AG
+ */
+
+export function useGetAgProjectsOverview<TData = Awaited<ReturnType<typeof getAgProjectsOverview>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgProjectsOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgProjectsOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAgProjectOverviewUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/ag/projects/${projectId}/overview`
+}
+
+/**
+ * @summary Detailed overview of a single project (AN assignments + coordination KPIs)
+ */
+export const getAgProjectOverview = async (projectId: string, options?: RequestInit): Promise<AgProjectDetailOverview> => {
+
+  return customFetch<AgProjectDetailOverview>(getGetAgProjectOverviewUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgProjectOverviewQueryKey = (projectId: string,) => {
+    return [
+    `/api/ag/projects/${projectId}/overview`
+    ] as const;
+    }
+
+
+export const getGetAgProjectOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getAgProjectOverview>>, TError = ErrorType<void>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgProjectOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgProjectOverviewQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgProjectOverview>>> = ({ signal }) => getAgProjectOverview(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgProjectOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgProjectOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getAgProjectOverview>>>
+export type GetAgProjectOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Detailed overview of a single project (AN assignments + coordination KPIs)
+ */
+
+export function useGetAgProjectOverview<TData = Awaited<ReturnType<typeof getAgProjectOverview>>, TError = ErrorType<void>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgProjectOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgProjectOverviewQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListProjectSubcontractorsUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/ag/projects/${projectId}/subcontractors`
+}
+
+/**
+ * @summary List all AN assignments for a project (all statuses)
+ */
+export const listProjectSubcontractors = async (projectId: string, options?: RequestInit): Promise<ProjectSubcontractorAssignment[]> => {
+
+  return customFetch<ProjectSubcontractorAssignment[]>(getListProjectSubcontractorsUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProjectSubcontractorsQueryKey = (projectId: string,) => {
+    return [
+    `/api/ag/projects/${projectId}/subcontractors`
+    ] as const;
+    }
+
+
+export const getListProjectSubcontractorsQueryOptions = <TData = Awaited<ReturnType<typeof listProjectSubcontractors>>, TError = ErrorType<void>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProjectSubcontractors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProjectSubcontractorsQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProjectSubcontractors>>> = ({ signal }) => listProjectSubcontractors(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProjectSubcontractors>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProjectSubcontractorsQueryResult = NonNullable<Awaited<ReturnType<typeof listProjectSubcontractors>>>
+export type ListProjectSubcontractorsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List all AN assignments for a project (all statuses)
+ */
+
+export function useListProjectSubcontractors<TData = Awaited<ReturnType<typeof listProjectSubcontractors>>, TError = ErrorType<void>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProjectSubcontractors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProjectSubcontractorsQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateProjectSubcontractorUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/ag/projects/${projectId}/subcontractors`
+}
+
+/**
+ * @summary Assign an AN organisation to a project
+ */
+export const createProjectSubcontractor = async (projectId: string,
+    createProjectSubcontractorRequest: CreateProjectSubcontractorRequest, options?: RequestInit): Promise<ProjectSubcontractorAssignment> => {
+
+  return customFetch<ProjectSubcontractorAssignment>(getCreateProjectSubcontractorUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createProjectSubcontractorRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateProjectSubcontractorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectSubcontractor>>, TError,{projectId: string;data: BodyType<CreateProjectSubcontractorRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProjectSubcontractor>>, TError,{projectId: string;data: BodyType<CreateProjectSubcontractorRequest>}, TContext> => {
+
+const mutationKey = ['createProjectSubcontractor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProjectSubcontractor>>, {projectId: string;data: BodyType<CreateProjectSubcontractorRequest>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  createProjectSubcontractor(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateProjectSubcontractorMutationResult = NonNullable<Awaited<ReturnType<typeof createProjectSubcontractor>>>
+    export type CreateProjectSubcontractorMutationBody = BodyType<CreateProjectSubcontractorRequest>
+    export type CreateProjectSubcontractorMutationError = ErrorType<void>
+
+    /**
+ * @summary Assign an AN organisation to a project
+ */
+export const useCreateProjectSubcontractor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectSubcontractor>>, TError,{projectId: string;data: BodyType<CreateProjectSubcontractorRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProjectSubcontractor>>,
+        TError,
+        {projectId: string;data: BodyType<CreateProjectSubcontractorRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateProjectSubcontractorMutationOptions(options));
+    }
+
+export const getUpdateProjectSubcontractorUrl = (projectId: string,
+    assignmentId: string,) => {
+
+
+
+
+  return `/api/ag/projects/${projectId}/subcontractors/${assignmentId}`
+}
+
+/**
+ * @summary Update an AN assignment (trade, status, validity period)
+ */
+export const updateProjectSubcontractor = async (projectId: string,
+    assignmentId: string,
+    patchProjectSubcontractorRequest: PatchProjectSubcontractorRequest, options?: RequestInit): Promise<ProjectSubcontractorAssignment> => {
+
+  return customFetch<ProjectSubcontractorAssignment>(getUpdateProjectSubcontractorUrl(projectId,assignmentId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(patchProjectSubcontractorRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateProjectSubcontractorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string;data: BodyType<PatchProjectSubcontractorRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string;data: BodyType<PatchProjectSubcontractorRequest>}, TContext> => {
+
+const mutationKey = ['updateProjectSubcontractor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProjectSubcontractor>>, {projectId: string;assignmentId: string;data: BodyType<PatchProjectSubcontractorRequest>}> = (props) => {
+          const {projectId,assignmentId,data} = props ?? {};
+
+          return  updateProjectSubcontractor(projectId,assignmentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProjectSubcontractorMutationResult = NonNullable<Awaited<ReturnType<typeof updateProjectSubcontractor>>>
+    export type UpdateProjectSubcontractorMutationBody = BodyType<PatchProjectSubcontractorRequest>
+    export type UpdateProjectSubcontractorMutationError = ErrorType<void>
+
+    /**
+ * @summary Update an AN assignment (trade, status, validity period)
+ */
+export const useUpdateProjectSubcontractor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string;data: BodyType<PatchProjectSubcontractorRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProjectSubcontractor>>,
+        TError,
+        {projectId: string;assignmentId: string;data: BodyType<PatchProjectSubcontractorRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateProjectSubcontractorMutationOptions(options));
+    }
+
+export const getDeactivateProjectSubcontractorUrl = (projectId: string,
+    assignmentId: string,) => {
+
+
+
+
+  return `/api/ag/projects/${projectId}/subcontractors/${assignmentId}/deactivate`
+}
+
+/**
+ * @summary Soft-deactivate an AN assignment (sets status to INACTIVE)
+ */
+export const deactivateProjectSubcontractor = async (projectId: string,
+    assignmentId: string, options?: RequestInit): Promise<DeactivateProjectSubcontractor200> => {
+
+  return customFetch<DeactivateProjectSubcontractor200>(getDeactivateProjectSubcontractorUrl(projectId,assignmentId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeactivateProjectSubcontractorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string}, TContext> => {
+
+const mutationKey = ['deactivateProjectSubcontractor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateProjectSubcontractor>>, {projectId: string;assignmentId: string}> = (props) => {
+          const {projectId,assignmentId} = props ?? {};
+
+          return  deactivateProjectSubcontractor(projectId,assignmentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeactivateProjectSubcontractorMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateProjectSubcontractor>>>
+
+    export type DeactivateProjectSubcontractorMutationError = ErrorType<void>
+
+    /**
+ * @summary Soft-deactivate an AN assignment (sets status to INACTIVE)
+ */
+export const useDeactivateProjectSubcontractor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateProjectSubcontractor>>, TError,{projectId: string;assignmentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deactivateProjectSubcontractor>>,
+        TError,
+        {projectId: string;assignmentId: string},
+        TContext
+      > => {
+      return useMutation(getDeactivateProjectSubcontractorMutationOptions(options));
     }
 
 export const getListTakteUrl = (projectId: string,) => {
@@ -4336,6 +4796,176 @@ export function useGetTaktRequestDetail<TData = Awaited<ReturnType<typeof getTak
 
 
 
+
+export const getCreateGuDecisionUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/gu-decisions`
+}
+
+/**
+ * Allows the creating GU organisation to record a formal decision on the NU's TaktResponse. The decision type must match the NU response decision:
+ *
+ * | NU response  | Allowed GU decision types | |---|---| | ACCEPTED | CONFIRM_ACCEPTED, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT | | ALTERNATIVES_PROPOSED | ACCEPT_ALTERNATIVE, REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT | | REJECTED | REQUEST_REVISION, CLOSE_WITHOUT_AGREEMENT |
+ *
+ * Idempotency: Supply an optional `Idempotency-Key` header or include `idempotencyKey` in the body. Identical key + identical content returns 200 with the existing decision. Identical key + different content returns 409.
+ *
+ * A second decision for the same response always returns 409 regardless of idempotency key.
+ *
+ * Transactions: decision insert and TaktRequest status update are atomic.
+ *
+ * Permissions: GU (AG) organisation that created the TaktRequest only. NU organisations and hub admins receive 403.
+ * @summary GU creates a business decision on a TaktResponse
+ */
+export const createGuDecision = async (requestId: string,
+    guDecisionCreate: GuDecisionCreate, options?: RequestInit): Promise<GuDecisionResponse> => {
+
+  return customFetch<GuDecisionResponse>(getCreateGuDecisionUrl(requestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(guDecisionCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateGuDecisionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGuDecision>>, TError,{requestId: string;data: BodyType<GuDecisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createGuDecision>>, TError,{requestId: string;data: BodyType<GuDecisionCreate>}, TContext> => {
+
+const mutationKey = ['createGuDecision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGuDecision>>, {requestId: string;data: BodyType<GuDecisionCreate>}> = (props) => {
+          const {requestId,data} = props ?? {};
+
+          return  createGuDecision(requestId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateGuDecisionMutationResult = NonNullable<Awaited<ReturnType<typeof createGuDecision>>>
+    export type CreateGuDecisionMutationBody = BodyType<GuDecisionCreate>
+    export type CreateGuDecisionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary GU creates a business decision on a TaktResponse
+ */
+export const useCreateGuDecision = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGuDecision>>, TError,{requestId: string;data: BodyType<GuDecisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createGuDecision>>,
+        TError,
+        {requestId: string;data: BodyType<GuDecisionCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateGuDecisionMutationOptions(options));
+    }
+
+export const getCreateRevisionUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/revisions`
+}
+
+/**
+ * Creates a new Takt version (REVISION), a new TaktRequest (DRAFT), and an immutable snapshot. The old request is set to SUPERSEDED. All steps are atomic. Optionally sends a TAKT_REQUEST_REVISED notification immediately.
+ * Preconditions:
+ *   - Old request must have status REVISION_REQUIRED
+ *   - Caller must be the GU organisation that created the old request
+ *   - A REQUEST_REVISION GU decision must exist
+ *   - No successor request may already exist
+ *
+ * Idempotency:
+ *   - supersedesRequestId is unique — a duplicate call returns 409
+ *   - If sendImmediately fails the version/request/snapshot are preserved;
+ *     retry will send the same new request
+ *
+ * Predecessor chain:
+ *   Request 1 → Response 1 → GU decision REQUEST_REVISION →
+ *   Takt version N+1 → Request 2 (new)
+ * @summary Start a new coordination round after a REQUEST_REVISION decision
+ */
+export const createRevision = async (requestId: string,
+    revisionCreate: RevisionCreate, options?: RequestInit): Promise<RevisionResponse> => {
+
+  return customFetch<RevisionResponse>(getCreateRevisionUrl(requestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(revisionCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateRevisionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRevision>>, TError,{requestId: string;data: BodyType<RevisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRevision>>, TError,{requestId: string;data: BodyType<RevisionCreate>}, TContext> => {
+
+const mutationKey = ['createRevision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRevision>>, {requestId: string;data: BodyType<RevisionCreate>}> = (props) => {
+          const {requestId,data} = props ?? {};
+
+          return  createRevision(requestId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRevisionMutationResult = NonNullable<Awaited<ReturnType<typeof createRevision>>>
+    export type CreateRevisionMutationBody = BodyType<RevisionCreate>
+    export type CreateRevisionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start a new coordination round after a REQUEST_REVISION decision
+ */
+export const useCreateRevision = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRevision>>, TError,{requestId: string;data: BodyType<RevisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRevision>>,
+        TError,
+        {requestId: string;data: BodyType<RevisionCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateRevisionMutationOptions(options));
+    }
 
 export const getGetTaktRequestDetailsUrl = (requestId: string,) => {
 

@@ -1,0 +1,291 @@
+# Aufgabe 9.1 – JSON-Verträge vereinheitlichen und minimal versionieren
+
+Analysiere die vorhandenen OpenAPI-Schemas, Nachrichtenmodelle und Snapshot-Strukturen.
+
+Vereinheitliche ausschließlich die für den Proof of Concept benötigten JSON-Verträge.
+
+Implementiere keine vollständige Schema Registry und keine automatische Schema-Migrationsplattform.
+
+## Ziel
+
+Alle zwischen AG, AN und Hub ausgetauschten Nachrichten sowie alle unveränderlichen Takt-Snapshots sollen:
+
+* eine eindeutige Schema-Version besitzen
+* konsistente Feldnamen verwenden
+* durch OpenAPI und Zod validiert werden
+* rückwärtskompatibel erweiterbar bleiben
+* keine internen Daten anderer Organisationen enthalten
+
+Die bestehenden technischen Begriffe `AG` und `AN` dürfen beibehalten werden.
+
+Dokumentiere weiterhin das fachliche Mapping:
+
+```text
+AG = Generalunternehmer beziehungsweise GU
+AN = Nachunternehmer beziehungsweise NU
+```
+
+## Verbindliche Schema-Version
+
+Verwende für alle aktuellen PoC-Verträge:
+
+```text
+schemaVersion = 1.0
+```
+
+Die Schema-Version muss mindestens enthalten sein in:
+
+* `MessageEnvelope`
+* `TaktRequestNotificationMessage`
+* `TaktResponseMessage`
+* `TaktRequestSnapshot`
+* `TAKT_RESPONSE_ACCEPTED`
+* `TAKT_RESPONSE_REVISION_REQUESTED`
+* `TAKT_REQUEST_REVISED`
+* Reminder-Nachrichten
+* Ablaufnachrichten
+* Reporting-JSON-Exporte
+
+## Einheitliche Identifikatoren
+
+Prüfe und vereinheitliche folgende Felder:
+
+```text
+messageId
+correlationId
+causationId
+taktRequestId
+taktId
+taktReference
+taktVersion
+projectId
+projectReference
+senderOrgId
+recipientOrgId
+```
+
+Regeln:
+
+1. Technische Datenbank-ID und fachliche Referenz nicht vermischen.
+2. `projectId` ist die interne technische Projekt-ID.
+3. `projectReference` ist eine fachlich lesbare Referenz.
+4. `taktId` ist die technische Takt-ID.
+5. `taktReference` ist die fachlich lesbare Taktreferenz.
+6. `taktRequestId` identifiziert eine einzelne Abstimmungsrunde.
+7. `correlationId` verbindet die Nachrichten derselben Abstimmungsrunde.
+8. Eine neue Revisionsrunde besitzt einen neuen `taktRequestId`.
+9. Die Vorgängerbeziehung wird über `supersedesRequestId` abgebildet.
+
+## Einheitliche Zeitangaben
+
+Alle technischen Zeitangaben verwenden:
+
+```text
+ISO 8601
+UTC
+date-time
+```
+
+Beispiele:
+
+```text
+createdAt
+updatedAt
+sentAt
+deliveredAt
+receivedAt
+readAt
+detailsRetrievedAt
+responseRequiredBy
+expiresAt
+checkedAt
+decidedAt
+```
+
+Reine Datumswerte verwenden weiterhin:
+
+```text
+date
+```
+
+Beispielsweise:
+
+```text
+nextAvailableDate
+startDate
+endDate
+```
+
+## Einheitliche Zeitfenster
+
+Verwende überall dieselbe Struktur:
+
+```json
+{
+  "start": "2026-09-14T05:00:00Z",
+  "end": "2026-09-18T14:00:00Z"
+}
+```
+
+Verwende keine parallelen Varianten wie:
+
+```text
+startAt / endAt
+from / to
+plannedStart / plannedEnd
+```
+
+innerhalb der externen JSON-Verträge.
+
+Interne Datenbankfelder dürfen weiterhin zum bestehenden Stil passen.
+
+## Einheitliche Organisationsbezeichnungen
+
+Externe Nachrichten verwenden ausschließlich:
+
+```text
+senderOrgId
+recipientOrgId
+```
+
+Projektbezogene Zuordnungen verwenden:
+
+```text
+agOrgId
+anOrgId
+```
+
+oder die bereits im Repository etablierten fachlichen Begriffe.
+
+Keine unklare Mischung aus:
+
+```text
+customerId
+contractorId
+clientId
+providerId
+receiverId
+```
+
+für denselben fachlichen Sachverhalt.
+
+## Rückwärtskompatibilitätsregeln
+
+Dokumentiere folgende Regeln:
+
+### Kompatibel
+
+* neues optionales Feld
+* neuer optionaler Enum-Wert, sofern Clients unbekannte Werte sicher behandeln
+* zusätzliche Response-Metadaten
+* neue optionale Nachrichtentypen
+
+### Nicht kompatibel
+
+* Pflichtfeld entfernen
+* Pflichtfeld umbenennen
+* Datentyp eines Feldes ändern
+* Enum-Wert in seiner Bedeutung verändern
+* Feld mit neuer fachlicher Bedeutung wiederverwenden
+* interne Daten in bisher öffentliche Payloads aufnehmen
+
+## Versionserhöhung
+
+Dokumentiere:
+
+### Minor-Version
+
+Beispiel:
+
+```text
+1.0 → 1.1
+```
+
+Für rückwärtskompatible Erweiterungen.
+
+### Major-Version
+
+Beispiel:
+
+```text
+1.x → 2.0
+```
+
+Für brechende Änderungen.
+
+Im aktuellen PoC muss nur Version `1.0` produktiv unterstützt werden.
+
+## Validierung
+
+Stelle sicher:
+
+* eingehende externe Payloads werden gegen das passende Zod-Schema geprüft
+* unbekannte sicherheitskritische Felder werden abgelehnt
+* `schemaVersion` fehlt nicht
+* nicht unterstützte Major-Versionen werden mit einem klaren Fehler abgelehnt
+* generierte Dateien werden nicht manuell bearbeitet
+
+## Dokumentation
+
+Erstelle oder aktualisiere:
+
+```text
+docs/json-contracts.md
+docs/schema-versioning.md
+```
+
+`docs/schema-versioning.md` soll enthalten:
+
+* aktuell unterstützte Version
+* Versionierungsregeln
+* kompatible Änderungen
+* brechende Änderungen
+* unterstützte Nachrichten und Snapshots
+* Vorgehen bei unbekannter Version
+
+## Keine komplexe Schema Registry
+
+Nicht implementieren:
+
+* keine separate Registry-Anwendung
+* keine Registry-Datenbank
+* keine automatische Schema-Veröffentlichung
+* keine dynamische Schema-Auflösung
+* keine automatische Payload-Migration
+* kein EDC
+* kein Dataspace Protocol
+
+## Tests
+
+Ergänze Tests für:
+
+* gültige Version `1.0`
+* fehlende `schemaVersion`
+* nicht unterstützte Major-Version
+* gültige optionale Erweiterung
+* konsistente Identifikatoren
+* konsistente Zeitfenster
+* interne Zusatzfelder in externem Payload werden abgelehnt
+* bestehende PoC-Nachrichten bleiben gültig
+
+## Prüfungen
+
+Führe aus:
+
+* OpenAPI-Codegenerierung
+* Schema-Tests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* vereinheitlichte Verträge
+* unterstützte Schema-Version
+* korrigierte inkonsistente Feldnamen
+* Kompatibilitätsregeln
+* bewusst nicht implementierte Registry-Funktionen
+* Testergebnisse
+* Ergebnisse von Codegenerierung, Typecheck und Build

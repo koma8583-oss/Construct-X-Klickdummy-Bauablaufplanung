@@ -107,6 +107,41 @@ export const taktRequestsTable = pgTable(
       .notNull()
       .references(() => usersTable.id),
 
+    /**
+     * Absolute expiry timestamp.
+     * Computed as responseRequiredBy + expirationGracePeriodHours.
+     * After this point a still-open request transitions to EXPIRED.
+     * Null for DRAFT requests that have no responseRequiredBy yet.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+
+    /**
+     * Set exactly once when the request transitions to EXPIRED.
+     * Must only be set when status = 'EXPIRED'.
+     */
+    expiredAt: timestamp("expired_at", { withTimezone: true }),
+
+    /**
+     * Timestamp of the last business reminder sent for this request.
+     * Only counts fachliche Erinnerungen, not technical outbox retries.
+     */
+    lastReminderAt: timestamp("last_reminder_at", { withTimezone: true }),
+
+    /**
+     * Counter of business reminders sent.
+     * Starts at 0, incremented each time a reminder row is SENT.
+     * Does not count technical outbox retries.
+     */
+    reminderCount: integer("reminder_count").notNull().default(0),
+
+    /**
+     * Deadline by which the GU must decide after a NU response arrives.
+     * Optional — only relevant when a NU response is present and not yet decided.
+     */
+    guDecisionRequiredBy: timestamp("gu_decision_required_by", {
+      withTimezone: true,
+    }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -121,11 +156,13 @@ export const taktRequestsTable = pgTable(
     index("takt_requests_nu_org_id_idx").on(t.nuOrgId),
     index("takt_requests_status_idx").on(t.status),
     index("takt_requests_response_required_by_idx").on(t.responseRequiredBy),
+    index("takt_requests_expires_at_idx").on(t.expiresAt),
     index("takt_requests_created_at_idx").on(t.createdAt),
     // Combined indexes for the most common query patterns
     index("takt_requests_nu_org_status_idx").on(t.nuOrgId, t.status),
     index("takt_requests_gu_org_status_idx").on(t.guOrgId, t.status),
     index("takt_requests_takt_version_idx").on(t.taktId, t.taktVersion),
+    index("takt_requests_status_expires_at_idx").on(t.status, t.expiresAt),
   ],
 );
 

@@ -54,6 +54,17 @@ import {
   getLatestAvailabilityCheck,
   AvailabilityCheckError,
 } from "../services/availability-check-service";
+import {
+  createGuDecision,
+  GuDecisionError,
+  GuDecisionIdempotencyConflict,
+  VersionConflictError,
+} from "../services/gu-decision-service";
+import {
+  createRevision,
+  RevisionError,
+} from "../services/revision-service";
+import type { TaktCoordinationDecisionType } from "@workspace/db";
 
 // Module-level transport singleton — stateless, safe to share across requests.
 const transport = new LocalHubTransport();
@@ -1169,5 +1180,212 @@ function buildGuPayload(
     nextAvailableDate: nextAvailableDate ?? null,
   };
 }
+
+// ── POST /takt-requests/:id/gu-decisions ─────────────────────────────────────
+// GU creates a business decision on a TaktResponse.
+//
+// Decision types:
+//   CONFIRM_ACCEPTED       — confirm the NU's accepted time window
+//   ACCEPT_ALTERNATIVE     — select one of the NU's proposed alternatives
+//   REQUEST_REVISION       — request a revised coordination round
+//   CLOSE_WITHOUT_AGREEMENT— close this round without an agreement
+//
+// Permissions:
+//   - GU (AG) only — the GU organisation that created the TaktRequest.
+//   - NU (AN) → 403. Hub → 403.
+//
+// Idempotency:
+//   - Optional Idempotency-Key header. Same key + same content → 200 (existing).
+//   - Same key + different content → 409.
+//   - Second decision for the same Response → 409.
+//
+// Transactions:
+//   - Decision insert + Request status update are atomic.
+//   - Takt lifecycle_status updated within the same transaction.
+router.post(
+  "/takt-requests/:id/gu-decisions",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id   = req.params.id as string;
+
+    // ── 1. GU-only guard ──────────────────────────────────────────────────────
+    if (user.hubAdmin || !user.orgId) {
+      res.status(403).json({ error: "Hub admins may not create GU decisions" });
+      return;
+    }
+    if (user.orgType !== "AG") {
+      res.status(403).json({ error: "Only GU (AG) organisations may create GU decisions" });
+      return;
+    }
+
+    const guOrgId = user.orgId;
+    const userId  = user.userId!;
+
+    // ── 2. Parse + validate body ──────────────────────────────────────────────
+    const bodySchema = z.object({
+      decisionType: z.enum([
+        "CONFIRM_ACCEPTED",
+        "ACCEPT_ALTERNATIVE",
+        "REQUEST_REVISION",
+        "CLOSE_WITHOUT_AGREEMENT",
+      ]),
+      acceptedAlternativeId: z.string().min(1).optional(),
+      comment:               z.string().max(2000).optional(),
+      idempotencyKey:        z.string().min(1).max(255).optional(),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const { decisionType, acceptedAlternativeId, comment, idempotencyKey } = parsed.data;
+
+    // ── 3. Optionally read Idempotency-Key from header ────────────────────────
+    const idempotencyKeyFinal =
+      idempotencyKey ??
+      (req.headers["idempotency-key"] as string | undefined) ??
+      null;
+
+    // ── 4. Delegate to service ────────────────────────────────────────────────
+    try {
+      const result = await createGuDecision({
+        taktRequestId: id,
+        guOrgId,
+        userId,
+        decisionType: decisionType as TaktCoordinationDecisionType,
+        acceptedAlternativeId: acceptedAlternativeId ?? null,
+        comment: comment ?? null,
+        idempotencyKey: idempotencyKeyFinal,
+      });
+
+      const { decision, updatedRequest, newTaktVersion, idempotent } = result;
+
+      res.status(idempotent ? 200 : 201).json({
+        decisionId:              decision.id,
+        taktRequestId:           decision.taktRequestId,
+        responseId:              decision.responseId,
+        decisionType:            decision.decisionType,
+        acceptedAlternativeId:   decision.acceptedAlternativeId ?? null,
+        comment:                 decision.comment ?? null,
+        decidedAt:               decision.decidedAt,
+        createdAt:               decision.createdAt,
+        updatedRequestStatus:    updatedRequest.status,
+        newTaktVersion:          newTaktVersion?.version ?? null,
+        newTaktVersionId:        newTaktVersion?.id      ?? null,
+        idempotent,
+      });
+    } catch (err) {
+      if (err instanceof GuDecisionError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      if (err instanceof GuDecisionIdempotencyConflict) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      if (err instanceof VersionConflictError) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      if (err instanceof TaktRequestTransitionError) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// ── POST /takt-requests/:id/revisions ────────────────────────────────────────
+// GU starts a new coordination round after a REQUEST_REVISION decision.
+//
+// Flow: validate preconditions → transaction: new takt_version + new TaktRequest +
+//   new snapshot + old request → SUPERSEDED → optional TAKT_REQUEST_REVISED transport
+//
+// Idempotency: supersedesRequestId is unique → a duplicate request returns 409.
+router.post(
+  "/takt-requests/:id/revisions",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const guOrgId = req.user!.orgId!;
+    const userId  = req.user!.userId!;
+    const id      = req.params.id as string;
+
+    const bodySchema = z.object({
+      plannedTimeWindow: z.object({
+        start: z.string().min(1),
+        end:   z.string().min(1),
+      }),
+      responseRequiredBy: z.string().optional().nullable(),
+      subject:            z.string().optional().nullable(),
+      message:            z.string().optional().nullable(),
+      sendImmediately:    z.boolean().optional().default(false),
+      idempotencyKey:     z.string().optional().nullable(),
+      taktUpdates: z
+        .object({
+          taktBezeichnung:   z.string().optional(),
+          zone:              z.string().optional(),
+          gewerk:            z.string().optional(),
+          description:       z.string().optional(),
+          earliestStart:     z.string().optional(),
+          latestEnd:         z.string().optional(),
+          lvReference:       z.string().optional(),
+          bimReference:      z.string().optional(),
+          requiredResources: z.string().optional(),
+        })
+        .optional(),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body", details: parsed.error.issues });
+      return;
+    }
+
+    const { plannedTimeWindow, responseRequiredBy, subject, message, sendImmediately, idempotencyKey, taktUpdates } =
+      parsed.data;
+
+    try {
+      const result = await createRevision({
+        oldRequestId: id,
+        guOrgId,
+        userId,
+        plannedTimeWindow,
+        responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
+        subject:            subject ?? null,
+        message:            message ?? null,
+        sendImmediately,
+        idempotencyKey:     idempotencyKey ?? null,
+        taktUpdates,
+      });
+
+      res.status(201).json({
+        oldRequestId:        result.oldRequest.id,
+        oldRequestStatus:    "SUPERSEDED",
+        newRequestId:        result.newRequest.id,
+        newRequestNumber:    result.newRequest.requestNumber,
+        newRequestStatus:    result.newRequest.status,
+        newTaktVersion:      result.newTaktVersion.version,
+        newTaktVersionId:    result.newTaktVersion.id,
+        snapshotId:          result.newSnapshot.id,
+        sent:                result.sent,
+        createdAt:           result.newRequest.createdAt,
+      });
+    } catch (err) {
+      if (err instanceof RevisionError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      if (err instanceof VersionConflictError) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  },
+);
 
 export default router;

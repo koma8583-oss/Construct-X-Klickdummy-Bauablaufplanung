@@ -1,0 +1,651 @@
+# Aufgabe 7.1 – Bestehende Fristen- und Benachrichtigungslogik analysieren
+
+Analysiere die aktuelle Implementierung des Repositorys. Untersuche insbesondere:
+
+* vorhandene Felder wie `responseRequiredBy`, `expiresAt` oder vergleichbare Fristen
+* bestehende Behandlung überfälliger Taktanfragen
+* vorhandene Reminder- oder Notification-Logik
+* bestehende In-App-Benachrichtigungen
+* vorhandene zeitgesteuerte Jobs, Worker oder Cron-Mechanismen
+* bestehende Statusübergänge zu `EXPIRED`
+* technische Retry-Zeitpunkte der Outbox
+* bestehende Dashboard-Hinweise
+* aktuelle Seed-Daten mit Fristen
+* verwendete Zeit- und Zeitzonenlogik
+
+Erstelle anschließend ausschließlich:
+
+`docs/deadlines-and-reminders.md`
+
+Nimm in diesem Schritt keine Änderungen an Datenbank, OpenAPI, Services, Routes oder Benutzeroberflächen vor.
+
+## Ziel
+
+Dokumentiere, wie offene Taktanfragen zeitabhängig überwacht werden sollen.
+
+Der PoC soll später unterscheiden zwischen:
+
+```text
+fachlicher Antwortfrist
+technischer Zustellfrist
+Erinnerungszeitpunkt
+Eskalationszeitpunkt
+Ablaufzeitpunkt
+GU-Entscheidungsfrist
+```
+
+## Fachliche Fristen
+
+Dokumentiere mindestens:
+
+### Antwortfrist des NU
+
+Bestehendes oder vorgesehenes Feld:
+
+```text
+responseRequiredBy
+```
+
+Bedeutung:
+
+* Bis zu diesem Zeitpunkt soll der NU auf die Taktanfrage antworten.
+* Die Frist beginnt fachlich mit dem Versand beziehungsweise der Zustellung.
+* Die Frist wird vom GU beim Erstellen der Anfrage festgelegt.
+
+### Entscheidungsfrist des GU
+
+Vorgesehenes Feld:
+
+```text
+guDecisionRequiredBy
+```
+
+Bedeutung:
+
+* Kann gesetzt werden, nachdem eine NU-Antwort eingegangen ist.
+* Bis zu diesem Zeitpunkt soll der GU die Antwort bestätigen, eine Alternative auswählen, eine Revision anfordern oder die Abstimmung schließen.
+* Das Feld darf im PoC zunächst optional sein.
+
+### Ablaufzeitpunkt
+
+Vorgesehenes Feld:
+
+```text
+expiresAt
+```
+
+Bedeutung:
+
+* Nach diesem Zeitpunkt kann die offene Taktanfrage nicht mehr regulär beantwortet werden.
+* `expiresAt` kann mit `responseRequiredBy` identisch sein oder durch eine Kulanzfrist später liegen.
+* Die gewählte Regel muss eindeutig dokumentiert werden.
+
+## Zielprozess für NU-Antwortfristen
+
+Dokumentiere beispielsweise:
+
+```text
+Anfrage zugestellt
+→ erste Erinnerung vor Frist
+→ zweite Erinnerung kurz vor Frist
+→ Frist erreicht
+→ Kulanzzeitraum
+→ Anfrage EXPIRED
+```
+
+## Zielprozess für GU-Entscheidungsfristen
+
+Dokumentiere:
+
+```text
+Antwort eingegangen
+→ GU-Entscheidung ausstehend
+→ Erinnerung an GU
+→ optionale Eskalation
+```
+
+Eine ausstehende GU-Entscheidung darf die bereits eingegangene NU-Antwort nicht verändern.
+
+## Statusregeln
+
+Dokumentiere:
+
+1. Eine Erinnerung verändert keinen fachlichen Requeststatus.
+2. Das Erreichen der Antwortfrist führt nicht zwingend sofort zu `EXPIRED`, wenn eine Kulanzfrist konfiguriert ist.
+3. `EXPIRED` darf nur für noch nicht fachlich beantwortete Anfragen verwendet werden.
+4. Bereits `ACCEPTED`, `ALTERNATIVES_PROPOSED` oder `REJECTED` beantwortete Anfragen dürfen nicht wegen der früheren NU-Antwortfrist ablaufen.
+5. `CANCELLED` und `SUPERSEDED` dürfen nicht nachträglich `EXPIRED` werden.
+6. Technische Zustellfehler und fachliche Fristüberschreitungen sind getrennt zu behandeln.
+7. Eine nicht zugestellte Anfrage darf nicht ohne Hinweis wie eine regulär überfällige NU-Anfrage behandelt werden.
+8. Erinnerungen müssen idempotent sein.
+9. Erinnerungen dürfen keine vollständigen Takt- oder Ressourcendaten enthalten.
+10. Alle Zeitberechnungen erfolgen intern in UTC.
+
+## Vorgesehene Erinnerungsstufen
+
+Dokumentiere als Ausgangspunkt:
+
+```text
+RESPONSE_DUE_SOON
+RESPONSE_DUE_TODAY
+RESPONSE_OVERDUE
+GU_DECISION_DUE_SOON
+GU_DECISION_OVERDUE
+DELIVERY_FAILED
+```
+
+## Konfigurationsvorschlag
+
+Dokumentiere zentral konfigurierbare Standardwerte:
+
+```text
+firstReminderHoursBeforeDue = 48
+secondReminderHoursBeforeDue = 8
+overdueReminderHoursAfterDue = 24
+expirationGracePeriodHours = 48
+guDecisionReminderHours = 24
+maximumReminderCountPerType = 1
+```
+
+Die Werte dürfen später projekt- oder organisationsbezogen überschreibbar sein.
+
+## Datenhoheit
+
+Erinnerungen dürfen nur enthalten:
+
+```text
+taktRequestId
+requestNumber
+projectReference
+taktReference
+dueAt
+reminderType
+recipientOrgId
+deepLink oder interne Referenz
+```
+
+Nicht enthalten:
+
+```text
+vollständiger Takt-Snapshot
+lokale Ressourcenplanung
+interne Konflikte
+Mitarbeiterdaten
+andere Projekte des NU
+interne Kosten
+```
+
+## Bestehende Implementierung bewerten
+
+Dokumentiere:
+
+* welche bestehenden Felder verwendet werden können
+* welche neuen Felder erforderlich sind
+* ob bereits ein Scheduler vorhanden ist
+* ob die Anwendung mehrere Instanzen unterstützen muss
+* welche Risiken doppelte Erinnerungen verursachen könnten
+* welche bestehende Notification-Logik wiederverwendet werden kann
+
+## Einschränkungen
+
+* Nur `docs/deadlines-and-reminders.md` erstellen oder ändern.
+* Keine Datenbankänderungen.
+* Keine Scheduler-Implementierung.
+* Keine neuen Nachrichten.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Abschlussbericht
+
+Berichte:
+
+* welche bestehende Fristenlogik gefunden wurde
+* welche Zeitfelder bereits vorhanden sind
+* welche Zielregeln dokumentiert wurden
+* welche Scheduler-Optionen im Repository bestehen
+* welche Risiken für doppelte oder falsche Erinnerungen erkannt wurden
+
+======================================================================
+
+# Aufgabe 7.2 – Datenmodelle für Fristen, Erinnerungen und Eskalationen anlegen
+
+Ergänze das bestehende Drizzle-Datenbankschema um Modelle zur nachvollziehbaren Verwaltung von Erinnerungen und zeitabhängigen Ereignissen.
+
+Verwende die vorhandene ID-, Zeitstempel- und Benennungskonvention.
+
+Ändere noch keine Scheduler-Logik und keine Benutzeroberflächen.
+
+## Bestehenden `takt_requests` ergänzen
+
+Ergänze, soweit noch nicht vorhanden:
+
+```text
+expiresAt
+expiredAt
+lastReminderAt
+reminderCount
+guDecisionRequiredBy
+```
+
+## Feldregeln
+
+### `expiresAt`
+
+* Nullable.
+* Intern als UTC-Zeitstempel.
+* Muss nach `createdAt` liegen.
+* Soll bei versendeten Requests normalerweise gesetzt sein.
+
+### `expiredAt`
+
+* Nullable.
+* Wird nur gesetzt, wenn der Request fachlich auf `EXPIRED` wechselt.
+
+### `lastReminderAt`
+
+* Nullable.
+* Zeitpunkt der letzten fachlichen Erinnerung.
+
+### `reminderCount`
+
+* Nicht nullable.
+* Standardwert `0`.
+* Zählt nur fachliche Erinnerungen, nicht technische Outbox-Retries.
+
+### `guDecisionRequiredBy`
+
+* Nullable.
+* Wird nur verwendet, wenn eine GU-Entscheidung aussteht.
+
+## Enum `ReminderType`
+
+Definiere:
+
+```text
+RESPONSE_DUE_SOON
+RESPONSE_DUE_TODAY
+RESPONSE_OVERDUE
+GU_DECISION_DUE_SOON
+GU_DECISION_OVERDUE
+DELIVERY_FAILED
+```
+
+## Enum `ReminderStatus`
+
+Definiere:
+
+```text
+PENDING
+SENT
+DELIVERED
+FAILED
+CANCELLED
+```
+
+## Tabelle `takt_request_reminders`
+
+Ergänze mindestens:
+
+```text
+id
+taktRequestId
+reminderType
+recipientOrgId
+recipientUserId
+scheduledFor
+status
+messageId
+attemptCount
+sentAt
+deliveredAt
+failureReason
+createdAt
+updatedAt
+```
+
+## Anforderungen
+
+### Beziehung
+
+* `taktRequestId` referenziert `takt_requests`.
+* `recipientOrgId` referenziert die Empfängerorganisation.
+* `recipientUserId` ist optional.
+* Eine Erinnerung kann zunächst organisationsbezogen sein.
+
+### Eindeutigkeit
+
+Verhindere doppelte Erinnerungen.
+
+Ergänze einen Unique Constraint beispielsweise auf:
+
+```text
+taktRequestId + reminderType + scheduledFor
+```
+
+Falls `scheduledFor` dynamisch berechnet wird, kann alternativ eine fachliche `deduplicationKey` ergänzt werden.
+
+Beispiel:
+
+```text
+REQ-001:RESPONSE_DUE_SOON:2026-08-07
+```
+
+### `messageId`
+
+* Nullable bis zum Versand.
+* Falls gesetzt, eindeutig.
+* Retry verwendet dieselbe `messageId`.
+
+### Historie
+
+* Erinnerungen werden nicht überschrieben.
+* Gesendete Erinnerungen bleiben historisch erhalten.
+* Änderungen der Frist erzeugen bei Bedarf neue Reminder-Datensätze.
+* Nicht mehr relevante ausstehende Erinnerungen werden `CANCELLED`.
+
+## Optional: Tabelle `deadline_events`
+
+Falls eine generische Ereignishistorie zur bestehenden Architektur passt, ergänze:
+
+```text
+id
+taktRequestId
+eventType
+effectiveAt
+payload
+createdAt
+```
+
+Mögliche Ereignisse:
+
+```text
+DEADLINE_SET
+DEADLINE_CHANGED
+REMINDER_SCHEDULED
+REMINDER_SENT
+REQUEST_EXPIRED
+GU_DECISION_OVERDUE
+```
+
+Implementiere diese Tabelle nur, wenn sie einen klaren Mehrwert gegenüber vorhandenen Audit-Mechanismen bietet.
+
+## Indizes
+
+Ergänze sinnvolle Indizes:
+
+```text
+taktRequestId
+recipientOrgId
+reminderType
+status
+scheduledFor
+createdAt
+```
+
+Kombinierte Indizes:
+
+```text
+status + scheduledFor
+recipientOrgId + status
+taktRequestId + status
+```
+
+## Datenintegrität
+
+Validiere mindestens in der Service-Schicht:
+
+* `scheduledFor` ist ein gültiger Zeitpunkt.
+* Gesendete Erinnerungen können nicht wieder `PENDING` werden.
+* `DELIVERED` darf nur nach `SENT` erfolgen.
+* `CANCELLED`-Erinnerungen werden nicht versendet.
+* Reminder für abgeschlossene Requests werden nicht neu angelegt.
+* `expiredAt` darf nur bei Requeststatus `EXPIRED` gesetzt sein.
+
+## Bestehende Statusmodelle
+
+Erweitere bei Bedarf die Übergangslogik:
+
+```text
+SENT → EXPIRED
+DELIVERED → EXPIRED
+DETAILS_RETRIEVED → EXPIRED
+UNDER_REVIEW → EXPIRED
+```
+
+Prüfe fachlich, ob `UNDER_REVIEW → EXPIRED` gewünscht ist.
+
+Empfehlung:
+
+* Wenn die Prüfung bereits begonnen hat, nicht automatisch ablaufen lassen.
+* Stattdessen als überfällig markieren und eine Erinnerung erzeugen.
+
+Dokumentiere die umgesetzte Entscheidung.
+
+## Tests
+
+Ergänze:
+
+* Request kann `expiresAt` speichern
+* Reminder kann angelegt werden
+* doppelter Reminder wird abgelehnt
+* Reminder verschiedener Typen sind zulässig
+* gesendeter Reminder bleibt historisch erhalten
+* Reminder für abgeschlossenen Request wird abgelehnt
+* `expiredAt` ohne Status `EXPIRED` wird verhindert
+* bestehende TaktRequests bleiben lesbar
+
+## Einschränkungen
+
+* Noch kein Scheduler.
+* Noch kein automatischer Versand.
+* Keine UI-Änderungen.
+* Keine externen E-Mails oder SMS.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Datenbankmigration oder Schema-Push
+* Datenbanktests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* ergänzte Requestfelder
+* neue Tabelle und Enums
+* Unique Constraints
+* Indizes
+* Historienstrategie
+* Entscheidung zu `UNDER_REVIEW → EXPIRED`
+* Ergebnisse von Migration, Tests, Typecheck und Build
+
+======================================================================
+
+# Aufgabe 7.3 – Scheduler-Abstraktion und lokalen Deadline-Worker implementieren
+
+Implementiere eine abstrahierte zeitgesteuerte Ausführung für Fristen und Erinnerungen.
+
+Nutze den bestehenden Projektstil. Führe kein schwergewichtiges neues Job-System ein, wenn die vorhandene Architektur einen einfachen Worker erlaubt.
+
+## Ziel
+
+Die Fachlogik soll nicht direkt von einer bestimmten Cron- oder Hosting-Lösung abhängig sein.
+
+## Interface `ScheduledJobRunner`
+
+Implementiere sinngemäß:
+
+```ts
+interface ScheduledJobRunner {
+  runDueJobs(now?: Date): Promise<ScheduledJobRunResult>;
+}
+```
+
+## Ergebnis
+
+`ScheduledJobRunResult` enthält mindestens:
+
+```text
+startedAt
+finishedAt
+checkedRequests
+createdReminders
+sentReminders
+expiredRequests
+failedJobs
+```
+
+## Service `DeadlineEvaluationService`
+
+Implementiere sinngemäß:
+
+```ts
+evaluateTaktRequestDeadlines(now: Date): Promise<DeadlineEvaluationResult>
+```
+
+Der Service soll:
+
+1. offene Requests laden
+2. relevante Fristen bestimmen
+3. fehlende Reminder-Datensätze idempotent anlegen
+4. fällige Reminder an den Versandservice übergeben
+5. ablaufbare Requests identifizieren
+6. Statusübergänge kontrolliert durchführen
+7. irrelevante geplante Reminder stornieren
+
+## Lokaler Worker
+
+Implementiere eine PoC-Ausführung, beispielsweise:
+
+```text
+LocalDeadlineWorker
+```
+
+Mögliche Betriebsarten:
+
+* periodische Ausführung im API-Server
+* separater Worker-Prozess im Monorepository
+* manuell auslösbarer Entwicklungsendpunkt
+
+Bevorzuge eine Lösung, die:
+
+* leicht testbar ist
+* nicht bei jedem API-Request läuft
+* keine mehrfachen Timer pro Serverinstanz erzeugt
+* später durch einen externen Scheduler ersetzt werden kann
+
+## Mehrere Instanzen
+
+Verhindere doppelte parallele Verarbeitung.
+
+Nutze je nach bestehender Infrastruktur:
+
+* Datenbank-Lock
+* Job-Lock-Tabelle
+* PostgreSQL Advisory Lock
+* atomische Statusänderung
+* bestehendes Distributed-Lock-Muster
+
+Keine rein speicherinterne Sperre verwenden, wenn mehrere Instanzen möglich sind.
+
+## Konfiguration
+
+Zentral konfigurierbar:
+
+```text
+deadlineWorkerEnabled
+deadlineWorkerIntervalMinutes
+firstReminderHoursBeforeDue
+secondReminderHoursBeforeDue
+overdueReminderHoursAfterDue
+expirationGracePeriodHours
+guDecisionReminderHours
+```
+
+Umgebungsvariablen dokumentieren.
+
+## Manuelle Ausführung
+
+Ergänze für Entwicklung und Tests eine kontrollierte Funktion oder einen nur intern erreichbaren Endpunkt:
+
+```http
+POST /internal/jobs/deadlines/run
+```
+
+Anforderungen:
+
+* nur Entwicklungs-, Test- oder Admin-Kontext
+* nicht öffentlich zugänglich
+* optionaler Testzeitpunkt nur außerhalb der Produktion
+* Produktionsnutzer dürfen keine beliebige Systemzeit übergeben
+
+## Zeitsteuerung
+
+Alle Vergleiche intern in UTC.
+
+Verwende den injizierten Zeitpunkt `now` in Services und Tests.
+
+Vermeide direkte, verstreute Aufrufe von:
+
+```ts
+new Date()
+```
+
+in der Fachlogik.
+
+Nutze bei Bedarf eine kleine `Clock`-Abstraktion.
+
+## Fehlerbehandlung
+
+* Fehler bei einem einzelnen Request stoppen nicht den gesamten Lauf.
+* Fehler werden strukturiert protokolliert.
+* Keine vollständigen Snapshot- oder Ressourcenpayloads loggen.
+* Fehlgeschlagene Reminder bleiben nachvollziehbar.
+* Worker darf keine Endlosschleife erzeugen.
+
+## Tests
+
+Ergänze:
+
+* Worker findet fällige Requests
+* Worker ignoriert abgeschlossene Requests
+* doppelte Ausführung erzeugt keine doppelten Reminder
+* parallele Worker-Läufe werden gesperrt
+* injizierte Testzeit funktioniert
+* Fehler bei einem Request stoppt andere Requests nicht
+* UTC-Zeitvergleiche sind korrekt
+* deaktivierter Worker führt keine Jobs aus
+
+## Einschränkungen
+
+* Reminder-Versand kann zunächst noch über einen Testadapter erfolgen.
+* Noch keine externen E-Mails oder SMS.
+* Keine UI-Änderungen.
+* Kein EDC.
+
+## Prüfungen
+
+Führe aus:
+
+* Worker-Tests
+* Parallelitäts- und Idempotenztests
+* bestehende Tests
+* Typecheck
+* Build
+
+## Abschlussbericht
+
+Berichte:
+
+* Scheduler-Abstraktion
+* gewählte Worker-Betriebsart
+* Locking-Strategie
+* Konfiguration
+* manuelle Entwicklungsfunktion
+* Testergebnisse
+* Ergebnisse von Typecheck und Build
