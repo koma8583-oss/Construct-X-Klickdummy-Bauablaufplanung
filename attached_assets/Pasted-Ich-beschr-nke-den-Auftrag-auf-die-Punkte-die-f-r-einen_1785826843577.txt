@@ -1,0 +1,593 @@
+Ich beschränke den Auftrag auf die Punkte, die für einen sicheren und demonstrierbaren PoC wirklich notwendig sind. Reporting wird nur als kleine Übersicht ohne Exporte, komplexe Dashboards oder BI-Funktionen umgesetzt.
+
+# Minimaler Korrekturauftrag für den PoC
+
+Prüfe den aktuellen Stand des Repositorys `Task-Coordination-Flow` und implementiere ausschließlich die nachfolgend beschriebenen zwingend notwendigen Korrekturen.
+
+Keine zusätzlichen Funktionen, keine umfassende Refaktorierung und keine EDC-Anbindung umsetzen.
+
+## Ziel
+
+Nach Abschluss muss der PoC:
+
+* organisationssicher sein
+* eine funktionierende Rollenprüfung besitzen
+* keine fremden Ressourcen veränderbar machen
+* Reminder und Transportstatus korrekt behandeln
+* eine minimale Projekt- und Prozessübersicht bereitstellen
+* erfolgreich getestet und gebaut werden können
+
+---
+
+# 1. Ressourcenrouten mandantensicher machen
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/routes/resources.ts
+```
+
+Alle Ressourcen- und Ressourcenzuweisungsendpunkte müssen serverseitig nach der Organisation des angemeldeten AN gefiltert werden.
+
+## Ressourcen
+
+Für folgende Endpunkte muss geprüft werden, dass die Ressource zur eigenen AN-Organisation gehört:
+
+```http
+GET    /resources
+GET    /resources/:resourceId
+PATCH  /resources/:resourceId
+DELETE /resources/:resourceId
+```
+
+Verbindliche Bedingung:
+
+```text
+resource.anOrgId = authenticatedUser.orgId
+AND
+authenticatedUser.orgType = AN
+```
+
+Ein Benutzer darf niemals Ressourcen einer anderen Organisation lesen, verändern oder löschen.
+
+## Ressourcenzuweisungen
+
+Für folgende Endpunkte ebenfalls Organisationsschutz ergänzen:
+
+```http
+GET    /resource-assignments
+POST   /resource-assignments
+PATCH  /resource-assignments/:assignmentId
+DELETE /resource-assignments/:assignmentId
+```
+
+Beim Erstellen einer Zuweisung prüfen:
+
+1. Ressource gehört zum angemeldeten AN.
+2. Taktanfrage oder Delegation ist an diesen AN adressiert.
+3. Ressource und Anfrage gehören fachlich zur gleichen AN-Organisation.
+4. IDs anderer Organisationen werden abgelehnt.
+
+## Kein physisches Löschen
+
+Ressourcen und Ressourcenzuweisungen nicht physisch löschen.
+
+Stattdessen beispielsweise:
+
+```text
+active = false
+```
+
+oder:
+
+```text
+status = CANCELLED
+```
+
+Bestehende historische Zuweisungen müssen lesbar bleiben.
+
+## Tests
+
+Mindestens:
+
+* AN A kann eigene Ressource ändern.
+* AN A kann Ressource von AN B nicht lesen.
+* AN A kann Ressource von AN B nicht ändern.
+* AN A kann Ressource von AN B nicht deaktivieren.
+* fremde Ressourcenzuweisungen sind nicht sichtbar.
+* Zuweisung mit fremder Ressource wird abgelehnt.
+* Zuweisung zu einer fremden Anfrage wird abgelehnt.
+
+---
+
+# 2. Rollenprüfung auf „Fail Closed“ umstellen
+
+Prüfe:
+
+```text
+artifacts/api-server/src/middlewares/requireRole.ts
+artifacts/api-server/src/middlewares/requireJwt.ts
+artifacts/api-server/src/routes/auth-service.ts
+```
+
+## Problem beheben
+
+Benutzer ohne Rollen dürfen geschützte Aktionen nicht automatisch ausführen.
+
+Entferne jede Logik nach dem Muster:
+
+```ts
+if (roles.length === 0) {
+  next();
+}
+```
+
+## Verbindliche Regel
+
+Wenn eine Route Rollen verlangt und der Benutzer keine passende Rolle besitzt:
+
+```text
+403 Forbidden
+```
+
+## Minimale Rollen
+
+Verwende mindestens:
+
+```text
+AG_ADMIN
+GENERAL_PLANNER
+AN_ADMIN
+AN_DISPATCHER
+HUB_ADMIN
+```
+
+## Registrierung
+
+Bei der Registrierung automatisch eine passende Rolle vergeben:
+
+```text
+AG-Gründer → AG_ADMIN
+AN-Gründer → AN_ADMIN
+Hub-Benutzer → HUB_ADMIN
+```
+
+Bestehende Demo-Benutzer mit passenden Rollen ergänzen.
+
+## Wesentliche Berechtigungen
+
+### AG
+
+```text
+AG_ADMIN
+GENERAL_PLANNER
+```
+
+dürfen Taktanfragen erstellen und bearbeiten.
+
+Nur `AG_ADMIN` darf projektbezogene AN-Zuordnungen verwalten und Projekte archivieren.
+
+### AN
+
+```text
+AN_ADMIN
+AN_DISPATCHER
+```
+
+dürfen Ressourcenplanung, Machbarkeitsprüfung und Antworten bearbeiten.
+
+### Hub
+
+Nur:
+
+```text
+HUB_ADMIN
+```
+
+darf technische Nachrichten und Retries verwalten.
+
+## Tests
+
+* Benutzer ohne Rolle erhält `403`.
+* `GENERAL_PLANNER` kann Taktanfrage erstellen.
+* `AN_DISPATCHER` kann Machbarkeitsprüfung starten.
+* AN kann keine AG-Entscheidung erstellen.
+* AG kann keine AN-Ressourcen verwalten.
+* nur `HUB_ADMIN` kann Nachrichten erneut zustellen.
+
+---
+
+# 3. Reminder-Transportstatus korrigieren
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/services/deadline-evaluation-service.ts
+```
+
+Das Ergebnis von:
+
+```ts
+transport.send(...)
+```
+
+muss ausgewertet werden.
+
+## Regeln
+
+### Transportergebnis `DELIVERED`
+
+Reminder auf:
+
+```text
+DELIVERED
+```
+
+setzen.
+
+### Transportergebnis `SENT`
+
+Reminder auf:
+
+```text
+SENT
+```
+
+setzen.
+
+### Transportergebnis `FAILED`
+
+Reminder auf:
+
+```text
+FAILED
+```
+
+setzen.
+
+Nicht:
+
+* `reminderCount` als erfolgreich versendet erhöhen
+* Erfolg protokollieren
+* fachlichen Requeststatus ändern
+
+Retry muss dieselbe `messageId` verwenden und darf keinen zweiten Reminder erzeugen.
+
+## Tests
+
+* erfolgreicher Versand setzt korrekten Status
+* fehlgeschlagener Versand bleibt `FAILED`
+* Retry erzeugt keinen doppelten Reminder
+* fachlicher Requeststatus bleibt unverändert
+
+---
+
+# 4. Registrierung transaktional absichern
+
+Benutzer, Organisation und Organisationsmitgliedschaft müssen gemeinsam in einer Datenbanktransaktion erstellt werden.
+
+Ablauf:
+
+```text
+BEGIN
+Benutzer erstellen
+Organisation erstellen
+Mitgliedschaft mit passender Rolle erstellen
+COMMIT
+```
+
+Bei Fehler:
+
+```text
+ROLLBACK
+```
+
+Es dürfen keine verwaisten Benutzer oder Organisationen entstehen.
+
+Refresh Token erst nach erfolgreichem Commit erzeugen.
+
+## Tests
+
+* Fehler bei Organisationserstellung rollt Benutzer zurück
+* Fehler bei Mitgliedschaft rollt Benutzer und Organisation zurück
+* erfolgreiche Registrierung besitzt direkt eine passende Rolle
+
+---
+
+# 5. Projektkennzahlen minimal korrigieren
+
+Die AG-Projektübersichten sollen keine fest codierten oder rein aus Legacy-Delegationen berechneten Werte anzeigen.
+
+Prüfe insbesondere Werte wie:
+
+```text
+taktCount: 0
+```
+
+## Übersicht aller AG-Projekte
+
+Je Projekt mindestens korrekt aus den neuen Tabellen berechnen:
+
+```text
+projectId
+projectName
+assignedAnCount
+taktCount
+openTaktRequests
+overdueTaktRequests
+confirmedTakts
+lastActivityAt
+```
+
+## Einzelprojektübersicht
+
+Mindestens anzeigen:
+
+```text
+Projektinformationen
+projektbezogene AN
+Takte
+offene Taktanfragen
+überfällige Taktanfragen
+bestätigte Takte
+letzte Aktivitäten
+```
+
+Verwende:
+
+```text
+takte
+takt_requests
+takt_responses
+project_subcontractors
+```
+
+Legacy-Delegationen nur noch anzeigen, wenn sie ausdrücklich als Legacy-Daten gekennzeichnet sind.
+
+---
+
+# 6. Aufgabe 8 nur minimal umsetzen
+
+Keine vollständige Reporting-Plattform umsetzen.
+
+Nicht erforderlich:
+
+* keine umfangreichen Diagramme
+* keine Median- und Trendanalysen
+* keine CSV- oder JSON-Exporte
+* keine komplexen Drill-down-Berichte
+* keine BI-Anbindung
+* kein Ressourcenreport über alle historischen Daten
+
+## Minimaler AG-Bericht
+
+Implementiere einen Endpunkt:
+
+```http
+GET /reports/ag/summary
+```
+
+Nur für:
+
+```text
+AG_ADMIN
+GENERAL_PLANNER
+```
+
+Response mindestens:
+
+```json
+{
+  "projects": 0,
+  "assignedSubcontractors": 0,
+  "openTaktRequests": 0,
+  "overdueTaktRequests": 0,
+  "acceptedTaktRequests": 0,
+  "alternativeTaktRequests": 0,
+  "rejectedTaktRequests": 0,
+  "confirmedTakts": 0
+}
+```
+
+Alle Werte ausschließlich für die eigene AG-Organisation berechnen.
+
+## Minimaler AN-Bericht
+
+Implementiere:
+
+```http
+GET /reports/an/summary
+```
+
+Nur für:
+
+```text
+AN_ADMIN
+AN_DISPATCHER
+```
+
+Response mindestens:
+
+```json
+{
+  "openTaktRequests": 0,
+  "dueSoonTaktRequests": 0,
+  "overdueTaktRequests": 0,
+  "acceptedResponses": 0,
+  "alternativeResponses": 0,
+  "rejectedResponses": 0,
+  "activeResources": 0,
+  "activeResourceBookings": 0
+}
+```
+
+Alle Werte ausschließlich für die eigene AN-Organisation berechnen.
+
+## Minimaler Hub-Bericht
+
+Implementiere:
+
+```http
+GET /reports/hub/summary
+```
+
+Nur für:
+
+```text
+HUB_ADMIN
+```
+
+Response mindestens:
+
+```json
+{
+  "pendingMessages": 0,
+  "deliveredMessages": 0,
+  "failedMessages": 0,
+  "retryCount": 0
+}
+```
+
+Keine fachlichen Snapshots oder Ressourceninformationen laden.
+
+## Minimale Benutzeroberflächen
+
+### AG
+
+Ergänze eine kleine Übersichtsseite oder KPI-Karten im bestehenden Dashboard.
+
+Zeige:
+
+* Projekte
+* offene Requests
+* überfällige Requests
+* bestätigte Takte
+
+### AN
+
+Ersetze den aktuellen Reporting-Platzhalter durch einfache KPI-Karten:
+
+* offene Requests
+* bald fällige Requests
+* überfällige Requests
+* aktive Ressourcenbuchungen
+
+### Hub
+
+Ergänze KPI-Karten:
+
+* ausstehende Nachrichten
+* zugestellte Nachrichten
+* fehlgeschlagene Nachrichten
+* Retries
+
+Keine Diagrammbibliothek neu einführen.
+
+## Minimaler Audit-Trail
+
+Den bestehenden Audit-Trail nur so ergänzen, dass mindestens folgende Ereignisse vorhanden sind:
+
+```text
+REQUEST_CREATED
+SNAPSHOT_CREATED
+MESSAGE_SENT
+DETAILS_RETRIEVED
+AVAILABILITY_CHECK_COMPLETED
+RESPONSE_CREATED
+GU_DECISION_CREATED
+REVISION_CREATED
+REMINDER_SENT
+REQUEST_EXPIRED
+```
+
+Keine vollständigen Payloads in Audit-Einträgen speichern oder ausgeben.
+
+---
+
+# 7. Zwingende Tests und Abschlussprüfung
+
+Führe mindestens aus:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm --filter @workspace/api-server test
+pnpm run build
+```
+
+Falls Root-Skripte fehlen, ergänze ein einfaches Skript:
+
+```json
+{
+  "scripts": {
+    "verify": "pnpm run typecheck && pnpm --filter @workspace/api-server test && pnpm run build"
+  }
+}
+```
+
+## Zusätzliche Sicherheitstests
+
+Mindestens:
+
+```text
+AN A ändert Ressource von AN B
+→ abgelehnt
+
+Benutzer ohne Rolle erstellt Taktanfrage
+→ abgelehnt
+
+Benutzer ohne Rolle verwaltet Projekt-AN-Zuordnung
+→ abgelehnt
+
+Reminder-Transport schlägt fehl
+→ Reminder bleibt FAILED
+
+AG A öffnet Projekt von AG B
+→ abgelehnt
+```
+
+## Minimaler End-to-End-Test
+
+```text
+AG besitzt Projekt A
+→ Projekt A besitzt AN 1
+→ AG erstellt Taktanfrage
+→ AN 1 ruft Snapshot ab
+→ AN 1 führt Machbarkeitsprüfung aus
+→ AN 1 sendet Antwort
+→ AG bestätigt oder wählt Alternative
+→ Taktstatus wird aktualisiert
+→ AG-, AN- und Hub-Kennzahlen werden aktualisiert
+→ keine fremden Ressourcen sind sichtbar
+```
+
+---
+
+# Abschlusskriterien
+
+Der Auftrag ist abgeschlossen, wenn:
+
+* Ressourcen und Ressourcenzuweisungen vollständig organisationsgeschützt sind
+* keine Ressourcen physisch gelöscht werden
+* Rollenprüfungen bei fehlender Rolle immer verweigern
+* Registrierungen direkt eine passende Rolle erhalten
+* Reminderstatus dem tatsächlichen Transportergebnis entspricht
+* Projektkennzahlen nicht mehr fest codiert sind
+* AG, AN und Hub jeweils eine minimale Kennzahlenübersicht besitzen
+* Audit-Trail die wesentlichen Prozessschritte enthält
+* API-Tests erfolgreich sind
+* Typecheck erfolgreich ist
+* Build erfolgreich ist
+
+## Abschlussbericht
+
+Berichte ausschließlich:
+
+1. geänderte Dateien
+2. behobene Sicherheitsprobleme
+3. implementierte minimale Reports
+4. ergänzte Tests
+5. tatsächliche Ergebnisse von Test, Typecheck und Build
+6. verbleibende Blocker
+
+Keine umfangreichen zusätzlichen Funktionen implementieren.
