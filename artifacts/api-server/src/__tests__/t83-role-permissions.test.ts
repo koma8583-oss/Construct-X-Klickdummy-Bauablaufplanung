@@ -137,6 +137,9 @@ afterAll(async () => {
   await db.delete(taktRequestsTable)
     .where(inArray(taktRequestsTable.id, reqIds.map(t => reqId(t))));
 
+  // Also clean up any leftover takt_requests referencing TAKT_ID (created during test runs)
+  await db.delete(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT_ID));
+
   await db.delete(projectContractorsTable)
     .where(and(eq(projectContractorsTable.projectId, PROJ_ID),
                eq(projectContractorsTable.anOrgId, NU_ORG)));
@@ -200,12 +203,12 @@ describe("POST /takt-requests (AG_ADMIN / GENERAL_PLANNER)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("[4] Empty roles (legacy token) → not 403 (soft enforcement)", async () => {
+  it("[4] Empty roles → 403 (fail-closed: no roles means no access)", async () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agNoRoleToken}`)
       .send(body);
-    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(403);
   });
 });
 

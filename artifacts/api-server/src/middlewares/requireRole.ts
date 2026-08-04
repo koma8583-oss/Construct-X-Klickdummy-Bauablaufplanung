@@ -2,17 +2,11 @@ import type { Request, Response, NextFunction } from "express";
 import type { UserRole } from "@workspace/db";
 
 /**
- * Role-check middleware factory.
+ * Role-check middleware factory — fail-closed.
  *
  * Creates a middleware that ensures the authenticated user holds at least one
- * of the specified roles.
- *
- * Soft enforcement: if the user's `roles` array is empty (legacy / unassigned
- * user), the check is skipped and the request is allowed through.  This keeps
- * all existing tests that use bare JWT tokens (no roles) working unchanged.
- *
- * If the user has been assigned roles but none of them match the required set,
- * a 403 is returned immediately.
+ * of the specified roles. If the user has no roles or no matching role, 403 is
+ * returned immediately with no exceptions.
  *
  * Usage:
  *   router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANNER"), handler)
@@ -24,12 +18,6 @@ export function requireRole(...allowedRoles: UserRole[]) {
     next: NextFunction,
   ): void {
     const roles = req.user?.roles ?? [];
-
-    // Soft enforcement: unassigned users are not blocked (backward compat).
-    if (roles.length === 0) {
-      next();
-      return;
-    }
 
     const hasRole = roles.some((r) =>
       (allowedRoles as string[]).includes(r),

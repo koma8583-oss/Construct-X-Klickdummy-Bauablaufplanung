@@ -38,8 +38,9 @@ const PROJECT_B = "t79-project-b";   // owned by OTHER_AG
 const INTERNAL_TOKEN = process.env.INTERNAL_JOB_TOKEN ?? "ci-test-internal-token-do-not-use-in-prod";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret";
-function signToken(payload: object) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+function signToken(payload: { userId: string; orgId: string | null; orgType: "AG" | "AN" | null; hubAdmin?: boolean; roles?: string[] }) {
+  const roles = payload.roles ?? (payload.orgType === "AG" ? ["AG_ADMIN"] : payload.orgType === "AN" ? ["AN_ADMIN"] : []);
+  return jwt.sign({ ...payload, hubAdmin: payload.hubAdmin ?? false, roles }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 let agToken: string;

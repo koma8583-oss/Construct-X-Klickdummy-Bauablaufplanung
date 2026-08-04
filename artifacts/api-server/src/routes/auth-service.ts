@@ -170,38 +170,51 @@ router.post("/register", async (req, res): Promise<void> => {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const [user] = await db
-    .insert(usersTable)
-    .values({ name, email, passwordHash })
-    .returning();
+  // Determine the initial role for this org type (founder always gets admin)
+  const initialRole: string = orgType === "AG" ? "AG_ADMIN" : "AN_ADMIN";
 
-  if (!user) {
-    res.status(500).json({ error: "Benutzer konnte nicht erstellt werden" });
+  // Atomically create user, organisation, and membership.
+  // If any step fails the whole transaction is rolled back — no orphaned rows.
+  let user: typeof usersTable.$inferSelect;
+  let org:  typeof organizationsTable.$inferSelect;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [newUser] = await tx
+        .insert(usersTable)
+        .values({ name, email, passwordHash, roles: [initialRole] })
+        .returning();
+      if (!newUser) throw new Error("Benutzer konnte nicht erstellt werden");
+
+      const [newOrg] = await tx
+        .insert(organizationsTable)
+        .values({ name: companyName, type: orgType })
+        .returning();
+      if (!newOrg) throw new Error("Organisation konnte nicht erstellt werden");
+
+      await tx.insert(userOrganizationsTable).values({
+        userId: newUser.id,
+        orgId:  newOrg.id,
+        role:   "ADMIN",
+      });
+
+      return { user: newUser, org: newOrg };
+    });
+    user = result.user;
+    org  = result.org;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Registrierung fehlgeschlagen";
+    res.status(500).json({ error: msg });
     return;
   }
 
-  const [org] = await db
-    .insert(organizationsTable)
-    .values({ name: companyName, type: orgType })
-    .returning();
-
-  if (!org) {
-    res.status(500).json({ error: "Organisation konnte nicht erstellt werden" });
-    return;
-  }
-
-  await db.insert(userOrganizationsTable).values({
-    userId: user.id,
-    orgId: org.id,
-    role: "ADMIN",
-  });
-
+  // Refresh token is created only after the transaction commits successfully
   const tokenPayload: TokenPayload = {
     userId: user.id,
-    orgId: org.id,
+    orgId:  org.id,
     orgType,
     hubAdmin: false,
-    roles: [],  // new users start with no roles; an admin assigns them later
+    roles: [initialRole],
   };
 
   const accessToken = signAccessToken(tokenPayload);
@@ -213,11 +226,11 @@ router.post("/register", async (req, res): Promise<void> => {
     name: user.name,
     email: user.email,
     preferredLanguage: user.preferredLanguage ?? "de",
-    orgId: org.id,
+    orgId:   org.id,
     orgName: org.name,
     orgType,
     hubAdmin: false,
-    roles: [],
+    roles: [initialRole],
   };
 
   res.status(201).json({ accessToken, user: profile });

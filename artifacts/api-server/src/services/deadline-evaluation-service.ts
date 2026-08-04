@@ -581,9 +581,13 @@ async function upsertReminder(opts: {
     deepLink:        `/takt-requests/${taktRequestId}`,
   };
 
-  // Dispatch via transport
+  // Dispatch via transport — capture the result to set the correct reminder status.
+  // transport.send() may EITHER throw on a hard error OR return { status: "FAILED" }
+  // for a soft delivery failure. Both paths must mark the reminder FAILED and must
+  // NOT increment reminderCount.
+  let transportResult: import("../lib/transport/message-transport").TransportResult;
   try {
-    await transport.send({
+    transportResult = await transport.send({
       messageId,
       schemaVersion:  "1.0",
       messageType:    "TAKT_REQUEST_REMINDER",
@@ -593,33 +597,48 @@ async function upsertReminder(opts: {
       createdAt:      scheduledFor,
       payload,
     });
-
-    // Update reminder to SENT/DELIVERED
-    await db
-      .update(taktRequestRemindersTable)
-      .set({ status: "SENT", sentAt: new Date(), attemptCount: 1 })
-      .where(eq(taktRequestRemindersTable.id, reminderId));
-
-    // Update request lastReminderAt + reminderCount
-    await db
-      .update(taktRequestsTable)
-      .set({
-        lastReminderAt: new Date(),
-        reminderCount:  sql`${taktRequestsTable.reminderCount} + 1`,
-      })
-      .where(eq(taktRequestsTable.id, taktRequestId));
-
-    logger.info({ taktRequestId, reminderType }, "Reminder sent");
-    return "sent";
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     await db
       .update(taktRequestRemindersTable)
       .set({ status: "FAILED", failureReason: reason, attemptCount: 1 })
       .where(eq(taktRequestRemindersTable.id, reminderId));
-    logger.warn({ taktRequestId, reminderType, reason }, "Reminder dispatch failed");
+    logger.warn({ taktRequestId, reminderType, reason }, "Reminder dispatch threw — marked FAILED");
     return "created"; // created but not sent
   }
+
+  // transport.send() returned normally — branch on the reported status
+  if (transportResult.status === "FAILED") {
+    // Soft delivery failure: send() returned FAILED without throwing
+    const reason = transportResult.error?.message ?? "Transport returned FAILED status";
+    await db
+      .update(taktRequestRemindersTable)
+      .set({ status: "FAILED", failureReason: reason, attemptCount: 1 })
+      .where(eq(taktRequestRemindersTable.id, reminderId));
+    logger.warn({ taktRequestId, reminderType, reason }, "Reminder transport returned FAILED — marked FAILED");
+    return "created"; // created but not sent; reminderCount unchanged
+  }
+
+  // Successful delivery: DELIVERED or SENT
+  const reminderStatus =
+    transportResult.status === "DELIVERED" ? ("DELIVERED" as const) : ("SENT" as const);
+
+  await db
+    .update(taktRequestRemindersTable)
+    .set({ status: reminderStatus, sentAt: new Date(), attemptCount: 1 })
+    .where(eq(taktRequestRemindersTable.id, reminderId));
+
+  // Increment reminderCount only on successful delivery
+  await db
+    .update(taktRequestsTable)
+    .set({
+      lastReminderAt: new Date(),
+      reminderCount:  sql`${taktRequestsTable.reminderCount} + 1`,
+    })
+    .where(eq(taktRequestsTable.id, taktRequestId));
+
+  logger.info({ taktRequestId, reminderType, transportStatus: transportResult.status }, "Reminder sent");
+  return "sent";
 }
 
 // ── Cancel stale pending reminders ───────────────────────────────────────────

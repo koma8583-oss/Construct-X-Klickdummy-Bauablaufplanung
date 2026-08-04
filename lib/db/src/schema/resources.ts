@@ -123,6 +123,11 @@ export const resourceAssignmentsTable = pgTable("resource_assignments", {
   fromDate: date("from_date", { mode: "string" }).notNull(),
   toDate: date("to_date", { mode: "string" }).notNull(),
   note: text("note"),
+  /**
+   * Soft-delete flag. Set to false instead of physically deleting so that
+   * historical assignment data remains readable for audit purposes.
+   */
+  active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -42,9 +42,11 @@ function signToken(p: {
   orgId: string | null;
   orgType: "AG" | "AN" | null;
   hubAdmin?: boolean;
+  roles?: string[];
 }): string {
+  const roles = p.roles ?? (p.orgType === "AG" ? ["AG_ADMIN"] : p.orgType === "AN" ? ["AN_ADMIN"] : []);
   return jwt.sign(
-    { ...p, hubAdmin: p.hubAdmin ?? false },
+    { ...p, hubAdmin: p.hubAdmin ?? false, roles },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

@@ -24,8 +24,9 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "test-secret";
 
-function makeToken(orgId: string | null, orgType: "AG" | "AN" | null, userId: string) {
-  return jwt.sign({ userId, orgId, orgType, hubAdmin: false }, JWT_SECRET, { expiresIn: "1h" });
+function makeToken(orgId: string | null, orgType: "AG" | "AN" | null, userId: string, roles?: string[]) {
+  const derivedRoles = roles ?? (orgType === "AG" ? ["AG_ADMIN"] : orgType === "AN" ? ["AN_ADMIN"] : []);
+  return jwt.sign({ userId, orgId, orgType, hubAdmin: false, roles: derivedRoles }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

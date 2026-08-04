@@ -4,8 +4,7 @@ import {
   resourcesTable,
   resourceAssignmentsTable,
   delegationsTable,
-  takteTable,
-  organizationsTable,
+  taktRequestsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -13,50 +12,67 @@ import { z } from "zod";
 
 const router = Router();
 
-// GET /resources
-router.get("/resources", requireJwt, async (req, res): Promise<void> => {
-  const orgId = req.user!.orgId!;
-  const type = req.query.type as string | undefined;
+// ── Helper: assert the resource belongs to the caller's org ──────────────────
 
-  let query = db
+async function loadOwnResource(
+  resourceId: string,
+  orgId: string,
+): Promise<(typeof resourcesTable.$inferSelect) | null> {
+  const [r] = await db
     .select()
     .from(resourcesTable)
-    .where(eq(resourcesTable.anOrgId, orgId))
-    .$dynamic();
+    .where(
+      and(
+        eq(resourcesTable.id, resourceId),
+        eq(resourcesTable.anOrgId, orgId),
+      ),
+    )
+    .limit(1);
+  return r ?? null;
+}
+
+// ── GET /resources ────────────────────────────────────────────────────────────
+
+router.get("/resources", requireJwt, async (req, res): Promise<void> => {
+  const orgId = req.user!.orgId!;
+  const type  = req.query.type as string | undefined;
+
+  // Always scope to caller's org and only return active resources (soft-deleted are excluded)
+  const conditions: Parameters<typeof and>[] = [
+    eq(resourcesTable.anOrgId, orgId) as any,
+    eq(resourcesTable.active, true) as any,
+  ];
 
   if (type) {
-    query = query.where(
-      and(
-        eq(resourcesTable.anOrgId, orgId),
-        eq(
-          resourcesTable.type,
-          type as "EMPLOYEE" | "EQUIPMENT" | "MACHINE" | "OTHER",
-        ),
-      ),
+    conditions.push(
+      eq(resourcesTable.type, type as "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER") as any,
     );
   }
 
-  const resources = await query;
+  const resources = await db
+    .select()
+    .from(resourcesTable)
+    .where(and(...(conditions as [any, ...any[]])));
+
   res.json(resources);
 });
 
-// POST /resources
+// ── POST /resources ───────────────────────────────────────────────────────────
+
 router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
     type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]),
     name: z.string().min(1),
-    // Legacy fields — retained for backward compatibility
-    qualification: z.string().optional(),
+    qualification:     z.string().optional(),
     dailyCapacityHours: z.number().optional(),
-    color: z.string().optional(),
-    // New fields (Task 4.3) — all optional to keep existing clients working
-    trade: z.string().optional(),
-    skills: z.array(z.string()).optional(),
-    qualifications: z.array(z.string()).optional(),
-    capacity: z.number().positive().optional(),
-    capacityUnit: z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
-    calendarId: z.string().optional(),
-    active: z.boolean().optional(),
+    color:             z.string().optional(),
+    trade:             z.string().optional(),
+    skills:            z.array(z.string()).optional(),
+    qualifications:    z.array(z.string()).optional(),
+    capacity:          z.number().positive().optional(),
+    capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
+    calendarId:        z.string().optional(),
+    active:            z.boolean().optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -73,26 +89,35 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   res.status(201).json(resource);
 });
 
-// PATCH /resources/:resourceId
+// ── PATCH /resources/:resourceId ──────────────────────────────────────────────
+
 router.patch(
   "/resources/:resourceId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const orgId = req.user!.orgId!;
+    const resourceId = req.params.resourceId as string;
+
+    // Org-isolation check: resource must belong to caller's org
+    const existing = await loadOwnResource(resourceId, orgId);
+    if (!existing) {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+
     const schema = z.object({
-      type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
-      name: z.string().min(1).optional(),
-      // Legacy fields
-      qualification: z.string().optional(),
+      type:              z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
+      name:              z.string().min(1).optional(),
+      qualification:     z.string().optional(),
       dailyCapacityHours: z.number().optional(),
-      color: z.string().optional(),
-      // New fields (Task 4.3)
-      trade: z.string().optional(),
-      skills: z.array(z.string()).optional(),
-      qualifications: z.array(z.string()).optional(),
-      capacity: z.number().positive().optional(),
-      capacityUnit: z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
-      calendarId: z.string().optional(),
-      active: z.boolean().optional(),
+      color:             z.string().optional(),
+      trade:             z.string().optional(),
+      skills:            z.array(z.string()).optional(),
+      qualifications:    z.array(z.string()).optional(),
+      capacity:          z.number().positive().optional(),
+      capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
+      calendarId:        z.string().optional(),
+      active:            z.boolean().optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -101,47 +126,71 @@ router.patch(
       return;
     }
 
-    const [resource] = await db
+    const [updated] = await db
       .update(resourcesTable)
       .set(parsed.data)
-      .where(eq(resourcesTable.id, (req.params.resourceId as string)))
+      .where(
+        and(
+          eq(resourcesTable.id, resourceId),
+          eq(resourcesTable.anOrgId, orgId), // double-lock: org must still match
+        ),
+      )
       .returning();
 
-    if (!resource) {
+    if (!updated) {
       res.status(404).json({ error: "Resource not found" });
       return;
     }
 
-    res.json(resource);
+    res.json(updated);
   },
 );
 
-// DELETE /resources/:resourceId
+// ── DELETE /resources/:resourceId → soft-delete (active = false) ──────────────
+
 router.delete(
   "/resources/:resourceId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const orgId = req.user!.orgId!;
+    const resourceId = req.params.resourceId as string;
+
+    // Org-isolation check
+    const existing = await loadOwnResource(resourceId, orgId);
+    if (!existing) {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+
+    // Soft-delete: set active = false; historical assignments remain readable
     await db
-      .delete(resourcesTable)
-      .where(eq(resourcesTable.id, (req.params.resourceId as string)));
+      .update(resourcesTable)
+      .set({ active: false })
+      .where(
+        and(
+          eq(resourcesTable.id, resourceId),
+          eq(resourcesTable.anOrgId, orgId),
+        ),
+      );
+
     res.status(204).send();
   },
 );
 
-// GET /resource-assignments
+// ── GET /resource-assignments ─────────────────────────────────────────────────
+
 router.get(
   "/resource-assignments",
   requireJwt,
   async (req, res): Promise<void> => {
-    const { delegationId, resourceId, from, to } = req.query as Record<
-      string,
-      string
-    >;
+    const orgId = req.user!.orgId!;
+    const { delegationId, resourceId, from, to } = req.query as Record<string, string>;
 
+    // Scope to caller's org via resource ownership
     const assignments = await db
       .select({
         assignment: resourceAssignmentsTable,
-        resource: resourcesTable,
+        resource:   resourcesTable,
         delegation: delegationsTable,
       })
       .from(resourceAssignmentsTable)
@@ -155,14 +204,14 @@ router.get(
       )
       .where(
         and(
-          delegationId
-            ? eq(resourceAssignmentsTable.delegationId, delegationId)
-            : undefined,
-          resourceId
-            ? eq(resourceAssignmentsTable.resourceId, resourceId)
-            : undefined,
-          from ? gte(resourceAssignmentsTable.fromDate, from) : undefined,
-          to ? lte(resourceAssignmentsTable.toDate, to) : undefined,
+          // Org isolation: only own-org resources
+          eq(resourcesTable.anOrgId, orgId),
+          // Exclude soft-deleted assignments from default listing
+          eq(resourceAssignmentsTable.active, true),
+          delegationId ? eq(resourceAssignmentsTable.delegationId, delegationId) : undefined,
+          resourceId   ? eq(resourceAssignmentsTable.resourceId, resourceId)     : undefined,
+          from         ? gte(resourceAssignmentsTable.fromDate, from)             : undefined,
+          to           ? lte(resourceAssignmentsTable.toDate, to)                 : undefined,
         ),
       );
 
@@ -176,22 +225,53 @@ router.get(
   },
 );
 
-// POST /resource-assignments
+// ── POST /resource-assignments ────────────────────────────────────────────────
+
 router.post(
   "/resource-assignments",
   requireJwt,
   async (req, res): Promise<void> => {
+    const orgId = req.user!.orgId!;
+
     const schema = z.object({
-      resourceId: z.string(),
+      resourceId:   z.string(),
       delegationId: z.string(),
-      fromDate: z.string(),
-      toDate: z.string(),
-      note: z.string().optional(),
+      fromDate:     z.string(),
+      toDate:       z.string(),
+      note:         z.string().optional(),
     });
 
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    // Rule 1: resource must belong to caller's org and must be active (not soft-deleted)
+    const resource = await loadOwnResource(parsed.data.resourceId, orgId);
+    if (!resource) {
+      res.status(403).json({ error: "Resource does not belong to your organisation" });
+      return;
+    }
+    if (!resource.active) {
+      res.status(422).json({ error: "Cannot assign a deactivated resource" });
+      return;
+    }
+
+    // Rule 2: delegation (or takt-request) must be addressed to caller's org
+    const [delegation] = await db
+      .select({ id: delegationsTable.id, anOrgId: delegationsTable.anOrgId })
+      .from(delegationsTable)
+      .where(eq(delegationsTable.id, parsed.data.delegationId))
+      .limit(1);
+
+    if (!delegation) {
+      res.status(404).json({ error: "Delegation not found" });
+      return;
+    }
+
+    if (delegation.anOrgId !== orgId) {
+      res.status(403).json({ error: "Delegation is not addressed to your organisation" });
       return;
     }
 
@@ -204,15 +284,43 @@ router.post(
   },
 );
 
-// PATCH /resource-assignments/:assignmentId
+// ── PATCH /resource-assignments/:assignmentId ─────────────────────────────────
+
 router.patch(
   "/resource-assignments/:assignmentId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const orgId = req.user!.orgId!;
+    const assignmentId = req.params.assignmentId as string;
+
+    // Org-isolation: load assignment and verify resource ownership
+    const [existing] = await db
+      .select({
+        assignment: resourceAssignmentsTable,
+        resource:   resourcesTable,
+      })
+      .from(resourceAssignmentsTable)
+      .innerJoin(
+        resourcesTable,
+        eq(resourceAssignmentsTable.resourceId, resourcesTable.id),
+      )
+      .where(
+        and(
+          eq(resourceAssignmentsTable.id, assignmentId),
+          eq(resourcesTable.anOrgId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Assignment not found" });
+      return;
+    }
+
     const schema = z.object({
       fromDate: z.string().optional(),
-      toDate: z.string().optional(),
-      note: z.string().optional(),
+      toDate:   z.string().optional(),
+      note:     z.string().optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -221,29 +329,57 @@ router.patch(
       return;
     }
 
-    const [assignment] = await db
+    const [updated] = await db
       .update(resourceAssignmentsTable)
       .set(parsed.data)
-      .where(eq(resourceAssignmentsTable.id, (req.params.assignmentId as string)))
+      .where(eq(resourceAssignmentsTable.id, assignmentId))
       .returning();
 
-    if (!assignment) {
+    if (!updated) {
       res.status(404).json({ error: "Assignment not found" });
       return;
     }
 
-    res.json(assignment);
+    res.json(updated);
   },
 );
 
-// DELETE /resource-assignments/:assignmentId
+// ── DELETE /resource-assignments/:assignmentId → soft-delete (status=CANCELLED) ─
+
 router.delete(
   "/resource-assignments/:assignmentId",
   requireJwt,
   async (req, res): Promise<void> => {
+    const orgId = req.user!.orgId!;
+    const assignmentId = req.params.assignmentId as string;
+
+    // Org-isolation: verify resource belongs to caller's org
+    const [existing] = await db
+      .select({ id: resourceAssignmentsTable.id })
+      .from(resourceAssignmentsTable)
+      .innerJoin(
+        resourcesTable,
+        eq(resourceAssignmentsTable.resourceId, resourcesTable.id),
+      )
+      .where(
+        and(
+          eq(resourceAssignmentsTable.id, assignmentId),
+          eq(resourcesTable.anOrgId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Assignment not found" });
+      return;
+    }
+
+    // Soft-delete: mark as inactive so historical record remains readable
     await db
-      .delete(resourceAssignmentsTable)
-      .where(eq(resourceAssignmentsTable.id, (req.params.assignmentId as string)));
+      .update(resourceAssignmentsTable)
+      .set({ active: false })
+      .where(eq(resourceAssignmentsTable.id, assignmentId));
+
     res.status(204).send();
   },
 );

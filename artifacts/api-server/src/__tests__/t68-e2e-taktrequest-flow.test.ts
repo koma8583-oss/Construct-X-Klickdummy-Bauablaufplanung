@@ -55,8 +55,10 @@ function sign(p: {
   orgId: string | null;
   orgType: "AG" | "AN" | null;
   hubAdmin?: boolean;
+  roles?: string[];
 }): string {
-  return jwt.sign({ ...p, hubAdmin: p.hubAdmin ?? false }, JWT_SECRET, { expiresIn: "1h" });
+  const roles = p.roles ?? (p.orgType === "AG" ? ["AG_ADMIN"] : p.orgType === "AN" ? ["AN_ADMIN"] : []);
+  return jwt.sign({ ...p, hubAdmin: p.hubAdmin ?? false, roles }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 const guToken = sign({ userId: GU_USER_ID, orgId: GU_ORG_ID, orgType: "AG" });

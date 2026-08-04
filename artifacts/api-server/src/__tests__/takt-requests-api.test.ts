@@ -35,9 +35,11 @@ function signToken(payload: {
   orgId: string | null;
   orgType: "AG" | "AN" | null;
   hubAdmin?: boolean;
+  roles?: string[];
 }): string {
+  const roles = payload.roles ?? (payload.orgType === "AG" ? ["AG_ADMIN"] : payload.orgType === "AN" ? ["AN_ADMIN"] : []);
   return jwt.sign(
-    { ...payload, hubAdmin: payload.hubAdmin ?? false },
+    { ...payload, hubAdmin: payload.hubAdmin ?? false, roles },
     DEV_SECRET,
     { expiresIn: "1h" },
   );
