@@ -57,8 +57,8 @@ export default function Register() {
         <div className="mx-auto w-full max-w-sm lg:w-96">
           <div className="flex items-center gap-3 mb-8">
             <Hexagon className="w-8 h-8 text-primary fill-primary/20" />
-            <span className="font-bold text-2xl tracking-tight text-foreground">
-              TaktKoord<span className="text-primary">.</span>
+            <span className="font-bold text-lg tracking-tight text-foreground">
+              Construct-X Takt Coordination
             </span>
           </div>
 

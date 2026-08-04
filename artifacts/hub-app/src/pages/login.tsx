@@ -44,7 +44,7 @@ export default function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">
-              TaktKoord <span className="text-primary">/</span> KOORDINATION
+              Construct-X Takt Coordination
             </CardTitle>
             <CardDescription className="mt-2">
               Melden Sie sich an, um fortzufahren

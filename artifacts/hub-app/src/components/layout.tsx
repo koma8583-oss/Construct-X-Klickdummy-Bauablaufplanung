@@ -63,11 +63,11 @@ export function Layout({ children }: LayoutProps) {
               <Radio className="text-primary-foreground" size={20} />
             </div>
             <div className="flex flex-col">
-              <div className="text-lg font-bold text-sidebar-foreground leading-none">
-                TaktKoord
+              <div className="text-sm font-bold text-sidebar-foreground leading-tight">
+                Construct-X Takt Coordination
               </div>
               <div className="text-xs text-sidebar-foreground/60 font-medium tracking-wider mt-0.5">
-                KOORDINATION
+                HUB
               </div>
             </div>
           </div>

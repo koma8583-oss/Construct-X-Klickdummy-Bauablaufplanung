@@ -19,6 +19,10 @@ import TaktRequestDetail from '@/pages/takt-request-detail';
 import GanttPage from '@/pages/gantt';
 import Resources from '@/pages/resources';
 import Settings from '@/pages/settings';
+import LocalProjects from '@/pages/local-projects';
+import ResourceBookings from '@/pages/resource-bookings';
+import AvailabilityChecks from '@/pages/availability-checks';
+import Reports from '@/pages/reports';
 
 const queryClient = new QueryClient();
 
@@ -56,6 +60,10 @@ function AuthRoutedApp() {
         <Route path="/requests/:delegationId" component={RequestDetail} />
         <Route path="/takt-requests" component={TaktRequestsInbox} />
         <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
+        <Route path="/local-projects" component={LocalProjects} />
+        <Route path="/resource-bookings" component={ResourceBookings} />
+        <Route path="/availability-checks" component={AvailabilityChecks} />
+        <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />
         <Route path="/resources" component={Resources} />
         <Route path="/settings" component={Settings} />

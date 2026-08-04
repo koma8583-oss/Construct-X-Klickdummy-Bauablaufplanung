@@ -54,11 +54,11 @@ export default function Login() {
           <div className="flex items-center gap-3 mb-8">
             <Hexagon className="w-8 h-8 text-primary fill-primary/20" />
             <div>
-              <div className="font-bold text-2xl tracking-tight text-foreground leading-tight">
-                TaktKoord
+              <div className="font-bold text-lg tracking-tight text-foreground leading-tight">
+                Construct-X Takt Coordination
               </div>
               <div className="text-[10px] text-primary uppercase font-bold tracking-widest">
-                Planung
+                General Contractor
               </div>
             </div>
           </div>

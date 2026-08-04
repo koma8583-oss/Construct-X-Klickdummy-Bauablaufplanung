@@ -17,7 +17,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-background text-foreground">
         <Hexagon className="w-12 h-12 text-primary animate-pulse mb-4" />
-        <p className="text-muted-foreground text-sm font-medium">TaktKoord loading...</p>
+        <p className="text-muted-foreground text-sm font-medium">Construct-X loading...</p>
       </div>
     );
   }

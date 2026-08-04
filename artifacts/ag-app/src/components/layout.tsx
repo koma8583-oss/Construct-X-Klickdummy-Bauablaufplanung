@@ -60,11 +60,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className={`flex items-center gap-2.5 flex-1 min-w-0 pl-1 ${collapsed ? 'sm:hidden' : ''}`}>
             <Hexagon className="w-5 h-5 text-primary fill-primary/20 flex-shrink-0" />
             <div className="min-w-0">
-              <div className="font-bold text-sm text-sidebar-foreground leading-tight tracking-tight truncate">
-                TaktKoord
+              <div className="font-bold text-xs text-sidebar-foreground leading-tight tracking-tight truncate">
+                Construct-X Takt Coordination
               </div>
               <div className="text-[9px] text-primary uppercase font-bold tracking-wider">
-                Planung
+                General Contractor
               </div>
             </div>
           </div>
@@ -152,8 +152,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
           <div className="ml-3 flex items-center gap-2">
             <Hexagon className="w-4 h-4 text-primary fill-primary/20" />
-            <span className="font-bold text-sm text-sidebar-foreground">TaktKoord</span>
-            <span className="text-[9px] text-primary uppercase font-bold tracking-wider">Planung</span>
+            <span className="font-bold text-xs text-sidebar-foreground">Construct-X</span>
+            <span className="text-[9px] text-primary uppercase font-bold tracking-wider">General Contractor</span>
           </div>
         </div>
         <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative">

@@ -52,9 +52,9 @@ export default function Register() {
           <div className="w-12 h-12 rounded bg-primary/20 flex items-center justify-center text-primary mb-4">
             <SiHexo size={24} />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">TaktKoord</h1>
+          <h1 className="text-lg font-bold tracking-tight">Construct-X Takt Coordination</h1>
           <p className="text-sm text-primary uppercase font-bold tracking-widest mt-1">
-            Ausführung
+            Subcontractor
           </p>
         </div>
 

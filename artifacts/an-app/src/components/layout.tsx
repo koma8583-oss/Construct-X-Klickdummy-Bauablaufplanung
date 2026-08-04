@@ -14,6 +14,10 @@ import {
   Hexagon,
   Menu,
   X,
+  FolderOpen,
+  CalendarDays,
+  ShieldCheck,
+  BarChart2,
 } from "lucide-react";
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -26,8 +30,12 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
     { href: "/takt-requests", icon: Inbox, label: "Anfragen" },
+    { href: "/local-projects", icon: FolderOpen, label: "Lokale Projekte" },
+    { href: "/resource-bookings", icon: CalendarDays, label: "Belegungen" },
+    { href: "/availability-checks", icon: ShieldCheck, label: "Verfügbarkeit" },
     { href: "/gantt", icon: CalendarClock, label: t("nav.gantt") },
     { href: "/resources", icon: HardHat, label: t("nav.resources") },
+    { href: "/reports", icon: BarChart2, label: "Berichte" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];
 
@@ -59,11 +67,11 @@ export function Layout({ children }: { children: ReactNode }) {
             <Link href="/" className="flex items-center gap-2.5 min-w-0">
               <Hexagon className="w-5 h-5 text-primary fill-primary/20 flex-shrink-0" />
               <div className="min-w-0">
-                <div className="font-bold text-sm text-sidebar-foreground leading-tight tracking-tight truncate">
-                  TaktKoord
+                <div className="font-bold text-xs text-sidebar-foreground leading-tight tracking-tight truncate">
+                  Construct-X Takt Coordination
                 </div>
                 <div className="text-[9px] text-primary uppercase font-bold tracking-wider">
-                  Ausführung
+                  Subcontractor
                 </div>
               </div>
             </Link>
@@ -158,8 +166,8 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
           <div className="ml-3 flex items-center gap-2">
             <Hexagon className="w-4 h-4 text-primary fill-primary/20" />
-            <span className="font-bold text-sm text-sidebar-foreground">TaktKoord</span>
-            <span className="text-[9px] text-primary uppercase font-bold tracking-wider">Ausführung</span>
+            <span className="font-bold text-xs text-sidebar-foreground">Construct-X</span>
+            <span className="text-[9px] text-primary uppercase font-bold tracking-wider">Subcontractor</span>
           </div>
         </div>
         <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative">{children}</main>
