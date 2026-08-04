@@ -1,0 +1,639 @@
+# Erweiterung – Aktive Veröffentlichung von Projekt- und Taktdaten im simulierten Datenraum
+
+Erweitere den aktuellen PoC um eine aktive AG-seitige Veröffentlichung von Projekt- und Taktinformationen für ausgewählte AN.
+
+Die Umsetzung bleibt eine Simulation des Datenraumprinzips.
+
+Nicht implementieren:
+
+* keinen EDC
+* kein Dataspace Protocol
+* keine echte Vertragsverhandlung
+* keine Wallet
+* keine Verifiable Credentials
+* keine automatische rechtliche Policy-Durchsetzung
+
+## Ziel
+
+Der AG muss auf einer Projektseite aktiv entscheiden können:
+
+1. welche Daten bereitgestellt werden
+2. welche AN die Daten sehen dürfen
+3. welche Nutzungs-Policy gilt
+4. wie lange die Veröffentlichung gültig ist
+5. wann die Veröffentlichung zurückgezogen wird
+
+Die Veröffentlichung darf nicht automatisch durch das Anlegen eines Projekts oder Takts erfolgen.
+
+## AG-Aktion
+
+Ergänze auf der AG-Projektseite die Aktion:
+
+```text
+Im Datenraum bereitstellen
+```
+
+Nur folgende Rollen dürfen diese Aktion verwenden:
+
+```text
+AG_ADMIN
+GENERAL_PLANNER
+```
+
+## Veröffentlichungsassistent
+
+Implementiere fünf Schritte.
+
+### Schritt 1 – Datenprodukt auswählen
+
+Unterstütze mindestens:
+
+```text
+PROJECT_OVERVIEW
+PROJECT_COORDINATION_PACKAGE
+TAKT_INFORMATION_PACKAGE
+```
+
+Optional:
+
+```text
+TAKT_CHANGESET
+```
+
+### Schritt 2 – Inhalte auswählen
+
+#### `PROJECT_OVERVIEW`
+
+Freigabefähige Felder:
+
+```text
+projectReference
+projectName
+projectStatus
+startDate
+endDate
+assignedTrade
+workPackageReference
+milestones
+documentReferences
+```
+
+#### `PROJECT_COORDINATION_PACKAGE`
+
+Freigabefähige Felder:
+
+```text
+projectReference
+assignedTrade
+workPackageReference
+milestones
+logisticsConstraints
+coordinationConstraints
+interfaceDescriptions
+relevantTimeWindows
+documentReferences
+```
+
+#### `TAKT_INFORMATION_PACKAGE`
+
+Freigabefähige Felder:
+
+```text
+projectReference
+taktReference
+taktVersion
+location
+trade
+workPackage
+plannedTimeWindow
+bufferTimeWindow
+predecessors
+successors
+resourceRequirements
+constraints
+documentReferences
+```
+
+Keine ungefilterte Serialisierung vollständiger Datenbankobjekte verwenden.
+
+Erstelle jeden Veröffentlichungsinhalt über eine ausdrückliche Whitelist.
+
+### Schritt 3 – Empfänger auswählen
+
+Es dürfen nur AN angeboten werden, die:
+
+* dem konkreten Projekt zugeordnet sind
+* einen aktiven Zuordnungsstatus besitzen
+* zeitlich gültig zugeordnet sind
+* zum ausgewählten Gewerk oder Arbeitspaket passen, sofern dies angegeben ist
+
+Mehrere AN können ausgewählt werden.
+
+Nicht zulässig:
+
+* globale Liste aller AN
+* freie Eingabe einer Organisations-ID
+* AN eines anderen Projekts
+* deaktivierte Projektzuordnung
+
+### Schritt 4 – Policy auswählen
+
+Lege drei einfache Policy-Vorlagen an.
+
+#### Policy `PROJECT_COORDINATION_READ_ONLY`
+
+Bezeichnung:
+
+```text
+Projektkoordination – Nur Lesen
+```
+
+Zulässig:
+
+```text
+READ
+DOWNLOAD
+USE_FOR_PROJECT_COORDINATION
+```
+
+Nicht zulässig:
+
+```text
+REDISTRIBUTE
+USE_IN_OTHER_PROJECTS
+COMMERCIAL_REUSE
+AI_TRAINING
+```
+
+Gültigkeitsregel:
+
+```text
+bis Projektende
+```
+
+Aufbewahrung:
+
+```text
+Löschung spätestens 30 Tage nach Projektende
+```
+
+#### Policy `TAKT_EXECUTION_USE`
+
+Bezeichnung:
+
+```text
+Taktbezogene Ausführung
+```
+
+Zulässig:
+
+```text
+READ
+DOWNLOAD
+USE_FOR_ASSIGNED_WORK_PACKAGE
+USE_FOR_INTERNAL_RESOURCE_PLANNING
+```
+
+Nicht zulässig:
+
+```text
+SHARE_OUTSIDE_PROJECT_TEAM
+USE_IN_OTHER_PROJECTS
+COMMERCIAL_REUSE
+AI_TRAINING
+```
+
+Gültigkeitsregel:
+
+```text
+bis 30 Tage nach Ende des betreffenden Takts
+```
+
+#### Policy `EXTENDED_PROJECT_COLLABORATION`
+
+Bezeichnung:
+
+```text
+Erweiterte Projektzusammenarbeit
+```
+
+Zulässig:
+
+```text
+READ
+DOWNLOAD
+USE_FOR_PROJECT_EXECUTION
+CREATE_DERIVED_RESULTS
+SHARE_DERIVED_RESULTS_WITH_AG
+```
+
+Nicht zulässig:
+
+```text
+EXTERNAL_REDISTRIBUTION
+COMMERCIAL_REUSE_OUTSIDE_PROJECT
+```
+
+Gültigkeitsregel:
+
+```text
+bis 180 Tage nach Projektende
+```
+
+## Policy-Modell
+
+Implementiere ein einfaches Modell sinngemäß:
+
+```text
+policy_templates
+```
+
+Felder:
+
+```text
+id
+code
+name
+description
+purpose
+permissions
+prohibitions
+validityRule
+retentionRule
+active
+createdAt
+updatedAt
+```
+
+`permissions` und `prohibitions` können für den PoC als validierte JSONB-Listen gespeichert werden.
+
+Die Policy-Vorlagen werden als Seed-Daten angelegt und zunächst nicht frei durch Benutzer bearbeitet.
+
+## Veröffentlichungsmodell
+
+Implementiere sinngemäß:
+
+```text
+data_publications
+```
+
+Felder:
+
+```text
+id
+agOrgId
+projectId
+dataProductType
+title
+description
+version
+schemaVersion
+status
+policyTemplateId
+contentSnapshot
+contentHash
+validFrom
+validUntil
+publishedByUserId
+publishedAt
+withdrawnAt
+createdAt
+updatedAt
+```
+
+Status:
+
+```text
+DRAFT
+PUBLISHED
+SUSPENDED
+WITHDRAWN
+EXPIRED
+```
+
+## Empfängerzuordnung
+
+Implementiere sinngemäß:
+
+```text
+data_publication_recipients
+```
+
+Felder:
+
+```text
+id
+publicationId
+anOrgId
+status
+notifiedAt
+policyAcceptedAt
+policyRejectedAt
+firstAccessedAt
+lastAccessedAt
+revokedAt
+createdAt
+updatedAt
+```
+
+Status:
+
+```text
+OFFERED
+ACCEPTED
+REJECTED
+REVOKED
+EXPIRED
+```
+
+Unique Constraint:
+
+```text
+publicationId + anOrgId
+```
+
+## Unveränderliche Version
+
+Beim Veröffentlichen:
+
+1. Inhalt über Whitelist erzeugen.
+2. `contentSnapshot` speichern.
+3. deterministischen `contentHash` erzeugen.
+4. Veröffentlichungsversion speichern.
+5. Policy und Empfänger unveränderlich dieser Version zuordnen.
+6. anschließend Notifications versenden.
+
+Änderungen an veröffentlichten Daten erzeugen eine neue Version.
+
+Eine veröffentlichte Version darf nicht überschrieben werden.
+
+## Benachrichtigung
+
+Ergänze den Nachrichtentyp:
+
+```text
+DATA_OFFER_PUBLISHED
+```
+
+Payload enthält nur:
+
+```text
+publicationId
+projectReference
+dataProductType
+publicationVersion
+policyCode
+validUntil
+detailsRef
+title
+```
+
+Nicht enthalten:
+
+```text
+contentSnapshot
+vollständige Projektdaten
+vollständige Taktinformationen
+Daten anderer AN
+interne AG-Kommentare
+Kalkulation
+```
+
+## AN-Ablauf
+
+Ergänze in der AN-Anwendung einen Bereich:
+
+```text
+Datenangebote
+```
+
+Der AN sieht:
+
+```text
+AG
+Projekt-Referenz
+Datenprodukt
+Version
+Policy
+Gültigkeit
+Status
+```
+
+Vor dem Abruf muss der AN die Policy-Zusammenfassung sehen.
+
+Aktionen:
+
+```text
+Policy akzeptieren und Daten abrufen
+Policy ablehnen
+```
+
+## AN-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET  /an/data-offers
+GET  /an/data-offers/{publicationId}
+POST /an/data-offers/{publicationId}/accept
+POST /an/data-offers/{publicationId}/reject
+GET  /an/data-offers/{publicationId}/content
+```
+
+## Zugriffsregeln
+
+Der Inhalt darf nur abgerufen werden, wenn:
+
+* Veröffentlichung `PUBLISHED` ist
+* AN als Empfänger eingetragen ist
+* Empfängerstatus `ACCEPTED` ist
+* Veröffentlichung nicht abgelaufen ist
+* Zugriff nicht widerrufen wurde
+
+Der Abruf muss serverseitig geprüft werden.
+
+## AG-Endpunkte
+
+Implementiere sinngemäß:
+
+```http
+GET  /policy-templates
+GET  /projects/{projectId}/data-publications
+POST /projects/{projectId}/data-publications
+GET  /data-publications/{publicationId}
+POST /data-publications/{publicationId}/publish
+POST /data-publications/{publicationId}/suspend
+POST /data-publications/{publicationId}/withdraw
+```
+
+## Veröffentlichungsvorschau
+
+Vor dem Veröffentlichen zeigt die AG-Oberfläche:
+
+```text
+Datenprodukt
+Veröffentlichte Felder
+ausgewählte Takte
+ausgewählte AN
+gewählte Policy
+Gültigkeit
+nicht veröffentlichte interne Daten
+```
+
+Zwei getrennte Bereiche darstellen:
+
+```text
+Wird im Datenraum bereitgestellt
+```
+
+und:
+
+```text
+Bleibt im AG-System
+```
+
+## Rücknahme und Ablauf
+
+### `SUSPENDED`
+
+* vorübergehend kein neuer Abruf
+* Veröffentlichung kann wieder aktiviert werden
+
+### `WITHDRAWN`
+
+* keine weiteren Abrufe
+* historischer Audit-Eintrag bleibt erhalten
+* bereits erfolgte Zugriffe bleiben dokumentiert
+
+### `EXPIRED`
+
+* wird nach `validUntil` gesetzt
+* keine neuen Abrufe
+* historisch weiterhin sichtbar
+
+Keine bereits protokollierten Nutzungen oder Zustimmungen löschen.
+
+## Audit-Ereignisse
+
+Ergänze mindestens:
+
+```text
+DATA_PUBLICATION_CREATED
+DATA_PUBLICATION_PUBLISHED
+DATA_OFFER_SENT
+DATA_POLICY_ACCEPTED
+DATA_POLICY_REJECTED
+DATA_CONTENT_ACCESSED
+DATA_PUBLICATION_SUSPENDED
+DATA_PUBLICATION_WITHDRAWN
+DATA_PUBLICATION_EXPIRED
+```
+
+Audit-Einträge enthalten nur Metadaten, keine vollständigen Inhalte.
+
+## AG-Projektübersicht
+
+Ergänze je Projekt mindestens:
+
+```text
+publishedDataProducts
+activeDataPublications
+selectedAnRecipients
+acceptedDataOffers
+rejectedDataOffers
+lastPublicationAt
+```
+
+Auf der Einzelprojektseite einen Abschnitt anzeigen:
+
+```text
+Im Datenraum bereitgestellte Daten
+```
+
+Je Veröffentlichung:
+
+```text
+Datenprodukt
+Version
+Policy
+Empfänger
+Gültigkeit
+Status
+Annahmen
+Abrufe
+```
+
+## Datenraumprinzipien
+
+Verbindlich berücksichtigen:
+
+1. aktive Veröffentlichung durch den AG
+2. keine automatische Veröffentlichung
+3. explizite Auswahl der Empfänger
+4. explizite Auswahl der Policy
+5. Datenminimierung durch Whitelist
+6. Notification getrennt vom eigentlichen Inhalt
+7. Pull des Inhalts durch den AN
+8. Zustimmung vor Zugriff
+9. unveränderliche Veröffentlichungsversion
+10. vollständige Auditierbarkeit
+11. Rücknahme und zeitliche Befristung
+12. keine Sichtbarkeit anderer AN oder deren Daten
+
+## Tests
+
+Mindestens:
+
+* AG kann Veröffentlichung als Entwurf erstellen
+* nur projektbezogene AN können ausgewählt werden
+* AG eines fremden Projekts wird abgelehnt
+* Veröffentlichung besitzt Policy
+* Veröffentlichung ohne Empfänger wird abgelehnt
+* Veröffentlichung ohne Policy wird abgelehnt
+* Content Snapshot ist unveränderlich
+* neue Inhalte erzeugen neue Version
+* ausgewählter AN erhält Notification
+* nicht ausgewählter AN sieht das Angebot nicht
+* AN kann Inhalt vor Policy-Zustimmung nicht abrufen
+* AN kann Policy akzeptieren
+* akzeptierter AN kann Inhalt abrufen
+* abgelehnter AN kann Inhalt nicht abrufen
+* abgelaufene Veröffentlichung ist nicht abrufbar
+* zurückgezogene Veröffentlichung ist nicht abrufbar
+* Notification enthält keinen vollständigen Inhalt
+* AG-interne Daten erscheinen nicht im Snapshot
+* Audit-Ereignisse werden erzeugt
+
+## Nicht erforderlich
+
+* keine ODRL-Engine
+* keine automatische Policy-Durchsetzung außerhalb des PoC
+* keine echte Vertragsverhandlung
+* kein EDC
+* kein Dataspace Protocol
+* keine digitalen Identitäten
+* keine externe Policy Registry
+
+## Abschlussprüfung
+
+Führe aus:
+
+```bash
+pnpm run typecheck
+pnpm --filter @workspace/api-server test
+pnpm run build
+```
+
+## Abschlussbericht
+
+Berichte:
+
+1. neue Datenbankobjekte
+2. neue Policy-Vorlagen
+3. neue AG- und AN-Endpunkte
+4. neue Benutzeroberflächen
+5. Datenminimierungs- und Zugriffskontrollen
+6. Audit-Ereignisse
+7. Testergebnisse
+8. Typecheck- und Buildergebnis
+9. verbleibende Einschränkungen gegenüber einem echten Datenraum
