@@ -41,6 +41,9 @@ import {
   messageInboxTable,
   messageOutboxTable,
   taktResponsesTable,
+  dataPublicationsTable,
+  dataPublicationRecipientsTable,
+  policyTemplatesTable,
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -77,8 +80,11 @@ let hubToken: string;
 
 // ── Shared state (populated during the E2E flow) ──────────────────────────────
 
-let requestId:  string;
-let bookingId:  string;
+let requestId:         string;
+let bookingId:         string;
+let testPublicationId: string;
+// Stored so Step 11 can retry with the identical payload (hash-idempotency)
+let step7RequestBody:  Record<string, unknown> = {};
 
 // ── Seed + teardown ───────────────────────────────────────────────────────────
 
@@ -111,6 +117,46 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({ projectId: PROJECT, anOrgId: NU_ORG })
     .onConflictDoNothing();
 
+  // Create a published data publication so the AN can access /details (policy gate, Task 116)
+  const now = new Date();
+  const [anyPolicy] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1).catch(() => [] as { id: string }[]);
+  let policyTemplateId = anyPolicy?.id;
+  if (!policyTemplateId) {
+    const [pt] = await db
+      .insert(policyTemplatesTable)
+      .values({ id: "t49-policy-template", code: "STANDARD", name: "Standard", description: "Auto-created for t49", version: 1, legalText: "Test policy", createdAt: now, updatedAt: now })
+      .onConflictDoNothing()
+      .returning();
+    policyTemplateId = pt?.id ?? "t49-policy-template";
+  }
+  testPublicationId = "t49-test-publication";
+  await db.insert(dataPublicationsTable).values({
+    id: testPublicationId,
+    agOrgId: GU_ORG,
+    projectId: PROJECT,
+    dataProductType: "TAKT_INFORMATION_PACKAGE",
+    title: "T49 Test Publication",
+    version: 1,
+    schemaVersion: "1.0",
+    status: "PUBLISHED",
+    policyTemplateId,
+    selectedFields: ["taktReference"],
+    selectedTaktIds: [TAKT],
+    publishedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing();
+  await db.insert(dataPublicationRecipientsTable).values({
+    id: "t49-pub-recipient",
+    publicationId: testPublicationId,
+    anOrgId: NU_ORG,
+    status: "ACCEPTED",
+    notifiedAt: now,
+    policyAcceptedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing();
+
   // NU resources: CREW_1 will be booked (conflicts), CREW_2 will be available
   for (const row of [
     { id: CREW_1, anOrgId: NU_ORG, type: "CREW" as const, name: "T49 Kolonne 1", capacity: 4, active: true },
@@ -142,6 +188,8 @@ afterAll(async () => {
       SELECT id FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}'
     );
     DELETE FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}';
+    DELETE FROM data_publication_recipients WHERE publication_id = '${sql.raw("t49-test-publication")}';
+    DELETE FROM data_publications       WHERE ag_org_id = '${sql.raw(GU_ORG)}';
     DELETE FROM resources               WHERE an_org_id = '${sql.raw(NU_ORG)}';
     DELETE FROM project_contractors     WHERE project_id = '${sql.raw(PROJECT)}';
     DELETE FROM takte                   WHERE project_id = '${sql.raw(PROJECT)}';
@@ -159,11 +207,12 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
       .send({
-        taktId:    TAKT,
-        nuOrgId:   NU_ORG,
-        subject:   "T49 Koordinationsanfrage",
-        message:   "Bitte prüfen Sie den Zeitraum.",
+        taktId:            TAKT,
+        nuOrgId:           NU_ORG,
+        subject:           "T49 Koordinationsanfrage",
+        message:           "Bitte prüfen Sie den Zeitraum.",
         responseRequiredBy: "2026-09-10T23:59:59Z",
+        dataPublicationId: testPublicationId,
       });
 
     expect(res.status).toBe(201);
@@ -287,22 +336,24 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       crewSize: number | null; conditions: string[] | null;
     }> }).alternatives;
 
+    step7RequestBody = {
+      decision:   "ALTERNATIVES_PROPOSED",
+      reasonCode: "RESOURCE_CONFLICT",
+      comment:    "Der ursprüngliche Zeitraum ist nicht vollständig verfügbar.",
+      alternatives: publicAlts.slice(0, 3).map(a => ({
+        alternativeId: a.alternativeId,
+        rank:          a.rank,
+        timeWindow:    a.timeWindow,
+        crewSize:      a.crewSize ?? undefined,
+        // normalize: JSONB may return conditions as string or string[]
+        conditions:    Array.isArray(a.conditions) ? a.conditions : a.conditions ? [a.conditions] : [],
+      })),
+    };
+
     const res = await request(app)
       .post(`/api/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
-      .send({
-        decision:   "ALTERNATIVES_PROPOSED",
-        reasonCode: "RESOURCE_CONFLICT",
-        comment:    "Der ursprüngliche Zeitraum ist nicht vollständig verfügbar.",
-        alternatives: publicAlts.slice(0, 3).map(a => ({
-          alternativeId: a.alternativeId,
-          rank:          a.rank,
-          timeWindow:    a.timeWindow,
-          crewSize:      a.crewSize ?? undefined,
-          // normalize: JSONB may return conditions as string or string[]
-          conditions:    Array.isArray(a.conditions) ? a.conditions : a.conditions ? [a.conditions] : [],
-        })),
-      });
+      .send(step7RequestBody);
 
     expect(res.status).toBe(201);
     expect(res.body.decision).toBe("ALTERNATIVES_PROPOSED");
@@ -373,20 +424,12 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .where(eq(taktResponsesTable.taktRequestId, requestId));
     expect(before).toHaveLength(1);
 
+    // Re-send exactly the same payload as Step 7 → hash matches → idempotent 200
     const retry = await request(app)
       .post(`/api/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
-      .send({
-        decision:   "ALTERNATIVES_PROPOSED",
-        reasonCode: "RESOURCE_CONFLICT",
-        comment:    "Der ursprüngliche Zeitraum ist nicht vollständig verfügbar.",
-        alternatives: [{
-          alternativeId: "ALT-RETRY",
-          rank: 1,
-          timeWindow: { start: "2026-09-22T05:00:00Z", end: "2026-09-26T14:00:00Z" },
-        }],
-      });
-    // Same decision → 200 (idempotent)
+      .send(step7RequestBody);
+    // Same payload hash → 200 (idempotent)
     expect(retry.status).toBe(200);
     expect(retry.body.responseId).toBe(before[0].id);
 

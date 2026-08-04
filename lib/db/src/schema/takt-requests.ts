@@ -25,6 +25,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { takteTable } from "./takte";
 import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
+import { dataPublicationsTable } from "./data-publications";
 
 export const taktRequestStatusEnum = pgEnum("takt_request_status", [
   "DRAFT",
@@ -106,6 +107,17 @@ export const taktRequestsTable = pgTable(
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => usersTable.id),
+
+    /**
+     * Optional FK to the data_publications entry whose TAKT_INFORMATION_PACKAGE
+     * was shared with the NU before sending this request.
+     * Null for legacy requests created before the dataspace feature.
+     * After sending, the NU must accept the linked publication's policy before
+     * the snapshot details can be retrieved.
+     */
+    dataPublicationId: text("data_publication_id").references(
+      () => dataPublicationsTable.id,
+    ),
 
     /**
      * Absolute expiry timestamp.

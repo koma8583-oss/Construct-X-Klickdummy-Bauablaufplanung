@@ -17,7 +17,15 @@
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { takteTable, projectsTable, messageOutboxTable, hubMessagesTable } from "@workspace/db";
+import {
+  takteTable,
+  projectsTable,
+  messageOutboxTable,
+  hubMessagesTable,
+  dataPublicationsTable,
+  dataPublicationRecipientsTable,
+  policyTemplatesTable,
+} from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
@@ -184,10 +192,11 @@ router.post(
     const userId = req.user!.userId!;
 
     const schema = z.object({
-      taktId:             z.string().min(1),
-      nuOrgId:            z.string().min(1),
-      requestNumber:      z.string().min(1).optional(),
-      responseRequiredBy: z.string().datetime({ offset: true }).optional(),
+      taktId:              z.string().min(1),
+      nuOrgId:             z.string().min(1),
+      requestNumber:       z.string().min(1).optional(),
+      responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
+      dataPublicationId:   z.string().min(1).optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -208,6 +217,7 @@ router.post(
         requestNumber,
         responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
         createdByUserId: userId,
+        dataPublicationId: parsed.data.dataPublicationId,
       });
     } catch (err) {
       if (err instanceof TaktNotFoundError) {
@@ -299,11 +309,12 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
   const userId = req.user!.userId!;
 
   const bodySchema = z.object({
-    taktId: z.string().min(1),
-    nuOrgId: z.string().min(1),
-    responseRequiredBy: z.string().datetime({ offset: true }).optional(),
-    subject: z.string().max(255).optional(),
-    message: z.string().max(2000).optional(),
+    taktId:              z.string().min(1),
+    nuOrgId:             z.string().min(1),
+    responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
+    subject:             z.string().max(255).optional(),
+    message:             z.string().max(2000).optional(),
+    dataPublicationId:   z.string().min(1).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -328,6 +339,7 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
       createdByUserId: userId,
       subject,
       message,
+      dataPublicationId: parsed.data.dataPublicationId,
     });
   } catch (err) {
     if (err instanceof TaktNotFoundError) {
@@ -452,7 +464,97 @@ router.post(
       return;
     }
 
-    // ── 5. Build notification payload — minimal, no full Takt data ─────────
+    // ── 5. Validate linked data publication (only when one is set) ───────────
+    // When dataPublicationId is present the publication must be PUBLISHED,
+    // the correct type, belong to the same project, include the takt, and
+    // have the addressed AN as a recipient.
+    // Requests without a dataPublicationId are sent without a publication
+    // (legacy or explicitly opted-out flows); the policy gate is enforced at
+    // GET /takt-requests/:id/details instead.
+
+    // ── 5a. Optional: validate the linked data publication ────────────────────
+    // When dataPublicationId is present, the publication must be PUBLISHED,
+    // the correct type, belong to the same project, include the takt, and
+    // have the addressed AN as a recipient.
+    // Requests without a dataPublicationId are sent as "legacy" requests;
+    // the AN-access policy gate is enforced at GET /details instead.
+    let pubPolicyCode: string | null = null;
+
+    if (existing.dataPublicationId) {
+      const [pub] = await db
+        .select()
+        .from(dataPublicationsTable)
+        .where(eq(dataPublicationsTable.id, existing.dataPublicationId))
+        .limit(1);
+
+      if (!pub) {
+        res.status(409).json({ error: "DATA_PUBLICATION_NOT_FOUND" });
+        return;
+      }
+      if (pub.dataProductType !== "TAKT_INFORMATION_PACKAGE") {
+        res.status(409).json({
+          error: "DATA_PUBLICATION_WRONG_TYPE",
+          message: "Die verknüpfte Veröffentlichung muss vom Typ TAKT_INFORMATION_PACKAGE sein.",
+        });
+        return;
+      }
+      if (pub.status !== "PUBLISHED") {
+        res.status(409).json({
+          error: "DATA_PUBLICATION_NOT_PUBLISHED",
+          message: "Die verknüpfte Veröffentlichung muss den Status PUBLISHED haben.",
+          publicationStatus: pub.status,
+        });
+        return;
+      }
+      // Check takt belongs to the publication's project (also confirms same GU)
+      const [taktForPub] = await db
+        .select({ projectId: takteTable.projectId })
+        .from(takteTable)
+        .where(eq(takteTable.id, existing.taktId))
+        .limit(1);
+      if (!taktForPub || pub.projectId !== taktForPub.projectId) {
+        res.status(409).json({
+          error: "DATA_PUBLICATION_WRONG_PROJECT",
+          message: "Die Veröffentlichung gehört nicht zum Projekt dieses Takts.",
+        });
+        return;
+      }
+      // Check takt is included in the publication
+      if (pub.selectedTaktIds && !pub.selectedTaktIds.includes(existing.taktId)) {
+        res.status(409).json({
+          error: "DATA_PUBLICATION_TAKT_NOT_INCLUDED",
+          message: "Der Takt ist nicht in der Veröffentlichung enthalten.",
+        });
+        return;
+      }
+      // Check AN is a recipient of the publication
+      const [pubRecipient] = await db
+        .select({ id: dataPublicationRecipientsTable.id })
+        .from(dataPublicationRecipientsTable)
+        .where(
+          and(
+            eq(dataPublicationRecipientsTable.publicationId, pub.id),
+            eq(dataPublicationRecipientsTable.anOrgId, existing.nuOrgId),
+          ),
+        )
+        .limit(1);
+      if (!pubRecipient) {
+        res.status(409).json({
+          error: "DATA_PUBLICATION_AN_NOT_RECIPIENT",
+          message: "Der adressierte AN ist kein Empfänger der Veröffentlichung.",
+        });
+        return;
+      }
+      // Load policy code for notification enrichment
+      const [loadedPolicy] = await db
+        .select({ code: policyTemplatesTable.code })
+        .from(policyTemplatesTable)
+        .where(eq(policyTemplatesTable.id, pub.policyTemplateId))
+        .limit(1);
+      pubPolicyCode = loadedPolicy?.code ?? null;
+    } // end if (existing.dataPublicationId)
+
+    // ── 5b. Build notification payload ────────────────────────────────────────
     // Pull coordinationContext from snapshot payload if present (set via
     // POST /takt-requests using createTaktRequestWithSnapshot).
     const currentSnap = snapResult?.snapshot;
@@ -468,6 +570,12 @@ router.post(
       detailsRef: `/takt-requests/${id}/details`,
       subject: (coordCtx.subject as string | undefined) ?? null,
       message: (coordCtx.message as string | undefined) ?? null,
+      // Dataspace policy gate fields (null when no publication is linked)
+      dataPublicationId: existing.dataPublicationId ?? null,
+      policyCode: pubPolicyCode,
+      dataOfferRef: existing.dataPublicationId
+        ? `/an/data-offers/${existing.dataPublicationId}`
+        : null,
     };
 
     // ── 6. Build MessageEnvelope and send via transport ────────────────────
@@ -642,6 +750,76 @@ router.get(
         currentStatus: request.status,
       });
       return;
+    }
+
+    // ── 4b. NU: policy gate — AN must have accepted the publication policy ───
+    // Only applies when the request has a linked dataPublicationId.
+    // GU preview is never gated.
+
+    // Legacy requests (no dataPublicationId) block all NU access to details.
+    if (isAddressedNu && !request.dataPublicationId) {
+      res.status(403).json({
+        error: "LEGACY_NO_PUBLICATION",
+        message:
+          "Diese TaktAnfrage wurde ohne Datenraum-Veröffentlichung erstellt. " +
+          "Der Auftraggeber muss zunächst Taktinformationen im Datenraum veröffentlichen.",
+      });
+      return;
+    }
+
+    if (isAddressedNu && request.dataPublicationId) {
+      const [gatePub] = await db
+        .select({ status: dataPublicationsTable.status })
+        .from(dataPublicationsTable)
+        .where(eq(dataPublicationsTable.id, request.dataPublicationId))
+        .limit(1);
+
+      // Publication has been suspended or withdrawn after sending
+      if (
+        !gatePub ||
+        gatePub.status === "SUSPENDED" ||
+        gatePub.status === "WITHDRAWN" ||
+        gatePub.status === "EXPIRED"
+      ) {
+        res.status(403).json({
+          error: "DATA_PUBLICATION_INACTIVE",
+          message: "Die zugehörige Datenveröffentlichung ist nicht mehr aktiv.",
+          publicationStatus: gatePub?.status ?? "NOT_FOUND",
+          dataPublicationId: request.dataPublicationId,
+          dataOfferRef: `/an/data-offers/${request.dataPublicationId}`,
+        });
+        return;
+      }
+
+      // Check that this AN has accepted the policy
+      const [gateRecipient] = await db
+        .select({
+          status:           dataPublicationRecipientsTable.status,
+          policyAcceptedAt: dataPublicationRecipientsTable.policyAcceptedAt,
+        })
+        .from(dataPublicationRecipientsTable)
+        .where(
+          and(
+            eq(dataPublicationRecipientsTable.publicationId, request.dataPublicationId),
+            eq(dataPublicationRecipientsTable.anOrgId, callerOrgId!),
+          ),
+        )
+        .limit(1);
+
+      if (
+        !gateRecipient ||
+        gateRecipient.status !== "ACCEPTED" ||
+        !gateRecipient.policyAcceptedAt
+      ) {
+        res.status(403).json({
+          error: "POLICY_ACCEPTANCE_REQUIRED",
+          message: "Bitte akzeptieren Sie zunächst die Nutzungs-Policy.",
+          dataPublicationId: request.dataPublicationId,
+          dataOfferRef: `/an/data-offers/${request.dataPublicationId}`,
+          recipientStatus: gateRecipient?.status ?? "OFFERED",
+        });
+        return;
+      }
     }
 
     // ── 5. First NU access: atomic DELIVERED → DETAILS_RETRIEVED ────────────

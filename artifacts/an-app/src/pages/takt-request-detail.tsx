@@ -98,7 +98,7 @@ export default function TaktRequestDetailPage() {
   const [comment, setComment]         = useState('');
 
   // Data queries
-  const { data: details, isLoading, isError, refetch } = useGetTaktRequestDetails(requestId!, {
+  const { data: details, isLoading, isError, error, refetch } = useGetTaktRequestDetails(requestId!, {
     query: { enabled: !!requestId, queryKey: getGetTaktRequestDetailsQueryKey(requestId!) },
   });
 
@@ -183,7 +183,78 @@ export default function TaktRequestDetailPage() {
   }
 
   // ── Error ──────────────────────────────────────────────────────────────────
-  if (isError || !details) {
+  if (isError) {
+    // Check for Dataspace policy gate 403
+    const errData = (error as any)?.data as Record<string, unknown> | undefined;
+    const errCode = errData?.error as string | undefined;
+
+    if (errCode === 'POLICY_ACCEPTANCE_REQUIRED') {
+      const pubId     = errData?.dataPublicationId as string | undefined;
+      const offerRef  = errData?.dataOfferRef as string | undefined;
+      return (
+        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
+          <Button variant="ghost" size="sm" onClick={() => setLocation('/inbox')} className="-ml-2">
+            ← Zurück
+          </Button>
+          <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold text-amber-900 dark:text-amber-200">Nutzungs-Policy noch nicht akzeptiert</p>
+                <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                  Um die Taktdetails einsehen zu können, müssen Sie zunächst die Nutzungs-Policy des
+                  zugehörigen Datenraum-Angebots akzeptieren.
+                </p>
+              </div>
+            </div>
+            {pubId && offerRef && (
+              <Button
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={() => setLocation(offerRef.replace('/an', ''))}
+              >
+                Policy jetzt akzeptieren
+              </Button>
+            )}
+            {!pubId && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Wenden Sie sich an den Auftraggeber – für diese TaktAnfrage wurden noch keine Taktinformationen veröffentlicht.
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (errCode === 'DATA_PUBLICATION_INACTIVE') {
+      return (
+        <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
+          <AlertTriangle className="w-10 h-10 text-amber-500" />
+          <p className="font-medium">Datenveröffentlichung nicht mehr aktiv</p>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            Die mit dieser TaktAnfrage verknüpfte Datenveröffentlichung wurde zurückgezogen oder ist abgelaufen.
+            Bitte wenden Sie sich an den Auftraggeber.
+          </p>
+          <Button variant="outline" onClick={() => setLocation('/inbox')}>
+            Zurück zur Übersicht
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
+        <AlertTriangle className="w-10 h-10 text-destructive" />
+        <p className="text-muted-foreground">Anfrage konnte nicht geladen werden</p>
+        <Button variant="outline" onClick={() => refetch()}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Erneut versuchen
+        </Button>
+      </div>
+    );
+  }
+
+  if (!details) {
     return (
       <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
         <AlertTriangle className="w-10 h-10 text-destructive" />

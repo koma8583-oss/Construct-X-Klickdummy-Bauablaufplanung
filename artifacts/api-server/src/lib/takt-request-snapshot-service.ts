@@ -275,6 +275,12 @@ export interface CreateTaktRequestWithSnapshotInput {
   subject?: string;
   /** Optional free-text message from GU to NU */
   message?: string;
+  /**
+   * Optional FK to the data_publications entry (type TAKT_INFORMATION_PACKAGE)
+   * whose content was shared with the NU. When set, the NU must accept the
+   * linked policy before the snapshot details can be retrieved.
+   */
+  dataPublicationId?: string;
 }
 
 export interface CreateTaktRequestWithSnapshotResult {
@@ -415,6 +421,7 @@ export async function createTaktRequestWithSnapshot(
         status: "DRAFT",
         responseRequiredBy: input.responseRequiredBy ?? null,
         createdByUserId: input.createdByUserId,
+        dataPublicationId: input.dataPublicationId ?? null,
         createdAt: now,
         updatedAt: now,
       })

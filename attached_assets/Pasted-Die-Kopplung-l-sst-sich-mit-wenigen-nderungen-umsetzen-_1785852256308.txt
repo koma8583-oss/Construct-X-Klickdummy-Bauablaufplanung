@@ -1,0 +1,437 @@
+Die Kopplung lässt sich mit wenigen Änderungen umsetzen. Vergabe und Projektzuordnung bleiben unverändert; nur der Abruf des TaktRequest-Snapshots wird an Veröffentlichung und Policy-Annahme gebunden.
+
+# Minimaler Replit-Auftrag – Takt-Snapshot nur nach Policy-Annahme
+
+Ändere den aktuellen PoC nur so weit, dass ein AN den TaktRequest-Snapshot ausschließlich nach Annahme der zugehörigen Datenraum-Policy abrufen kann.
+
+Keine größere Refaktorierung durchführen.
+
+Nicht implementieren:
+
+* keine neuen Policy-Typen
+* keine neue Policy Engine
+* keine neuen Datenraumtabellen
+* kein EDC
+* kein Dataspace Protocol
+* keine neue Statusmaschine
+* keine umfangreiche neue Benutzeroberfläche
+* keine Änderung der Vergabelogik
+
+## Fachliche Regel
+
+Die Vergabe beziehungsweise Projektzuordnung eines AN bleibt weiterhin ohne Datenveröffentlichung möglich.
+
+Für den Zugriff auf Taktinformationen gilt jedoch zwingend:
+
+```text
+aktive Projektzuordnung
+AND veröffentlichte Taktinformation
+AND AN ist ausgewählter Empfänger
+AND Policy wurde akzeptiert
+AND Veröffentlichung ist gültig
+→ Snapshot-Abruf erlaubt
+```
+
+Ohne akzeptierte Policy darf der AN den TaktRequest-Snapshot nicht abrufen.
+
+---
+
+# 1. TaktRequest mit vorhandener Veröffentlichung verknüpfen
+
+Ergänze ausschließlich ein neues Feld bei `takt_requests`, falls noch nicht vorhanden:
+
+```text
+dataPublicationId
+```
+
+Anforderungen:
+
+* nullable für bestehende Legacy-Daten
+* Foreign Key auf `data_publications.id`
+* für neue TaktRequests vor dem Versand erforderlich
+* nach dem Versand nicht mehr änderbar
+
+Keine weitere neue Tabelle anlegen.
+
+## Gültige Veröffentlichung
+
+Die verknüpfte Veröffentlichung muss:
+
+```text
+dataProductType = TAKT_INFORMATION_PACKAGE
+status = PUBLISHED
+```
+
+besitzen und:
+
+* zum selben Projekt gehören
+* zum selben AG gehören
+* den betreffenden Takt enthalten
+* dieselbe Taktversion enthalten
+* den adressierten AN als Empfänger enthalten
+* noch gültig sein
+* nicht pausiert oder zurückgezogen sein
+
+---
+
+# 2. TaktRequest-Erstellung minimal erweitern
+
+Erweitere den bestehenden kanonischen Create-Request um:
+
+```json
+{
+  "dataPublicationId": "PUBLICATION-ID"
+}
+```
+
+Keine neue Create-Route anlegen.
+
+Verwende die bestehende Route und den bestehenden Service.
+
+## Validierung
+
+Beim Erstellen oder spätestens vor dem Versand prüfen:
+
+1. Veröffentlichung existiert.
+2. Veröffentlichung gehört zum Projekt.
+3. Veröffentlichung ist vom Typ `TAKT_INFORMATION_PACKAGE`.
+4. Veröffentlichung ist `PUBLISHED`.
+5. AN ist Empfänger.
+6. Takt und Taktversion stimmen überein.
+
+Die Policy muss beim Erstellen und Versenden noch nicht akzeptiert sein.
+
+Der AN muss die Notification erhalten können, damit er anschließend die Policy akzeptiert.
+
+---
+
+# 3. Versand ohne Veröffentlichung verhindern
+
+Ergänze im bestehenden Send-Service nur eine zusätzliche Validierung.
+
+Vor dem Versand muss gelten:
+
+```text
+dataPublicationId vorhanden
+AND Veröffentlichung gültig
+AND AN als Empfänger eingetragen
+```
+
+Andernfalls:
+
+```http
+409 Conflict
+```
+
+Der Request bleibt `DRAFT`.
+
+## Notification
+
+Ergänze in die vorhandene Notification nur:
+
+```text
+dataPublicationId
+policyCode
+dataOfferRef
+```
+
+Beispiel:
+
+```json
+{
+  "dataPublicationId": "PUB-001",
+  "policyCode": "TAKT_EXECUTION_USE",
+  "dataOfferRef": "/an/data-offers/PUB-001"
+}
+```
+
+Den vollständigen Snapshot weiterhin nicht in der Notification übertragen.
+
+---
+
+# 4. Snapshot-Abruf policygeschützt machen
+
+Ändere den bestehenden Endpunkt:
+
+```http
+GET /takt-requests/{requestId}/details
+```
+
+Keine zusätzliche Snapshot-Route anlegen.
+
+## Zusätzliche Prüfung
+
+Vor Ausgabe des Snapshots prüfen:
+
+```text
+Request ist an den angemeldeten AN adressiert
+AND dataPublicationId ist gesetzt
+AND Veröffentlichung ist PUBLISHED
+AND Veröffentlichung ist gültig
+AND AN ist Empfänger
+AND Empfängerstatus ist ACCEPTED
+AND policyAcceptedAt ist gesetzt
+```
+
+## Policy noch nicht akzeptiert
+
+Antwort:
+
+```http
+403 Forbidden
+```
+
+Beispiel:
+
+```json
+{
+  "error": "POLICY_ACCEPTANCE_REQUIRED",
+  "message": "Bitte akzeptieren Sie zunächst die Nutzungs-Policy.",
+  "dataPublicationId": "PUB-001",
+  "dataOfferRef": "/an/data-offers/PUB-001"
+}
+```
+
+## Veröffentlichung nicht mehr aktiv
+
+Bei:
+
+```text
+SUSPENDED
+WITHDRAWN
+EXPIRED
+```
+
+ebenfalls Zugriff verweigern.
+
+## Inhalt
+
+Bevorzuge für den Abruf den bereits gespeicherten veröffentlichten Inhalt aus:
+
+```text
+data_publications.contentSnapshot
+```
+
+Gib daraus nur den zum Request gehörenden Takt zurück.
+
+Falls der vorhandene `takt_request_snapshot` bereits beim Request-Erstellen aus genau dieser Veröffentlichung erzeugt wurde, darf dieser bestehende Snapshot weiterhin ausgegeben werden. Dann muss aber geprüft werden, dass:
+
+```text
+Request.dataPublicationId
+=
+verknüpfte Veröffentlichung
+```
+
+und dass Taktversion und Inhalt übereinstimmen.
+
+Keine neue Snapshot-Struktur einführen.
+
+---
+
+# 5. Status erst nach erfolgreichem Abruf ändern
+
+Nur nach erfolgreicher Policy-Prüfung und erfolgreicher Ausgabe des Snapshots:
+
+```text
+DELIVERED → DETAILS_RETRIEVED
+```
+
+Zusätzlich vorhandene Zugriffsdaten aktualisieren:
+
+```text
+firstAccessedAt
+lastAccessedAt
+detailsRetrievedAt
+```
+
+Der wiederholte Abruf bleibt idempotent.
+
+---
+
+# 6. Bestehende Folgeprozesse verwenden
+
+Keine neue Prüfung für jeden Folgeprozess entwickeln.
+
+Stelle lediglich sicher, dass die vorhandenen Endpunkte für:
+
+```text
+Availability Check
+TaktResponse
+```
+
+weiterhin einen Requeststatus von mindestens:
+
+```text
+DETAILS_RETRIEVED
+```
+
+verlangen.
+
+Dadurch gilt automatisch:
+
+```text
+keine Policy-Annahme
+→ kein Snapshot-Abruf
+→ kein DETAILS_RETRIEVED
+→ keine Machbarkeitsprüfung
+→ keine Taktantwort
+```
+
+Nur falls diese Statusprüfung aktuell fehlt, ergänze sie.
+
+---
+
+# 7. Minimale AG-Oberfläche
+
+Ändere nur den bestehenden Dialog zur Erstellung einer Taktanfrage.
+
+Ergänze ein Pflichtfeld:
+
+```text
+Veröffentlichte Taktinformationen
+```
+
+Zeige darin nur gültige Veröffentlichungen:
+
+```text
+TAKT_INFORMATION_PACKAGE
+PUBLISHED
+gleiches Projekt
+gleicher Takt
+gleiche Taktversion
+ausgewählter AN ist Empfänger
+```
+
+Falls keine Veröffentlichung vorhanden ist, zeige:
+
+```text
+Für diesen Takt wurden dem ausgewählten Nachunternehmer noch keine Daten im Datenraum bereitgestellt.
+```
+
+Ergänze einen Link oder eine Aktion:
+
+```text
+Taktinformationen bereitstellen
+```
+
+Keine neue umfangreiche Wizard-Logik implementieren.
+
+---
+
+# 8. Minimale AN-Oberfläche
+
+Ändere nur die bestehende TaktRequest-Detailansicht.
+
+## Policy ausstehend
+
+Statt des direkten Snapshot-Abrufs anzeigen:
+
+```text
+Vor dem Abruf der Taktinformationen muss die Nutzungs-Policy akzeptiert werden.
+```
+
+Aktionen:
+
+```text
+Policy anzeigen
+Policy akzeptieren
+Policy ablehnen
+```
+
+Nach erfolgreicher Annahme:
+
+```text
+Taktdetails abrufen
+```
+
+Die vorhandenen Datenangebots-Endpunkte und Dialoge wiederverwenden.
+
+Keine zweite Policy-Oberfläche entwickeln.
+
+---
+
+# 9. Bestehende Requests
+
+Für bestehende Requests ohne `dataPublicationId`:
+
+* nicht automatisch eine Veröffentlichung zuweisen
+* AN-Abruf sperren
+* AG-Hinweis anzeigen:
+
+```text
+Für diese bestehende Taktanfrage ist keine Datenveröffentlichung verknüpft.
+```
+
+Eine Migration alter Requests ist für den PoC nicht erforderlich.
+
+Seed- und Demo-Daten für neue Requests aktualisieren.
+
+---
+
+# 10. Notwendige Tests
+
+Implementiere nur folgende Tests:
+
+## Versand
+
+* Request ohne Veröffentlichung kann nicht gesendet werden.
+* Veröffentlichung eines anderen Projekts wird abgelehnt.
+* Veröffentlichung ohne adressierten AN wird abgelehnt.
+* falsche Taktversion wird abgelehnt.
+
+## Snapshot-Abruf
+
+* Policy noch nicht akzeptiert → `403 POLICY_ACCEPTANCE_REQUIRED`
+* nicht ausgewählter AN → Zugriff abgelehnt
+* akzeptierter AN → Snapshot-Abruf erfolgreich
+* zurückgezogene Veröffentlichung → Zugriff abgelehnt
+* abgelaufene Veröffentlichung → Zugriff abgelehnt
+* erfolgreicher Abruf setzt `DETAILS_RETRIEVED`
+* wiederholter Abruf bleibt möglich und idempotent
+
+## Folgeprozess
+
+* Machbarkeitsprüfung vor Snapshot-Abruf wird abgelehnt.
+* Antwort vor Snapshot-Abruf wird abgelehnt.
+* nach Policy-Annahme und Snapshot-Abruf funktionieren Prüfung und Antwort.
+
+---
+
+# Nicht ändern
+
+Folgende bestehende Funktionen unverändert lassen:
+
+* Vergabe und Projekt-AN-Zuordnung
+* bestehende Policy-Vorlagen
+* bestehende Datenveröffentlichung
+* bestehende Datenangebotsannahme
+* bestehende Nachrichtenarchitektur
+* bestehende Response- und Revisionslogik
+* Reporting
+* Reminder
+* Taktversionierung
+
+---
+
+# Abschlussprüfung
+
+Führe aus:
+
+```bash
+pnpm run typecheck
+pnpm --filter @workspace/api-server test
+pnpm run build
+```
+
+## Abschlussbericht
+
+Berichte nur:
+
+1. geänderte Dateien
+2. neues Feld `dataPublicationId`
+3. ergänzte Validierungen
+4. minimale AG- und AN-UI-Änderungen
+5. ergänzte Tests
+6. tatsächliche Ergebnisse von Tests, Typecheck und Build
+
+Keine zusätzlichen Funktionen implementieren.

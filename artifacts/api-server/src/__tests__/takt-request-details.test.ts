@@ -28,6 +28,9 @@ import {
   projectContractorsTable,
   takteTable,
   usersTable,
+  dataPublicationsTable,
+  dataPublicationRecipientsTable,
+  policyTemplatesTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -112,6 +115,39 @@ beforeAll(async () => {
   gu2Token = signToken({ userId: GU_USER, orgId: GU_ORG_2, orgType: "AG" });
   hubToken = signToken({ userId: GU_USER, orgId: null,      orgType: null, hubAdmin: true });
 
+  // Publication + recipient (T116: details gate requires dataPublicationId + ACCEPTED policy)
+  const now = new Date();
+  const [anyPt] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1);
+  if (anyPt) {
+    await db.insert(dataPublicationsTable).values({
+      id: "t38-publication-001",
+      agOrgId: GU_ORG,
+      projectId: PROJECT_ID,
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      title: "T38 Test Publication",
+      version: 1,
+      schemaVersion: "1.0",
+      status: "PUBLISHED",
+      policyTemplateId: anyPt.id,
+      selectedFields: ["taktReference"],
+      selectedTaktIds: [TAKT_ID],
+      publishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing();
+
+    await db.insert(dataPublicationRecipientsTable).values({
+      id: "t38-recipient-001",
+      publicationId: "t38-publication-001",
+      anOrgId: NU_ORG,
+      status: "ACCEPTED",
+      notifiedAt: now,
+      policyAcceptedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing();
+  }
+
   // Create DRAFT + send → inbox + snapshot created, status DELIVERED
   const createRes = await request(app)
     .post("/api/takt-requests")
@@ -122,6 +158,7 @@ beforeAll(async () => {
       responseRequiredBy: "2026-12-07T10:00:00Z",
       subject: "T38 Anfrage",
       message: "Bitte Details prüfen.",
+      dataPublicationId: "t38-publication-001",
     });
   expect(createRes.status).toBe(201);
   requestId = createRes.body.id;
@@ -143,6 +180,9 @@ afterAll(async () => {
     SELECT id FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`).catch(() => {});
   await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  // Clean up publication (after takt_requests due to FK)
+  await db.execute(sql`DELETE FROM data_publication_recipients WHERE publication_id = 't38-publication-001'`).catch(() => {});
+  await db.execute(sql`DELETE FROM data_publications WHERE id = 't38-publication-001'`).catch(() => {});
   await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});

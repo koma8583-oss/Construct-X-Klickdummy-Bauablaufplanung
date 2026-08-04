@@ -29,8 +29,11 @@ import {
   messageOutboxTable,
   messageInboxTable,
   projectContractorsTable,
+  dataPublicationsTable,
+  dataPublicationRecipientsTable,
+  policyTemplatesTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import app from "../app";
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
@@ -112,6 +115,39 @@ beforeAll(async () => {
     assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
 
+  // Publication + recipient (T116: details gate requires dataPublicationId + ACCEPTED policy)
+  const now = new Date();
+  const [anyPt] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1);
+  if (anyPt) {
+    await db.insert(dataPublicationsTable).values({
+      id: "t90-publication-001",
+      agOrgId: GU_ORG,
+      projectId: PROJECT_ID,
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      title: "T90 Test Publication",
+      version: 1,
+      schemaVersion: "1.0",
+      status: "PUBLISHED",
+      policyTemplateId: anyPt.id,
+      selectedFields: ["taktReference"],
+      selectedTaktIds: [TAKT_ID],
+      publishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing();
+
+    await db.insert(dataPublicationRecipientsTable).values({
+      id: "t90-recipient-001",
+      publicationId: "t90-publication-001",
+      anOrgId: NU_ORG,
+      status: "ACCEPTED",
+      notifiedAt: now,
+      policyAcceptedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing();
+  }
+
   // TaktRequest in DELIVERED status (ready for NU to pull details)
   await db.insert(taktRequestsTable).values({
     id: REQUEST_ID,
@@ -123,6 +159,7 @@ beforeAll(async () => {
     status: "DELIVERED",
     createdByUserId: GU_USER,
     deliveredAt: new Date(),
+    dataPublicationId: "t90-publication-001",
   }).onConflictDoNothing();
 
   // Snapshot for the request
@@ -156,6 +193,11 @@ afterAll(async () => {
     .where(eq(taktRequestSnapshotsTable.taktRequestId, REQUEST_ID));
   await db.delete(taktRequestsTable)
     .where(eq(taktRequestsTable.id, REQUEST_ID));
+  // Clean up publication (after takt_requests due to FK)
+  await db.delete(dataPublicationRecipientsTable)
+    .where(eq(dataPublicationRecipientsTable.publicationId, "t90-publication-001")).catch(() => {});
+  await db.delete(dataPublicationsTable)
+    .where(eq(dataPublicationsTable.id, "t90-publication-001")).catch(() => {});
   await db.delete(projectContractorsTable)
     .where(and(
       eq(projectContractorsTable.projectId, PROJECT_ID),

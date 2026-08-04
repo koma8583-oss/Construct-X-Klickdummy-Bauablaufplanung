@@ -372,6 +372,8 @@ export default function ProjectDetail() {
   const deactivateAssignment = useDeactivateProjectSubcontractor();
 
   const [isDelegating, setIsDelegating] = useState(false);
+  const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
+  const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
 
   // State for new AN assignment dialog
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
@@ -502,6 +504,19 @@ export default function ProjectDetail() {
     [takte, editTargetId, editTaktPredecessors],
   );
 
+  /** Publications eligible for the current Vergabe form (TAKT_INFORMATION_PACKAGE, PUBLISHED,
+   *  contains the selected takt, and the selected AN is a recipient). */
+  const vergabePubs = useMemo(() => {
+    if (!selectedTakt || !vergabeAnOrgId) return [];
+    return (dataPublications ?? []).filter(
+      p =>
+        p.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
+        p.status === 'PUBLISHED' &&
+        (p.selectedTaktIds == null || p.selectedTaktIds.includes(selectedTakt.id)) &&
+        (!p.recipients?.length || p.recipients.some(r => r.anOrgId === vergabeAnOrgId)),
+    );
+  }, [dataPublications, selectedTakt, vergabeAnOrgId]);
+
   function handleGanttClick(taktId: string) {
     setSelectedTaktId(taktId);
     setIsVergabeOpen(false);
@@ -618,17 +633,28 @@ export default function ProjectDetail() {
     e.preventDefault();
     if (!selectedTakt || isDelegating) return;
     const fd = new FormData(e.currentTarget);
-    const nuOrgId = fd.get('anOrgId') as string;
+    const nuOrgId = vergabeAnOrgId || (fd.get('anOrgId') as string);
     const message  = (fd.get('message') as string) || undefined;
+    if (!nuOrgId) return;
+    if (!vergabePublicationId) {
+      toast({
+        title: 'Veröffentlichung erforderlich',
+        description: 'Bitte wählen Sie eine Datenraum-Veröffentlichung aus.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsDelegating(true);
     try {
       const created = await createTaktRequest.mutateAsync({
-        data: { taktId: selectedTakt.id, nuOrgId, message },
+        data: { taktId: selectedTakt.id, nuOrgId, message, dataPublicationId: vergabePublicationId } as never,
       });
       await sendTaktRequest.mutateAsync({ requestId: (created as { id: string }).id });
       toast({ title: 'TaktAnfrage gesendet' });
       invalidateTakte();
       setIsVergabeOpen(false);
+      setVergabeAnOrgId('');
+      setVergabePublicationId('');
     } catch (err) {
       toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
     } finally {
@@ -1428,7 +1454,15 @@ export default function ProjectDetail() {
                             <form onSubmit={handleDelegateTakt} className="mt-3 space-y-3 p-3 rounded-lg border border-border/60 bg-muted/10">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Nachunternehmer</Label>
-                                <Select name="anOrgId" required>
+                                <Select
+                                  name="anOrgId"
+                                  required
+                                  value={vergabeAnOrgId}
+                                  onValueChange={v => {
+                                    setVergabeAnOrgId(v);
+                                    setVergabePublicationId('');
+                                  }}
+                                >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Auswählen…" />
                                   </SelectTrigger>
@@ -1445,6 +1479,44 @@ export default function ProjectDetail() {
                                   </SelectContent>
                                 </Select>
                               </div>
+
+                              {/* Publication selector — required for the Dataspace policy gate */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">
+                                  Veröffentlichte Taktinformationen{' '}
+                                  <span className="text-destructive">*</span>
+                                </Label>
+                                {vergabeAnOrgId && vergabePubs.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground rounded border border-border/60 bg-muted/20 p-2">
+                                    Keine gültige Veröffentlichung für diesen Takt und AN vorhanden.{' '}
+                                    <button
+                                      type="button"
+                                      className="underline text-primary"
+                                      onClick={() => setIsDataspaceOpen(true)}
+                                    >
+                                      Jetzt erstellen
+                                    </button>
+                                  </p>
+                                ) : (
+                                  <Select
+                                    value={vergabePublicationId}
+                                    onValueChange={setVergabePublicationId}
+                                    disabled={!vergabeAnOrgId}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder={vergabeAnOrgId ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {vergabePubs.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                          {p.title} (v{p.version})
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                              </div>
+
                               <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
                               <div className="flex gap-2">
                                 <Button
@@ -1452,7 +1524,11 @@ export default function ProjectDetail() {
                                   variant="ghost"
                                   size="sm"
                                   className="flex-1"
-                                  onClick={() => setIsVergabeOpen(false)}
+                                  onClick={() => {
+                                    setIsVergabeOpen(false);
+                                    setVergabeAnOrgId('');
+                                    setVergabePublicationId('');
+                                  }}
                                 >
                                   Abbrechen
                                 </Button>
@@ -1460,7 +1536,7 @@ export default function ProjectDetail() {
                                   type="submit"
                                   size="sm"
                                   className="flex-1"
-                                  disabled={isDelegating}
+                                  disabled={isDelegating || !vergabePublicationId}
                                 >
                                   <Send className="w-3.5 h-3.5 mr-1.5" />
                                   {isDelegating ? 'Vergabe läuft…' : 'Vergeben'}

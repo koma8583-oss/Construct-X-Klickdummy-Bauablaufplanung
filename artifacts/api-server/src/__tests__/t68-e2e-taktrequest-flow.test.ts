@@ -35,6 +35,9 @@ import {
   taktVersionsTable,
   messageOutboxTable,
   messageInboxTable,
+  dataPublicationsTable,
+  dataPublicationRecipientsTable,
+  policyTemplatesTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import jwt from "jsonwebtoken";
@@ -73,6 +76,7 @@ async function flushAll() {
     .where(eq(taktRequestsTable.guOrgId, GU_ORG_ID))
     .catch(() => [] as { id: string }[]);
   const reqIds = reqRows.map((r) => r.id);
+
 
   const respRows = reqIds.length
     ? await db
@@ -116,6 +120,23 @@ async function flushAll() {
     await db
       .delete(taktRequestsTable)
       .where(inArray(taktRequestsTable.id, reqIds))
+      .catch(() => {});
+  // Clean up test publications (must come AFTER takt_requests due to FK)
+  const pubRows = await db
+    .select({ id: dataPublicationsTable.id })
+    .from(dataPublicationsTable)
+    .where(eq(dataPublicationsTable.agOrgId, GU_ORG_ID))
+    .catch(() => [] as { id: string }[]);
+  const pubIds = pubRows.map((r) => r.id);
+  if (pubIds.length)
+    await db
+      .delete(dataPublicationRecipientsTable)
+      .where(inArray(dataPublicationRecipientsTable.publicationId, pubIds))
+      .catch(() => {});
+  if (pubIds.length)
+    await db
+      .delete(dataPublicationsTable)
+      .where(inArray(dataPublicationsTable.id, pubIds))
       .catch(() => {});
   if (taktIds.length)
     await db.delete(takteTable).where(inArray(takteTable.id, taktIds)).catch(() => {});
@@ -181,6 +202,65 @@ beforeAll(async () => {
 afterAll(async () => {
   await flushAll();
 });
+
+// ── Helper: create a minimal test publication so NU can access /details ───────
+// GET /takt-requests/:id/details now requires the request to have a linked
+// data publication whose policy the AN has accepted. Tests that predate this
+// requirement use this helper to satisfy the gate without polluting the flow.
+
+async function createTestPublication(taktId: string): Promise<string> {
+  const now = new Date();
+  // Look up any existing policy template or create a synthetic one
+  const [existing] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1).catch(() => [] as { id: string }[]);
+  let policyTemplateId = existing?.id;
+  if (!policyTemplateId) {
+    const [pt] = await db
+      .insert(policyTemplatesTable)
+      .values({ id: `${T}-policy-template`, code: "STANDARD", name: "Standard Policy", description: "Auto-created for t68 tests", version: 1, legalText: "Test policy", createdAt: now, updatedAt: now })
+      .onConflictDoNothing()
+      .returning();
+    policyTemplateId = pt?.id ?? `${T}-policy-template`;
+  }
+
+  const pubId = `${T}-pub-${taktId.replace(/[^a-z0-9]/gi, "-")}`;
+  await db
+    .insert(dataPublicationsTable)
+    .values({
+      id: pubId,
+      agOrgId: GU_ORG_ID,
+      projectId: PROJECT_ID,
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      title: `t68 Test Publication – ${taktId}`,
+      version: 1,
+      schemaVersion: "1.0",
+      status: "PUBLISHED",
+      policyTemplateId,
+      selectedFields: ["taktReference"],
+      selectedTaktIds: [taktId],
+      publishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing();
+
+  // Register NU as an ACCEPTED recipient so the policy gate passes immediately
+  // The gate checks BOTH status === "ACCEPTED" AND policyAcceptedAt IS NOT NULL.
+  await db
+    .insert(dataPublicationRecipientsTable)
+    .values({
+      id: `${T}-recipient-${taktId.replace(/[^a-z0-9]/gi, "-")}`,
+      publicationId: pubId,
+      anOrgId: NU_ORG_ID,
+      status: "ACCEPTED",
+      notifiedAt: now,
+      policyAcceptedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing();
+
+  return pubId;
+}
 
 // ── Helper: insert a fresh Takt for a given suite suffix ──────────────────────
 
@@ -250,11 +330,13 @@ async function insertTakt(suffix: string): Promise<string> {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
-  let taktId   = "";
-  let requestId = "";
+  let taktId        = "";
+  let requestId     = "";
+  let publicationId = "";
 
   beforeAll(async () => {
-    taktId = await insertTakt("a");
+    taktId        = await insertTakt("a");
+    publicationId = await createTestPublication(taktId);
   });
 
   // ── Step 1: GU creates TaktRequest ──────────────────────────────────────────
@@ -269,6 +351,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
         responseRequiredBy: "2026-04-01T00:00:00Z",
         subject: "Bitte Takt bestätigen",
         message: "Bitte prüfen und zurückmelden.",
+        dataPublicationId: publicationId,
       });
 
     expect(res.status).toBe(201);
@@ -396,19 +479,21 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTERNATIVE)", () => {
-  let taktId    = "";
-  let requestId  = "";
-  let altRowId   = "";   // DB UUID of the accepted alternative row
+  let taktId        = "";
+  let requestId     = "";
+  let altRowId      = "";   // DB UUID of the accepted alternative row
+  let publicationId = "";
 
   beforeAll(async () => {
-    taktId = await insertTakt("b");
+    taktId        = await insertTakt("b");
+    publicationId = await createTestPublication(taktId);
   });
 
   it("t68-B1: GU creates TaktRequest via API → DRAFT", async () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2026-05-01T00:00:00Z" });
+      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2026-05-01T00:00:00Z", dataPublicationId: publicationId });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
