@@ -29,6 +29,7 @@ import { assertValidTaktRequestTransition } from "../lib/takt-request-transition
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import type { ReminderType } from "@workspace/db";
 import type { DeadlineConfig } from "./deadline-config";
+import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import pino from "pino";
 
 // Reuse the transaction type established in reschedule.ts
@@ -638,6 +639,15 @@ async function upsertReminder(opts: {
     .where(eq(taktRequestsTable.id, taktRequestId));
 
   logger.info({ taktRequestId, reminderType, transportStatus: transportResult.status }, "Reminder sent");
+
+  // Write REMINDER_SENT audit event (best-effort — must not break the reminder flow)
+  await writeAuditEvent({
+    requestId: taktRequestId,
+    eventType: "REMINDER_SENT",
+    actorRole: "SYSTEM",
+    metadata: { reminderType, transportStatus: transportResult.status, messageId },
+  });
+
   return "sent";
 }
 

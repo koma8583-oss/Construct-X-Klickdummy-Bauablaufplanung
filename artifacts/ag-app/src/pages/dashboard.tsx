@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useGetAgDashboard } from '@workspace/api-client-react';
+import { useGetAgDashboard, useGetAgReportSummary } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Briefcase, AlertTriangle, CheckCircle, Clock, Activity } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,10 @@ import { format } from 'date-fns';
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  const { data: dashboard, isLoading } = useGetAgDashboard();
+  const { data: dashboard, isLoading: dashLoading } = useGetAgDashboard();
+  const { data: summary, isLoading: summaryLoading } = useGetAgReportSummary();
+
+  const isLoading = dashLoading || summaryLoading;
 
   if (isLoading) {
     return (
@@ -36,32 +39,33 @@ export default function Dashboard() {
     );
   }
 
+  // KPI cards sourced from /reports/ag/summary — live TaktRequest-based metrics
   const stats = [
     {
       title: t('dashboard.projects'),
-      value: dashboard?.totalProjects || 0,
-      description: `${dashboard?.activeProjects || 0} active`,
+      value: summary?.projects ?? 0,
+      description: `${summary?.assignedSubcontractors ?? 0} Nachunternehmen`,
       icon: Briefcase,
       color: 'text-blue-500',
     },
     {
-      title: t('dashboard.pending'),
-      value: dashboard?.pendingDelegations || 0,
-      description: 'Waiting for response',
+      title: 'Offene Anfragen',
+      value: summary?.openTaktRequests ?? 0,
+      description: 'Koordination läuft',
       icon: Clock,
       color: 'text-amber-500',
     },
     {
-      title: t('dashboard.critical'),
-      value: dashboard?.criticalProposals || 0,
-      description: 'Requires attention',
+      title: 'Überfällig',
+      value: summary?.overdueTaktRequests ?? 0,
+      description: 'Antwortfrist überschritten',
       icon: AlertTriangle,
       color: 'text-destructive',
     },
     {
-      title: t('dashboard.confirmed'),
-      value: dashboard?.confirmedDelegations || 0,
-      description: 'Ready to execute',
+      title: 'Bestätigte Takte',
+      value: summary?.confirmedTakts ?? 0,
+      description: 'Bereit zur Ausführung',
       icon: CheckCircle,
       color: 'text-emerald-500',
     },
@@ -122,7 +126,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No upcoming takte in the next 7 days.
+                Keine anstehenden Takte in den nächsten 7 Tagen.
               </div>
             )}
           </CardContent>
@@ -161,7 +165,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No recent activity.
+                Keine neueren Aktivitäten.
               </div>
             )}
           </CardContent>

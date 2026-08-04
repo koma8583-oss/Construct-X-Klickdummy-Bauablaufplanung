@@ -6,8 +6,9 @@ import {
   organizationsTable,
   delegationsTable,
   delegationResponsesTable,
+  takteTable,
 } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, inArray, sql } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
@@ -84,6 +85,18 @@ router.get("/projects", requireJwt, async (req, res): Promise<void> => {
   }
 
   const rows = await query;
+  const projectIds = rows.map((r) => r.project.id);
+
+  // Batch-query takt counts per project (avoids N+1)
+  let taktCountMap = new Map<string, number>();
+  if (projectIds.length > 0) {
+    const taktCounts = await db
+      .select({ projectId: takteTable.projectId, total: count() })
+      .from(takteTable)
+      .where(inArray(takteTable.projectId, projectIds as [string, ...string[]]))
+      .groupBy(takteTable.projectId);
+    taktCountMap = new Map(taktCounts.map((t) => [t.projectId, t.total]));
+  }
 
   const projectsWithCounts = await Promise.all(
     rows.map(async ({ project }) => {
@@ -108,7 +121,7 @@ router.get("/projects", requireJwt, async (req, res): Promise<void> => {
 
       return {
         ...project,
-        taktCount: 0,
+        taktCount: taktCountMap.get(project.id) ?? 0,
         delegationCount: delCount?.count ?? 0,
         pendingResponseCount: pendingCount?.count ?? 0,
       };
@@ -145,6 +158,7 @@ router.post("/projects", requireJwt, async (req, res): Promise<void> => {
     .values({ ...parsed.data, agOrgId: caller.orgId })
     .returning();
 
+  // taktCount is 0 for a freshly created project
   res.status(201).json({ ...project, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
 });
 
@@ -182,9 +196,14 @@ router.get(
       .where(eq(projectsTable.id, project.id))
       .limit(1);
 
+    const [taktCountRow] = await db
+      .select({ total: count() })
+      .from(takteTable)
+      .where(eq(takteTable.projectId, project.id));
+
     res.json({
       ...full,
-      taktCount: 0,
+      taktCount: taktCountRow?.total ?? 0,
       delegationCount: delCount?.count ?? 0,
       pendingResponseCount: pendingCount?.count ?? 0,
     });
@@ -225,7 +244,12 @@ router.patch(
       return;
     }
 
-    res.json({ ...updated, taktCount: 0, delegationCount: 0, pendingResponseCount: 0 });
+    const [patchTaktCount] = await db
+      .select({ total: count() })
+      .from(takteTable)
+      .where(eq(takteTable.projectId, project.id));
+
+    res.json({ ...updated, taktCount: patchTaktCount?.total ?? 0, delegationCount: 0, pendingResponseCount: 0 });
   },
 );
 

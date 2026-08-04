@@ -48,6 +48,10 @@ export const taktAuditEventTypeEnum = pgEnum("takt_audit_event_type", [
   "REVISION_CREATED",
   "REQUEST_EXPIRED",
   "REQUEST_CANCELLED",
+  // Added in Task #105 — PoC spec required event types
+  "REQUEST_CREATED",
+  "SNAPSHOT_CREATED",
+  "REMINDER_SENT",
 ]);
 
 export const taktAuditActorRoleEnum = pgEnum("takt_audit_actor_role", [

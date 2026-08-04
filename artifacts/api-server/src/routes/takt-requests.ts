@@ -229,6 +229,24 @@ router.post(
       throw err;
     }
 
+    // Write REQUEST_CREATED and SNAPSHOT_CREATED audit events (legacy path)
+    await writeAuditEvent({
+      requestId: result.request.id,
+      eventType: "REQUEST_CREATED",
+      actorOrgId: guOrgId,
+      actorUserId: userId,
+      actorRole: "GU",
+      metadata: { requestNumber: result.request.requestNumber, nuOrgId: parsed.data.nuOrgId, taktId: parsed.data.taktId },
+    });
+    await writeAuditEvent({
+      requestId: result.request.id,
+      eventType: "SNAPSHOT_CREATED",
+      actorOrgId: guOrgId,
+      actorUserId: userId,
+      actorRole: "GU",
+      metadata: { snapshotId: result.snapshot.id, taktVersion: result.request.taktVersion },
+    });
+
     res.status(201).json({
       id:                  result.request.id,
       taktId:              result.request.taktId,
@@ -330,6 +348,24 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     }
     throw err;
   }
+
+  // Write REQUEST_CREATED and SNAPSHOT_CREATED audit events
+  await writeAuditEvent({
+    requestId: result.request.id,
+    eventType: "REQUEST_CREATED",
+    actorOrgId: guOrgId,
+    actorUserId: userId,
+    actorRole: "GU",
+    metadata: { requestNumber: result.request.requestNumber, nuOrgId, taktId },
+  });
+  await writeAuditEvent({
+    requestId: result.request.id,
+    eventType: "SNAPSHOT_CREATED",
+    actorOrgId: guOrgId,
+    actorUserId: userId,
+    actorRole: "GU",
+    metadata: { snapshotId: result.snapshot.id, taktVersion: result.request.taktVersion },
+  });
 
   res.status(201).json({
     id: result.request.id,

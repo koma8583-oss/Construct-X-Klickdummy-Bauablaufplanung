@@ -5,10 +5,27 @@ import { hubApi, type HubMessage, type HubMessageType } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, XCircle, Ban, AlertCircle } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Ban, AlertCircle, RefreshCw } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// ── Hub report summary ────────────────────────────────────────────────────────
+
+interface HubReportSummary {
+  pendingMessages: number;
+  deliveredMessages: number;
+  failedMessages: number;
+  retryCount: number;
+}
+
+async function fetchHubSummary(): Promise<HubReportSummary> {
+  const res = await fetch('/api/reports/hub/summary', { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── Message type labels ───────────────────────────────────────────────────────
 
 const messageTypeConfig: Record<string, { label: string; color: string; icon: React.ComponentType<{ size?: number }> }> = {
   DELEGATION_CREATED:                  { label: 'Vergabe erstellt',          color: 'bg-blue-500 text-white',      icon: Clock },
@@ -31,19 +48,24 @@ const messageTypeConfig: Record<string, { label: string; color: string; icon: Re
 
 const DEFAULT_CONFIG = { label: 'Nachricht', color: 'bg-gray-400 text-white', icon: Clock };
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
-  const { data: messages = [], isLoading } = useQuery({
+
+  const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['hub-messages', 'dashboard'],
     queryFn: () => hubApi.messages.list({ limit: 50 }),
   });
 
-  const stats = {
-    pending: messages.filter(m => m.type === 'DELEGATION_CREATED').length,
-    confirmed: messages.filter(m => m.type === 'DELEGATION_CONFIRMED' || m.type === 'AG_ACCEPTED_ALTERNATIVE').length,
-    rejected: messages.filter(m => m.type === 'DELEGATION_REJECTED' || m.type === 'AG_REJECTED_ALTERNATIVE').length,
-    cancelled: messages.filter(m => m.type === 'DELEGATION_CANCELLED').length,
-  };
+  const { data: hubSummary, isLoading: summaryLoading } = useQuery<HubReportSummary>({
+    queryKey: ['hub-report-summary'],
+    queryFn: fetchHubSummary,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const isLoading = messagesLoading || summaryLoading;
 
   const recentMessages = messages.slice(0, 10);
 
@@ -91,7 +113,7 @@ export default function DashboardPage() {
         <p className="text-muted-foreground mt-1">Übersicht aller Vergabenachrichten</p>
       </div>
 
-      {/* Stats */}
+      {/* Stats from /api/reports/hub/summary */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -99,37 +121,45 @@ export default function DashboardPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-pending">{stats.pending}</div>
+            <div className="text-2xl font-bold" data-testid="stat-pending">
+              {hubSummary?.pendingMessages ?? 0}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Bestätigt</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Zugestellt</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600" data-testid="stat-confirmed">{stats.confirmed}</div>
+            <div className="text-2xl font-bold text-emerald-600" data-testid="stat-delivered">
+              {hubSummary?.deliveredMessages ?? 0}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Abgelehnt</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Fehlgeschlagen</CardTitle>
             <XCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600" data-testid="stat-rejected">{stats.rejected}</div>
+            <div className="text-2xl font-bold text-red-600" data-testid="stat-failed">
+              {hubSummary?.failedMessages ?? 0}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Storniert</CardTitle>
-            <Ban className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Wiederholungen</CardTitle>
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-cancelled">{stats.cancelled}</div>
+            <div className="text-2xl font-bold" data-testid="stat-retries">
+              {hubSummary?.retryCount ?? 0}
+            </div>
           </CardContent>
         </Card>
       </div>

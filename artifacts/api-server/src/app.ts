@@ -8,6 +8,7 @@ import hubRouter from "./routes/hub";
 import authServiceRouter from "./routes/auth-service";
 import internalRouter from "./routes/internal";
 import agProjectsRouter from "./routes/ag/projects";
+import reportsRouter from "./routes/reports";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -56,6 +57,9 @@ app.use("/api/an", anRouter);
 // ── AG routes under /api/ ────────────────────────────────────────────────────
 app.use("/api", agProjectsRouter);
 app.use("/api", agRouter);
+
+// ── Reports (AG + AN + Hub) under /api/reports/ ───────────────────────────────
+app.use("/api", reportsRouter);
 
 // ── Internal-only routes (dev/admin, not public) ─────────────────────────────
 app.use("/internal", internalRouter);
