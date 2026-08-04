@@ -14,6 +14,7 @@ import organizationsRouter from "../organizations";
 import webhooksRouter from "../webhooks";
 import healthRouter from "../health";
 import taktRequestsRouter from "../takt-requests";
+import dataOffersRouter from "./data-offers";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,9 @@ router.use(resourcesRouter);
 router.use(organizationsRouter);
 router.use(webhooksRouter);
 router.use(taktRequestsRouter);
+
+// AN data-space offers at /api/an/data-offers
+router.use(dataOffersRouter);
 
 // AN dashboard at /api/an/dashboard/an
 router.use(dashboardRouter);

@@ -52,6 +52,16 @@ export const taktAuditEventTypeEnum = pgEnum("takt_audit_event_type", [
   "REQUEST_CREATED",
   "SNAPSHOT_CREATED",
   "REMINDER_SENT",
+  // Added in Task #112 — Dataspace publication audit events
+  "DATA_PUBLICATION_CREATED",
+  "DATA_PUBLICATION_PUBLISHED",
+  "DATA_OFFER_SENT",
+  "DATA_POLICY_ACCEPTED",
+  "DATA_POLICY_REJECTED",
+  "DATA_CONTENT_ACCESSED",
+  "DATA_PUBLICATION_SUSPENDED",
+  "DATA_PUBLICATION_WITHDRAWN",
+  "DATA_PUBLICATION_EXPIRED",
 ]);
 
 export const taktAuditActorRoleEnum = pgEnum("takt_audit_actor_role", [

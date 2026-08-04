@@ -47,6 +47,8 @@ export const dataspaceMessageTypeEnum = pgEnum("dataspace_message_type", [
   "TAKT_REQUEST_EXPIRED",
   /** Generic reminder envelope — reminderType in payload distinguishes sub-types (Task 7.5) */
   "TAKT_REQUEST_REMINDER",
+  /** Sent to AN recipients when an AG publishes a data offer in the simulated dataspace (Task #112) */
+  "DATA_OFFER_PUBLISHED",
 ]);
 
 /**

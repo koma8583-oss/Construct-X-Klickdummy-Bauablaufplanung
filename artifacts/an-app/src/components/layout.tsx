@@ -18,6 +18,7 @@ import {
   CalendarDays,
   ShieldCheck,
   BarChart2,
+  Globe,
 } from "lucide-react";
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -33,6 +34,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/local-projects", icon: FolderOpen, label: "Lokale Projekte" },
     { href: "/resource-bookings", icon: CalendarDays, label: "Belegungen" },
     { href: "/availability-checks", icon: ShieldCheck, label: "Verfügbarkeit" },
+    { href: "/data-offers", icon: Globe, label: "Datenraum" },
     { href: "/gantt", icon: CalendarClock, label: t("nav.gantt") },
     { href: "/resources", icon: HardHat, label: t("nav.resources") },
     { href: "/reports", icon: BarChart2, label: "Berichte" },

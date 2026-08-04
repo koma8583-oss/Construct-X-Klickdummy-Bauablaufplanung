@@ -1,0 +1,280 @@
+/**
+ * Typed React Query hooks for the AG-facing data-publication endpoints (Task #112).
+ *
+ *   useGetPolicyTemplates()
+ *   useGetProjectDataPublications(projectId)
+ *   useGetDataPublication(publicationId)
+ *   useCreateDataPublication()
+ *   usePublishDataPublication()
+ *   useSuspendDataPublication()
+ *   useWithdrawDataPublication()
+ */
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { UseQueryResult, UseMutationResult } from "@tanstack/react-query";
+import { customFetch } from "./custom-fetch";
+
+// ── Shared types ───────────────────────────────────────────────────────────────
+
+export type DataProductType =
+  | "PROJECT_OVERVIEW"
+  | "PROJECT_COORDINATION_PACKAGE"
+  | "TAKT_INFORMATION_PACKAGE";
+
+export type PublicationStatus =
+  | "DRAFT"
+  | "PUBLISHED"
+  | "SUSPENDED"
+  | "WITHDRAWN"
+  | "EXPIRED";
+
+export type PublicationRecipientStatus =
+  | "OFFERED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "REVOKED"
+  | "EXPIRED";
+
+export interface PolicyTemplate {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  purpose: string;
+  permissions: string[];
+  prohibitions: string[];
+  validityRule: string;
+  retentionRule: string | null;
+  active: boolean;
+}
+
+export interface PublicationRecipientSummary {
+  id?: string;
+  anOrgId: string;
+  anName: string;
+  status: PublicationRecipientStatus;
+  notifiedAt?: string | null;
+  policyAcceptedAt?: string | null;
+  policyRejectedAt?: string | null;
+  firstAccessedAt?: string | null;
+  lastAccessedAt?: string | null;
+}
+
+export interface DataPublication {
+  id: string;
+  agOrgId: string;
+  projectId: string;
+  dataProductType: DataProductType;
+  title: string;
+  description: string | null;
+  version: number;
+  schemaVersion: string;
+  status: PublicationStatus;
+  policyTemplateId: string;
+  policyCode?: string | null;
+  policyName?: string | null;
+  selectedFields: string[];
+  selectedTaktIds?: string[] | null;
+  contentHash?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  publishedAt?: string | null;
+  withdrawnAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recipients?: PublicationRecipientSummary[];
+  policy?: PolicyTemplate | null;
+}
+
+export interface CreateDataPublicationDto {
+  dataProductType: DataProductType;
+  title: string;
+  description?: string;
+  policyTemplateId: string;
+  selectedFields: string[];
+  selectedTaktIds?: string[];
+  recipientAnOrgIds: string[];
+  validFrom?: string;
+  validUntil?: string;
+}
+
+// ── FIELD_WHITELISTS (must mirror the server-side constant) ───────────────────
+
+export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
+  PROJECT_OVERVIEW: [
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "assignedTrade",
+    "workPackageReference",
+    "milestones",
+    "documentReferences",
+  ],
+  PROJECT_COORDINATION_PACKAGE: [
+    "projectReference",
+    "assignedTrade",
+    "workPackageReference",
+    "milestones",
+    "logisticsConstraints",
+    "coordinationConstraints",
+    "interfaceDescriptions",
+    "relevantTimeWindows",
+    "documentReferences",
+  ],
+  TAKT_INFORMATION_PACKAGE: [
+    "projectReference",
+    "taktReference",
+    "taktVersion",
+    "location",
+    "trade",
+    "workPackage",
+    "plannedTimeWindow",
+    "bufferTimeWindow",
+    "predecessors",
+    "successors",
+    "resourceRequirements",
+    "constraints",
+    "documentReferences",
+  ],
+};
+
+export const FIELD_LABELS: Record<string, string> = {
+  projectReference: "Projektreferenz",
+  projectName: "Projektname",
+  projectStatus: "Projektstatus",
+  startDate: "Startdatum",
+  endDate: "Enddatum",
+  assignedTrade: "Gewerk",
+  workPackageReference: "Arbeitspaket-Referenz",
+  milestones: "Meilensteine",
+  logisticsConstraints: "Logistikbeschränkungen",
+  coordinationConstraints: "Koordinationsbeschränkungen",
+  interfaceDescriptions: "Schnittstellenbeschreibungen",
+  relevantTimeWindows: "Relevante Zeitfenster",
+  documentReferences: "Dokumentreferenzen",
+  taktReference: "Takt-Referenz",
+  taktVersion: "Taktversion",
+  location: "Bereich / Zone",
+  trade: "Gewerk",
+  workPackage: "Arbeitspaket",
+  plannedTimeWindow: "Geplantes Zeitfenster",
+  bufferTimeWindow: "Pufferzeiten",
+  predecessors: "Vorgänger",
+  successors: "Nachfolger",
+  resourceRequirements: "Ressourcenanforderungen",
+  constraints: "Einschränkungen",
+};
+
+// ── Query hooks ───────────────────────────────────────────────────────────────
+
+export function useGetPolicyTemplates(): UseQueryResult<PolicyTemplate[], Error> {
+  return useQuery({
+    queryKey: ["policy-templates"],
+    queryFn: () =>
+      customFetch<PolicyTemplate[]>("/api/policy-templates", { method: "GET" }),
+  });
+}
+
+export function useGetProjectDataPublications(
+  projectId: string | undefined,
+): UseQueryResult<DataPublication[], Error> {
+  return useQuery({
+    queryKey: ["data-publications", projectId],
+    queryFn: () =>
+      customFetch<DataPublication[]>(
+        `/api/projects/${projectId}/data-publications`,
+        { method: "GET" },
+      ),
+    enabled: !!projectId,
+  });
+}
+
+export function useGetDataPublication(
+  publicationId: string | undefined,
+): UseQueryResult<DataPublication, Error> {
+  return useQuery({
+    queryKey: ["data-publication", publicationId],
+    queryFn: () =>
+      customFetch<DataPublication>(
+        `/api/data-publications/${publicationId}`,
+        { method: "GET" },
+      ),
+    enabled: !!publicationId,
+  });
+}
+
+// ── Mutation hooks ────────────────────────────────────────────────────────────
+
+export function useCreateDataPublication(
+  projectId: string,
+): UseMutationResult<DataPublication, Error, CreateDataPublicationDto> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      customFetch<DataPublication>(
+        `/api/projects/${projectId}/data-publications`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-publications", projectId] });
+    },
+  });
+}
+
+export function usePublishDataPublication(): UseMutationResult<
+  { ok: boolean; status: string },
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (publicationId) =>
+      customFetch<{ ok: boolean; status: string }>(
+        `/api/data-publications/${publicationId}/publish`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, publicationId) => {
+      void qc.invalidateQueries({ queryKey: ["data-publication", publicationId] });
+      void qc.invalidateQueries({ queryKey: ["data-publications"] });
+    },
+  });
+}
+
+export function useSuspendDataPublication(): UseMutationResult<
+  { ok: boolean; status: string },
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (publicationId) =>
+      customFetch<{ ok: boolean; status: string }>(
+        `/api/data-publications/${publicationId}/suspend`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, publicationId) => {
+      void qc.invalidateQueries({ queryKey: ["data-publication", publicationId] });
+      void qc.invalidateQueries({ queryKey: ["data-publications"] });
+    },
+  });
+}
+
+export function useWithdrawDataPublication(): UseMutationResult<
+  { ok: boolean; status: string },
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (publicationId) =>
+      customFetch<{ ok: boolean; status: string }>(
+        `/api/data-publications/${publicationId}/withdraw`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, publicationId) => {
+      void qc.invalidateQueries({ queryKey: ["data-publication", publicationId] });
+      void qc.invalidateQueries({ queryKey: ["data-publications"] });
+    },
+  });
+}

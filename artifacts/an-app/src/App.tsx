@@ -23,6 +23,7 @@ import LocalProjects from '@/pages/local-projects';
 import ResourceBookings from '@/pages/resource-bookings';
 import AvailabilityChecks from '@/pages/availability-checks';
 import Reports from '@/pages/reports';
+import DataOffers from '@/pages/data-offers';
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ function AuthRoutedApp() {
         <Route path="/local-projects" component={LocalProjects} />
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />
+        <Route path="/data-offers" component={DataOffers} />
         <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />
         <Route path="/resources" component={Resources} />

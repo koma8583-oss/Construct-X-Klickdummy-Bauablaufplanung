@@ -55,7 +55,7 @@ import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
-  AlertCircle, Building2,
+  AlertCircle, Building2, Globe,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -91,7 +91,12 @@ import {
   useUpdateProjectSubcontractor,
   useDeactivateProjectSubcontractor,
   getListProjectSubcontractorsQueryKey,
+  useGetProjectDataPublications,
+  useSuspendDataPublication,
+  useWithdrawDataPublication,
+  type DataPublication,
 } from '@workspace/api-client-react';
+import { DataPublicationWizard } from '@/components/DataPublicationWizard';
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -345,6 +350,11 @@ export default function ProjectDetail() {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
 
+  // Dataspace publications for this project
+  const { data: dataPublications } = useGetProjectDataPublications(projectId);
+  const suspendPublication = useSuspendDataPublication();
+  const withdrawPublication = useWithdrawDataPublication();
+
   // Mutations
   const createTakt = useCreateTakt();
   const updateTakt = useUpdateTakt();
@@ -366,6 +376,8 @@ export default function ProjectDetail() {
   // State for new AN assignment dialog
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
+  // Dataspace publication wizard
+  const [isDataspaceOpen, setIsDataspaceOpen] = useState(false);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
   // Internal field state — create form
@@ -822,6 +834,12 @@ export default function ProjectDetail() {
             )}
           </Button>
           )}
+          {canManageTaktRequests && (
+            <Button variant="outline" onClick={() => setIsDataspaceOpen(true)}>
+              <Globe className="w-4 h-4 mr-2" />
+              Im Datenraum bereitstellen
+            </Button>
+          )}
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Neuer Takt
@@ -872,6 +890,95 @@ export default function ProjectDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
+      {dataPublications && dataPublications.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-primary" />
+              <span className="font-semibold text-sm">Im Datenraum bereitgestellte Daten</span>
+              <span className="text-xs text-muted-foreground">({dataPublications.length})</span>
+            </div>
+          </div>
+          <div className="divide-y divide-border/50">
+            {dataPublications.map((pub: DataPublication) => {
+              const statusColors: Record<string, string> = {
+                PUBLISHED: 'text-emerald-600 dark:text-emerald-400',
+                DRAFT: 'text-muted-foreground',
+                SUSPENDED: 'text-amber-600 dark:text-amber-400',
+                WITHDRAWN: 'text-red-500 dark:text-red-400',
+                EXPIRED: 'text-muted-foreground',
+              };
+              const statusLabels: Record<string, string> = {
+                PUBLISHED: 'Veröffentlicht',
+                DRAFT: 'Entwurf',
+                SUSPENDED: 'Pausiert',
+                WITHDRAWN: 'Zurückgezogen',
+                EXPIRED: 'Abgelaufen',
+              };
+              const productLabels: Record<string, string> = {
+                PROJECT_OVERVIEW: 'Projektübersicht',
+                PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
+                TAKT_INFORMATION_PACKAGE: 'Taktinformationspaket',
+              };
+              const accepted = (pub.recipients ?? []).filter(r => r.status === 'ACCEPTED').length;
+              const total = (pub.recipients ?? []).length;
+              return (
+                <div key={pub.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium truncate">{pub.title}</span>
+                      <span className="text-[10px] text-muted-foreground">v{pub.version}</span>
+                      <span className={`text-[11px] font-medium ${statusColors[pub.status] ?? 'text-muted-foreground'}`}>
+                        {statusLabels[pub.status] ?? pub.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
+                      <span>{productLabels[pub.dataProductType] ?? pub.dataProductType}</span>
+                      {pub.policyCode && <span>· {pub.policyCode}</span>}
+                      <span>· {accepted}/{total} Akzeptiert</span>
+                      {pub.publishedAt && (
+                        <span>· {new Date(pub.publishedAt).toLocaleDateString('de-DE')}</span>
+                      )}
+                    </div>
+                  </div>
+                  {pub.status === 'PUBLISHED' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs text-amber-600 hover:text-amber-700 h-7"
+                      onClick={() => suspendPublication.mutate(pub.id, {
+                        onSuccess: () => toast({ title: 'Bereitstellung pausiert' }),
+                        onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
+                      })}
+                    >
+                      Pausieren
+                    </Button>
+                  )}
+                  {['PUBLISHED', 'SUSPENDED'].includes(pub.status) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs text-red-500 hover:text-red-600 h-7"
+                      onClick={() => {
+                        if (confirm('Bereitstellung zurückziehen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+                          withdrawPublication.mutate(pub.id, {
+                            onSuccess: () => toast({ title: 'Bereitstellung zurückgezogen' }),
+                            onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
+                          });
+                        }
+                      }}
+                    >
+                      Zurückziehen
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Status legend */}
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
@@ -1950,6 +2057,27 @@ export default function ProjectDetail() {
           })()}
         </DialogContent>
       </Dialog>
+      {/* ── Dataspace Publication Wizard ──────────────────────────────────────── */}
+      {project && (
+        <DataPublicationWizard
+          open={isDataspaceOpen}
+          onOpenChange={setIsDataspaceOpen}
+          projectId={projectId}
+          projectName={project.projectName ?? ''}
+          contractors={(assignments ?? []).map(a => ({
+            id: a.id,
+            name: a.anName ?? a.anOrgId,
+            orgId: a.anOrgId,
+            assignmentStatus: a.assignmentStatus,
+            trade: a.trade,
+          }))}
+          takte={(takte ?? []).map(t => ({
+            id: t.id,
+            taktBezeichnung: t.taktBezeichnung,
+            zone: t.zone ?? '',
+          }))}
+        />
+      )}
     </div>
   );
 }
