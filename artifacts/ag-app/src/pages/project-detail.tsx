@@ -1625,68 +1625,76 @@ export default function ProjectDetail() {
 
       {/* ── Create Takt Dialog ────────────────────────────────────────────────── */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-3xl w-full">
           <DialogHeader>
             <DialogTitle>Neuen Takt anlegen</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreateTakt} className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Takt-Bezeichnung</Label>
-                <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
-              </div>
-              <div className="space-y-2">
-                <Label>Zone</Label>
-                <Input name="zone" required placeholder="z.B. OG 1, Abschnitt A" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Gewerk</Label>
-              <Input name="gewerk" required placeholder="z.B. Trockenbau, Elektro" />
-            </div>
-            <div className="space-y-2">
-              <Label>Beschreibung</Label>
-              <Input name="description" />
-            </div>
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="space-y-2">
-                <Label>Plan-Start</Label>
-                <Input name="plannedStart" type="date" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Plan-Ende</Label>
-                <Input name="plannedEnd" type="date" required />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50 mt-4">
-              <div className="space-y-2">
-                <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
-                <Input name="earliestStart" type="date" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-muted-foreground flex items-center gap-1">Spätestes Ende <span className="text-[10px]">(Puffer)</span></Label>
-                <Input name="latestEnd" type="date" />
-              </div>
-            </div>
+          <form onSubmit={handleCreateTakt} className="py-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-0">
 
-            {/* ── Interne Informationen ────────────────────────── */}
-            <div className="pt-3 mt-2 border-t border-border/50">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm">🔒</span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interne Informationen</span>
-                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Nicht an AN übermittelt</span>
-              </div>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Interne Notiz</Label>
-                  <Textarea name="internalNote" placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-16 text-sm" />
+              {/* ── Linke Spalte: Stammdaten ─────────────────────── */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Takt-Bezeichnung</Label>
+                    <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Zone</Label>
+                    <Input name="zone" required placeholder="z.B. OG 1, Abschnitt A" />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
-                  <Input name="costEstimate" placeholder="z.B. 45.000 €" className="text-sm" />
+                <div className="space-y-2">
+                  <Label>Gewerk</Label>
+                  <Input name="gewerk" required placeholder="z.B. Trockenbau, Elektro" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Beschreibung</Label>
+                  <Input name="description" placeholder="Optional" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
+                    <Label>Plan-Start</Label>
+                    <Input name="plannedStart" type="date" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Plan-Ende</Label>
+                    <Input name="plannedEnd" type="date" required />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/50">
+                  <div className="space-y-2 pt-3">
+                    <Label className="text-muted-foreground flex items-center gap-1">
+                      Frühester Start <span className="text-[10px]">(Puffer)</span>
+                    </Label>
+                    <Input name="earliestStart" type="date" />
+                  </div>
+                  <div className="space-y-2 pt-3">
+                    <Label className="text-muted-foreground flex items-center gap-1">
+                      Spätestes Ende <span className="text-[10px]">(Puffer)</span>
+                    </Label>
+                    <Input name="latestEnd" type="date" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Rechte Spalte: Interne Informationen ─────────── */}
+              <div className="border-l border-border/50 pl-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-sm">🔒</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interne Informationen</span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Nicht an AN übermittelt</span>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Interne Notiz</Label>
+                    <Textarea name="internalNote" placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-24 text-sm" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
+                    <Input name="costEstimate" placeholder="z.B. 45.000 €" className="text-sm" />
+                  </div>
+                  <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground">Vergabepriorität</Label>
                     <Select value={createProcPriority} onValueChange={setCreateProcPriority}>
                       <SelectTrigger className="text-sm h-9">
@@ -1699,7 +1707,7 @@ export default function ProjectDetail() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground">Risikoklasse</Label>
                     <Select value={createRiskClass} onValueChange={setCreateRiskClass}>
                       <SelectTrigger className="text-sm h-9">
@@ -1716,7 +1724,7 @@ export default function ProjectDetail() {
               </div>
             </div>
 
-            <DialogFooter className="mt-6">
+            <DialogFooter className="mt-6 pt-4 border-t border-border/50">
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Abbrechen</Button>
               <Button type="submit" disabled={createTakt.isPending}>Takt anlegen</Button>
             </DialogFooter>
