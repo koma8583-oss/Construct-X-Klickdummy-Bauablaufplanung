@@ -180,6 +180,14 @@ export async function runAvailabilityCheck(
   const snapshot = snapshotRow.snapshotPayload as unknown as TaktRequestSnapshotPayload;
 
   // ── Rule 5: Time window is valid ─────────────────────────────────────────────
+  if (!snapshot?.plannedTimeWindow?.start || !snapshot?.plannedTimeWindow?.end) {
+    throw new AvailabilityCheckError(
+      `Snapshot for TaktRequest ${taktRequestId} is missing plannedTimeWindow — ` +
+        `the Takt may not have valid dates. Please contact the Auftraggeber.`,
+      "INVALID_TIME_WINDOW",
+    );
+  }
+
   const windowStart = parseDate(snapshot.plannedTimeWindow.start);
   const windowEnd   = parseDate(snapshot.plannedTimeWindow.end);
 
