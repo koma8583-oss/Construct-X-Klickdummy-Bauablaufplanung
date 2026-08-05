@@ -1,0 +1,967 @@
+# Replit-Auftrag – AN-Workflow und Ressourcenplanung als MVP optimieren
+
+Optimiere die Nachunternehmer-Anwendung im Repository `Task-Coordination-Flow`.
+
+Ziel ist ein verständlicher MVP-Workflow, bei dem:
+
+* die Taktanfrage zentral bearbeitet wird
+* Datenraum- und Policy-Status jederzeit sichtbar sind
+* der AN eigene Ressourcen verwalten kann
+* Ressourcen auch für andere Projekte blockiert werden können
+* bei einer Taktanfrage Ressourcentypen und Kapazitäten ausgewählt werden können
+* die Verfügbarkeit gegen alle internen Belegungen geprüft wird
+* nur das freigegebene Ergebnis an den AG übertragen wird
+
+Bestehende Datenmodelle, Services, Endpunkte und Komponenten möglichst wiederverwenden.
+
+## Nicht umsetzen
+
+* keine vollständige Neugestaltung
+* keine neue Policy Engine
+* keine EDC-Anbindung
+* keine neue Diagrammbibliothek
+* keine komplexe Optimierung oder automatische Einsatzplanung
+* keine neue Reporting-Plattform
+* keine umfangreiche Refaktorierung
+* keine verbindliche Zuordnung einzelner Mitarbeiter bei der ersten Anfrageprüfung
+* keine vollständige neue Testinfrastruktur
+
+---
+
+# 1. Zielworkflow für den AN
+
+Der operative Ablauf soll lauten:
+
+```text
+Taktanfrage öffnen
+→ Datenangebot und Policy prüfen
+→ Policy akzeptieren
+→ Taktdaten abrufen
+→ benötigte Ressourcentypen auswählen
+→ Kapazitätsbedarf angeben
+→ Verfügbarkeit prüfen
+→ Ergebnis und Alternativen kontrollieren
+→ Antwort an den AG senden
+→ bei Annahme konkrete Ressourcen später einplanen
+```
+
+Die TaktRequest-Detailseite wird zum zentralen Arbeitsbereich.
+
+Die eigenständige Ressourcenplanung bleibt als separater interner Bereich des AN bestehen.
+
+---
+
+# 2. Navigation vereinfachen
+
+Passe ausschließlich Reihenfolge und Bezeichnungen an.
+
+## Navigation
+
+```text
+Dashboard
+Taktanfragen
+Datenraum
+
+Ressourcentypen und Ressourcen
+Ressourcenbelegung
+Interne Projekte
+Terminübersicht
+
+Berichte
+Einstellungen
+```
+
+## Umbenennungen
+
+```text
+Anfragen
+→ Taktanfragen
+
+Ressourcen
+→ Ressourcentypen und Ressourcen
+
+Belegungen
+→ Ressourcenbelegung
+
+Lokale Projekte
+→ Interne Projekte
+
+Gantt
+→ Terminübersicht
+```
+
+Den Menüpunkt `Verfügbarkeit` aus der Hauptnavigation entfernen.
+
+Die bestehende Seite bleibt über die Aktion:
+
+```text
+Prüfdetails anzeigen
+```
+
+aus einer Taktanfrage erreichbar.
+
+Alte Routen:
+
+```text
+/requests
+/requests/:delegationId
+```
+
+nicht mehr als parallelen Workflow anzeigen.
+
+`/requests` auf `/takt-requests` weiterleiten.
+
+---
+
+# 3. TaktRequest-Detailseite als geführten Workflow aufbauen
+
+Prüfe insbesondere:
+
+```text
+artifacts/an-app/src/pages/takt-request-detail.tsx
+```
+
+Im oberen Bereich eine kompakte Prozessanzeige ergänzen:
+
+```text
+1 Datenfreigabe
+2 Taktdaten
+3 Ressourcenbedarf
+4 Verfügbarkeit
+5 Antwort
+```
+
+Keine neue Stepper-Bibliothek installieren.
+
+Bestehende Cards, Badges, Buttons und Icons verwenden.
+
+## Schritt 1 – Datenfreigabe
+
+Zeige kompakt:
+
+```text
+Datenprodukt
+Veröffentlichungsversion
+Policy
+Policy-Status
+Veröffentlichungsstatus
+Gültig bis
+```
+
+### Policy ausstehend
+
+Anzeigen:
+
+```text
+Vor dem Abruf der Taktinformationen muss die Nutzungs-Policy akzeptiert werden.
+```
+
+Aktionen:
+
+```text
+Policy anzeigen
+Policy akzeptieren
+Policy ablehnen
+```
+
+Bestehende Datenangebotsfunktionen wiederverwenden.
+
+### Policy akzeptiert
+
+Status anzeigen:
+
+```text
+Policy akzeptiert
+```
+
+Danach Schritt 2 freischalten.
+
+### Veröffentlichung nicht aktiv
+
+Bei:
+
+```text
+SUSPENDED
+WITHDRAWN
+EXPIRED
+```
+
+anzeigen:
+
+```text
+Der Datenzugriff ist derzeit nicht möglich.
+```
+
+Alle folgenden Schritte deaktivieren.
+
+## Schritt 2 – Taktdaten
+
+Vor Policy-Annahme keine Taktdaten anzeigen.
+
+Nach Policy-Annahme Aktion:
+
+```text
+Taktdaten abrufen
+```
+
+Nach erfolgreichem Abruf:
+
+* bestehende Taktdaten verständlich anzeigen
+* keine primäre JSON-Darstellung
+* Abrufstatus anzeigen
+* Abrufzeit anzeigen, falls vorhanden
+
+Nur nach erfolgreichem Abruf die Ressourcenprüfung freischalten.
+
+---
+
+# 4. Ressourcentypen ergänzen oder klar nutzbar machen
+
+Der AN muss seine Ressourcen zunächst fachlich strukturieren können.
+
+Prüfe das bestehende Ressourcenmodell und erweitere es nur, wenn die folgenden Informationen noch nicht abbildbar sind.
+
+## Ressourcentyp
+
+Mindestens:
+
+```text
+id
+anOrgId
+name
+category
+qualification
+capacityUnit
+defaultDailyCapacity
+active
+```
+
+Beispiele:
+
+```text
+Facharbeiter Trockenbau
+Elektriker
+Kolonne Rohbau
+Mobilkran
+Bagger
+Bohrgerät
+```
+
+Mögliche Kategorien:
+
+```text
+PERSONNEL
+CREW
+EQUIPMENT
+MACHINE
+OTHER
+```
+
+## Konkrete Ressource
+
+Bestehende Ressourcen erhalten eine Zuordnung zu einem Ressourcentyp.
+
+Beispiele:
+
+```text
+Kolonne T1
+Mitarbeiter Müller
+Mobilkran K-03
+Bohrgerät B-02
+```
+
+Für den MVP muss eine Machbarkeitsprüfung auch ohne Auswahl konkreter Einzelressourcen möglich sein.
+
+Die Prüfung auf Ebene des Ressourcentyps ist ausreichend.
+
+Keine umfangreiche Personalverwaltung entwickeln.
+
+---
+
+# 5. Ressourcenverwaltung
+
+Auf der Seite:
+
+```text
+Ressourcentypen und Ressourcen
+```
+
+zwei einfache Bereiche oder Tabs verwenden:
+
+```text
+Ressourcentypen
+Ressourcen
+```
+
+## Ressourcentypen
+
+Der AN kann:
+
+* Ressourcentyp anlegen
+* Bezeichnung ändern
+* Kategorie festlegen
+* Qualifikation hinterlegen
+* Kapazitätseinheit festlegen
+* verfügbare Gesamtkapazität hinterlegen
+* Ressourcentyp deaktivieren
+
+## Ressourcen
+
+Der AN kann:
+
+* konkrete Ressource anlegen
+* einem Ressourcentyp zuordnen
+* Tageskapazität festlegen
+* Ressource deaktivieren
+
+Kein physisches Löschen.
+
+Falls das bestehende Modell bereits Ressourcenarten über `type`, `category` oder `qualification` abbildet, dieses Modell wiederverwenden und nur die Benutzeroberfläche verständlicher strukturieren.
+
+---
+
+# 6. Eigene Ressourcenplanung des AN erhalten
+
+Die Seite:
+
+```text
+Ressourcenbelegung
+```
+
+bleibt ein eigenständiger interner Planungsbereich.
+
+Der AN kann Ressourcen oder Kapazitäten blockieren für:
+
+```text
+interne Projekte
+Projekte anderer Auftraggeber
+bestehende Taktaufträge
+Abwesenheiten
+Wartung
+manuelle Reservierungen
+```
+
+## Belegung
+
+Mindestens:
+
+```text
+resourceTypeId
+optional resourceId
+localProjectId
+optional taktRequestId
+bookingType
+start
+end
+requiredCapacity
+utilizationPercent
+status
+note
+```
+
+Buchungsarten:
+
+```text
+LOCAL_PROJECT
+TAKT_REQUEST
+MANUAL_BLOCK
+ABSENCE
+MAINTENANCE
+```
+
+## Fachliche Regel
+
+Eine Belegung kann:
+
+* nur einen Ressourcentyp blockieren
+* oder zusätzlich eine konkrete Ressource betreffen
+
+Dadurch kann der AN beispielsweise sechs Facharbeiter blockieren, ohne sofort konkrete Personen zu benennen.
+
+Interne Projekt- und Kundennamen dürfen das AN-System nicht verlassen.
+
+---
+
+# 7. Interne Projekte
+
+Die Seite:
+
+```text
+Interne Projekte
+```
+
+dient zur Abbildung eigener Projekte und Aufträge des AN.
+
+Mindestens verwalten:
+
+```text
+interne Projektnummer
+Bezeichnung
+Auftraggeber-Alias
+Beginn
+Ende
+Status
+```
+
+Diese Projekte werden ausschließlich für die interne Ressourcenplanung verwendet.
+
+Hinweis auf der Seite:
+
+```text
+Interne Projekte und Aufträge werden nur innerhalb Ihrer Organisation verwendet und nicht an Auftraggeber übertragen.
+```
+
+---
+
+# 8. Ressourcenbedarf innerhalb der Taktanfrage
+
+Nach dem Abruf der Taktdaten wird Schritt 3 aktiviert:
+
+```text
+Ressourcenbedarf festlegen
+```
+
+Der AN kann für die Anfrage einen oder mehrere Bedarfe erfassen.
+
+Je Bedarf:
+
+```text
+Ressourcentyp
+benötigte Kapazität oder Anzahl
+Auslastung in Prozent
+erforderliche Qualifikation, falls relevant
+Zeitraum
+```
+
+Der Zeitraum wird zunächst aus dem angefragten Takt übernommen.
+
+Beispiel:
+
+```text
+Ressourcentyp       Facharbeiter Trockenbau
+Benötigte Anzahl    6
+Auslastung          100 %
+Zeitraum            14.09.2026–18.09.2026
+```
+
+Ein Button:
+
+```text
+Weiteren Ressourcentyp hinzufügen
+```
+
+ermöglicht mehrere Bedarfe, beispielsweise:
+
+```text
+6 Facharbeiter
+1 Kolonnenführer
+1 Hebegerät
+```
+
+Für den MVP maximal eine einfache Liste verwenden.
+
+Keine komplexe Drag-and-drop-Planung entwickeln.
+
+---
+
+# 9. Verfügbarkeitsprüfung
+
+Nach Auswahl der Ressourcentypen Aktion:
+
+```text
+Verfügbarkeit prüfen
+```
+
+Die Prüfung berücksichtigt für jeden Ressourcentyp:
+
+```text
+verfügbare Gesamtkapazität
+aktive konkrete Ressourcen
+Belegungen aus internen Projekten
+Belegungen aus anderen TaktRequests
+Abwesenheiten
+Wartung
+manuelle Blockierungen
+Qualifikationen
+angefragten Zeitraum
+angeforderte Kapazität
+```
+
+## Einfache Berechnung
+
+Für jeden Tag beziehungsweise relevanten Zeitraum:
+
+```text
+verfügbare Kapazität
+=
+Gesamtkapazität
+-
+bereits gebuchte Kapazität
+```
+
+Der Bedarf ist erfüllt, wenn für alle ausgewählten Ressourcentypen genügend Kapazität vorhanden ist.
+
+Keine mathematische Optimierung implementieren.
+
+---
+
+# 10. Ergebnis der Verfügbarkeitsprüfung
+
+Direkt auf der TaktRequest-Seite eine kurze Zusammenfassung zeigen.
+
+## Machbar
+
+```text
+Der angefragte Zeitraum ist mit den ausgewählten Ressourcen machbar.
+```
+
+Je Ressourcentyp:
+
+```text
+Facharbeiter Trockenbau
+Benötigt 6
+Verfügbar 8
+```
+
+## Teilweise machbar
+
+```text
+Im angefragten Zeitraum bestehen Ressourcenkonflikte.
+```
+
+Je Ressourcentyp:
+
+```text
+Facharbeiter Trockenbau
+Benötigt 6
+Verfügbar 4
+Fehlende Kapazität 2
+```
+
+## Nicht machbar
+
+```text
+Die erforderlichen Ressourcen stehen im angefragten Zeitraum nicht ausreichend zur Verfügung.
+```
+
+Zusätzlich höchstens:
+
+* Anzahl erkannter Konflikte
+* Anzahl betroffener Ressourcentypen
+* Anzahl erzeugter Alternativen
+
+Aktion:
+
+```text
+Prüfdetails anzeigen
+```
+
+öffnet:
+
+```text
+/availability-checks?requestId=...
+```
+
+---
+
+# 11. Alternative Zeiträume minimal ermitteln
+
+Wenn der angefragte Zeitraum nicht verfügbar ist, vorhandene Alternativlogik verwenden.
+
+Falls keine geeignete Logik vorhanden ist, nur eine einfache Suche implementieren:
+
+* gleiche Dauer wie angefragter Takt
+* Zeitfenster tageweise verschieben
+* maximal drei Alternativen
+* nur Zeiträume verwenden, in denen alle ausgewählten Ressourcentypen verfügbar sind
+
+Keine komplexe Optimierung oder Priorisierung entwickeln.
+
+Anzeigen:
+
+```text
+Alternative 1
+Zeitraum
+verfügbare Kapazitäten
+
+Alternative 2
+Zeitraum
+verfügbare Kapazitäten
+```
+
+---
+
+# 12. Interne und externe Daten strikt trennen
+
+## Nur intern anzeigen
+
+```text
+konkrete Ressourcennamen
+Mitarbeiternamen
+interne Projektbezeichnungen
+andere Auftraggeber
+interne Buchungen
+interne Prioritäten
+interne Konfliktursachen
+interne Kosten
+```
+
+## An den AG übertragbar
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+Reason Code
+Kommentar
+akzeptiertes Zeitfenster
+alternative Zeitfenster
+mögliche Kapazität oder Kolonnenstärke
+Bedingungen
+```
+
+Auf der Prüfdetailseite weiterhin zwei Bereiche anzeigen:
+
+```text
+Interne Prüfung
+Informationen für den Auftraggeber
+```
+
+---
+
+# 13. Antwortworkflow
+
+Schritt 5 erst freischalten, wenn:
+
+```text
+Policy akzeptiert
+AND Taktdaten abgerufen
+AND mindestens ein Ressourcenbedarf erfasst
+AND Verfügbarkeitsprüfung durchgeführt
+```
+
+Ergebnisabhängig Antwort vorauswählen:
+
+```text
+vollständig machbar
+→ ACCEPTED
+
+nicht vollständig machbar, Alternativen vorhanden
+→ ALTERNATIVES_PROPOSED
+
+nicht machbar, keine Alternative
+→ REJECTED
+```
+
+Der AN muss die Antwort aktiv prüfen und senden.
+
+Keine automatische Übertragung.
+
+Nach dem Versand:
+
+```text
+Antwort gesendet
+```
+
+anzeigen und die Bearbeitungsfelder sperren.
+
+---
+
+# 14. Datenraumstatus dauerhaft sichtbar halten
+
+Auf der TaktRequest-Seite eine kompakte Card:
+
+```text
+Datenraum
+```
+
+anzeigen.
+
+Felder:
+
+```text
+Datenprodukt
+Version
+Policy
+Policy-Status
+Veröffentlichungsstatus
+gültig bis
+Policy akzeptiert am
+Taktdaten abgerufen am
+```
+
+Damit bleibt jederzeit nachvollziehbar:
+
+* welche Daten bereitgestellt wurden
+* welche Policy gilt
+* ob der Zugriff erlaubt ist
+* ob Daten bereits abgerufen wurden
+
+Die Karte bleibt auch nach der Machbarkeitsprüfung und nach dem Versand der Antwort sichtbar.
+
+---
+
+# 15. Datenraumseite als Gesamtübersicht
+
+Die bestehende Datenraumseite bleibt erhalten.
+
+Je Angebot anzeigen:
+
+```text
+Auftraggeber
+Projekt
+Datenprodukt
+Policy
+Gültigkeit
+Policy-Status
+Zugriffsstatus
+zugehörige Taktanfrage
+```
+
+Aktion:
+
+```text
+Taktanfrage bearbeiten
+```
+
+führt zur zentralen TaktRequest-Detailseite.
+
+Für `TAKT_INFORMATION_PACKAGE` keine reine JSON-Hauptansicht verwenden.
+
+Mindestens fachlich anzeigen:
+
+```text
+Takt
+Taktversion
+Bereich
+Gewerk
+Zeitraum
+Randbedingungen
+```
+
+Technisches JSON optional eingeklappt darstellen.
+
+---
+
+# 16. Dashboard minimal anpassen
+
+Keine neue komplexe Dashboard-Logik entwickeln.
+
+Zeige vier Kennzahlen:
+
+```text
+Offene Taktanfragen
+Policy ausstehend
+Antwort bald fällig
+Aktive Ressourcenbelegungen
+```
+
+Darunter maximal fünf:
+
+```text
+Nächste Aktionen
+```
+
+Priorisierung:
+
+```text
+1 überfällige Anfrage
+2 Policy ausstehend
+3 Taktdaten nicht abgerufen
+4 Ressourcenbedarf nicht festgelegt
+5 Verfügbarkeitsprüfung ausstehend
+6 Antwort ausstehend
+```
+
+Jeder Eintrag führt direkt zur TaktRequest-Detailseite.
+
+---
+
+# 17. Terminübersicht
+
+Die bestehende Gantt-Seite nur minimal anpassen.
+
+Umbenennen in:
+
+```text
+Terminübersicht
+```
+
+Zwei Ansichten:
+
+```text
+Takttermine
+Ressourcenbelegung
+```
+
+## Takttermine
+
+Zeige den geplanten Ausführungszeitraum des Takts, nicht den Zeitraum zwischen Anfrage und Antwortfrist.
+
+## Ressourcenbelegung
+
+Nach Möglichkeit die bestehenden `resource_bookings` verwenden.
+
+Keine vollständige neue Gantt-Komponente entwickeln.
+
+Falls eine Umstellung mit hohem Aufwand verbunden ist, die Legacy-Zuweisungsansicht ausblenden und zunächst nur Takttermine anzeigen.
+
+---
+
+# 18. Nur notwendige Backendänderungen
+
+Keine neuen APIs anlegen, wenn vorhandene Endpunkte erweitert werden können.
+
+Minimal erforderlich sind:
+
+1. Ressourcentypen abrufen und verwalten
+2. Ressourcen nach Ressourcentyp abrufen
+3. Ressourcenbedarfe für einen TaktRequest speichern
+4. Verfügbarkeitsprüfung mit ausgewählten Ressourcentypen starten
+5. letztes Prüfergebnis abrufen
+6. Antwort aus Prüfergebnis erstellen
+
+Falls bereits passende Tabellen und Endpunkte existieren, diese erweitern.
+
+Nur wenn noch kein Modell für den Ressourcenbedarf einer Anfrage existiert, eine kleine Tabelle ergänzen:
+
+```text
+takt_request_resource_requirements
+```
+
+Felder:
+
+```text
+id
+taktRequestId
+anOrgId
+resourceTypeId
+requiredCapacity
+utilizationPercent
+requiredQualification
+start
+end
+createdAt
+updatedAt
+```
+
+Unique Constraint optional:
+
+```text
+taktRequestId + resourceTypeId
+```
+
+Keine weiteren neuen Tabellen ohne zwingenden Grund.
+
+---
+
+# 19. Sicherheitsregeln
+
+Alle Ressourcen- und Planungsdaten müssen nach:
+
+```text
+authenticatedUser.orgType = AN
+AND anOrgId = authenticatedUser.orgId
+```
+
+gefiltert werden.
+
+Der AN darf nur bearbeiten:
+
+* eigene Ressourcentypen
+* eigene Ressourcen
+* eigene interne Projekte
+* eigene Ressourcenbelegungen
+* eigene Ressourcenbedarfe
+* an ihn adressierte TaktRequests
+
+Keine internen Ressourceninformationen in Notifications oder Responses an den AG aufnehmen.
+
+---
+
+# 20. Nur notwendige Tests
+
+Keine umfangreiche neue Test-Suite erstellen.
+
+## API-Tests
+
+Nur folgende Kernfälle ergänzen oder ausführen:
+
+1. AN kann eigene Ressourcentypen und Ressourcen abrufen.
+2. AN kann fremde Ressourcen nicht abrufen oder ändern.
+3. interne Buchung reduziert die verfügbare Kapazität.
+4. Verfügbarkeitsprüfung verwendet ausgewählte Ressourcentypen.
+5. ausreichende Kapazität ergibt `ACCEPTED`-Vorschlag.
+6. Kapazitätskonflikt erzeugt `ALTERNATIVES_PROPOSED` oder `REJECTED`.
+7. interne Projektdaten erscheinen nicht im öffentlichen Ergebnis.
+8. Prüfung vor Policy-Annahme beziehungsweise Snapshot-Abruf wird abgelehnt.
+
+Bereits vorhandene passende Tests wiederverwenden.
+
+Keine doppelten Tests schreiben.
+
+## Manueller Smoke-Test
+
+Nur diesen Ablauf prüfen:
+
+```text
+Ressourcentyp „Facharbeiter“ mit Kapazität 8 anlegen
+→ internes Projekt anlegen
+→ 4 Facharbeiter für anderen Auftrag blockieren
+→ Taktanfrage für 6 Facharbeiter öffnen
+→ Policy akzeptieren
+→ Taktdaten abrufen
+→ Ressourcentyp „Facharbeiter“ mit Bedarf 6 auswählen
+→ Verfügbarkeit prüfen
+→ System zeigt nur 4 verfügbar und Konflikt
+→ alternativen Zeitraum anzeigen
+→ ALTERNATIVES_PROPOSED senden
+→ interne Projektdaten sind für den AG nicht sichtbar
+```
+
+## Technische Prüfung
+
+Nur betroffene Pakete prüfen:
+
+```bash
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+pnpm --filter @workspace/api-server typecheck
+```
+
+Nur die unmittelbar betroffenen API-Testdateien ausführen.
+
+Nicht ohne konkreten Grund alle Tests aller Anwendungen starten.
+
+---
+
+# Abschlusskriterien
+
+Der Auftrag ist abgeschlossen, wenn:
+
+* der AN Ressourcentypen und konkrete Ressourcen verwalten kann
+* Ressourcen für interne und andere Projekte blockiert werden können
+* Ressourcentypen direkt in einer Taktanfrage ausgewählt werden können
+* benötigte Kapazitäten erfasst werden können
+* die Verfügbarkeitsprüfung alle internen Belegungen berücksichtigt
+* interne und externe Ergebnisse klar getrennt sind
+* die TaktRequest-Seite den vollständigen Workflow führt
+* Datenraum- und Policy-Status dauerhaft sichtbar sind
+* Antwort erst nach Policy-Annahme, Datenabruf und Ressourcenprüfung möglich ist
+* alte Delegationsseiten nicht mehr als paralleler Workflow erscheinen
+* Typecheck und Build der betroffenen Anwendungen erfolgreich sind
+
+# Abschlussbericht
+
+Berichte knapp:
+
+1. geänderte Dateien
+2. verwendete oder ergänzte Datenmodelle
+3. neuer AN-Workflow
+4. Ressourcenplanung und Verfügbarkeitsprüfung
+5. Trennung interner und externer Informationen
+6. ausgeführte Tests
+7. Ergebnisse von Typecheck und Build
+8. verbleibende Blocker
+
+Keine weiteren Funktionen implementieren.
