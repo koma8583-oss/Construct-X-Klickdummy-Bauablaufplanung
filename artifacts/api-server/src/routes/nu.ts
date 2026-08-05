@@ -402,8 +402,25 @@ router.get("/nu/resource-bookings", requireJwt, async (req, res): Promise<void> 
   }
 
   const rows = await db
-    .select()
+    .select({
+      id:                 resourceBookingsTable.id,
+      nuOrgId:            resourceBookingsTable.nuOrgId,
+      resourceId:         resourceBookingsTable.resourceId,
+      resourceName:       resourcesTable.name,
+      resourceColor:      resourcesTable.color,
+      localProjectId:     resourceBookingsTable.localProjectId,
+      sourceType:         resourceBookingsTable.sourceType,
+      sourceReferenceId:  resourceBookingsTable.sourceReferenceId,
+      startAt:            resourceBookingsTable.startAt,
+      endAt:              resourceBookingsTable.endAt,
+      utilizationPercent: resourceBookingsTable.utilizationPercent,
+      status:             resourceBookingsTable.status,
+      note:               resourceBookingsTable.note,
+      createdAt:          resourceBookingsTable.createdAt,
+      updatedAt:          resourceBookingsTable.updatedAt,
+    })
     .from(resourceBookingsTable)
+    .leftJoin(resourcesTable, eq(resourceBookingsTable.resourceId, resourcesTable.id))
     .where(and(...filters))
     .orderBy(resourceBookingsTable.startAt)
     .limit(limitVal)

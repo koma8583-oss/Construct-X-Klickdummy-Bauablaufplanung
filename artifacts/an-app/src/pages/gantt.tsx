@@ -1,19 +1,25 @@
 /**
  * Terminübersicht — Tab 1: Takttermine (TaktRequest bars from snapshot time windows)
- *                   Tab 2: Ressourcenbelegung (existing resource_bookings)
+ *                   Tab 2: Ressourcenbelegung (real resource_bookings rows)
  *
  * Task #118: renamed from "Gantt" to "Terminübersicht"; tabs renamed.
- * The resource-bookings tab uses the existing Gantt chart for resource assignments
- * (legacy delegation assignments kept for now). A TODO comment marks where
- * resource_bookings could be rendered when that hook is available.
+ * Task #119: Ressourcenbelegung tab now uses resource_bookings via
+ *            useListResourceBookings(). Legacy assignments removed.
  */
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  useListResourceAssignments,
   useListTaktRequests,
   getListTaktRequestsQueryKey,
+  useListNuResourceBookings,
+  type NuResourceBooking,
 } from "@workspace/api-client-react";
+
+/** NuResourceBooking extended with fields joined from the resources table. */
+interface ResourceBookingWithResource extends NuResourceBooking {
+  resourceName: string | null;
+  resourceColor: string | null;
+}
 import { Gantt, Task, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
 import { Card, CardContent } from "@/components/ui/card";
@@ -50,6 +56,22 @@ const STATUS_LABEL: Record<string, string> = {
   DRAFT:                 "Entwurf",
 };
 
+/** Booking status → bar colour */
+const BOOKING_STATUS_COLOR: Record<string, string> = {
+  TENTATIVE:  "#f59e0b",
+  CONFIRMED:  "#10b981",
+  CANCELLED:  "#9ca3af",
+};
+
+/** Booking source type → label */
+const SOURCE_TYPE_LABEL: Record<string, string> = {
+  LOCAL_PROJECT: "Lokales Projekt",
+  TAKT_REQUEST:  "Taktauftrag",
+  MANUAL_BLOCK:  "Manuell blockiert",
+  ABSENCE:       "Abwesenheit",
+  MAINTENANCE:   "Wartung",
+};
+
 /** Ensure end is always strictly after start (gantt-task-react requirement). */
 function safeEnd(start: Date, end: Date): Date {
   if (end <= start) {
@@ -65,7 +87,6 @@ export default function TerminuebersichtPage() {
   const [tab, setTab]           = useState<"takttermine" | "belegungen">("takttermine");
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
 
-  const { data: assignments, isLoading: loadingAssignments } = useListResourceAssignments();
   const { data: taktRequests, isLoading: loadingTaktRequests } = useListTaktRequests(
     { role: "nu" } as any,
     {
@@ -76,6 +97,10 @@ export default function TerminuebersichtPage() {
       },
     },
   );
+
+  const { data: bookingsResult, isLoading: loadingBookings } = useListNuResourceBookings({
+    limit: 100,
+  });
 
   // ── Takttermine bars (from snapshot time window) ──────────────────────────
   const taktTermineTasks = useMemo((): Task[] => {
@@ -152,22 +177,26 @@ export default function TerminuebersichtPage() {
     return tasks;
   }, [taktRequests]);
 
-  // ── Ressourcenbelegung (legacy resource assignments) ──────────────────────
-  // TODO: Replace with resource_bookings table data when a dedicated hook is available
+  // ── Ressourcenbelegung (real resource_bookings rows) ──────────────────────
   const belegungTasks = useMemo((): Task[] => {
-    if (!assignments || assignments.length === 0) return [];
+    // Cast to extended type to access joined resourceName / resourceColor fields
+    const bookings = bookingsResult?.items as ResourceBookingWithResource[] | undefined;
+    if (!bookings || bookings.length === 0) return [];
 
+    // Group bookings by resource to create parent "project" rows
     const resourceMap = new Map<string, { name: string; start: Date; end: Date }>();
 
-    assignments.forEach((a) => {
-      if (!a.resource) return;
-      const id    = a.resource.id;
-      const start = new Date(a.fromDate);
-      const end   = safeEnd(start, new Date(a.toDate));
+    bookings.forEach((b: ResourceBookingWithResource) => {
+      const start = new Date(b.startAt);
+      const end   = safeEnd(start, new Date(b.endAt));
 
-      const existing = resourceMap.get(id);
+      const existing = resourceMap.get(b.resourceId);
       if (!existing) {
-        resourceMap.set(id, { name: a.resource.name, start, end });
+        resourceMap.set(b.resourceId, {
+          name: b.resourceName ?? b.resourceId,
+          start,
+          end,
+        });
       } else {
         if (start < existing.start) existing.start = start;
         if (end   > existing.end)   existing.end   = end;
@@ -193,22 +222,25 @@ export default function TerminuebersichtPage() {
       });
     });
 
-    assignments.forEach((a) => {
-      if (!a.resource || !a.delegation) return;
-      const takt  = (a.delegation as any).takt;
-      const label = [takt?.gewerk, takt?.zone].filter(Boolean).join(" – ");
-      const color = a.resource.color ?? "#10b981";
-      const start = new Date(a.fromDate);
-      const end   = safeEnd(start, new Date(a.toDate));
+    bookings.forEach((b: ResourceBookingWithResource) => {
+      const color = b.resourceColor ?? BOOKING_STATUS_COLOR[b.status] ?? "#10b981";
+      const start = new Date(b.startAt);
+      const end   = safeEnd(start, new Date(b.endAt));
+      const label = [
+        SOURCE_TYPE_LABEL[b.sourceType] ?? b.sourceType,
+        b.utilizationPercent < 100 ? `${b.utilizationPercent}%` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
       tasks.push({
-        id:      a.id,
-        name:    label || "Zuweisung",
+        id:      b.id,
+        name:    label || "Buchung",
         type:    "task",
         start,
         end,
         progress: 100,
-        project: `res_${a.resource.id}`,
+        project: `res_${b.resourceId}`,
         styles: {
           backgroundColor:         color,
           progressColor:           color,
@@ -218,9 +250,9 @@ export default function TerminuebersichtPage() {
     });
 
     return tasks;
-  }, [assignments]);
+  }, [bookingsResult]);
 
-  const isLoading = tab === "takttermine" ? loadingTaktRequests : loadingAssignments;
+  const isLoading = tab === "takttermine" ? loadingTaktRequests : loadingBookings;
   const tasks     = tab === "takttermine" ? taktTermineTasks    : belegungTasks;
 
   const colWidth = viewMode === ViewMode.Day ? 60
@@ -292,10 +324,18 @@ export default function TerminuebersichtPage() {
         </div>
       )}
 
-      {tab === "belegungen" && belegungTasks.length === 0 && !isLoading && (
-        <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          Ressourcenbelegungen aus <code>resource_bookings</code> werden in einer späteren Version
-          hier angezeigt. Derzeit werden nur Legacy-Zuweisungen (Delegierungen) dargestellt.
+      {/* Booking status legend (belegungen tab only) */}
+      {tab === "belegungen" && (
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          {Object.entries(BOOKING_STATUS_COLOR).map(([status, color]) => (
+            <span key={status} className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                style={{ backgroundColor: color }}
+              />
+              {status === "TENTATIVE" ? "Vorläufig" : status === "CONFIRMED" ? "Bestätigt" : "Storniert"}
+            </span>
+          ))}
         </div>
       )}
 
