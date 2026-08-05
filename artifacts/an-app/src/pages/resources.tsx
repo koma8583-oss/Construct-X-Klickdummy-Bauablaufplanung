@@ -915,7 +915,7 @@ export default function ResourcesPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
       <div>
-        <h1 className="text-2xl font-bold">Ressourcentypen und Ressourcen</h1>
+        <h1 className="text-2xl font-bold">Ressourcen</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           Verwalten Sie Ressourcentypen und konkrete Ressourcen Ihrer Organisation.
         </p>

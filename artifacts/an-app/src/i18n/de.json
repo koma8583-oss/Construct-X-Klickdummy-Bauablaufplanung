@@ -22,7 +22,7 @@
     "requests": "Anfragen",
     "taktRequests": "Taktanfragen",
     "dataOffers": "Datenraum",
-    "resources": "Ressourcentypen und Ressourcen",
+    "resources": "Ressourcen",
     "resourceBookings": "Ressourcenbelegung",
     "localProjects": "Interne Projekte",
     "gantt": "Terminübersicht",
@@ -70,7 +70,7 @@
     "empty": "Keine Zuweisungen."
   },
   "resources": {
-    "title": "Ressourcentypen und Ressourcen",
+    "title": "Ressourcen",
     "tabs": {
       "types": "Ressourcentypen",
       "resources": "Ressourcen",
