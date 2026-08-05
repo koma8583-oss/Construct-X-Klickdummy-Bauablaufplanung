@@ -265,7 +265,8 @@ export default function TaktRequestDetailPage() {
     },
   });
 
-  const { data: resourceTypes = [] } = useListResourceTypes();
+  const { data: resourceTypesResult } = useListResourceTypes();
+  const resourceTypes = resourceTypesResult?.items ?? [];
 
   const runCheck       = useRunAvailabilityCheck();
   const addRequirement = useAddResourceRequirement();
