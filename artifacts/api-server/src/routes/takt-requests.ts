@@ -25,8 +25,10 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  taktRequestResourceRequirementsTable,
+  resourceTypesTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
@@ -1782,5 +1784,145 @@ router.get(
   },
 );
 
+// ── GET /takt-requests/:id/resource-requirements ─────────────────────────────
+// NU lists their recorded resource requirements for a TaktRequest.
+router.get(
+  "/takt-requests/:id/resource-requirements",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const nuOrgId = req.user!.orgId!;
+    const id = req.params.id as string;
+
+    // Verify the request exists and is addressed to this NU
+    const request = await getTaktRequestById(id);
+    if (!request || request.nuOrgId !== nuOrgId) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        req: taktRequestResourceRequirementsTable,
+        rt: {
+          name: resourceTypesTable.name,
+          category: resourceTypesTable.category,
+        },
+      })
+      .from(taktRequestResourceRequirementsTable)
+      .leftJoin(
+        resourceTypesTable,
+        eq(taktRequestResourceRequirementsTable.resourceTypeId, resourceTypesTable.id),
+      )
+      .where(
+        and(
+          eq(taktRequestResourceRequirementsTable.taktRequestId, id),
+          eq(taktRequestResourceRequirementsTable.anOrgId, nuOrgId),
+        ),
+      )
+      .orderBy(desc(taktRequestResourceRequirementsTable.createdAt));
+
+    res.json(
+      rows.map(({ req: r, rt }) => ({
+        id: r.id,
+        taktRequestId: r.taktRequestId,
+        anOrgId: r.anOrgId,
+        resourceTypeId: r.resourceTypeId,
+        resourceTypeName: rt?.name ?? null,
+        resourceTypeCategory: rt?.category ?? null,
+        requiredCapacity: r.requiredCapacity,
+        utilizationPercent: r.utilizationPercent,
+        requiredQualification: r.requiredQualification,
+        periodStart: r.periodStart,
+        periodEnd: r.periodEnd,
+        notes: r.notes,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+    );
+  },
+);
+
+// ── POST /takt-requests/:id/resource-requirements ─────────────────────────────
+// NU adds a resource requirement for a TaktRequest.
+router.post(
+  "/takt-requests/:id/resource-requirements",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const nuOrgId = req.user!.orgId!;
+    const id = req.params.id as string;
+
+    const schema = z.object({
+      resourceTypeId:       z.string().min(1).nullable().optional(),
+      requiredCapacity:     z.number().positive().nullable().optional(),
+      utilizationPercent:   z.number().int().min(1).max(100).optional().default(100),
+      requiredQualification: z.string().max(500).nullable().optional(),
+      periodStart:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      periodEnd:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      notes:                z.string().max(1000).nullable().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    // Verify the request exists and is addressed to this NU
+    const request = await getTaktRequestById(id);
+    if (!request || request.nuOrgId !== nuOrgId) {
+      res.status(404).json({ error: "TaktRequest not found" });
+      return;
+    }
+
+    const [inserted] = await db
+      .insert(taktRequestResourceRequirementsTable)
+      .values({
+        taktRequestId:        id,
+        anOrgId:              nuOrgId,
+        resourceTypeId:       parsed.data.resourceTypeId ?? null,
+        requiredCapacity:     parsed.data.requiredCapacity?.toString() ?? null,
+        utilizationPercent:   parsed.data.utilizationPercent ?? 100,
+        requiredQualification: parsed.data.requiredQualification ?? null,
+        periodStart:          parsed.data.periodStart ?? null,
+        periodEnd:            parsed.data.periodEnd ?? null,
+        notes:                parsed.data.notes ?? null,
+      })
+      .returning();
+
+    res.status(201).json(inserted);
+  },
+);
+
+// ── DELETE /takt-requests/:id/resource-requirements/:reqId ───────────────────
+// NU removes a resource requirement.
+router.delete(
+  "/takt-requests/:id/resource-requirements/:reqId",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const nuOrgId = req.user!.orgId!;
+    const id      = req.params.id as string;
+    const reqId   = req.params.reqId as string;
+
+    const [deleted] = await db
+      .delete(taktRequestResourceRequirementsTable)
+      .where(
+        and(
+          eq(taktRequestResourceRequirementsTable.id, reqId),
+          eq(taktRequestResourceRequirementsTable.taktRequestId, id),
+          eq(taktRequestResourceRequirementsTable.anOrgId, nuOrgId),
+        ),
+      )
+      .returning();
+
+    if (!deleted) {
+      res.status(404).json({ error: "Resource requirement not found" });
+      return;
+    }
+
+    res.status(204).end();
+  },
+);
+
 export default router;
+
 

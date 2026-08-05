@@ -1,4 +1,5 @@
 export * from "./availability-checks";
+export * from "./takt-request-resource-requirements";
 export * from "./data-publications";
 export * from "./delegations";
 export * from "./takt-request-audit-events";

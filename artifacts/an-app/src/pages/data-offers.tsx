@@ -1,12 +1,15 @@
 /**
- * AN-App – Datenraum-Angebote (Task #112).
+ * AN-App – Datenraum-Angebote (Task #112, enhanced in Task #118).
  *
  * Shows the list of data-space offers addressed to this AN.
  * Clicking an offer opens a detail panel with the policy acceptance flow.
- * After acceptance the AN can view the content snapshot.
+ * After acceptance the AN can view the content snapshot — fachliche Ansicht
+ * for TAKT_INFORMATION_PACKAGE; technical JSON shown collapsed.
+ * Each offer with an associated TaktRequest shows a link to the detail page.
  */
 import React, { useState } from 'react';
 import { format } from 'date-fns';
+import { de } from 'date-fns/locale';
 import {
   useGetAnDataOffers,
   useGetAnDataOffer,
@@ -26,73 +29,205 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
+import { useLocation } from 'wouter';
 import {
   Globe,
   Shield,
   CheckCircle2,
   XCircle,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Lock,
   Eye,
   FileJson,
   Building2,
+  Calendar,
+  MapPin,
+  Wrench,
+  ArrowRight,
 } from 'lucide-react';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function fmtDate(d: string | null | undefined) {
+  if (!d) return '—';
+  try { return format(new Date(d), 'dd.MM.yyyy HH:mm', { locale: de }); } catch { return d; }
+}
+
+function fmtDateOnly(d: string | null | undefined) {
+  if (!d) return '—';
+  try { return format(new Date(d), 'dd.MM.yyyy', { locale: de }); } catch { return d; }
+}
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
 const RECIPIENT_STATUS_BADGE: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  OFFERED:  { label: 'Neu',           variant: 'default' },
-  ACCEPTED: { label: 'Akzeptiert',    variant: 'secondary' },
-  REJECTED: { label: 'Abgelehnt',     variant: 'destructive' },
-  REVOKED:  { label: 'Widerrufen',    variant: 'outline' },
-  EXPIRED:  { label: 'Abgelaufen',    variant: 'outline' },
+  OFFERED:  { label: 'Neu',        variant: 'default' },
+  ACCEPTED: { label: 'Akzeptiert', variant: 'secondary' },
+  REJECTED: { label: 'Abgelehnt',  variant: 'destructive' },
+  REVOKED:  { label: 'Widerrufen', variant: 'outline' },
+  EXPIRED:  { label: 'Abgelaufen', variant: 'outline' },
 };
 
 const PUB_STATUS_BADGE: Record<string, string> = {
-  PUBLISHED:  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-  SUSPENDED:  'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  WITHDRAWN:  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  DRAFT:      'bg-muted text-muted-foreground',
-  EXPIRED:    'bg-muted text-muted-foreground',
+  PUBLISHED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  SUSPENDED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  WITHDRAWN: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  DRAFT:     'bg-muted text-muted-foreground',
+  EXPIRED:   'bg-muted text-muted-foreground',
 };
 
 const PRODUCT_LABEL: Record<string, string> = {
-  PROJECT_OVERVIEW: 'Projektübersicht',
+  PROJECT_OVERVIEW:             'Projektübersicht',
   PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
-  TAKT_INFORMATION_PACKAGE: 'Taktinformationspaket',
+  TAKT_INFORMATION_PACKAGE:     'Taktinformationspaket',
 };
 
-function fmtDate(d: string | null | undefined) {
-  if (!d) return '—';
-  try {
-    return format(new Date(d), 'dd.MM.yyyy HH:mm');
-  } catch {
-    return d;
-  }
+// ── Fachliche Takt-Content-View ────────────────────────────────────────────────
+
+function TaktInformationPackageView({ payload }: { payload: Record<string, unknown> }) {
+  const [showJson, setShowJson] = useState(false);
+  const tw = payload.plannedTimeWindow as Record<string, unknown> | undefined;
+  const loc = payload.location as Record<string, unknown> | undefined;
+  const bw = payload.bufferTimeWindow as Record<string, unknown> | undefined;
+
+  const workPackage  = (payload.workPackage ?? payload.taktBezeichnung) as string | undefined;
+  const trade        = (payload.trade ?? payload.gewerk)                as string | undefined;
+  const zone         = (loc?.zone ?? payload.zone)                      as string | undefined;
+  const description  = (payload.requiredOutput ?? payload.description)  as string | undefined;
+  const plannedStart = (tw?.start ?? payload.plannedStart)              as string | undefined;
+  const plannedEnd   = (tw?.end   ?? payload.plannedEnd)                as string | undefined;
+  const bufferStart  = bw?.earliestStart                                as string | undefined;
+  const bufferEnd    = bw?.latestEnd                                    as string | undefined;
+  const reqs = (payload.resourceRequirements as unknown[]) ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* Fachliche Ansicht */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          Taktdaten (fachliche Ansicht)
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          {workPackage && (
+            <div className="col-span-2">
+              <div className="text-xs text-muted-foreground mb-0.5">Arbeitspaket / Bezeichnung</div>
+              <div className="font-medium">{workPackage}</div>
+            </div>
+          )}
+          {trade && (
+            <div className="flex items-start gap-2">
+              <Wrench className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <div className="text-xs text-muted-foreground">Gewerk</div>
+                <div className="font-medium">{trade}</div>
+              </div>
+            </div>
+          )}
+          {zone && (
+            <div className="flex items-start gap-2">
+              <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <div className="text-xs text-muted-foreground">Zone</div>
+                <div className="font-medium">{zone}</div>
+              </div>
+            </div>
+          )}
+          {(plannedStart || plannedEnd) && (
+            <div className="col-span-2 flex items-start gap-2">
+              <Calendar className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <div className="text-xs text-muted-foreground">Geplanter Zeitraum</div>
+                <div className="font-medium">
+                  {fmtDateOnly(plannedStart)} – {fmtDateOnly(plannedEnd)}
+                </div>
+              </div>
+            </div>
+          )}
+          {(bufferStart || bufferEnd) && (
+            <div className="col-span-2">
+              <div className="text-xs text-muted-foreground mb-0.5">Pufferzeitraum</div>
+              <div className="text-sm">{fmtDateOnly(bufferStart)} – {fmtDateOnly(bufferEnd)}</div>
+            </div>
+          )}
+          {description && (
+            <div className="col-span-2">
+              <div className="text-xs text-muted-foreground mb-0.5">Beschreibung / Leistung</div>
+              <div className="text-sm text-foreground/80">{description}</div>
+            </div>
+          )}
+        </div>
+
+        {reqs.length > 0 && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-1.5">Ressourcenanforderungen</div>
+            <div className="space-y-1">
+              {reqs.map((r: any, i: number) => (
+                <div key={i} className="text-xs bg-muted/40 rounded px-2 py-1 flex items-center gap-3">
+                  <span className="font-medium">{r.resourceType ?? '—'}</span>
+                  {r.quantity && <span>× {r.quantity}</span>}
+                  {r.notes && <span className="text-muted-foreground">{r.notes}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Collapsed JSON */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowJson(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <FileJson className="h-3.5 w-3.5" />
+          Technisches JSON {showJson ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {showJson && (
+          <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-48 overflow-y-auto mt-1.5">
+            {JSON.stringify(payload, null, 2)}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Generic content view ───────────────────────────────────────────────────────
+
+function GenericContentView({ content }: { content: Record<string, unknown> }) {
+  return (
+    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto">
+      {JSON.stringify(content, null, 2)}
+    </pre>
+  );
 }
 
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
 function OfferDetailPanel({
-  publicationId,
+  offer: offerSummary,
   onClose,
 }: {
-  publicationId: string;
+  offer: DataOfferSummary;
   onClose: () => void;
 }) {
-  const { toast } = useToast();
-  const { data: offer, isLoading } = useGetAnDataOffer(publicationId);
+  const { toast }    = useToast();
+  const [, setLocation] = useLocation();
+  const { data: offer, isLoading } = useGetAnDataOffer(offerSummary.publicationId);
   const accept = useAcceptDataOffer();
   const reject = useRejectDataOffer();
   const [showContent, setShowContent] = useState(false);
   const { data: content, isLoading: contentLoading } = useGetDataOfferContent(
-    publicationId,
+    offerSummary.publicationId,
     showContent,
   );
 
   const handleAccept = async () => {
     try {
-      await accept.mutateAsync(publicationId);
+      await accept.mutateAsync(offerSummary.publicationId);
       toast({ title: 'Nutzungsrichtlinie akzeptiert', description: 'Sie können jetzt auf den Inhalt zugreifen.' });
     } catch (err) {
       toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
@@ -102,7 +237,7 @@ function OfferDetailPanel({
   const handleReject = async () => {
     if (!confirm('Möchten Sie dieses Angebot wirklich ablehnen?')) return;
     try {
-      await reject.mutateAsync(publicationId);
+      await reject.mutateAsync(offerSummary.publicationId);
       toast({ title: 'Angebot abgelehnt' });
     } catch (err) {
       toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
@@ -121,15 +256,12 @@ function OfferDetailPanel({
 
   if (!offer) return <div className="py-4 text-muted-foreground">Angebot nicht gefunden.</div>;
 
-  const canAccept =
-    offer.recipientStatus === 'OFFERED' &&
-    offer.publicationStatus === 'PUBLISHED';
-  const canReject =
-    ['OFFERED', 'ACCEPTED'].includes(offer.recipientStatus) &&
-    offer.publicationStatus === 'PUBLISHED';
-  const canViewContent =
-    offer.recipientStatus === 'ACCEPTED' &&
-    offer.publicationStatus === 'PUBLISHED';
+  const canAccept = offer.recipientStatus === 'OFFERED' && offer.publicationStatus === 'PUBLISHED';
+  const canReject = ['OFFERED', 'ACCEPTED'].includes(offer.recipientStatus) && offer.publicationStatus === 'PUBLISHED';
+  const canViewContent = offer.recipientStatus === 'ACCEPTED' && offer.publicationStatus === 'PUBLISHED';
+
+  // Linked TaktRequest (if any)
+  const linkedTaktRequestId = (offer as any).taktRequestId as string | undefined;
 
   return (
     <div className="space-y-5 py-2">
@@ -160,6 +292,27 @@ function OfferDetailPanel({
           </div>
         )}
       </div>
+
+      {/* Linked TaktRequest */}
+      {linkedTaktRequestId && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs font-semibold text-primary">Zugehörige TaktAnfrage</div>
+            <div className="text-xs text-muted-foreground">Zu dieser Veröffentlichung gehört eine offene Koordinationsanfrage.</div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              onClose();
+              setLocation(`/takt-requests/${linkedTaktRequestId}`);
+            }}
+            className="gap-1 shrink-0"
+          >
+            Bearbeiten <ArrowRight className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
 
       {/* Policy */}
       {offer.policy && (
@@ -196,23 +349,13 @@ function OfferDetailPanel({
       {(canAccept || canReject) && (
         <div className="flex gap-2">
           {canAccept && (
-            <Button
-              size="sm"
-              onClick={handleAccept}
-              disabled={accept.isPending}
-              className="flex-1"
-            >
+            <Button size="sm" onClick={handleAccept} disabled={accept.isPending} className="flex-1">
               <CheckCircle2 className="h-4 w-4 mr-1.5" />
               {accept.isPending ? 'Wird akzeptiert…' : 'Richtlinie akzeptieren'}
             </Button>
           )}
           {canReject && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleReject}
-              disabled={reject.isPending}
-            >
+            <Button size="sm" variant="outline" onClick={handleReject} disabled={reject.isPending}>
               <XCircle className="h-4 w-4 mr-1.5" />
               Ablehnen
             </Button>
@@ -229,20 +372,22 @@ function OfferDetailPanel({
 
       {/* Content access */}
       {canViewContent && (
-        <div className="border-t pt-4 space-y-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full"
-            onClick={() => setShowContent(true)}
-            disabled={contentLoading}
-          >
-            <Eye className="h-4 w-4 mr-1.5" />
-            {contentLoading ? 'Lade Inhalt…' : 'Inhalt anzeigen'}
-          </Button>
+        <div className="border-t pt-4 space-y-3">
+          {!showContent && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-1.5"
+              onClick={() => setShowContent(true)}
+              disabled={contentLoading}
+            >
+              <Eye className="h-4 w-4" />
+              {contentLoading ? 'Lade Inhalt…' : 'Inhalt anzeigen'}
+            </Button>
+          )}
 
           {content && (
-            <div className="rounded-lg border bg-card p-3 space-y-2">
+            <div className="rounded-lg border bg-card p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-medium">
                   <FileJson className="h-3.5 w-3.5" />
@@ -254,9 +399,14 @@ function OfferDetailPanel({
                   </span>
                 )}
               </div>
-              <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto">
-                {JSON.stringify(content.content, null, 2)}
-              </pre>
+
+              {/* Fachliche or generic view */}
+              {offer.dataProductType === 'TAKT_INFORMATION_PACKAGE' && content.content ? (
+                <TaktInformationPackageView payload={content.content as Record<string, unknown>} />
+              ) : (
+                <GenericContentView content={content.content as Record<string, unknown>} />
+              )}
+
               <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Lock className="h-3 w-3" />
                 Nur Felder, denen Sie zugestimmt haben. Interne Daten des AG sind nicht enthalten.
@@ -320,7 +470,6 @@ export default function DataOffersPage() {
         </div>
       )}
 
-      {/* New offers */}
       {grouped.new.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
@@ -335,7 +484,6 @@ export default function DataOffersPage() {
         </section>
       )}
 
-      {/* Accepted */}
       {grouped.accepted.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">
@@ -349,7 +497,6 @@ export default function DataOffersPage() {
         </section>
       )}
 
-      {/* Other */}
       {grouped.other.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">
@@ -375,7 +522,7 @@ export default function DataOffersPage() {
                 </SheetDescription>
               </SheetHeader>
               <OfferDetailPanel
-                publicationId={selected.publicationId}
+                offer={selected}
                 onClose={() => setSelected(null)}
               />
             </>
@@ -388,13 +535,7 @@ export default function DataOffersPage() {
 
 // ── Row component ─────────────────────────────────────────────────────────────
 
-function OfferRow({
-  offer,
-  onClick,
-}: {
-  offer: DataOfferSummary;
-  onClick: () => void;
-}) {
+function OfferRow({ offer, onClick }: { offer: DataOfferSummary; onClick: () => void }) {
   const statusInfo = RECIPIENT_STATUS_BADGE[offer.recipientStatus];
   return (
     <button

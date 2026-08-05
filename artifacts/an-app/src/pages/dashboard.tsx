@@ -1,11 +1,76 @@
 import { useTranslation } from "react-i18next";
 import { useGetAnDashboard } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Inbox, CheckCircle2, AlertTriangle, Users, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import {
+  Loader2,
+  Inbox,
+  AlertTriangle,
+  Clock,
+  Shield,
+  CalendarCheck,
+  RefreshCw,
+  ChevronRight,
+  BookOpen,
+  ClipboardList,
+  CheckCircle2,
+  Layers,
+} from "lucide-react";
+import { format, isPast } from "date-fns";
+import { de } from "date-fns/locale";
 import { Link } from "wouter";
-import { TaktStatusBadge } from "@/components/takt-status-badge";
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function fmtDate(s?: string | Date | null): string {
+  if (!s) return "—";
+  try { return format(new Date(s as string), "dd.MM.yyyy", { locale: de }); } catch { return "—"; }
+}
+
+function fmtDateTime(s?: string | Date | null): string {
+  if (!s) return "—";
+  try { return format(new Date(s as string), "dd.MM.yyyy HH:mm", { locale: de }); } catch { return "—"; }
+}
+
+const ACTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  OVERDUE:           { label: "Überfällig",              color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30",      icon: <AlertTriangle className="w-4 h-4 text-red-500" /> },
+  POLICY_PENDING:    { label: "Policy akzeptieren",      color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30", icon: <Shield className="w-4 h-4 text-amber-500" /> },
+  RETRIEVE_DATA:     { label: "Taktdaten abrufen",       color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30",    icon: <BookOpen className="w-4 h-4 text-blue-500" /> },
+  ADD_REQUIREMENTS:  { label: "Ressourcenbedarf erfassen", color: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30", icon: <ClipboardList className="w-4 h-4 text-violet-500" /> },
+  SUBMIT_RESPONSE:   { label: "Antwort einreichen",      color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30", icon: <CalendarCheck className="w-4 h-4 text-emerald-500" /> },
+};
+
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+
+interface KpiCardProps {
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+  variant?: "default" | "warning" | "danger" | "success";
+}
+
+function KpiCard({ title, value, icon, variant = "default" }: KpiCardProps) {
+  const valueClass =
+    variant === "danger"  ? "text-red-600 dark:text-red-400" :
+    variant === "warning" ? "text-amber-600 dark:text-amber-400" :
+    variant === "success" ? "text-emerald-600 dark:text-emerald-400" :
+    "text-foreground";
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        {icon}
+      </CardHeader>
+      <CardContent>
+        <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -33,151 +98,152 @@ export default function Dashboard() {
     );
   }
 
-  const criticalCount =
-    (dashboard.upcomingDeadlines as any[])?.filter(
-      (d) => d.status === "ALTERNATIVE_PROPOSED" && d.isWithinBuffer === false,
-    )?.length ?? 0;
+  const d = dashboard as any;
+  const pendingRequests    = d.pendingRequests    ?? 0;
+  const policyPending      = d.policyPendingCount ?? 0;
+  const dueSoon            = d.dueSoonCount       ?? 0;
+  const activeBookings     = d.activeBookingsCount ?? 0;
+  const nextActions        = (d.nextActions        as any[]) ?? [];
+  const upcomingDeadlines  = (d.upcomingDeadlines  as any[]) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold text-foreground">{t("nav.dashboard")}</h1>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-card border-border">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("dashboard.pendingRequests")}
-            </CardTitle>
-            <Inbox className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{dashboard.pendingRequests}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("dashboard.confirmedWork")}
-            </CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{dashboard.confirmedWork}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("dashboard.criticalProposals")}
-            </CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{criticalCount}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("nav.resources")}
-            </CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">
-              {(dashboard.resourceUtilization as any[])?.length ?? 0}
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title={t("dashboard.pendingRequests")}
+          value={pendingRequests}
+          icon={<Inbox className="h-4 w-4 text-amber-500" />}
+          variant={pendingRequests > 0 ? "warning" : "default"}
+        />
+        <KpiCard
+          title="Policy ausstehend"
+          value={policyPending}
+          icon={<Shield className="h-4 w-4 text-amber-600" />}
+          variant={policyPending > 0 ? "warning" : "default"}
+        />
+        <KpiCard
+          title="Antwort bald fällig"
+          value={dueSoon}
+          icon={<Clock className="h-4 w-4 text-red-500" />}
+          variant={dueSoon > 0 ? "danger" : "default"}
+        />
+        <KpiCard
+          title="Aktive Ressourcenbelegungen"
+          value={activeBookings}
+          icon={<Layers className="h-4 w-4 text-blue-500" />}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Requests */}
-        <Card className="bg-card border-border col-span-1">
+        {/* ── Nächste Aktionen ────────────────────────────────────────────── */}
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle>{t("dashboard.recentRequests")}</CardTitle>
+            <CardTitle className="text-base">Nächste Aktionen</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {!(dashboard.recentRequests as any[])?.length ? (
-              <p className="text-sm text-muted-foreground">{t("requests.empty")}</p>
+          <CardContent className="space-y-2">
+            {nextActions.length === 0 ? (
+              <div className="flex flex-col items-center py-8 gap-2 text-center">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500/40" />
+                <p className="text-sm text-muted-foreground">Keine offenen Aktionen</p>
+              </div>
             ) : (
-              (dashboard.recentRequests as any[]).slice(0, 5).map((req) => (
-                <Link key={req.id} href={`/takt-requests/${req.id}`} className="block">
-                  <div className="flex items-center justify-between p-3 rounded hover:bg-sidebar-accent transition-colors border border-border">
-                    <div>
-                      <div className="font-medium text-sm text-foreground">
-                        {req.takt?.gewerk
-                          ? `${req.takt.gewerk} - ${req.takt.zone}${req.takt.taktBezeichnung ? ` (${req.takt.taktBezeichnung})` : ""}`
-                          : `Vergabe ${req.id.slice(0, 8)}`}
+              nextActions.map((action: any) => {
+                const meta = ACTION_META[action.action] ?? ACTION_META.SUBMIT_RESPONSE;
+                const deadline = action.responseRequiredBy
+                  ? new Date(action.responseRequiredBy)
+                  : null;
+                const isOverdue = deadline ? isPast(deadline) : false;
+
+                return (
+                  <Link key={action.id} href={`/takt-requests/${action.id}`}>
+                    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors hover:bg-muted/40 ${meta.color}`}>
+                      <span className="shrink-0">{meta.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {action.taktBezeichnung
+                            ? `${action.gewerk ?? ""} · ${action.zone ?? ""} ${action.taktBezeichnung}`
+                            : action.requestNumber}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[11px] opacity-70">{action.agName ?? "AG"}</span>
+                          {deadline && (
+                            <span className={`text-[11px] font-medium ${isOverdue ? "text-red-500" : "opacity-70"}`}>
+                              Frist: {fmtDateTime(deadline)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {req.agOrganization?.name ?? "Auftraggeber"}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide opacity-70 hidden sm:block">
+                          {meta.label}
+                        </span>
+                        <ChevronRight className="w-4 h-4 opacity-40" />
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {req.takt?.status && (
-                        <TaktStatusBadge status={req.takt.status} />
-                      )}
-                      <span
-                        className={`px-2 py-1 rounded text-[10px] font-semibold tracking-wide ${
-                          req.status === "PENDING"
-                            ? "bg-amber-500/10 text-amber-500"
-                            : req.status === "CONFIRMED"
-                              ? "bg-emerald-500/10 text-emerald-500"
-                              : req.status === "ALTERNATIVE_PROPOSED"
-                                ? "bg-blue-500/10 text-blue-500"
-                                : "bg-red-500/10 text-red-500"
-                        }`}
-                      >
-                        {t(`common.status.${req.status}`)}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))
+                  </Link>
+                );
+              })
             )}
           </CardContent>
         </Card>
 
-        {/* Upcoming Deadlines */}
-        <Card className="bg-card border-border col-span-1">
-          <CardHeader>
-            <CardTitle>{t("dashboard.upcomingDeadlines")}</CardTitle>
+        {/* ── Termine ─────────────────────────────────────────────────────── */}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">{t("dashboard.upcomingDeadlines")}</CardTitle>
+            <Link href="/gantt">
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1">
+                Alle <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {!(dashboard.upcomingDeadlines as any[])?.length ? (
-              <p className="text-sm text-muted-foreground">{t("gantt.empty")}</p>
+          <CardContent className="space-y-3">
+            {upcomingDeadlines.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">{t("gantt.empty")}</p>
             ) : (
-              (dashboard.upcomingDeadlines as any[]).slice(0, 5).map((req) => (
-                <div
-                  key={req.id}
-                  className="flex items-start gap-4 p-3 border border-border rounded"
-                >
-                  <div className="flex flex-col items-center justify-center bg-sidebar-accent p-2 rounded min-w-[3rem]">
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(req.requestedStart), "MMM")}
-                    </span>
-                    <span className="text-lg font-bold text-foreground leading-none">
-                      {format(new Date(req.requestedStart), "dd")}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="font-medium text-sm text-foreground">
-                      {req.takt?.gewerk
-                        ? `${req.takt.gewerk} - ${req.takt.zone}`
-                        : `Vergabe ${req.id.slice(0, 8)}`}
+              upcomingDeadlines.slice(0, 5).map((req: any) => {
+                const deadline = req.responseRequiredBy ? new Date(req.responseRequiredBy) : null;
+                const isOverdue = deadline ? isPast(deadline) : false;
+                const takt = req.takt as any;
+                return (
+                  <Link key={req.id} href={`/takt-requests/${req.id}`}>
+                    <div className="flex items-start gap-3 p-2.5 border border-border rounded-lg hover:bg-muted/30 transition-colors">
+                      {deadline ? (
+                        <div className="flex flex-col items-center justify-center bg-sidebar-accent px-2 py-1.5 rounded min-w-[2.5rem]">
+                          <span className="text-[10px] text-muted-foreground">
+                            {format(deadline, "MMM", { locale: de })}
+                          </span>
+                          <span className={`text-base font-bold leading-none ${isOverdue ? "text-red-500" : ""}`}>
+                            {format(deadline, "dd")}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center bg-sidebar-accent px-2 py-1.5 rounded min-w-[2.5rem]">
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {takt?.gewerk
+                            ? `${takt.gewerk} – ${takt.zone ?? ""}`
+                            : req.requestNumber}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {req.agOrganization?.name ?? "AG"}
+                          {deadline && (
+                            <span className={`ml-2 ${isOverdue ? "text-red-500 font-semibold" : ""}`}>
+                              Frist: {fmtDate(deadline)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(req.requestedStart), "dd.MM.yyyy")} –{" "}
-                      {format(new Date(req.requestedEnd), "dd.MM.yyyy")}
-                    </div>
-                  </div>
-                </div>
-              ))
+                  </Link>
+                );
+              })
             )}
           </CardContent>
         </Card>

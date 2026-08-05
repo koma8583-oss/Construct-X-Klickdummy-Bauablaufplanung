@@ -1,3 +1,12 @@
+/**
+ * Terminübersicht — Tab 1: Takttermine (TaktRequest bars from snapshot time windows)
+ *                   Tab 2: Ressourcenbelegung (existing resource_bookings)
+ *
+ * Task #118: renamed from "Gantt" to "Terminübersicht"; tabs renamed.
+ * The resource-bookings tab uses the existing Gantt chart for resource assignments
+ * (legacy delegation assignments kept for now). A TODO comment marks where
+ * resource_bookings could be rendered when that hook is available.
+ */
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,33 +21,33 @@ import { Loader2 } from "lucide-react";
 
 // ── status colours ────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
-  SENT:                 "#f59e0b",
-  DELIVERED:            "#f59e0b",
-  DETAILS_RETRIEVED:    "#f59e0b",
-  UNDER_REVIEW:         "#f59e0b",
-  ACCEPTED:             "#10b981",
-  ALTERNATIVES_PROPOSED:"#3b82f6",
-  REJECTED:             "#ef4444",
-  REVISION_REQUIRED:    "#f97316",
-  CANCELLED:            "#9ca3af",
-  EXPIRED:              "#6b7280",
-  SUPERSEDED:           "#6b7280",
-  DRAFT:                "#d1d5db",
+  SENT:                  "#f59e0b",
+  DELIVERED:             "#f59e0b",
+  DETAILS_RETRIEVED:     "#f59e0b",
+  UNDER_REVIEW:          "#f59e0b",
+  ACCEPTED:              "#10b981",
+  ALTERNATIVES_PROPOSED: "#3b82f6",
+  REJECTED:              "#ef4444",
+  REVISION_REQUIRED:     "#f97316",
+  CANCELLED:             "#9ca3af",
+  EXPIRED:               "#6b7280",
+  SUPERSEDED:            "#6b7280",
+  DRAFT:                 "#d1d5db",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  SENT:                 "Gesendet",
-  DELIVERED:            "Zugestellt",
-  DETAILS_RETRIEVED:    "Abgerufen",
-  UNDER_REVIEW:         "In Prüfung",
-  ACCEPTED:             "Angenommen",
-  ALTERNATIVES_PROPOSED:"Gegenvorschlag",
-  REJECTED:             "Abgelehnt",
-  REVISION_REQUIRED:    "Überarbeitung",
-  CANCELLED:            "Storniert",
-  EXPIRED:              "Abgelaufen",
-  SUPERSEDED:           "Ersetzt",
-  DRAFT:                "Entwurf",
+  SENT:                  "Gesendet",
+  DELIVERED:             "Zugestellt",
+  DETAILS_RETRIEVED:     "Abgerufen",
+  UNDER_REVIEW:          "In Prüfung",
+  ACCEPTED:              "Angenommen",
+  ALTERNATIVES_PROPOSED: "Gegenvorschlag",
+  REJECTED:              "Abgelehnt",
+  REVISION_REQUIRED:     "Überarbeitung",
+  CANCELLED:             "Storniert",
+  EXPIRED:               "Abgelaufen",
+  SUPERSEDED:            "Ersetzt",
+  DRAFT:                 "Entwurf",
 };
 
 /** Ensure end is always strictly after start (gantt-task-react requirement). */
@@ -51,9 +60,9 @@ function safeEnd(start: Date, end: Date): Date {
   return end;
 }
 
-export default function GanttPage() {
+export default function TerminuebersichtPage() {
   const { t } = useTranslation();
-  const [tab, setTab]           = useState<"requests" | "assignments">("requests");
+  const [tab, setTab]           = useState<"takttermine" | "belegungen">("takttermine");
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
 
   const { data: assignments, isLoading: loadingAssignments } = useListResourceAssignments();
@@ -68,8 +77,8 @@ export default function GanttPage() {
     },
   );
 
-  // ── TaktRequest tasks ────────────────────────────────────────────────────────
-  const taktRequestTasks = useMemo((): Task[] => {
+  // ── Takttermine bars (from snapshot time window) ──────────────────────────
+  const taktTermineTasks = useMemo((): Task[] => {
     if (!taktRequests || taktRequests.length === 0) return [];
 
     const projectMap = new Map<string, { name: string; start: Date; end: Date }>();
@@ -77,10 +86,12 @@ export default function GanttPage() {
     taktRequests.forEach((req) => {
       const projId   = req.projectId ?? "unknown";
       const projName = req.projectName ?? "Unbekanntes Projekt";
-      // Use sentAt/createdAt as bar start; responseRequiredBy/expiresAt as bar end.
-      const startStr = req.sentAt ?? req.createdAt;
+      // Prefer snapshot time window (geplanter Ausführungszeitraum); fall back to request dates
+      const snapPayload = (req as any).snapshotPayload as Record<string, unknown> | undefined;
+      const tw = snapPayload?.plannedTimeWindow as Record<string, unknown> | undefined;
+      const startStr = (tw?.start ?? req.sentAt ?? req.createdAt) as string;
+      const endStr   = (tw?.end   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt) as string;
       const start    = new Date(startStr);
-      const endStr   = req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
       const end      = safeEnd(start, new Date(endStr));
 
       const existing = projectMap.get(projId);
@@ -94,7 +105,6 @@ export default function GanttPage() {
 
     const tasks: Task[] = [];
 
-    // Project header rows
     projectMap.forEach((proj, projId) => {
       tasks.push({
         id:           `proj_${projId}`,
@@ -112,17 +122,16 @@ export default function GanttPage() {
       });
     });
 
-    // TaktRequest bars
     taktRequests.forEach((req) => {
-      const projId   = req.projectId ?? "unknown";
-      const startStr = req.sentAt ?? req.createdAt;
+      const projId     = req.projectId ?? "unknown";
+      const snapPayload = (req as any).snapshotPayload as Record<string, unknown> | undefined;
+      const tw = snapPayload?.plannedTimeWindow as Record<string, unknown> | undefined;
+      const startStr = (tw?.start ?? req.sentAt ?? req.createdAt) as string;
+      const endStr   = (tw?.end   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt) as string;
       const start    = new Date(startStr);
-      const endStr   = req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
       const end      = safeEnd(start, new Date(endStr));
       const color    = STATUS_COLOR[req.status] ?? "#6b7280";
-      const label    = [req.taktBezeichnung, req.requestNumber]
-        .filter(Boolean)
-        .join(" · ");
+      const label    = [req.taktBezeichnung, req.requestNumber].filter(Boolean).join(" · ");
 
       tasks.push({
         id:      req.id,
@@ -143,8 +152,9 @@ export default function GanttPage() {
     return tasks;
   }, [taktRequests]);
 
-  // ── resource assignment tasks ───────────────────────────────────────────────
-  const assignmentTasks = useMemo((): Task[] => {
+  // ── Ressourcenbelegung (legacy resource assignments) ──────────────────────
+  // TODO: Replace with resource_bookings table data when a dedicated hook is available
+  const belegungTasks = useMemo((): Task[] => {
     if (!assignments || assignments.length === 0) return [];
 
     const resourceMap = new Map<string, { name: string; start: Date; end: Date }>();
@@ -210,8 +220,8 @@ export default function GanttPage() {
     return tasks;
   }, [assignments]);
 
-  const isLoading = tab === "requests" ? loadingTaktRequests : loadingAssignments;
-  const tasks     = tab === "requests" ? taktRequestTasks    : assignmentTasks;
+  const isLoading = tab === "takttermine" ? loadingTaktRequests : loadingAssignments;
+  const tasks     = tab === "takttermine" ? taktTermineTasks    : belegungTasks;
 
   const colWidth = viewMode === ViewMode.Day ? 60
                  : viewMode === ViewMode.Week ? 200
@@ -228,23 +238,23 @@ export default function GanttPage() {
           <div className="flex gap-1 bg-sidebar-accent p-1 rounded text-sm">
             <button
               className={`px-3 py-1 rounded transition-colors ${
-                tab === "requests"
+                tab === "takttermine"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => setTab("requests")}
+              onClick={() => setTab("takttermine")}
             >
-              Anfragen
+              Takttermine
             </button>
             <button
               className={`px-3 py-1 rounded transition-colors ${
-                tab === "assignments"
+                tab === "belegungen"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => setTab("assignments")}
+              onClick={() => setTab("belegungen")}
             >
-              Zuweisungen
+              Ressourcenbelegung
             </button>
           </div>
         </div>
@@ -267,8 +277,8 @@ export default function GanttPage() {
         </div>
       </div>
 
-      {/* Status legend (requests tab only) */}
-      {tab === "requests" && (
+      {/* Status legend (takttermine tab only) */}
+      {tab === "takttermine" && (
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           {Object.entries(STATUS_COLOR).map(([status, color]) => (
             <span key={status} className="flex items-center gap-1.5">
@@ -279,6 +289,13 @@ export default function GanttPage() {
               {STATUS_LABEL[status]}
             </span>
           ))}
+        </div>
+      )}
+
+      {tab === "belegungen" && belegungTasks.length === 0 && !isLoading && (
+        <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+          Ressourcenbelegungen aus <code>resource_bookings</code> werden in einer späteren Version
+          hier angezeigt. Derzeit werden nur Legacy-Zuweisungen (Delegierungen) dargestellt.
         </div>
       )}
 
@@ -304,7 +321,9 @@ export default function GanttPage() {
             </div>
           ) : (
             <div className="p-8 text-center text-muted-foreground">
-              {tab === "requests" ? "Keine Anfragen gefunden." : t("gantt.empty")}
+              {tab === "takttermine"
+                ? "Keine Takttermine gefunden."
+                : "Keine Ressourcenbelegungen gefunden."}
             </div>
           )}
         </CardContent>
