@@ -12,6 +12,7 @@ import {
   resourceBookingsTable,
   dataPublicationsTable,
   dataPublicationRecipientsTable,
+  taktRequestResourceRequirementsTable,
 } from "@workspace/db";
 import { eq, and, count, gte, lte, inArray, ne, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
@@ -123,22 +124,48 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
   const allPubIds = openRequests
     .map(r => r.request.dataPublicationId)
     .filter(Boolean) as string[];
-  let acceptedSet = new Set<string>();
-  if (allPubIds.length > 0) {
-    const accepted = await db
-      .select({ pubId: dataPublicationRecipientsTable.publicationId })
-      .from(dataPublicationRecipientsTable)
-      .where(
-        and(
-          eq(dataPublicationRecipientsTable.anOrgId, orgId),
-          eq(dataPublicationRecipientsTable.status, "ACCEPTED"),
-          inArray(dataPublicationRecipientsTable.publicationId, allPubIds),
-        ),
-      );
-    acceptedSet = new Set(accepted.map(r => r.pubId));
-  }
 
-  // Priority order: 0=overdueResponse > 1=policy > 2=retrieve_data > 3=answer
+  const openRequestIds = openRequests.map(r => r.request.id);
+
+  // Run both lookups in parallel
+  const [acceptedRows, requirementCountRows] = await Promise.all([
+    allPubIds.length > 0
+      ? db
+          .select({ pubId: dataPublicationRecipientsTable.publicationId })
+          .from(dataPublicationRecipientsTable)
+          .where(
+            and(
+              eq(dataPublicationRecipientsTable.anOrgId, orgId),
+              eq(dataPublicationRecipientsTable.status, "ACCEPTED"),
+              inArray(dataPublicationRecipientsTable.publicationId, allPubIds),
+            ),
+          )
+      : Promise.resolve([] as { pubId: string }[]),
+
+    openRequestIds.length > 0
+      ? db
+          .select({
+            taktRequestId: taktRequestResourceRequirementsTable.taktRequestId,
+            cnt: count(),
+          })
+          .from(taktRequestResourceRequirementsTable)
+          .where(
+            inArray(
+              taktRequestResourceRequirementsTable.taktRequestId,
+              openRequestIds,
+            ),
+          )
+          .groupBy(taktRequestResourceRequirementsTable.taktRequestId)
+      : Promise.resolve([] as { taktRequestId: string; cnt: number }[]),
+  ]);
+
+  const acceptedSet = new Set(acceptedRows.map(r => r.pubId));
+  // Set of request IDs that have at least one resource requirement saved
+  const requestsWithRequirements = new Set(
+    requirementCountRows.filter(r => r.cnt > 0).map(r => r.taktRequestId),
+  );
+
+  // Priority order: 0=overdueResponse > 1=policy > 2=retrieve_data > 3=add_requirements > 4=submit_response
   function getPriority(
     req: typeof openRequests[0]["request"],
   ): { priority: number; action: string } {
@@ -146,12 +173,18 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
     const isOverdue = deadline && deadline < now;
     const policyPending =
       req.dataPublicationId && !acceptedSet.has(req.dataPublicationId);
+    const hasRequirements = requestsWithRequirements.has(req.id);
 
     if (isOverdue) return { priority: 0, action: "OVERDUE" };
     if (policyPending) return { priority: 1, action: "POLICY_PENDING" };
     if (req.status === "DELIVERED" || req.status === "SENT") return { priority: 2, action: "RETRIEVE_DATA" };
     if (req.status === "DETAILS_RETRIEVED") return { priority: 3, action: "ADD_REQUIREMENTS" };
-    if (req.status === "UNDER_REVIEW") return { priority: 4, action: "SUBMIT_RESPONSE" };
+    // UNDER_REVIEW: only advance to SUBMIT_RESPONSE if requirements have been entered
+    if (req.status === "UNDER_REVIEW") {
+      return hasRequirements
+        ? { priority: 4, action: "SUBMIT_RESPONSE" }
+        : { priority: 3, action: "ADD_REQUIREMENTS" };
+    }
     return { priority: 5, action: "SUBMIT_RESPONSE" };
   }
 
