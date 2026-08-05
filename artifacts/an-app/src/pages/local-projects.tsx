@@ -30,6 +30,8 @@ import {
   Archive,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -315,10 +317,18 @@ export default function LocalProjectsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
+      {/* Privacy notice */}
+      <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
+        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <AlertDescription className="text-blue-800 dark:text-blue-300 text-sm">
+          Interne Projekte und Aufträge werden nur innerhalb Ihrer Organisation verwendet und nicht an Auftraggeber übertragen.
+        </AlertDescription>
+      </Alert>
+
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Lokale Projekte</h1>
+          <h1 className="text-2xl font-bold">Interne Projekte</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
             Interne Projekte Ihres Unternehmens — nicht für Auftraggeber sichtbar
           </p>

@@ -30,13 +30,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/takt-requests", icon: Inbox, label: "Anfragen" },
-    { href: "/local-projects", icon: FolderOpen, label: "Lokale Projekte" },
-    { href: "/resource-bookings", icon: CalendarDays, label: "Belegungen" },
-    { href: "/availability-checks", icon: ShieldCheck, label: "Verfügbarkeit" },
+    { href: "/takt-requests", icon: Inbox, label: "Taktanfragen" },
     { href: "/data-offers", icon: Globe, label: "Datenraum" },
-    { href: "/gantt", icon: CalendarClock, label: t("nav.gantt") },
-    { href: "/resources", icon: HardHat, label: t("nav.resources") },
+    { href: "/resources", icon: HardHat, label: "Ressourcentypen und Ressourcen" },
+    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
+    { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
+    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
     { href: "/reports", icon: BarChart2, label: "Berichte" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];

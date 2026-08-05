@@ -20,8 +20,13 @@
   "nav": {
     "dashboard": "Dashboard",
     "requests": "Anfragen",
-    "gantt": "Ressourcen",
-    "resources": "Verwaltung",
+    "taktRequests": "Taktanfragen",
+    "dataOffers": "Datenraum",
+    "resources": "Ressourcentypen und Ressourcen",
+    "resourceBookings": "Ressourcenbelegung",
+    "localProjects": "Interne Projekte",
+    "gantt": "Terminübersicht",
+    "reports": "Berichte",
     "settings": "Einstellungen",
     "logout": "Abmelden"
   },

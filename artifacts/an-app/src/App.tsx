@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import { AuthProvider } from '@/contexts/auth';
 import { useAuth } from '@/contexts/auth';
 import { Layout } from '@/components/layout';
@@ -57,8 +57,12 @@ function AuthRoutedApp() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/requests" component={Requests} />
-        <Route path="/requests/:delegationId" component={RequestDetail} />
+        <Route path="/requests/:delegationId">
+          <Redirect to="/takt-requests" />
+        </Route>
+        <Route path="/requests">
+          <Redirect to="/takt-requests" />
+        </Route>
         <Route path="/takt-requests" component={TaktRequestsInbox} />
         <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
         <Route path="/local-projects" component={LocalProjects} />
