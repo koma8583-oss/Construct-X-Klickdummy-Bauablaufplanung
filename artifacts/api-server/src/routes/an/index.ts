@@ -14,6 +14,7 @@ import organizationsRouter from "../organizations";
 import webhooksRouter from "../webhooks";
 import healthRouter from "../health";
 import taktRequestsRouter from "../takt-requests";
+import nuRouter from "../nu";
 import dataOffersRouter from "./data-offers";
 
 const router: IRouter = Router();
@@ -27,6 +28,10 @@ router.use(resourcesRouter);
 router.use(organizationsRouter);
 router.use(webhooksRouter);
 router.use(taktRequestsRouter);
+
+// NU-internal routes: resource types, local projects, resource bookings, availability checks
+// These are mounted here so the AN app's /api/* → /api/an/* rewrite resolves them correctly.
+router.use(nuRouter);
 
 // AN data-space offers at /api/an/data-offers
 router.use(dataOffersRouter);

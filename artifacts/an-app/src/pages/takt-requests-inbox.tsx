@@ -317,11 +317,16 @@ export default function TaktRequestsInboxPage() {
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {item.requestNumber}
                       </TableCell>
-                      <TableCell className="text-sm max-w-[130px] truncate" title={item.nuOrgName}>
-                        {item.nuOrgName}
+                      <TableCell className="text-sm max-w-[130px] truncate" title={(item as any).agOrgName ?? '–'}>
+                        {(item as any).agOrgName ?? <span className="text-muted-foreground">–</span>}
                       </TableCell>
-                      <TableCell className="text-sm max-w-[140px] truncate" title={item.taktBezeichnung}>
-                        {item.taktBezeichnung}
+                      <TableCell className="text-sm max-w-[160px]">
+                        <div className="truncate font-medium" title={item.taktBezeichnung ?? undefined}>{item.taktBezeichnung ?? '–'}</div>
+                        {((item as any).zone || (item as any).gewerk) && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {[(item as any).zone, (item as any).gewerk].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {item.responseRequiredBy

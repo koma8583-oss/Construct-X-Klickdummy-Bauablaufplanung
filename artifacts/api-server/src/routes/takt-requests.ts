@@ -40,6 +40,7 @@ import {
   listTaktRequestsForGu,
   listTaktRequestsForGuEnriched,
   listTaktRequestsForNu,
+  listTaktRequestsForNuEnriched,
   updateTaktRequestStatus,
   transitionToDetailsRetrievedAtomic,
   createTaktRequestSnapshot,
@@ -164,7 +165,7 @@ router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
       : undefined;
 
   if (role === "nu") {
-    const requests = await listTaktRequestsForNu(orgId, {
+    const requests = await listTaktRequestsForNuEnriched(orgId, {
       status: statusFilter,
     });
     res.json(requests);

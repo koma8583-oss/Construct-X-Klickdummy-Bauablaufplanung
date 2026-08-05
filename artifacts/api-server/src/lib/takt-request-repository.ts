@@ -26,7 +26,8 @@ import {
   type InsertTaktRequestSnapshot,
   type TaktRequestStatus,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 // ── Detail view types (Task 5.4) ──────────────────────────────────────────────
 
@@ -543,6 +544,82 @@ export async function listTaktRequestsForNu(
     .select()
     .from(taktRequestsTable)
     .where(and(...conditions));
+}
+
+/**
+ * Enriched list for NU — joins the AG organisation name and the immutable
+ * Takt snapshot so the inbox can show Auftraggeber, Taktbezeichnung, Zone
+ * and Gewerk without exposing data-sovereign internal fields.
+ */
+export async function listTaktRequestsForNuEnriched(
+  nuOrgId: string,
+  filters?: { status?: TaktRequestStatus },
+) {
+  const guOrg = alias(organizationsTable, "gu_org");
+  const conditions = [eq(taktRequestsTable.nuOrgId, nuOrgId)];
+  if (filters?.status) {
+    conditions.push(eq(taktRequestsTable.status, filters.status));
+  }
+
+  const rows = await db
+    .select({
+      id:                 taktRequestsTable.id,
+      taktId:             taktRequestsTable.taktId,
+      guOrgId:            taktRequestsTable.guOrgId,
+      nuOrgId:            taktRequestsTable.nuOrgId,
+      requestNumber:      taktRequestsTable.requestNumber,
+      status:             taktRequestsTable.status,
+      taktVersion:        taktRequestsTable.taktVersion,
+      responseRequiredBy: taktRequestsTable.responseRequiredBy,
+      expiresAt:          taktRequestsTable.expiresAt,
+      expiredAt:          taktRequestsTable.expiredAt,
+      sentAt:             taktRequestsTable.sentAt,
+      deliveredAt:        taktRequestsTable.deliveredAt,
+      detailsRetrievedAt: taktRequestsTable.detailsRetrievedAt,
+      reminderCount:      taktRequestsTable.reminderCount,
+      lastReminderAt:     taktRequestsTable.lastReminderAt,
+      createdAt:          taktRequestsTable.createdAt,
+      updatedAt:          taktRequestsTable.updatedAt,
+      agOrgName:          guOrg.name,
+      snapshotPayload:    taktRequestSnapshotsTable.snapshotPayload,
+    })
+    .from(taktRequestsTable)
+    .leftJoin(guOrg, eq(taktRequestsTable.guOrgId, guOrg.id))
+    .leftJoin(
+      taktRequestSnapshotsTable,
+      eq(taktRequestSnapshotsTable.taktRequestId, taktRequestsTable.id),
+    )
+    .where(and(...conditions))
+    .orderBy(desc(taktRequestsTable.createdAt));
+
+  return rows.map((r) => {
+    const payload = (r.snapshotPayload ?? {}) as Record<string, unknown>;
+    return {
+      id:                 r.id,
+      taktId:             r.taktId,
+      guOrgId:            r.guOrgId,
+      nuOrgId:            r.nuOrgId,
+      requestNumber:      r.requestNumber,
+      status:             r.status,
+      taktVersion:        r.taktVersion,
+      responseRequiredBy: r.responseRequiredBy,
+      expiresAt:          r.expiresAt,
+      expiredAt:          r.expiredAt,
+      sentAt:             r.sentAt,
+      deliveredAt:        r.deliveredAt,
+      detailsRetrievedAt: r.detailsRetrievedAt,
+      reminderCount:      r.reminderCount,
+      lastReminderAt:     r.lastReminderAt,
+      createdAt:          r.createdAt,
+      updatedAt:          r.updatedAt,
+      agOrgName:          r.agOrgName ?? null,
+      taktBezeichnung:    (payload.taktBezeichnung as string | undefined) ?? null,
+      zone:               (payload.zone             as string | undefined) ?? null,
+      gewerk:             (payload.gewerk            as string | undefined) ?? null,
+      plannedStart:       (payload.plannedStart      as string | undefined) ?? null,
+      plannedEnd:         (payload.plannedEnd        as string | undefined) ?? null,
+    };
+  });
 }
 
 /**
