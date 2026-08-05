@@ -70,12 +70,28 @@
     "empty": "Keine Zuweisungen."
   },
   "resources": {
-    "title": "Ressourcenverwaltung",
+    "title": "Ressourcentypen und Ressourcen",
     "tabs": {
+      "types": "Ressourcentypen",
+      "resources": "Ressourcen",
       "EMPLOYEE": "Mitarbeiter",
+      "CREW": "Kolonne",
       "EQUIPMENT": "Gerät",
-      "MACHINE": "Maschinen",
+      "MACHINE": "Maschine",
       "OTHER": "Sonstige"
+    },
+    "categories": {
+      "PERSONNEL": "Personal",
+      "CREW": "Kolonne",
+      "EQUIPMENT": "Gerät",
+      "MACHINE": "Maschine",
+      "OTHER": "Sonstige"
+    },
+    "capacityUnits": {
+      "PERSONS": "Personen",
+      "UNITS": "Einheiten",
+      "HOURS_PER_DAY": "Std/Tag",
+      "PERCENT": "Prozent"
     },
     "name": "Name",
     "qualification": "Qualifikation",

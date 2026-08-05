@@ -73,6 +73,7 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
     capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
     calendarId:        z.string().optional(),
     active:            z.boolean().optional(),
+    resourceTypeId:    z.string().nullable().optional(),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -118,6 +119,7 @@ router.patch(
       capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
       calendarId:        z.string().optional(),
       active:            z.boolean().optional(),
+      resourceTypeId:    z.string().nullable().optional(),
     });
 
     const parsed = schema.safeParse(req.body);

@@ -17,6 +17,7 @@ import {
   nuLocalProjectsTable,
   resourceBookingsTable,
   resourcesTable,
+  resourceTypesTable,
 } from "@workspace/db";
 import { and, eq, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -38,6 +39,162 @@ function requireNU(req: Request, res: Response): boolean {
   }
   return true;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// RESOURCE TYPES
+// ────────────────────────────────────────────────────────────────────────────
+
+const VALID_CATEGORIES = ["PERSONNEL", "CREW", "EQUIPMENT", "MACHINE", "OTHER"] as const;
+const VALID_CAPACITY_UNITS = ["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"] as const;
+
+type ResourceTypeCategory = typeof VALID_CATEGORIES[number];
+type CapacityUnit = typeof VALID_CAPACITY_UNITS[number];
+
+// GET /api/nu/resource-types
+router.get("/nu/resource-types", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+  const includeInactive = req.query.includeInactive === "true";
+
+  const filters = [eq(resourceTypesTable.anOrgId, nuOrgId)];
+  if (!includeInactive) {
+    filters.push(eq(resourceTypesTable.active, true));
+  }
+
+  const rows = await db
+    .select()
+    .from(resourceTypesTable)
+    .where(and(...filters))
+    .orderBy(resourceTypesTable.name);
+
+  res.status(200).json({ items: rows, count: rows.length });
+});
+
+// POST /api/nu/resource-types
+router.post("/nu/resource-types", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+
+  const schema = z.object({
+    name: z.string().min(1),
+    category: z.enum(VALID_CATEGORIES),
+    qualification: z.string().optional(),
+    capacityUnit: z.enum(VALID_CAPACITY_UNITS).optional(),
+    defaultDailyCapacity: z.number().positive().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation error", details: parsed.error.issues });
+    return;
+  }
+
+  const [row] = await db
+    .insert(resourceTypesTable)
+    .values({ anOrgId: nuOrgId, ...parsed.data } as {
+      anOrgId: string;
+      name: string;
+      category: ResourceTypeCategory;
+      qualification?: string;
+      capacityUnit?: CapacityUnit;
+      defaultDailyCapacity?: number;
+    })
+    .returning();
+
+  res.status(201).json(row);
+});
+
+// GET /api/nu/resource-types/:id
+router.get("/nu/resource-types/:id", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+  const id = req.params.id as string;
+
+  const [row] = await db
+    .select()
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Resource type not found" });
+    return;
+  }
+
+  res.status(200).json(row);
+});
+
+// PATCH /api/nu/resource-types/:id
+router.patch("/nu/resource-types/:id", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+  const id = req.params.id as string;
+
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    category: z.enum(VALID_CATEGORIES).optional(),
+    qualification: z.string().nullable().optional(),
+    capacityUnit: z.enum(VALID_CAPACITY_UNITS).nullable().optional(),
+    defaultDailyCapacity: z.number().positive().nullable().optional(),
+    active: z.boolean().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation error", details: parsed.error.issues });
+    return;
+  }
+
+  if (Object.keys(parsed.data).length === 0) {
+    res.status(400).json({ error: "No fields to update" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: resourceTypesTable.id })
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Resource type not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(resourceTypesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .returning();
+
+  res.status(200).json(updated);
+});
+
+// POST /api/nu/resource-types/:id/deactivate  (soft-delete)
+router.post("/nu/resource-types/:id/deactivate", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+  const id = req.params.id as string;
+
+  const [existing] = await db
+    .select({ id: resourceTypesTable.id, active: resourceTypesTable.active })
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Resource type not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(resourceTypesTable)
+    .set({ active: false, updatedAt: new Date() })
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .returning();
+
+  res.status(200).json(updated);
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // LOCAL PROJECTS

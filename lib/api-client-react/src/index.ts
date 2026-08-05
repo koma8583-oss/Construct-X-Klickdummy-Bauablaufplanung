@@ -7,3 +7,4 @@ export * from './generated/api.schemas';
 export * from './reports';
 export * from './data-publications';
 export * from './data-offers';
+export * from './resource-types';

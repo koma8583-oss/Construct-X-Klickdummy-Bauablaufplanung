@@ -124,7 +124,7 @@ beforeAll(async () => {
   if (!policyTemplateId) {
     const [pt] = await db
       .insert(policyTemplatesTable)
-      .values({ id: "t49-policy-template", code: "STANDARD", name: "Standard", description: "Auto-created for t49", version: 1, legalText: "Test policy", createdAt: now, updatedAt: now })
+      .values({ id: "t49-policy-template", code: "STANDARD", name: "Standard", description: "Auto-created for t49", purpose: "Test", permissions: ["READ"], prohibitions: [], validityRule: "None", createdAt: now, updatedAt: now })
       .onConflictDoNothing()
       .returning();
     policyTemplateId = pt?.id ?? "t49-policy-template";

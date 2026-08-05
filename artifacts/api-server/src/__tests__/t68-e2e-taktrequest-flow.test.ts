@@ -216,7 +216,7 @@ async function createTestPublication(taktId: string): Promise<string> {
   if (!policyTemplateId) {
     const [pt] = await db
       .insert(policyTemplatesTable)
-      .values({ id: `${T}-policy-template`, code: "STANDARD", name: "Standard Policy", description: "Auto-created for t68 tests", version: 1, legalText: "Test policy", createdAt: now, updatedAt: now })
+      .values({ id: `${T}-policy-template`, code: "STANDARD", name: "Standard Policy", description: "Auto-created for t68 tests", purpose: "Test", permissions: ["READ"], prohibitions: [], validityRule: "None", createdAt: now, updatedAt: now })
       .onConflictDoNothing()
       .returning();
     policyTemplateId = pt?.id ?? `${T}-policy-template`;

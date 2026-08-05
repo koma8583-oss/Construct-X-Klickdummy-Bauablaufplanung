@@ -13,6 +13,8 @@ import { z } from "zod/v4";
 import { organizationsTable } from "./organizations";
 import { delegationsTable } from "./delegations";
 
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
 /**
  * Resource types — CREW added in Task 4.3.
  * Existing values (EMPLOYEE, EQUIPMENT, MACHINE, OTHER) are retained for
@@ -37,6 +39,55 @@ export const capacityUnitEnum = pgEnum("capacity_unit", [
   "HOURS_PER_DAY",
   "PERCENT",
 ]);
+
+/**
+ * Category for named resource types (resource_types table).
+ * PERSONNEL: individual workers; CREW: pre-formed teams.
+ */
+export const resourceTypeCategoryEnum = pgEnum("resource_type_category", [
+  "PERSONNEL",
+  "CREW",
+  "EQUIPMENT",
+  "MACHINE",
+  "OTHER",
+]);
+
+// ── Named resource types (per AN-organisation) ────────────────────────────────
+
+/**
+ * Named, organisation-scoped resource types (e.g. "Facharbeiter Trockenbau").
+ * Acts as a fachliche Klammer over concrete resources.
+ * Soft-deleted via `active = false`; no physical deletes.
+ */
+export const resourceTypesTable = pgTable("resource_types", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  anOrgId: text("an_org_id")
+    .notNull()
+    .references(() => organizationsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: resourceTypeCategoryEnum("category").notNull(),
+  /** Optional freetext qualification description for this type */
+  qualification: text("qualification"),
+  /** Unit of capacity (reuses the shared enum) */
+  capacityUnit: capacityUnitEnum("capacity_unit"),
+  /** Default daily capacity — interpretation depends on capacityUnit */
+  defaultDailyCapacity: doublePrecision("default_daily_capacity"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type ResourceTypeRow = typeof resourceTypesTable.$inferSelect;
+export type InsertResourceTypeRow = typeof resourceTypesTable.$inferInsert;
+
+// ── Concrete resources ────────────────────────────────────────────────────────
 
 export const resourcesTable = pgTable("resources", {
   id: text("id")
@@ -99,6 +150,15 @@ export const resourcesTable = pgTable("resources", {
    * Inactive resources are excluded from automatic availability suggestions.
    */
   active: boolean("active").notNull().default(true),
+
+  /**
+   * Optional link to a named resource type (resource_types).
+   * Nullable — existing resources without a type remain valid.
+   */
+  resourceTypeId: text("resource_type_id").references(
+    () => resourceTypesTable.id,
+    { onDelete: "set null" },
+  ),
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
