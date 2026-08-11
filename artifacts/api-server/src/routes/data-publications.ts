@@ -66,6 +66,84 @@ async function requireProjectOwner(
   return project;
 }
 
+// ── GET /ag/data-publications — cross-project overview for the AG ─────────────
+router.get(
+  "/ag/data-publications",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const caller = req.user!;
+    if (caller.orgType !== "AG" || !caller.orgId) {
+      res.status(403).json({ error: "Nur AG-Organisationen können diese Ansicht abrufen" });
+      return;
+    }
+    const agOrgId = caller.orgId;
+
+    // All projects owned by this AG
+    const projects = await db
+      .select({ id: projectsTable.id, name: projectsTable.name })
+      .from(projectsTable)
+      .where(eq(projectsTable.agOrgId, agOrgId));
+
+    if (projects.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const projectIds = projects.map((p) => p.id);
+    const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+
+    const publications = await db
+      .select()
+      .from(dataPublicationsTable)
+      .where(inArray(dataPublicationsTable.projectId, projectIds as [string, ...string[]]));
+
+    const enriched = await Promise.all(
+      publications.map(async (pub) => {
+        const recipients = await db
+          .select({
+            anOrgId: dataPublicationRecipientsTable.anOrgId,
+            status: dataPublicationRecipientsTable.status,
+            anName: organizationsTable.name,
+            notifiedAt: dataPublicationRecipientsTable.notifiedAt,
+            policyAcceptedAt: dataPublicationRecipientsTable.policyAcceptedAt,
+            policyRejectedAt: dataPublicationRecipientsTable.policyRejectedAt,
+            firstAccessedAt: dataPublicationRecipientsTable.firstAccessedAt,
+          })
+          .from(dataPublicationRecipientsTable)
+          .innerJoin(
+            organizationsTable,
+            eq(dataPublicationRecipientsTable.anOrgId, organizationsTable.id),
+          )
+          .where(eq(dataPublicationRecipientsTable.publicationId, pub.id));
+
+        const [policy] = await db
+          .select({ code: policyTemplatesTable.code, name: policyTemplatesTable.name })
+          .from(policyTemplatesTable)
+          .where(eq(policyTemplatesTable.id, pub.policyTemplateId))
+          .limit(1);
+
+        return {
+          ...pub,
+          projectName: projectMap[pub.projectId] ?? null,
+          recipients,
+          policyCode: policy?.code ?? null,
+          policyName: policy?.name ?? null,
+        };
+      }),
+    );
+
+    // Sort: PUBLISHED first, then DRAFT, then others; within each group newest first
+    const ORDER: Record<string, number> = { PUBLISHED: 0, DRAFT: 1, SUSPENDED: 2, WITHDRAWN: 3, EXPIRED: 4 };
+    enriched.sort((a, b) => {
+      const os = (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9);
+      if (os !== 0) return os;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    res.json(enriched);
+  },
+);
+
 // ── GET /policy-templates ─────────────────────────────────────────────────────
 router.get(
   "/policy-templates",

@@ -8,6 +8,7 @@ import {
   Send,
   Inbox,
   Users,
+  Database,
   Settings,
   LogOut,
   Hexagon,
@@ -30,6 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send },
     { name: t('nav.proposals'), href: '/proposals', icon: Inbox },
     { name: t('nav.contractors'), href: '/contractors', icon: Users },
+    { name: t('nav.datenraum'), href: '/datenraum', icon: Database },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
 

@@ -20,6 +20,11 @@ import {
   useUpdateResourceType,
   useDeactivateResourceType,
   getResourceTypesQueryKey,
+  DTC_CLASSES,
+  DTC_CLASS_LABELS,
+  DTC_TO_CATEGORY,
+  CATEGORY_TO_DTC,
+  type DtcClassKey,
   type ResourceTypeRecord,
   type ResourceTypeCategory,
   type ResourceCapacityUnit,
@@ -89,6 +94,9 @@ const CAPACITY_UNIT_LABELS: Record<ResourceCapacityUnit, string> = {
   PERCENT: "Prozent",
 };
 
+/** DTC class dropdown options (friendly label → key → URI). */
+const DTC_CLASS_KEYS = Object.keys(DTC_CLASS_LABELS) as DtcClassKey[];
+
 const LEGACY_TYPE_LABELS: Record<string, string> = {
   EMPLOYEE: "Mitarbeiter",
   CREW: "Kolonne",
@@ -125,18 +133,18 @@ function ActiveBadge({ active }: { active: boolean }) {
 
 interface RtFormData {
   name: string;
-  category: ResourceTypeCategory;
-  qualification: string;
+  /** DTC class key (maps to the full URI) */
+  dtcClassKey: DtcClassKey;
+  /** Short internal code e.g. "LAB-DRYWALL" */
+  code: string;
   capacityUnit: ResourceCapacityUnit | "";
-  defaultDailyCapacity: string;
 }
 
 const EMPTY_RT_FORM: RtFormData = {
   name: "",
-  category: "PERSONNEL",
-  qualification: "",
+  dtcClassKey: "WORKER",
+  code: "",
   capacityUnit: "",
-  defaultDailyCapacity: "",
 };
 
 function ResourceTypeDialog({
@@ -184,26 +192,42 @@ function ResourceTypeDialog({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor="rt-dtc" className="text-xs">
+              DTC-Klasse (Ressourcenart) *
+            </Label>
+            <Select
+              value={form.dtcClassKey}
+              onValueChange={(v) => set("dtcClassKey", v as DtcClassKey)}
+            >
+              <SelectTrigger id="rt-dtc" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DTC_CLASS_KEYS.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {DTC_CLASS_LABELS[k]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">
+              Basiert auf DTC-Ontologie v2 (TU München)
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="rt-category" className="text-xs">
-                Kategorie *
+              <Label htmlFor="rt-code" className="text-xs">
+                Interner Code
               </Label>
-              <Select
-                value={form.category}
-                onValueChange={(v) => set("category", v as ResourceTypeCategory)}
-              >
-                <SelectTrigger id="rt-category" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CATEGORY_LABELS) as ResourceTypeCategory[]).map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {CATEGORY_LABELS[k]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                id="rt-code"
+                value={form.code}
+                onChange={(e) => set("code", e.target.value)}
+                placeholder="z. B. LAB-DRYWALL"
+                className="h-9"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -227,35 +251,6 @@ function ResourceTypeDialog({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="rt-cap" className="text-xs">
-              Standardkapazität pro Tag
-            </Label>
-            <Input
-              id="rt-cap"
-              type="number"
-              min="0"
-              step="0.5"
-              value={form.defaultDailyCapacity}
-              onChange={(e) => set("defaultDailyCapacity", e.target.value)}
-              placeholder="z. B. 8"
-              className="h-9"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="rt-qual" className="text-xs">
-              Qualifikation / Beschreibung
-            </Label>
-            <Input
-              id="rt-qual"
-              value={form.qualification}
-              onChange={(e) => set("qualification", e.target.value)}
-              placeholder="z. B. Trockenbauer mit Führerschein Kl. B"
-              className="h-9"
-            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -304,12 +299,10 @@ function ResourceTypesTab() {
     try {
       await createMut.mutateAsync({
         name: form.name.trim(),
-        category: form.category,
-        ...(form.qualification.trim() && { qualification: form.qualification.trim() }),
+        category: DTC_TO_CATEGORY[form.dtcClassKey],
+        dtcClass: DTC_CLASSES[form.dtcClassKey],
+        ...(form.code.trim() && { code: form.code.trim() }),
         ...(form.capacityUnit && { capacityUnit: form.capacityUnit }),
-        ...(form.defaultDailyCapacity && {
-          defaultDailyCapacity: parseFloat(form.defaultDailyCapacity),
-        }),
       });
       setCreateOpen(false);
       invalidate();
@@ -330,12 +323,10 @@ function ResourceTypesTab() {
         id: editItem.id,
         data: {
           name: form.name.trim() || undefined,
-          category: form.category,
-          qualification: form.qualification.trim() || null,
+          category: DTC_TO_CATEGORY[form.dtcClassKey],
+          dtcClass: DTC_CLASSES[form.dtcClassKey],
+          code: form.code.trim() || null,
           capacityUnit: (form.capacityUnit as ResourceCapacityUnit) || null,
-          defaultDailyCapacity: form.defaultDailyCapacity
-            ? parseFloat(form.defaultDailyCapacity)
-            : null,
         },
       });
       setEditItem(null);
@@ -413,10 +404,9 @@ function ResourceTypesTab() {
                 <TableHeader>
                   <TableRow className="border-border">
                     <TableHead className="text-xs">Bezeichnung</TableHead>
-                    <TableHead className="text-xs">Kategorie</TableHead>
-                    <TableHead className="text-xs">Qualifikation</TableHead>
+                    <TableHead className="text-xs">DTC-Klasse</TableHead>
+                    <TableHead className="text-xs">Code</TableHead>
                     <TableHead className="text-xs">Einheit</TableHead>
-                    <TableHead className="text-xs">Std/Tag</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs w-[80px]"></TableHead>
                   </TableRow>
@@ -431,16 +421,13 @@ function ResourceTypesTab() {
                       <TableCell>
                         <CategoryBadge category={rt.category} />
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {rt.qualification ?? "–"}
+                      <TableCell className="text-muted-foreground text-xs font-mono">
+                        {rt.code ?? "–"}
                       </TableCell>
                       <TableCell className="text-sm">
                         {rt.capacityUnit
                           ? CAPACITY_UNIT_LABELS[rt.capacityUnit]
                           : "–"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {rt.defaultDailyCapacity ?? "–"}
                       </TableCell>
                       <TableCell>
                         <ActiveBadge active={rt.active} />
@@ -493,10 +480,11 @@ function ResourceTypesTab() {
           onClose={() => setEditItem(null)}
           initial={{
             name: editItem.name,
-            category: editItem.category,
-            qualification: editItem.qualification ?? "",
+            dtcClassKey: editItem.dtcClass
+              ? (Object.entries(DTC_CLASSES).find(([, uri]) => uri === editItem.dtcClass)?.[0] as DtcClassKey ?? CATEGORY_TO_DTC[editItem.category])
+              : CATEGORY_TO_DTC[editItem.category],
+            code: editItem.code ?? "",
             capacityUnit: editItem.capacityUnit ?? "",
-            defaultDailyCapacity: editItem.defaultDailyCapacity?.toString() ?? "",
           }}
           onSave={handleEdit}
           isSaving={updateMut.isPending}
@@ -511,19 +499,17 @@ function ResourceTypesTab() {
 
 interface ResFormData {
   name: string;
-  type: string;
+  /** ResourceType ID — required for DTC compliance; type is derived from it */
   resourceTypeId: string;
-  qualification: string;
-  dailyCapacityHours: string;
+  /** Capacity in units defined by the ResourceType */
+  capacity: string;
   color: string;
 }
 
 const EMPTY_RES_FORM: ResFormData = {
   name: "",
-  type: "EMPLOYEE",
   resourceTypeId: "",
-  qualification: "",
-  dailyCapacityHours: "8",
+  capacity: "",
   color: "#10b981",
 };
 
@@ -573,60 +559,51 @@ function ResourceDialog({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="res-type" className="text-xs">
-                Typ
-              </Label>
-              <Select value={form.type} onValueChange={(v) => set("type", v)}>
-                <SelectTrigger id="res-type" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(LEGACY_TYPE_LABELS).map(([k, l]) => (
-                    <SelectItem key={k} value={k}>
-                      {l}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="res-rt" className="text-xs">
-                Ressourcentyp
-              </Label>
-              <Select
-                value={form.resourceTypeId}
-                onValueChange={(v) => set("resourceTypeId", v)}
-              >
-                <SelectTrigger id="res-rt" className="h-9">
-                  <SelectValue placeholder="– keiner –" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">– keiner –</SelectItem>
-                  {resourceTypes.map((rt) => (
+          <div className="space-y-1.5">
+            <Label htmlFor="res-rt" className="text-xs">
+              Ressourcentyp *
+            </Label>
+            <Select
+              value={form.resourceTypeId}
+              onValueChange={(v) => set("resourceTypeId", v)}
+            >
+              <SelectTrigger id="res-rt" className="h-9">
+                <SelectValue placeholder="Typ auswählen …" />
+              </SelectTrigger>
+              <SelectContent>
+                {resourceTypes.length === 0 ? (
+                  <SelectItem value="" disabled>
+                    Keine Ressourcentypen vorhanden
+                  </SelectItem>
+                ) : (
+                  resourceTypes.map((rt) => (
                     <SelectItem key={rt.id} value={rt.id}>
                       {rt.name}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            {resourceTypes.length === 0 && (
+              <p className="text-[10px] text-amber-600">
+                Bitte zuerst einen Ressourcentyp anlegen.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="res-cap" className="text-xs">
-                Tageskapazität (h)
+                Kapazität (Einheiten)
               </Label>
               <Input
                 id="res-cap"
                 type="number"
                 min="0"
-                step="0.5"
-                value={form.dailyCapacityHours}
-                onChange={(e) => set("dailyCapacityHours", e.target.value)}
+                step="1"
+                value={form.capacity}
+                onChange={(e) => set("capacity", e.target.value)}
+                placeholder="z. B. 1"
                 className="h-9"
               />
             </div>
@@ -645,19 +622,6 @@ function ResourceDialog({
                 <span className="text-xs text-muted-foreground">{form.color}</span>
               </div>
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="res-qual" className="text-xs">
-              Qualifikation
-            </Label>
-            <Input
-              id="res-qual"
-              value={form.qualification}
-              onChange={(e) => set("qualification", e.target.value)}
-              placeholder="z. B. Trockenbauer"
-              className="h-9"
-            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -702,18 +666,30 @@ function ResourcesTab() {
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListResourcesQueryKey() });
 
+  /** Derive a type string from a resource type's category. Cast needed because
+   *  the generated OpenAPI enum predates CREW/OTHER support on the backend. */
+  const deriveType = (rtId: string): string => {
+    const rt = resourceTypes.find((r) => r.id === rtId);
+    const catMap: Record<string, string> = {
+      PERSONNEL: "EMPLOYEE",
+      CREW: "CREW",
+      EQUIPMENT: "EQUIPMENT",
+      MACHINE: "MACHINE",
+      OTHER: "OTHER",
+    };
+    return rt ? (catMap[rt.category] ?? "EMPLOYEE") : "EMPLOYEE";
+  };
+
   const handleCreate = async (form: ResFormData) => {
     try {
       await createMut.mutateAsync({
         data: {
-          type: form.type as Resource["type"],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          type: deriveType(form.resourceTypeId) as any,
           name: form.name.trim(),
-          ...(form.qualification.trim() && { qualification: form.qualification.trim() }),
-          ...(form.dailyCapacityHours && {
-            dailyCapacityHours: parseFloat(form.dailyCapacityHours),
-          }),
           ...(form.color && { color: form.color }),
           ...(form.resourceTypeId && { resourceTypeId: form.resourceTypeId }),
+          ...(form.capacity && { capacity: parseFloat(form.capacity) }),
         },
       });
       setCreateOpen(false);
@@ -735,13 +711,9 @@ function ResourcesTab() {
         resourceId: editItem.id,
         data: {
           name: form.name.trim() || undefined,
-          type: form.type as Resource["type"],
-          qualification: form.qualification.trim() || undefined,
-          dailyCapacityHours: form.dailyCapacityHours
-            ? parseFloat(form.dailyCapacityHours)
-            : undefined,
           color: form.color || undefined,
           resourceTypeId: form.resourceTypeId || undefined,
+          ...(form.capacity && { capacity: parseFloat(form.capacity) }),
         },
       });
       setEditItem(null);
@@ -811,10 +783,8 @@ function ResourcesTab() {
                 <TableHeader>
                   <TableRow className="border-border">
                     <TableHead className="text-xs">Name</TableHead>
-                    <TableHead className="text-xs">Typ</TableHead>
                     <TableHead className="text-xs">Ressourcentyp</TableHead>
-                    <TableHead className="text-xs">Qualifikation</TableHead>
-                    <TableHead className="text-xs">Std/Tag</TableHead>
+                    <TableHead className="text-xs">Kapazität</TableHead>
                     <TableHead className="text-xs">Farbe</TableHead>
                     <TableHead className="text-xs w-[80px]"></TableHead>
                   </TableRow>
@@ -826,16 +796,12 @@ function ResourcesTab() {
                       className="border-border hover:bg-muted/30 transition-colors"
                     >
                       <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {LEGACY_TYPE_LABELS[r.type] ?? r.type}
-                      </TableCell>
                       <TableCell className="text-sm">
                         {getResourceTypeName((r as Resource & { resourceTypeId?: string }).resourceTypeId)}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {r.qualification ?? "–"}
+                      <TableCell className="text-sm text-muted-foreground">
+                        {(r as Resource & { capacity?: number }).capacity ?? "–"}
                       </TableCell>
-                      <TableCell className="text-sm">{r.dailyCapacityHours ?? "–"}</TableCell>
                       <TableCell>
                         {r.color ? (
                           <div
@@ -893,10 +859,8 @@ function ResourcesTab() {
           onClose={() => setEditItem(null)}
           initial={{
             name: editItem.name,
-            type: editItem.type,
             resourceTypeId: (editItem as Resource & { resourceTypeId?: string }).resourceTypeId ?? "",
-            qualification: editItem.qualification ?? "",
-            dailyCapacityHours: editItem.dailyCapacityHours?.toString() ?? "",
+            capacity: (editItem as Resource & { capacity?: number }).capacity?.toString() ?? "",
             color: editItem.color ?? "#10b981",
           }}
           onSave={handleEdit}

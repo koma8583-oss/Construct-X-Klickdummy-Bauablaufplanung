@@ -113,7 +113,8 @@ function findConflictingBookingsInWindow(
   const utilizationByResource = new Map<string, number>();
 
   for (const booking of existingBookings) {
-    if (!resourceIds.includes(booking.resourceId)) continue;
+    const rid = booking.resourceId;
+    if (!rid || !resourceIds.includes(rid)) continue;
     if (booking.status === "CANCELLED") continue;
 
     const bStart = new Date(booking.startAt);
@@ -121,8 +122,8 @@ function findConflictingBookingsInWindow(
 
     // Overlap check
     if (bStart < windowEnd && bEnd > windowStart) {
-      const current = utilizationByResource.get(booking.resourceId) ?? 0;
-      utilizationByResource.set(booking.resourceId, current + booking.utilizationPercent);
+      const current = utilizationByResource.get(rid) ?? 0;
+      utilizationByResource.set(rid, current + booking.utilizationPercent);
     }
   }
 

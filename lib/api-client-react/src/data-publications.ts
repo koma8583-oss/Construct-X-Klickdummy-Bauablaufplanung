@@ -97,6 +97,11 @@ export interface CreateDataPublicationDto {
   validUntil?: string;
 }
 
+/** A DataPublication enriched with projectName (returned by /ag/data-publications). */
+export interface AgDataPublication extends DataPublication {
+  projectName: string | null;
+}
+
 // ── FIELD_WHITELISTS (must mirror the server-side constant) ───────────────────
 
 export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
@@ -173,6 +178,17 @@ export function useGetPolicyTemplates(): UseQueryResult<PolicyTemplate[], Error>
     queryKey: ["policy-templates"],
     queryFn: () =>
       customFetch<PolicyTemplate[]>("/api/policy-templates", { method: "GET" }),
+  });
+}
+
+// ── GET /api/ag/data-publications ─────────────────────────────────────────────
+export function useGetAllAgDataPublications(): import("@tanstack/react-query").UseQueryResult<AgDataPublication[], Error> {
+  return useQuery({
+    queryKey: ["ag-data-publications"],
+    queryFn: () =>
+      customFetch<AgDataPublication[]>("/api/ag/data-publications", {
+        method: "GET",
+      }),
   });
 }
 

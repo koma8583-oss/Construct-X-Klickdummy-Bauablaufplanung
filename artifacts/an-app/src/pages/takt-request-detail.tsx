@@ -354,6 +354,9 @@ export default function TaktRequestDetailPage() {
   const snapZone   = ((snapLocation?.zone ?? snap?.zone)            as string | undefined);
   const snapGewerk = ((snap?.trade        ?? snap?.gewerk)          as string | undefined);
   const snapDesc   = ((snap?.requiredOutput ?? snap?.description)    as string | undefined);
+  const bufferWindow = snap?.bufferTimeWindow as Record<string, unknown> | undefined;
+  const bufferStart  = bufferWindow?.earliestStart as string | undefined;
+  const bufferEnd    = bufferWindow?.latestEnd     as string | undefined;
 
   const status       = details.status;
   const hasResponded = ['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(status);
@@ -531,7 +534,7 @@ export default function TaktRequestDetailPage() {
               <div className="text-xs text-muted-foreground mb-0.5">Status</div>
               <div className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
                 <Unlock className="w-3.5 h-3.5" />
-                Policy akzeptiert / kein Datenraum erforderlich
+                Policy akzeptiert
               </div>
             </div>
             {details.detailsRetrievedAt && (
@@ -596,6 +599,44 @@ export default function TaktRequestDetailPage() {
                   <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(snapEnd)}
                 </div>
               </div>
+              {/* ── Fristen ─────────────────────────────────────────────── */}
+              {(details.responseRequiredBy || bufferStart || bufferEnd) && (
+                <div className="sm:col-span-2 pt-2 border-t border-border mt-1">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Fristen
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                    {details.responseRequiredBy && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Antwortfrist</div>
+                        <div className={`font-medium flex items-center gap-1.5 ${
+                          isExpired ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'
+                        }`}>
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                          {fmtDateTime(details.responseRequiredBy)}
+                          {isExpired && <span className="text-xs">(abgelaufen)</span>}
+                        </div>
+                      </div>
+                    )}
+                    {bufferStart && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Frühester Beginn (Puffer)</div>
+                        <div className="font-medium flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(bufferStart)}
+                        </div>
+                      </div>
+                    )}
+                    {bufferEnd && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Spätestes Ende (Puffer)</div>
+                        <div className="font-medium flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(bufferEnd)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {snapDesc && (
                 <div className="sm:col-span-2">
                   <div className="text-xs text-muted-foreground mb-0.5">Beschreibung</div>

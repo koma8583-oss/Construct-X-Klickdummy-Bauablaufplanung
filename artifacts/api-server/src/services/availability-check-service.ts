@@ -26,6 +26,7 @@ import {
   resourcesTable,
   resourceBookingsTable,
   availabilityChecksTable,
+  taktRequestResourceRequirementsTable,
 } from "@workspace/db";
 import { and, eq, lt, gt, ne, max, desc, sql } from "drizzle-orm";
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
@@ -342,7 +343,7 @@ async function executeCheckRules(
   nuOrgId: string,
   taktRequestId: string,
 ): Promise<CheckRulesResult> {
-  // Load NU's active resources (Rule 6, 7, 8, 9)
+  // Load NU's active resources (used by both DTC and legacy paths)
   const nuResources = await db
     .select({
       id: resourcesTable.id,
@@ -353,6 +354,7 @@ async function executeCheckRules(
       qualifications: resourcesTable.qualifications,
       skills: resourcesTable.skills,
       active: resourcesTable.active,
+      resourceTypeId: resourcesTable.resourceTypeId,
     })
     .from(resourcesTable)
     .where(and(eq(resourcesTable.anOrgId, nuOrgId), eq(resourcesTable.active, true)));
@@ -364,6 +366,8 @@ async function executeCheckRules(
     .select({
       id: resourceBookingsTable.id,
       resourceId: resourceBookingsTable.resourceId,
+      resourceTypeId: resourceBookingsTable.resourceTypeId,
+      quantity: resourceBookingsTable.quantity,
       startAt: resourceBookingsTable.startAt,
       endAt: resourceBookingsTable.endAt,
       status: resourceBookingsTable.status,
@@ -380,6 +384,190 @@ async function executeCheckRules(
       ),
     );
 
+  // ── Load DTC-based resource requirements (if any) ────────────────────────────
+  const dtcRequirements = await db
+    .select()
+    .from(taktRequestResourceRequirementsTable)
+    .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId));
+
+  const hasDtcRequirements = dtcRequirements.some(r => r.resourceTypeId);
+
+  if (hasDtcRequirements) {
+    return executeDtcCheck(
+      dtcRequirements,
+      nuResources,
+      overlappingBookings,
+      snapshot,
+    );
+  }
+
+  // ── Legacy path: snapshot-based type classification ──────────────────────────
+  return executeLegacyCheck(snapshot, nuResources, overlappingBookings);
+}
+
+// ── DTC-based check (takt_request_resource_requirements) ──────────────────────
+
+type NuResource = {
+  id: string;
+  type: string;
+  name: string;
+  capacity: number | null;
+  capacityUnit: string | null;
+  qualifications: unknown;
+  skills: unknown;
+  active: boolean;
+  resourceTypeId: string | null;
+};
+
+type OverlapBooking = {
+  id: string;
+  resourceId: string | null;
+  resourceTypeId: string | null;
+  quantity: number | null;
+  startAt: Date;
+  endAt: Date;
+  status: "CONFIRMED" | "CANCELLED" | "TENTATIVE";
+  utilizationPercent: number;
+  localProjectId: string | null;
+};
+
+type DtcRequirement = {
+  id: string;
+  resourceTypeId: string | null;
+  requiredCapacity: string | null;
+  utilizationPercent: number;
+  notes: string | null;
+};
+
+async function executeDtcCheck(
+  requirements: DtcRequirement[],
+  nuResources: NuResource[],
+  overlappingBookings: OverlapBooking[],
+  snapshot: TaktRequestSnapshotPayload,
+): Promise<CheckRulesResult> {
+  const conflicts: InternalResultPayload["conflicts"] = [];
+  const tentativeWarnings: InternalResultPayload["tentativeWarnings"] = [];
+  const missingQualifications: string[] = [];
+  const unavailableEquipment: string[] = [];
+  const availableResources: Array<{ resourceId: string; resourceType: string }> = [];
+
+  for (const req of requirements) {
+    if (!req.resourceTypeId) continue;
+
+    const rtId = req.resourceTypeId;
+    const requiredQty = parseFloat(req.requiredCapacity ?? "0");
+
+    // Total capacity of all active resources linked to this ResourceType
+    const typeResources = nuResources.filter(r => r.resourceTypeId === rtId);
+    const totalCapacity = typeResources.reduce((sum, r) => sum + (r.capacity ?? 0), 0);
+
+    const confirmedBookings = overlappingBookings.filter(
+      b => b.status === "CONFIRMED",
+    );
+    const tentativeBookings = overlappingBookings.filter(
+      b => b.status === "TENTATIVE",
+    );
+
+    // Capacity consumed by CONFIRMED type-level bookings (quantity column)
+    const usedByTypeBookings = confirmedBookings
+      .filter(b => b.resourceTypeId === rtId && b.resourceId === null && b.quantity != null)
+      .reduce((sum, b) => sum + (b.quantity ?? 0), 0);
+
+    // Capacity consumed by CONFIRMED resource-level bookings (utilization × resource.capacity)
+    const usedByResourceBookings = confirmedBookings
+      .filter(b => b.resourceTypeId === rtId && b.resourceId !== null)
+      .reduce((sum, b) => {
+        const resource = typeResources.find(r => r.id === b.resourceId);
+        const cap = resource?.capacity ?? 0;
+        return sum + (cap * b.utilizationPercent) / 100;
+      }, 0);
+
+    const usedCapacity = usedByTypeBookings + usedByResourceBookings;
+    const availableCapacity = totalCapacity - usedCapacity;
+
+    if (availableCapacity < requiredQty) {
+      conflicts.push({
+        resourceId: rtId,
+        resourceName: req.notes ?? `ResourceType ${rtId}`,
+        conflictType: "CAPACITY_EXCEEDED",
+        isTentative: false,
+        overlapUtilizationSum: Math.round(usedCapacity),
+      });
+    } else {
+      availableResources.push({ resourceId: rtId, resourceType: "DTC_TYPE" });
+
+      // Tentative warnings: would there be a conflict if tentative bookings are confirmed?
+      const tentativeUsed = tentativeBookings
+        .filter(b => b.resourceTypeId === rtId)
+        .reduce((sum, b) => {
+          if (b.resourceId === null && b.quantity != null) return sum + (b.quantity ?? 0);
+          const resource = typeResources.find(r => r.id === b.resourceId);
+          return sum + ((resource?.capacity ?? 0) * b.utilizationPercent) / 100;
+        }, 0);
+
+      if (usedCapacity + tentativeUsed + requiredQty > totalCapacity) {
+        for (const b of tentativeBookings.filter(b => b.resourceTypeId === rtId)) {
+          tentativeWarnings.push({
+            resourceId: b.resourceId ?? rtId,
+            bookingId: b.id,
+            overlapStart: new Date(b.startAt).toISOString(),
+            overlapEnd: new Date(b.endAt).toISOString(),
+          });
+        }
+      }
+    }
+  }
+
+  const hardConflicts = conflicts.filter(c => !c.isTentative);
+  const isFeasible = hardConflicts.length === 0;
+
+  const internalPayload: InternalResultPayload = {
+    conflicts,
+    availableResources,
+    missingQualifications,
+    unavailableEquipment,
+    tentativeWarnings,
+  };
+
+  let publicAlternatives: PublicResultPayload["alternatives"] = [];
+  let nextAvailableDate: string | null = null;
+
+  if (!isFeasible) {
+    const altResources: AlternativeResource[] = nuResources.map(r => ({
+      resourceId: r.id,
+      resourceType: r.type,
+      capacity: r.capacity,
+      capacityUnit: r.capacityUnit,
+      active: r.active,
+    }));
+    const alternatives = generateAlternatives(snapshot, altResources, overlappingBookings);
+    publicAlternatives = alternatives.map(toPublicAlternative);
+    if (alternatives.length > 0) nextAvailableDate = alternatives[0].timeWindow.start;
+  }
+
+  const reasonCode: PublicResultPayload["reasonCode"] = isFeasible
+    ? "FEASIBLE"
+    : "RESOURCE_CONFLICT";
+
+  const recommendedDecision: PublicResultPayload["recommendedDecision"] = isFeasible
+    ? "ACCEPTED"
+    : publicAlternatives.length > 0
+      ? "ALTERNATIVES_PROPOSED"
+      : "REJECTED";
+
+  return {
+    internalPayload,
+    publicPayload: { recommendedDecision, reasonCode, alternatives: publicAlternatives, nextAvailableDate: nextAvailableDate ?? undefined },
+  };
+}
+
+// ── Legacy path (snapshot.resourceRequirements, type-based classification) ─────
+
+async function executeLegacyCheck(
+  snapshot: TaktRequestSnapshotPayload,
+  nuResources: NuResource[],
+  overlappingBookings: OverlapBooking[],
+): Promise<CheckRulesResult> {
   // Classify NU resources by type
   const crewResources  = nuResources.filter(r => r.type === "CREW" || r.type === "EMPLOYEE");
   const equipResources = nuResources.filter(r => r.type === "EQUIPMENT" || r.type === "MACHINE");
@@ -443,22 +631,16 @@ async function executeCheckRules(
   }
 
   // ── Rule 8: Required qualifications ─────────────────────────────────────────
-  // Derive required qualifications from snapshot resource requirement notes
-  // (best-effort: look for notes that match known qualification strings)
   const allQuals = nuResources.flatMap(r =>
     Array.isArray(r.qualifications) ? (r.qualifications as string[]) : [],
   );
 
   for (const req of snapshot.resourceRequirements) {
     if (req.notes && req.notes.trim()) {
-      // Treat each non-empty note as a possible qualification keyword
       const noteWords = req.notes.trim().split(/[,;]+/).map(s => s.trim()).filter(Boolean);
       for (const word of noteWords) {
-        const matched = allQuals.some(q =>
-          q.toLowerCase().includes(word.toLowerCase()),
-        );
+        const matched = allQuals.some(q => q.toLowerCase().includes(word.toLowerCase()));
         if (!matched && word.length > 3) {
-          // Only flag specific-looking words (> 3 chars) to avoid false positives
           missingQualifications.push(word);
         }
       }
@@ -491,7 +673,6 @@ async function executeCheckRules(
   const hardConflicts = conflicts.filter(c => !c.isTentative);
   const isFeasible    = hardConflicts.length === 0;
 
-  // ── Build internal payload ───────────────────────────────────────────────────
   const internalPayload: InternalResultPayload = {
     conflicts,
     availableResources,
@@ -500,7 +681,6 @@ async function executeCheckRules(
     tentativeWarnings,
   };
 
-  // ── Task 4.6 — Generate alternatives when not feasible ───────────────────────
   let publicAlternatives: PublicResultPayload["alternatives"] = [];
   let nextAvailableDate: string | null = null;
 
@@ -514,15 +694,10 @@ async function executeCheckRules(
     }));
 
     const alternatives = generateAlternatives(snapshot, altResources, overlappingBookings);
-
     publicAlternatives = alternatives.map(toPublicAlternative);
-
-    if (alternatives.length > 0) {
-      nextAvailableDate = alternatives[0].timeWindow.start;
-    }
+    if (alternatives.length > 0) nextAvailableDate = alternatives[0].timeWindow.start;
   }
 
-  // ── Build public payload ─────────────────────────────────────────────────────
   const reasonCode: PublicResultPayload["reasonCode"] = (() => {
     if (isFeasible) return "FEASIBLE";
     if (unavailableEquipment.length > 0) return "MISSING_EQUIPMENT";

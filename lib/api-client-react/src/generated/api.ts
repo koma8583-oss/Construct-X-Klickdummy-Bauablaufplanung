@@ -6046,3 +6046,28 @@ export const useCancelNuResourceBooking = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCancelNuResourceBookingMutationOptions(options));
     }
 
+// ── Delete (hard-delete CANCELLED bookings) ───────────────────────────────────
+
+export const deleteNuResourceBooking = async (bookingId: string, options?: RequestInit): Promise<void> => {
+  return customFetch<void>(`/api/nu/resource-bookings/${bookingId}`, {
+    method: "DELETE",
+    ...options,
+  });
+};
+
+export const getDeleteNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<void, TError, { bookingId: string }, TContext> },
+): UseMutationOptions<void, TError, { bookingId: string }, TContext> => {
+  const mutationKey = ["deleteNuResourceBooking"];
+  const { mutation: mutationOptions } = options ?? {};
+  const mutationFn: MutationFunction<void, { bookingId: string }> = ({ bookingId }) =>
+    deleteNuResourceBooking(bookingId);
+  return { mutationKey, mutationFn, ...mutationOptions };
+};
+
+export const useDeleteNuResourceBooking = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<void, TError, { bookingId: string }, TContext> },
+): UseMutationResult<void, TError, { bookingId: string }, TContext> => {
+  return useMutation(getDeleteNuResourceBookingMutationOptions(options));
+};
+

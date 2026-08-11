@@ -50,6 +50,15 @@ const VALID_CAPACITY_UNITS = ["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"] as
 type ResourceTypeCategory = typeof VALID_CATEGORIES[number];
 type CapacityUnit = typeof VALID_CAPACITY_UNITS[number];
 
+/** DTC v2 class URIs accepted by the API. */
+const DTC_CLASS_TO_CATEGORY: Record<string, ResourceTypeCategory> = {
+  "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorker": "PERSONNEL",
+  "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorkerCrew": "CREW",
+  "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedEquipment": "EQUIPMENT",
+  "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedTemporaryEquipment": "MACHINE",
+};
+const VALID_DTC_CLASSES = Object.keys(DTC_CLASS_TO_CATEGORY);
+
 // GET /api/nu/resource-types
 router.get("/nu/resource-types", requireJwt, async (req, res): Promise<void> => {
   if (!requireNU(req, res)) return;
@@ -77,7 +86,12 @@ router.post("/nu/resource-types", requireJwt, async (req, res): Promise<void> =>
 
   const schema = z.object({
     name: z.string().min(1),
-    category: z.enum(VALID_CATEGORIES),
+    // category can be derived from dtcClass; at least one must be provided
+    category: z.enum(VALID_CATEGORIES).optional(),
+    dtcClass: z.string().optional(),
+    code: z.string().optional(),
+    classificationSystem: z.string().optional(),
+    classificationCode: z.string().optional(),
     qualification: z.string().optional(),
     capacityUnit: z.enum(VALID_CAPACITY_UNITS).optional(),
     defaultDailyCapacity: z.number().positive().optional(),
@@ -89,16 +103,30 @@ router.post("/nu/resource-types", requireJwt, async (req, res): Promise<void> =>
     return;
   }
 
+  // Validate dtcClass if provided
+  const { dtcClass, ...rest } = parsed.data;
+  if (dtcClass && !VALID_DTC_CLASSES.includes(dtcClass)) {
+    res.status(400).json({ error: `Invalid dtcClass. Must be one of: ${VALID_DTC_CLASSES.join(", ")}` });
+    return;
+  }
+
+  // Derive category from dtcClass if not explicitly provided
+  let category: ResourceTypeCategory = rest.category ?? "PERSONNEL";
+  if (dtcClass && DTC_CLASS_TO_CATEGORY[dtcClass]) {
+    category = DTC_CLASS_TO_CATEGORY[dtcClass];
+  } else if (!rest.category) {
+    res.status(400).json({ error: "Either 'category' or a valid 'dtcClass' must be provided" });
+    return;
+  }
+
   const [row] = await db
     .insert(resourceTypesTable)
-    .values({ anOrgId: nuOrgId, ...parsed.data } as {
-      anOrgId: string;
-      name: string;
-      category: ResourceTypeCategory;
-      qualification?: string;
-      capacityUnit?: CapacityUnit;
-      defaultDailyCapacity?: number;
-    })
+    .values({
+      anOrgId: nuOrgId,
+      ...rest,
+      category,
+      dtcClass: dtcClass ?? null,
+    } as typeof resourceTypesTable.$inferInsert)
     .returning();
 
   res.status(201).json(row);
@@ -133,6 +161,10 @@ router.patch("/nu/resource-types/:id", requireJwt, async (req, res): Promise<voi
   const schema = z.object({
     name: z.string().min(1).optional(),
     category: z.enum(VALID_CATEGORIES).optional(),
+    dtcClass: z.string().nullable().optional(),
+    code: z.string().nullable().optional(),
+    classificationSystem: z.string().nullable().optional(),
+    classificationCode: z.string().nullable().optional(),
     qualification: z.string().nullable().optional(),
     capacityUnit: z.enum(VALID_CAPACITY_UNITS).nullable().optional(),
     defaultDailyCapacity: z.number().positive().nullable().optional(),
@@ -161,9 +193,20 @@ router.patch("/nu/resource-types/:id", requireJwt, async (req, res): Promise<voi
     return;
   }
 
+  const { dtcClass, ...patchRest } = parsed.data;
+
+  // If dtcClass is being updated, keep category in sync
+  const categoryOverride =
+    dtcClass && DTC_CLASS_TO_CATEGORY[dtcClass] ? { category: DTC_CLASS_TO_CATEGORY[dtcClass] } : {};
+
   const [updated] = await db
     .update(resourceTypesTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({
+      ...patchRest,
+      ...(dtcClass !== undefined ? { dtcClass } : {}),
+      ...categoryOverride,
+      updatedAt: new Date(),
+    })
     .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
     .returning();
 
@@ -435,7 +478,11 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
   const nuOrgId = (req.user as { orgId: string }).orgId;
 
   const schema = z.object({
-    resourceId: z.string().min(1),
+    // concrete-resource booking (legacy + DTC)
+    resourceId: z.string().min(1).optional(),
+    // type-level capacity booking (DTC ResourceAssignment)
+    resourceTypeId: z.string().min(1).optional(),
+    quantity: z.number().int().positive().optional(),
     localProjectId: z.string().optional(),
     sourceType: z.enum(["LOCAL_PROJECT", "TAKT_REQUEST", "MANUAL_BLOCK", "ABSENCE", "MAINTENANCE"]),
     sourceReferenceId: z.string().optional(),
@@ -453,6 +500,13 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
   }
 
   const data = parsed.data;
+
+  // Business rule: at least one of resourceId or resourceTypeId must be present
+  if (!data.resourceId && !data.resourceTypeId) {
+    res.status(400).json({ error: "At least one of 'resourceId' or 'resourceTypeId' must be provided" });
+    return;
+  }
+
   const startAt = new Date(data.startAt);
   const endAt   = new Date(data.endAt);
 
@@ -461,20 +515,27 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     return;
   }
 
-  // Verify resource belongs to this NU
-  const [resource] = await db
-    .select({ id: resourcesTable.id, anOrgId: resourcesTable.anOrgId })
-    .from(resourcesTable)
-    .where(eq(resourcesTable.id, data.resourceId))
-    .limit(1);
+  // If resourceId provided, verify it belongs to this NU
+  if (data.resourceId) {
+    const [resource] = await db
+      .select({ id: resourcesTable.id, anOrgId: resourcesTable.anOrgId, resourceTypeId: resourcesTable.resourceTypeId })
+      .from(resourcesTable)
+      .where(eq(resourcesTable.id, data.resourceId))
+      .limit(1);
 
-  if (!resource) {
-    res.status(404).json({ error: "Resource not found" });
-    return;
-  }
-  if (resource.anOrgId !== nuOrgId) {
-    res.status(403).json({ error: "Resource does not belong to your organisation" });
-    return;
+    if (!resource) {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+    if (resource.anOrgId !== nuOrgId) {
+      res.status(403).json({ error: "Resource does not belong to your organisation" });
+      return;
+    }
+
+    // Auto-fill resourceTypeId from the resource if not explicitly provided
+    if (!data.resourceTypeId && resource.resourceTypeId) {
+      data.resourceTypeId = resource.resourceTypeId;
+    }
   }
 
   const [booking] = await db
@@ -605,6 +666,35 @@ router.post("/nu/resource-bookings/:bookingId/cancel", requireJwt, async (req, r
     .returning();
 
   res.status(200).json(cancelled);
+});
+
+// DELETE /api/nu/resource-bookings/:bookingId — hard-delete CANCELLED bookings only
+router.delete("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): Promise<void> => {
+  if (!requireNU(req, res)) return;
+  const nuOrgId = (req.user as { orgId: string }).orgId;
+  const bookingId = req.params.bookingId as string;
+
+  const [existing] = await db
+    .select({ id: resourceBookingsTable.id, status: resourceBookingsTable.status })
+    .from(resourceBookingsTable)
+    .where(and(eq(resourceBookingsTable.id, bookingId), eq(resourceBookingsTable.nuOrgId, nuOrgId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Booking not found" });
+    return;
+  }
+
+  if (existing.status !== "CANCELLED") {
+    res.status(409).json({ error: "Nur stornierte Belegungen können endgültig gelöscht werden." });
+    return;
+  }
+
+  await db
+    .delete(resourceBookingsTable)
+    .where(eq(resourceBookingsTable.id, bookingId));
+
+  res.status(204).send();
 });
 
 export default router;

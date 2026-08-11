@@ -19,7 +19,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations";
-import { resourcesTable } from "./resources";
+import { resourcesTable, resourceTypesTable } from "./resources";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -146,9 +146,12 @@ export const resourceBookingsTable = pgTable(
       .notNull()
       .references(() => organizationsTable.id),
 
-    /** The resource being booked — must belong to the same nuOrgId */
+    /**
+     * The concrete resource being booked — must belong to the same nuOrgId.
+     * Nullable for type-level capacity bookings (see resourceTypeId below).
+     * Business rule: at least one of resourceId or resourceTypeId must be set.
+     */
     resourceId: text("resource_id")
-      .notNull()
       .references(() => resourcesTable.id, { onDelete: "cascade" }),
 
     /**
@@ -184,6 +187,21 @@ export const resourceBookingsTable = pgTable(
     utilizationPercent: integer("utilization_percent").notNull().default(100),
 
     status: resourceBookingStatusEnum("status").notNull().default("TENTATIVE"),
+
+    /**
+     * DTC ResourceAssignment: link to a ResourceType for capacity-level bookings.
+     * Must always be set. resourceId is additionally set for concrete-resource bookings.
+     */
+    resourceTypeId: text("resource_type_id").references(
+      () => resourceTypesTable.id,
+      { onDelete: "set null" },
+    ),
+
+    /**
+     * Number of units of the resource type consumed by this booking.
+     * Used for type-level capacity bookings; null for legacy resource-only bookings.
+     */
+    quantity: integer("quantity"),
 
     note: text("note"),
 

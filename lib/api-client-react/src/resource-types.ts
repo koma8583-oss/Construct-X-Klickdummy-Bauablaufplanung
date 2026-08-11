@@ -1,5 +1,5 @@
 /**
- * React Query hooks for the AN-facing resource-types endpoints (Task #117).
+ * React Query hooks for the AN-facing resource-types endpoints (Task #117, DTC update).
  *
  *   useListResourceTypes()
  *   useGetResourceType(id)
@@ -10,6 +10,44 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { UseQueryResult, UseMutationResult } from "@tanstack/react-query";
 import { customFetch } from "./custom-fetch";
+
+// ── DTC constants ──────────────────────────────────────────────────────────────
+
+/** The four DTC v2 class URIs supported for AN resource types. */
+export const DTC_CLASSES = {
+  WORKER: "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorker",
+  WORKER_CREW: "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorkerCrew",
+  EQUIPMENT: "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedEquipment",
+  TEMPORARY_EQUIPMENT: "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedTemporaryEquipment",
+} as const;
+
+export type DtcClassKey = keyof typeof DTC_CLASSES;
+export type DtcClassUri = (typeof DTC_CLASSES)[DtcClassKey];
+
+/** Human-readable German labels for DTC classes (used in dropdowns). */
+export const DTC_CLASS_LABELS: Record<DtcClassKey, string> = {
+  WORKER: "Arbeitskraft",
+  WORKER_CREW: "Kolonne",
+  EQUIPMENT: "Gerät / Maschine",
+  TEMPORARY_EQUIPMENT: "Temporäres Bauhilfsmittel",
+};
+
+/** Mapping from DTC class key to the legacy `category` enum value. */
+export const DTC_TO_CATEGORY: Record<DtcClassKey, ResourceTypeCategory> = {
+  WORKER: "PERSONNEL",
+  WORKER_CREW: "CREW",
+  EQUIPMENT: "EQUIPMENT",
+  TEMPORARY_EQUIPMENT: "MACHINE",
+};
+
+/** Reverse mapping: legacy category → best-fit DTC key. */
+export const CATEGORY_TO_DTC: Record<ResourceTypeCategory, DtcClassKey> = {
+  PERSONNEL: "WORKER",
+  CREW: "WORKER_CREW",
+  EQUIPMENT: "EQUIPMENT",
+  MACHINE: "TEMPORARY_EQUIPMENT",
+  OTHER: "WORKER", // best-effort fallback
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,8 +69,16 @@ export interface ResourceTypeRecord {
   anOrgId: string;
   name: string;
   category: ResourceTypeCategory;
+  /** Short internal code, e.g. "LAB-DRYWALL" */
+  code: string | null;
+  /** Full DTC-v2 class URI */
+  dtcClass: string | null;
+  classificationSystem: string | null;
+  classificationCode: string | null;
+  /** @deprecated use dtcClass to determine resource semantics */
   qualification: string | null;
   capacityUnit: ResourceCapacityUnit | null;
+  /** @deprecated use per-resource capacity instead */
   defaultDailyCapacity: number | null;
   active: boolean;
   createdAt: string;
@@ -42,14 +88,24 @@ export interface ResourceTypeRecord {
 export interface ResourceTypeCreate {
   name: string;
   category: ResourceTypeCategory;
-  qualification?: string;
+  code?: string;
+  dtcClass?: string;
+  classificationSystem?: string;
+  classificationCode?: string;
   capacityUnit?: ResourceCapacityUnit;
+  /** @deprecated */
+  qualification?: string;
+  /** @deprecated */
   defaultDailyCapacity?: number;
 }
 
 export interface ResourceTypeUpdate {
   name?: string;
   category?: ResourceTypeCategory;
+  code?: string | null;
+  dtcClass?: string | null;
+  classificationSystem?: string | null;
+  classificationCode?: string | null;
   qualification?: string | null;
   capacityUnit?: ResourceCapacityUnit | null;
   defaultDailyCapacity?: number | null;

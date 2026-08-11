@@ -68,12 +68,32 @@ export const resourceTypesTable = pgTable("resource_types", {
     .references(() => organizationsTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   category: resourceTypeCategoryEnum("category").notNull(),
+
+  // ── DTC alignment (Task DTC-1) ─────────────────────────────────────────────
+  /** Short internal code, e.g. "LAB-DRYWALL" */
+  code: text("code"),
+  /**
+   * Full DTC-v2 class URI that this resource type maps to.
+   * One of:
+   *   https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorker
+   *   https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorkerCrew
+   *   https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedEquipment
+   *   https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedTemporaryEquipment
+   */
+  dtcClass: text("dtc_class"),
+  /** Optional external classification system label (e.g. "INTERNAL", "STLB-Bau") */
+  classificationSystem: text("classification_system"),
+  /** Optional classification code within that system */
+  classificationCode: text("classification_code"),
+
+  // ── Legacy fields (retained for backward compatibility) ────────────────────
   /** Optional freetext qualification description for this type */
   qualification: text("qualification"),
   /** Unit of capacity (reuses the shared enum) */
   capacityUnit: capacityUnitEnum("capacity_unit"),
   /** Default daily capacity — interpretation depends on capacityUnit */
   defaultDailyCapacity: doublePrecision("default_daily_capacity"),
+
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

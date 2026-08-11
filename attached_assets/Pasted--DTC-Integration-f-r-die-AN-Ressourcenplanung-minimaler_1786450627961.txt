@@ -1,0 +1,412 @@
+# DTC-Integration für die AN-Ressourcenplanung – minimaler Umbau
+
+Richte das bestehende Ressourcenmodell semantisch an der Digital Twin Construction Ontology (DTC v2) aus.
+
+Wichtig: Bestehende Architektur und relationale PostgreSQL-Datenbank beibehalten.
+
+Keine RDF-Datenbank, kein SPARQL, kein Ontology Reasoning und keine umfangreiche Refaktorierung implementieren.
+
+## 1. DTC-Klassen für Ressourcentypen
+
+Neue Ressourcentypen sollen fachlich einer der folgenden DTC-Klassen entsprechen:
+
+```text
+WORKER
+→ https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorker
+
+WORKER_CREW
+→ https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorkerCrew
+
+EQUIPMENT
+→ https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedEquipment
+
+TEMPORARY_EQUIPMENT
+→ https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedTemporaryEquipment
+```
+
+Material vorerst nicht implementieren.
+
+Bestehende Legacy-Werte nicht sofort aus der Datenbank löschen.
+
+Mapping für bestehende Daten:
+
+```text
+PERSONNEL / EMPLOYEE → WORKER
+CREW                 → WORKER_CREW
+EQUIPMENT            → EQUIPMENT
+MACHINE              → EQUIPMENT
+OTHER                → vorerst OTHER/Legacy
+```
+
+## 2. `resource_types` ergänzen und vereinfachen
+
+ResourceType soll zukünftig die fachliche Definition einer geplanten Ressource enthalten.
+
+Mindestens verwenden:
+
+```text
+id
+anOrgId
+code
+name
+description
+dtcClass
+classificationSystem optional
+classificationCode optional
+capacityUnit
+active
+createdAt
+updatedAt
+```
+
+`dtcClass` enthält die vollständige DTC-URI.
+
+Beispiel:
+
+```text
+code = LAB-DRYWALL
+name = Facharbeiter Trockenbau
+dtcClass = https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedWorker
+classificationSystem = INTERNAL
+classificationCode = DRYWALL
+capacityUnit = PERSONS
+```
+
+Bestehende Felder zunächst migrationssicher erhalten, aber:
+
+```text
+qualification
+defaultDailyCapacity
+```
+
+nicht mehr als zentrale Modellierungsfelder verwenden.
+
+Keine alten Daten löschen.
+
+## 3. Konkrete Ressourcen vereinfachen
+
+Eine konkrete Resource gehört zwingend zu einem ResourceType.
+
+Für neue Ressourcen `resourceTypeId` verpflichtend machen.
+
+In der UI nicht mehr separat abfragen:
+
+```text
+type
+trade
+capacityUnit
+legacy qualification
+```
+
+Diese Informationen aus dem ResourceType ableiten.
+
+Für die konkrete Ressource primär verwenden:
+
+```text
+id
+anOrgId
+resourceTypeId
+name
+capacity
+calendarId optional
+qualifications optional
+active
+```
+
+Legacy-Spalten aus Kompatibilitätsgründen vorerst behalten.
+
+Keine physische Migration/Löschung alter Spalten durchführen.
+
+## 4. Ressourcenbedarf als DTC ResourceAssignment behandeln
+
+Die vorhandene Tabelle:
+
+```text
+takt_request_resource_requirements
+```
+
+wird als interne Repräsentation von:
+
+```text
+dtc:ResourceAssignment
+```
+
+verwendet.
+
+Mapping dokumentieren:
+
+```text
+resourceTypeId       → dtc:requiresResource
+requiredQuantity     → dtc:quantity
+periodStart          → dtc:startTime
+periodEnd            → dtc:endTime
+utilizationPercent   → dtc:utilizationRate
+```
+
+`requiredCapacity` möglichst migrationssicher zu:
+
+```text
+requiredQuantity
+```
+
+umbenennen.
+
+Falls eine DB-Umbenennung unnötig riskant ist, DB-Spaltennamen behalten und nur API/UI als `requiredQuantity` bezeichnen.
+
+`resourceTypeId` für neue Anforderungen verpflichtend machen.
+
+`requiredQualification` nicht mehr für neue Datensätze verwenden.
+
+Besondere Anforderungen über passende ResourceTypes beziehungsweise deren Klassifikation abbilden.
+
+## 5. Ressourcenbuchungen um Typbuchungen erweitern
+
+Die vorhandene Tabelle:
+
+```text
+resource_bookings
+```
+
+muss sowohl Kapazitätsplanung als auch konkrete Ressourcenplanung erlauben.
+
+Ergänze:
+
+```text
+resourceTypeId
+quantity
+```
+
+Ändere:
+
+```text
+resourceId
+```
+
+für neue Buchungen auf optional.
+
+Geschäftsregel:
+
+```text
+resourceTypeId muss immer gesetzt sein.
+
+resourceId kann optional zusätzlich gesetzt sein.
+```
+
+Beispiele:
+
+Kapazitätsbuchung:
+
+```text
+resourceTypeId = Facharbeiter Trockenbau
+resourceId = null
+quantity = 4
+```
+
+Konkrete Ressource:
+
+```text
+resourceTypeId = Facharbeiter Trockenbau
+resourceId = Mitarbeiter 17
+quantity = 1
+```
+
+Bestehende Bookings mit `resourceId` automatisch aus `resource.resourceTypeId` ergänzen, soweit eindeutig möglich.
+
+## 6. Availability Check auf ResourceAssignments umstellen
+
+Dies ist die wichtigste fachliche Änderung.
+
+Der Availability Check darf Anforderungen nicht mehr hauptsächlich über:
+
+```text
+EMPLOYEE
+CREW
+EQUIPMENT
+MACHINE
+```
+
+klassifizieren.
+
+Stattdessen die für den TaktRequest gespeicherten:
+
+```text
+takt_request_resource_requirements
+```
+
+laden.
+
+Für jeden ResourceRequirement:
+
+```text
+resourceTypeId
+requiredQuantity
+periodStart
+periodEnd
+utilizationPercent
+```
+
+prüfen.
+
+Berechnung:
+
+```text
+totalCapacity(resourceType)
+-
+overlappingConfirmedBookings(resourceType)
+=
+availableCapacity
+```
+
+Danach:
+
+```text
+availableCapacity >= requiredQuantity
+→ verfügbar
+
+availableCapacity < requiredQuantity
+→ Ressourcenkonflikt
+```
+
+TENTATIVE-Buchungen weiterhin nur als Warnung behandeln, wenn dies dem bestehenden Verhalten entspricht.
+
+Konkrete Ressourcen dürfen für Detailinformationen verwendet werden, aber die Machbarkeitsentscheidung muss auf der benötigten Kapazität des Ressourcentyps basieren.
+
+## 7. AN-Benutzeroberfläche
+
+Bereich:
+
+```text
+Ressourcentypen und Ressourcen
+```
+
+beibehalten.
+
+### Ressourcentyp
+
+Formular nur mit:
+
+```text
+Code
+Bezeichnung
+DTC-Kategorie
+Klassifikationscode optional
+Kapazitätseinheit
+Beschreibung optional
+```
+
+DTC-Kategorie benutzerfreundlich anzeigen:
+
+```text
+Arbeitskraft
+Kolonne
+Gerät / Maschine
+Temporäres Bauhilfsmittel
+```
+
+Technische DTC-URI nicht als Freitext eingeben lassen.
+
+Sie wird automatisch aus der Kategorie erzeugt.
+
+### Ressource
+
+Formular:
+
+```text
+Ressourcentyp
+Name
+Kapazität
+Qualifikationen optional
+Aktiv
+```
+
+Kein zweites Feld „Typ“ anbieten.
+
+Keine zusätzliche Auswahl zwischen `MACHINE` und `EQUIPMENT`.
+
+## 8. Ressourcenbedarf bei Taktanfrage
+
+Bei einer Taktanfrage auswählbar:
+
+```text
+Ressourcentyp
+benötigte Menge
+Auslastung
+Zeitraum
+```
+
+Beispiel:
+
+```text
+Facharbeiter Trockenbau
+6 Personen
+100 %
+14.09.–18.09.
+```
+
+Mehrere ResourceAssignments pro TaktRequest zulassen.
+
+## 9. Interne Datenhoheit beibehalten
+
+Nicht an den AG übertragen:
+
+```text
+konkrete Ressourcen
+Mitarbeiternamen
+interne Ressourcenbuchungen
+andere Projekte
+interne Kapazitätsinformationen
+```
+
+Extern bleiben nur:
+
+```text
+ACCEPTED
+ALTERNATIVES_PROPOSED
+REJECTED
+alternative Zeitfenster
+ggf. angebotene Kolonnenstärke
+```
+
+DTC dient hier zur semantischen Strukturierung der AN-internen Ressourcenplanung, nicht zur Veröffentlichung des gesamten Ressourcenbestands.
+
+## 10. Nur notwendige Tests
+
+Nur unmittelbar betroffene Tests ergänzen.
+
+Prüfen:
+
+1. neuer Ressourcentyp erhält korrekte DTC-Klasse
+2. `MACHINE` wird bei Migration auf DTC Equipment abgebildet
+3. neue Resource benötigt ResourceType
+4. Typ-Buchung ohne konkrete `resourceId` funktioniert
+5. vorhandene Buchungen reduzieren die verfügbare Menge des ResourceType
+6. Bedarf 6 bei verfügbarer Menge 4 ergibt Konflikt
+7. Bedarf 4 bei verfügbarer Menge 6 ist machbar
+8. Buchungen anderer Ressourcentypen beeinflussen die Prüfung nicht
+9. interne Ressourceninformationen erscheinen nicht im öffentlichen Ergebnis
+
+Danach nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+und nur die betroffenen Availability-/Resource-Tests ausführen.
+
+Keine vollständige neue Test-Suite erstellen.
+
+## Abschlussbericht
+
+Kurz berichten:
+
+1. geänderte Tabellen/Felder
+2. DTC-Mapping
+3. Änderungen an Availability Check
+4. Änderungen an AN-UI
+5. Migration bestehender Ressourcen
+6. ausgeführte Tests
+7. Typecheck-/Buildergebnis
+
+Keine weiteren Funktionen hinzufügen.

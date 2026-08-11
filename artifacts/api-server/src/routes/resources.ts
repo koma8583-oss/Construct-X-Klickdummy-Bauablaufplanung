@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   resourcesTable,
   resourceAssignmentsTable,
+  resourceTypesTable,
   delegationsTable,
   taktRequestsTable,
 } from "@workspace/db";
@@ -61,7 +62,7 @@ router.get("/resources", requireJwt, async (req, res): Promise<void> => {
 
 router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   const schema = z.object({
-    type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]),
+    type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
     name: z.string().min(1),
     qualification:     z.string().optional(),
     dailyCapacityHours: z.number().optional(),
@@ -82,9 +83,30 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
+  // Derive `type` from linked ResourceType category when not explicitly supplied
+  let resolvedType = parsed.data.type;
+  if (!resolvedType && parsed.data.resourceTypeId) {
+    const [rt] = await db
+      .select({ category: resourceTypesTable.category })
+      .from(resourceTypesTable)
+      .where(eq(resourceTypesTable.id, parsed.data.resourceTypeId))
+      .limit(1);
+    if (rt) {
+      const CAT_TO_TYPE: Record<string, "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER"> = {
+        PERSONNEL: "EMPLOYEE",
+        CREW: "CREW",
+        EQUIPMENT: "EQUIPMENT",
+        MACHINE: "MACHINE",
+        OTHER: "OTHER",
+      };
+      resolvedType = CAT_TO_TYPE[rt.category] ?? "EMPLOYEE";
+    }
+  }
+  resolvedType ??= "EMPLOYEE";
+
   const [resource] = await db
     .insert(resourcesTable)
-    .values({ ...parsed.data, anOrgId: req.user!.orgId! })
+    .values({ ...parsed.data, type: resolvedType, anOrgId: req.user!.orgId! })
     .returning();
 
   res.status(201).json(resource);

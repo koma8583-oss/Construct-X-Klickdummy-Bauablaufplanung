@@ -4,7 +4,11 @@
  *
  * Shows all resource bookings for the authenticated AN's organisation,
  * grouped and filterable by source type and status. Highlights
- * utilisation > 100% in red. Create and cancel bookings in-page.
+ * utilisation > 100% in red. Create, cancel, and permanently delete
+ * (CANCELLED only) bookings in-page.
+ *
+ * Time is optional when creating a booking — leaving it blank means
+ * the whole day (00:00–23:59).
  */
 import { useState } from "react";
 import { format } from "date-fns";
@@ -13,6 +17,7 @@ import {
   useListNuResourceBookings,
   useCancelNuResourceBooking,
   useCreateNuResourceBooking,
+  useDeleteNuResourceBooking,
   useListNuLocalProjects,
   useListResources,
   getListNuResourceBookingsQueryKey,
@@ -24,11 +29,13 @@ import {
   CalendarDays,
   Plus,
   XCircle,
+  Trash2,
   Loader2,
   AlertTriangle,
   RefreshCw,
   X,
   CheckCircle,
+  Clock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,9 +110,46 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Date/time helpers ──────────────────────────────────────────────────────────
+
+/** Returns true when startAt is midnight and endAt is 23:59 on the same date. */
+function isAllDay(startAt: string, endAt: string): boolean {
+  try {
+    const s = new Date(startAt);
+    const e = new Date(endAt);
+    return (
+      s.getHours() === 0 &&
+      s.getMinutes() === 0 &&
+      s.getSeconds() === 0 &&
+      e.getHours() === 23 &&
+      e.getMinutes() === 59 &&
+      s.toDateString() === e.toDateString()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fmtDate(s?: string | null): string {
+  if (!s) return "–";
+  try { return format(new Date(s), "dd.MM.yyyy", { locale: de }); } catch { return s; }
+}
+
 function fmtDt(s?: string | null): string {
   if (!s) return "–";
   try { return format(new Date(s), "dd.MM.yy HH:mm", { locale: de }); } catch { return s; }
+}
+
+/**
+ * Converts a (date, time) pair from the form into an ISO string.
+ * If time is empty, uses startOfDay (00:00:00) or endOfDay (23:59:59).
+ */
+function buildIso(date: string, time: string, isEnd: boolean): string {
+  if (!time) {
+    return new Date(`${date}T${isEnd ? "23:59:59" : "00:00:00"}`).toISOString();
+  }
+  // time value from <input type="time"> is "HH:mm"
+  return new Date(`${date}T${time}:00`).toISOString();
 }
 
 // ── Create booking dialog ──────────────────────────────────────────────────────
@@ -114,8 +158,10 @@ interface BookingFormData {
   resourceId: string;
   localProjectId: string;
   sourceType: string;
-  startAt: string;
-  endAt: string;
+  startDate: string;
+  startTime: string; // optional — empty means 00:00 (all-day start)
+  endDate: string;
+  endTime: string;   // optional — empty means 23:59 (all-day end)
   utilizationPercent: number;
   status: string;
   note: string;
@@ -125,8 +171,10 @@ const EMPTY_BOOKING: BookingFormData = {
   resourceId: "",
   localProjectId: "",
   sourceType: "MANUAL_BLOCK",
-  startAt: "",
-  endAt: "",
+  startDate: "",
+  startTime: "",
+  endDate: "",
+  endTime: "",
   utilizationPercent: 100,
   status: "TENTATIVE",
   note: "",
@@ -151,10 +199,16 @@ function CreateBookingDialog({
   const set = (field: keyof BookingFormData, value: string | number) =>
     setForm((f) => ({ ...f, [field]: value }));
 
-  const canSave = form.resourceId && form.startAt && form.endAt && form.utilizationPercent > 0;
+  const canSave =
+    form.resourceId !== "" &&
+    form.startDate !== "" &&
+    form.endDate !== "" &&
+    form.utilizationPercent > 0;
+
+  const handleClose = () => { onClose(); setForm(EMPTY_BOOKING); };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { onClose(); setForm(EMPTY_BOOKING); } }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Neue Belegung anlegen</DialogTitle>
@@ -221,15 +275,67 @@ function CreateBookingDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Von *</Label>
-              <Input type="datetime-local" value={form.startAt} onChange={(e) => set("startAt", e.target.value)} className="h-9" />
+          {/* Date + optional time rows */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Datum Von *</Label>
+                <Input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => set("startDate", e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1">
+                  Uhrzeit Von
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Input
+                    type="time"
+                    value={form.startTime}
+                    onChange={(e) => set("startTime", e.target.value)}
+                    className="h-9"
+                    placeholder="ganztägig"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Bis *</Label>
-              <Input type="datetime-local" value={form.endAt} onChange={(e) => set("endAt", e.target.value)} className="h-9" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Datum Bis *</Label>
+                <Input
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) => set("endDate", e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1">
+                  Uhrzeit Bis
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Input
+                    type="time"
+                    value={form.endTime}
+                    onChange={(e) => set("endTime", e.target.value)}
+                    className="h-9"
+                    placeholder="ganztägig"
+                  />
+                </div>
+              </div>
             </div>
+            {(!form.startTime || !form.endTime) && (
+              <p className="text-xs text-muted-foreground">
+                Ohne Uhrzeit wird die Belegung für den gesamten Tag eingetragen (00:00–23:59).
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -250,7 +356,7 @@ function CreateBookingDialog({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => { onClose(); setForm(EMPTY_BOOKING); }}>
+            <Button variant="outline" size="sm" onClick={handleClose}>
               <X className="w-4 h-4 mr-1.5" />
               Abbrechen
             </Button>
@@ -282,7 +388,7 @@ export default function ResourceBookingsPage() {
   const [endTo, setEndTo]     = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
 
-  const queryParams: any = {
+  const queryParams: Record<string, unknown> = {
     ...(sourceFilter !== "ALL" && { sourceType: sourceFilter }),
     ...(statusFilter !== "ALL" && { status: statusFilter }),
     ...(startFrom && { startFrom: new Date(startFrom).toISOString() }),
@@ -290,13 +396,14 @@ export default function ResourceBookingsPage() {
     limit: 100,
   };
 
-  const { data, isLoading, isError, refetch } = useListNuResourceBookings(queryParams);
+  const { data, isLoading, isError, refetch } = useListNuResourceBookings(queryParams as Parameters<typeof useListNuResourceBookings>[0]);
   const { data: resources } = useListResources();
   const cancelMutation = useCancelNuResourceBooking();
+  const deleteMutation = useDeleteNuResourceBooking();
   const createMutation = useCreateNuResourceBooking();
 
-  const resourceNameById = (id: string) =>
-    resources?.find((r) => r.id === id)?.name ?? id.slice(0, 8) + "…";
+  const resourceNameById = (id?: string | null) =>
+    id ? (resources?.find((r) => r.id === id)?.name ?? id.slice(0, 8) + "…") : "–";
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListNuResourceBookingsQueryKey() });
@@ -312,14 +419,25 @@ export default function ResourceBookingsPage() {
     }
   };
 
+  const handleDelete = async (b: NuResourceBooking) => {
+    if (!confirm(`Stornierte Belegung vom ${fmtDate(b.startAt)} endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+    try {
+      await deleteMutation.mutateAsync({ bookingId: b.id });
+      invalidate();
+      toast({ title: "Belegung gelöscht" });
+    } catch {
+      toast({ title: "Fehler beim Löschen", variant: "destructive" });
+    }
+  };
+
   const handleCreate = async (form: BookingFormData) => {
     const body: NuResourceBookingCreate = {
       resourceId: form.resourceId,
-      sourceType: form.sourceType as any,
-      startAt: new Date(form.startAt).toISOString(),
-      endAt:   new Date(form.endAt).toISOString(),
+      sourceType: form.sourceType as NuResourceBookingCreate["sourceType"],
+      startAt: buildIso(form.startDate, form.startTime, false),
+      endAt:   buildIso(form.endDate, form.endTime, true),
       utilizationPercent: form.utilizationPercent,
-      status: form.status as any,
+      status: form.status as NuResourceBookingCreate["status"],
       ...(form.localProjectId && { localProjectId: form.localProjectId }),
       ...(form.note && { note: form.note }),
     };
@@ -328,8 +446,9 @@ export default function ResourceBookingsPage() {
       setCreateOpen(false);
       invalidate();
       toast({ title: "Belegung angelegt" });
-    } catch (err: any) {
-      toast({ title: "Fehler", description: err?.message ?? "Fehler", variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Fehler";
+      toast({ title: "Fehler", description: msg, variant: "destructive" });
     }
   };
 
@@ -427,7 +546,7 @@ export default function ResourceBookingsPage() {
         <div className="flex flex-col items-center gap-4 py-20">
           <AlertTriangle className="w-10 h-10 text-destructive" />
           <p className="text-muted-foreground">Fehler beim Laden der Belegungen</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Erneut versuchen
           </Button>
@@ -451,13 +570,14 @@ export default function ResourceBookingsPage() {
                     <TableHead className="text-xs hidden sm:table-cell">Auslastung</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs hidden sm:table-cell">Notiz</TableHead>
-                    <TableHead className="text-xs w-[60px]"></TableHead>
+                    <TableHead className="text-xs w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((b) => {
                     const overUtilised = b.utilizationPercent > 100;
-                    const isCancelled = b.status === "CANCELLED";
+                    const isCancelled  = b.status === "CANCELLED";
+                    const allDay       = b.startAt && b.endAt ? isAllDay(b.startAt, b.endAt) : false;
                     return (
                       <TableRow
                         key={b.id}
@@ -466,16 +586,21 @@ export default function ResourceBookingsPage() {
                         <TableCell className="font-medium text-sm">
                           {resourceNameById(b.resourceId)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <SourceBadge type={b.sourceType} />
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {fmtDt(b.startAt)}
+                          {allDay ? (
+                            <span className="flex items-center gap-1">
+                              {fmtDate(b.startAt)}
+                              <span className="text-[10px] bg-muted px-1 rounded">Ganztägig</span>
+                            </span>
+                          ) : fmtDt(b.startAt)}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {fmtDt(b.endAt)}
+                          {allDay ? "–" : fmtDt(b.endAt)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <span className={`text-sm font-medium ${overUtilised ? "text-red-600" : "text-foreground"}`}>
                             {b.utilizationPercent}%
                             {overUtilised && <span className="ml-1 text-xs">(⚠️ Überbucht)</span>}
@@ -484,21 +609,34 @@ export default function ResourceBookingsPage() {
                         <TableCell>
                           <StatusBadge status={b.status} />
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
+                        <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[120px] truncate">
                           {b.note ?? "–"}
                         </TableCell>
                         <TableCell>
-                          {!isCancelled && b.sourceType !== "TAKT_REQUEST" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-red-500 hover:bg-red-500/10"
-                              title="Stornieren"
-                              onClick={() => handleCancel(b)}
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-0.5">
+                            {!isCancelled && b.sourceType !== "TAKT_REQUEST" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-500 hover:bg-red-500/10"
+                                title="Stornieren"
+                                onClick={() => void handleCancel(b)}
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                            {isCancelled && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                title="Endgültig löschen"
+                                onClick={() => void handleDelete(b)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -515,7 +653,7 @@ export default function ResourceBookingsPage() {
       <CreateBookingDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSave={handleCreate}
+        onSave={(form) => void handleCreate(form)}
         isSaving={createMutation.isPending}
       />
     </div>
