@@ -455,30 +455,52 @@ async function executeDtcCheck(
     if (!req.resourceTypeId) continue;
 
     const rtId = req.resourceTypeId;
-    const requiredQty = parseFloat(req.requiredCapacity ?? "0");
+    // Treat 0 or missing quantity as "at least 1 unit" — existence check
+    const requiredQty = Math.max(parseFloat(req.requiredCapacity ?? "0"), 1);
 
-    // Total capacity of all active resources linked to this ResourceType
+    // Active resources of this type registered for the NU
     const typeResources = nuResources.filter(r => r.resourceTypeId === rtId);
-    const totalCapacity = typeResources.reduce((sum, r) => sum + (r.capacity ?? 0), 0);
 
-    const confirmedBookings = overlappingBookings.filter(
-      b => b.status === "CONFIRMED",
-    );
-    const tentativeBookings = overlappingBookings.filter(
-      b => b.status === "TENTATIVE",
-    );
+    // No resources of this type at all → hard conflict immediately
+    if (typeResources.length === 0) {
+      conflicts.push({
+        resourceId: rtId,
+        resourceName: req.notes ?? `ResourceType ${rtId}`,
+        conflictType: "MISSING_EQUIPMENT",
+        missingQualification: "Keine Ressource dieses Typs vorhanden",
+        isTentative: false,
+        overlapUtilizationSum: 0,
+      });
+      continue;
+    }
+
+    // Capacity: resources without a set capacity count as 1 unit each
+    const totalCapacity = typeResources.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
+
+    const confirmedBookings = overlappingBookings.filter(b => b.status === "CONFIRMED");
+    const tentativeBookings = overlappingBookings.filter(b => b.status === "TENTATIVE");
+
+    // Helper: does this booking consume capacity from a resource of type rtId?
+    const isTypeBooking = (b: OverlapBooking) => {
+      if (b.resourceId !== null) {
+        // Resource-level booking — check whether the resource belongs to this type
+        return typeResources.some(r => r.id === b.resourceId);
+      }
+      // Type-level booking (quantity on the resourceTypeId column)
+      return b.resourceTypeId === rtId && b.quantity != null;
+    };
 
     // Capacity consumed by CONFIRMED type-level bookings (quantity column)
     const usedByTypeBookings = confirmedBookings
-      .filter(b => b.resourceTypeId === rtId && b.resourceId === null && b.quantity != null)
+      .filter(b => b.resourceId === null && b.resourceTypeId === rtId && b.quantity != null)
       .reduce((sum, b) => sum + (b.quantity ?? 0), 0);
 
-    // Capacity consumed by CONFIRMED resource-level bookings (utilization × resource.capacity)
+    // Capacity consumed by CONFIRMED resource-level bookings (utilization × capacity)
     const usedByResourceBookings = confirmedBookings
-      .filter(b => b.resourceTypeId === rtId && b.resourceId !== null)
+      .filter(b => b.resourceId !== null && typeResources.some(r => r.id === b.resourceId))
       .reduce((sum, b) => {
         const resource = typeResources.find(r => r.id === b.resourceId);
-        const cap = resource?.capacity ?? 0;
+        const cap = resource?.capacity ?? 1;   // treat null capacity as 1 unit
         return sum + (cap * b.utilizationPercent) / 100;
       }, 0);
 
@@ -498,15 +520,15 @@ async function executeDtcCheck(
 
       // Tentative warnings: would there be a conflict if tentative bookings are confirmed?
       const tentativeUsed = tentativeBookings
-        .filter(b => b.resourceTypeId === rtId)
+        .filter(b => isTypeBooking(b))
         .reduce((sum, b) => {
           if (b.resourceId === null && b.quantity != null) return sum + (b.quantity ?? 0);
           const resource = typeResources.find(r => r.id === b.resourceId);
-          return sum + ((resource?.capacity ?? 0) * b.utilizationPercent) / 100;
+          return sum + ((resource?.capacity ?? 1) * b.utilizationPercent) / 100;
         }, 0);
 
       if (usedCapacity + tentativeUsed + requiredQty > totalCapacity) {
-        for (const b of tentativeBookings.filter(b => b.resourceTypeId === rtId)) {
+        for (const b of tentativeBookings.filter(b => isTypeBooking(b))) {
           tentativeWarnings.push({
             resourceId: b.resourceId ?? rtId,
             bookingId: b.id,
