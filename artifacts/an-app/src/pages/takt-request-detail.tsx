@@ -11,7 +11,7 @@
  */
 import React, { useState } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow, differenceInHours } from 'date-fns';
 import { de } from 'date-fns/locale';
 import {
   useGetTaktRequestDetails,
@@ -364,6 +364,11 @@ export default function TaktRequestDetailPage() {
   const canAct       = canRespond(status);
   const detailsGot   = !!details.detailsRetrievedAt;
 
+  // Deadline urgency
+  const deadlineDate = details.responseRequiredBy ? new Date(details.responseRequiredBy) : null;
+  const hoursUntilDeadline = deadlineDate ? differenceInHours(deadlineDate, new Date()) : null;
+  const isUrgent = hoursUntilDeadline !== null && hoursUntilDeadline >= 0 && hoursUntilDeadline < 24;
+
   // Step completion
   // Step 1: policy OK = we loaded the data (no 403)
   const step1Done = true; // if we reached here, policy is OK or no policy required
@@ -496,17 +501,38 @@ export default function TaktRequestDetailPage() {
       </div>
 
       {/* Deadline banner */}
-      {details.responseRequiredBy && (
+      {details.responseRequiredBy ? (
         <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-sm ${
           isExpired
-            ? 'border-red-500/40 bg-red-500/8 text-red-600 dark:text-red-400'
-            : 'border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-400'
+            ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400'
+            : isUrgent
+              ? 'border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+              : 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800/40 dark:text-slate-300'
         }`}>
-          <Clock className="w-4 h-4 shrink-0" />
-          <span>
-            {isExpired ? 'Antwortfrist abgelaufen: ' : 'Antwortfrist: '}
-            <strong>{fmtDateTime(details.responseRequiredBy)}</strong>
-          </span>
+          <Clock className={`w-4 h-4 shrink-0 ${isExpired ? 'text-red-500' : isUrgent ? 'text-amber-500' : 'text-slate-400'}`} />
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 flex-1">
+            <span>
+              {isExpired ? (
+                <>Antwortfrist <strong>abgelaufen</strong> –&nbsp;</>
+              ) : (
+                <>Antwortfrist: </>
+              )}
+              <strong>{fmtDateTime(details.responseRequiredBy)}</strong>
+            </span>
+            {deadlineDate && !isExpired && (
+              <span className={`text-xs ${isUrgent ? 'font-semibold' : 'opacity-70'}`}>
+                (noch {formatDistanceToNow(deadlineDate, { locale: de, addSuffix: false })})
+              </span>
+            )}
+          </div>
+          {isUrgent && (
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border/40 bg-muted/20 text-sm text-muted-foreground">
+          <Clock className="w-4 h-4 shrink-0 opacity-40" />
+          <span>Keine Frist gesetzt</span>
         </div>
       )}
 
