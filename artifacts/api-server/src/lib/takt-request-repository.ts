@@ -581,10 +581,14 @@ export async function listTaktRequestsForNuEnriched(
       createdAt:          taktRequestsTable.createdAt,
       updatedAt:          taktRequestsTable.updatedAt,
       agOrgName:          guOrg.name,
+      projectId:          takteTable.projectId,
+      projectName:        projectsTable.name,
       snapshotPayload:    taktRequestSnapshotsTable.snapshotPayload,
     })
     .from(taktRequestsTable)
     .leftJoin(guOrg, eq(taktRequestsTable.guOrgId, guOrg.id))
+    .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
     .leftJoin(
       taktRequestSnapshotsTable,
       eq(taktRequestSnapshotsTable.taktRequestId, taktRequestsTable.id),
@@ -593,7 +597,15 @@ export async function listTaktRequestsForNuEnriched(
     .orderBy(desc(taktRequestsTable.createdAt));
 
   return rows.map((r) => {
+    // The snapshot payload uses the TaktRequestSnapshotPayload schema (v1.0):
+    //   workPackage   → taktBezeichnung
+    //   trade         → gewerk
+    //   location.zone → zone
+    //   plannedTimeWindow.start/end → plannedStart/plannedEnd
     const payload = (r.snapshotPayload ?? {}) as Record<string, unknown>;
+    const location = (payload.location ?? {}) as Record<string, unknown>;
+    const tw       = (payload.plannedTimeWindow ?? {}) as Record<string, unknown>;
+
     return {
       id:                 r.id,
       taktId:             r.taktId,
@@ -612,12 +624,15 @@ export async function listTaktRequestsForNuEnriched(
       lastReminderAt:     r.lastReminderAt,
       createdAt:          r.createdAt,
       updatedAt:          r.updatedAt,
-      agOrgName:          r.agOrgName ?? null,
-      taktBezeichnung:    (payload.taktBezeichnung as string | undefined) ?? null,
-      zone:               (payload.zone             as string | undefined) ?? null,
-      gewerk:             (payload.gewerk            as string | undefined) ?? null,
-      plannedStart:       (payload.plannedStart      as string | undefined) ?? null,
-      plannedEnd:         (payload.plannedEnd        as string | undefined) ?? null,
+      agOrgName:          r.agOrgName   ?? null,
+      projectId:          r.projectId   ?? null,
+      projectName:        r.projectName ?? null,
+      // Snapshot-derived display fields (correct keys per TaktRequestSnapshotPayload v1.0)
+      taktBezeichnung:    (payload.workPackage as string | undefined) ?? null,
+      zone:               (location.zone       as string | undefined) ?? null,
+      gewerk:             (payload.trade        as string | undefined) ?? null,
+      plannedStart:       (tw.start             as string | undefined) ?? null,
+      plannedEnd:         (tw.end               as string | undefined) ?? null,
     };
   });
 }

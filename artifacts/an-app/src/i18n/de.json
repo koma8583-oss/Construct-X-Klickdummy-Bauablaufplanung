@@ -20,7 +20,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "requests": "Anfragen",
-    "taktRequests": "Taktanfragen",
+    "taktRequests": "Anfragen",
     "dataOffers": "Datenraum",
     "resources": "Ressourcen",
     "resourceBookings": "Ressourcenbelegung",

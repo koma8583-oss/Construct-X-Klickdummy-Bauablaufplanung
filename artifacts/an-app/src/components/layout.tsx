@@ -17,7 +17,6 @@ import {
   FolderOpen,
   CalendarDays,
   ShieldCheck,
-  BarChart2,
   Globe,
 } from "lucide-react";
 
@@ -30,13 +29,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/takt-requests", icon: Inbox, label: "Taktanfragen" },
-    { href: "/data-offers", icon: Globe, label: "Datenraum" },
+    { href: "/takt-requests", icon: Inbox, label: "Anfragen" },
     { href: "/resources", icon: HardHat, label: "Ressourcen" },
     { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
     { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
-    { href: "/reports", icon: BarChart2, label: "Berichte" },
+    { href: "/data-offers", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];
 

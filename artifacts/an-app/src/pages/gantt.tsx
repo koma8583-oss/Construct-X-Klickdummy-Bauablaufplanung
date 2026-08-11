@@ -102,22 +102,25 @@ export default function TerminuebersichtPage() {
     limit: 100,
   });
 
-  // ── Takttermine bars (from snapshot time window) ──────────────────────────
+  // ── Takttermine bars (from enriched snapshot fields: plannedStart / plannedEnd) ─
   const taktTermineTasks = useMemo((): Task[] => {
     if (!taktRequests || taktRequests.length === 0) return [];
 
     const projectMap = new Map<string, { name: string; start: Date; end: Date }>();
 
     taktRequests.forEach((req) => {
-      const projId   = req.projectId ?? "unknown";
-      const projName = req.projectName ?? "Unbekanntes Projekt";
-      // Prefer snapshot time window (geplanter Ausführungszeitraum); fall back to request dates
-      const snapPayload = (req as any).snapshotPayload as Record<string, unknown> | undefined;
-      const tw = snapPayload?.plannedTimeWindow as Record<string, unknown> | undefined;
-      const startStr = (tw?.start ?? req.sentAt ?? req.createdAt) as string;
-      const endStr   = (tw?.end   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt) as string;
-      const start    = new Date(startStr);
-      const end      = safeEnd(start, new Date(endStr));
+      // The list endpoint enriches each row with projectId / projectName and
+      // plannedStart / plannedEnd extracted from the snapshot's plannedTimeWindow.
+      const projId   = (req as any).projectId   as string | null | undefined ?? "unknown";
+      const projName = (req as any).projectName as string | null | undefined ?? "Unbekanntes Projekt";
+
+      // Use snapshot-derived planned dates; fall back only when genuinely absent
+      const plannedStart = (req as any).plannedStart as string | null | undefined;
+      const plannedEnd   = (req as any).plannedEnd   as string | null | undefined;
+      const startStr = plannedStart ?? req.sentAt ?? req.createdAt;
+      const endStr   = plannedEnd   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
+      const start    = new Date(startStr as string);
+      const end      = safeEnd(start, new Date(endStr as string));
 
       const existing = projectMap.get(projId);
       if (!existing) {
@@ -148,19 +151,26 @@ export default function TerminuebersichtPage() {
     });
 
     taktRequests.forEach((req) => {
-      const projId     = req.projectId ?? "unknown";
-      const snapPayload = (req as any).snapshotPayload as Record<string, unknown> | undefined;
-      const tw = snapPayload?.plannedTimeWindow as Record<string, unknown> | undefined;
-      const startStr = (tw?.start ?? req.sentAt ?? req.createdAt) as string;
-      const endStr   = (tw?.end   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt) as string;
-      const start    = new Date(startStr);
-      const end      = safeEnd(start, new Date(endStr));
+      const projId     = (req as any).projectId as string | null | undefined ?? "unknown";
+      const plannedStart = (req as any).plannedStart as string | null | undefined;
+      const plannedEnd   = (req as any).plannedEnd   as string | null | undefined;
+      const startStr = plannedStart ?? req.sentAt ?? req.createdAt;
+      const endStr   = plannedEnd   ?? req.responseRequiredBy ?? req.expiresAt ?? req.updatedAt;
+      const start    = new Date(startStr as string);
+      const end      = safeEnd(start, new Date(endStr as string));
       const color    = STATUS_COLOR[req.status] ?? "#6b7280";
-      const label    = [req.taktBezeichnung, req.requestNumber].filter(Boolean).join(" · ");
+
+      // Label: Taktbezeichnung (workPackage) + zone · gewerk — no request number
+      const zone   = (req as any).zone   as string | null | undefined;
+      const gewerk = (req as any).gewerk as string | null | undefined;
+      const sub    = [zone, gewerk].filter(Boolean).join(" · ");
+      const label  = req.taktBezeichnung
+        ? (sub ? `${req.taktBezeichnung} – ${sub}` : req.taktBezeichnung)
+        : (sub || req.requestNumber || "Takt");
 
       tasks.push({
         id:      req.id,
-        name:    label || "Takt",
+        name:    label,
         type:    "task",
         start,
         end,
@@ -353,7 +363,7 @@ export default function TerminuebersichtPage() {
                 viewMode={viewMode}
                 locale="de"
                 columnWidth={colWidth}
-                listCellWidth="220px"
+                listCellWidth={tab === "belegungen" ? "" : "220px"}
                 rowHeight={40}
                 barFill={70}
                 barCornerRadius={4}

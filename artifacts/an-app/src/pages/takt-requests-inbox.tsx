@@ -230,7 +230,7 @@ export default function TaktRequestsInboxPage() {
   if (!allItems || allItems.length === 0) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">TaktAnfragen</h1>
+        <h1 className="text-2xl font-bold mb-4">Anfragen</h1>
         <div className="flex flex-col items-center justify-center py-24 gap-3 border border-dashed rounded-xl">
           <Inbox className="w-12 h-12 text-muted-foreground opacity-40" />
           <p className="font-medium text-muted-foreground">Keine Anfragen eingegangen</p>
@@ -244,7 +244,7 @@ export default function TaktRequestsInboxPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">TaktAnfragen</h1>
+          <h1 className="text-2xl font-bold">Anfragen</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Koordinationsanfragen Ihres Unternehmens</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -290,7 +290,6 @@ export default function TaktRequestsInboxPage() {
                 <TableHead className="text-xs">Auftraggeber</TableHead>
                 <TableHead className="text-xs">Takt</TableHead>
                 <TableHead className="text-xs">Antwortfrist</TableHead>
-                <TableHead className="text-xs">Friststatus</TableHead>
                 <TableHead className="text-xs">Anfragestatus</TableHead>
                 <TableHead className="text-xs">Erinnerungen</TableHead>
                 <TableHead className="w-8" />
@@ -332,9 +331,6 @@ export default function TaktRequestsInboxPage() {
                         {item.responseRequiredBy
                           ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
                           : '–'}
-                      </TableCell>
-                      <TableCell>
-                        <DeadlineBadge item={item} />
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={item.status} />

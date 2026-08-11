@@ -16,6 +16,7 @@ import healthRouter from "../health";
 import taktRequestsRouter from "../takt-requests";
 import nuRouter from "../nu";
 import dataOffersRouter from "./data-offers";
+import reportsRouter from "../reports";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,9 @@ router.use(dataOffersRouter);
 
 // AN dashboard at /api/an/dashboard/an
 router.use(dashboardRouter);
+
+// Summary reports: /api/an/reports/an/summary (the AN-app's /api/* → /api/an/* rewrite
+// means the shared reports router must be mounted here as well as at /api)
+router.use(reportsRouter);
 
 export default router;

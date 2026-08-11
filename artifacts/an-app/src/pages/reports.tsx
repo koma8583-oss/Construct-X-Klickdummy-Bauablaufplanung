@@ -57,7 +57,7 @@ export default function ReportsPage() {
       value: summary.openTaktRequests,
       icon: Clock,
       color: "text-blue-500",
-      description: "Aktive Taktanfragen",
+      description: "Aktive Anfragen",
     },
     {
       title: "Bald fällig",
