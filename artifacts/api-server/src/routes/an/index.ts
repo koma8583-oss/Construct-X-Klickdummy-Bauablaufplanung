@@ -17,6 +17,7 @@ import taktRequestsRouter from "../takt-requests";
 import nuRouter from "../nu";
 import dataOffersRouter from "./data-offers";
 import reportsRouter from "../reports";
+import inboxMessagesRouter from "./inbox-messages";
 
 const router: IRouter = Router();
 
@@ -43,5 +44,8 @@ router.use(dashboardRouter);
 // Summary reports: /api/an/reports/an/summary (the AN-app's /api/* → /api/an/* rewrite
 // means the shared reports router must be mounted here as well as at /api)
 router.use(reportsRouter);
+
+// AN inbox messages (reminders + expiry notifications) at /api/an/inbox-messages
+router.use(inboxMessagesRouter);
 
 export default router;

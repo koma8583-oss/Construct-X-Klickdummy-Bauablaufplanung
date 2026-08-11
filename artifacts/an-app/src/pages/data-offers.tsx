@@ -16,6 +16,7 @@ import {
   useAcceptDataOffer,
   useRejectDataOffer,
   useGetDataOfferContent,
+  useGetAnInboxMessages,
   type DataOfferSummary,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,8 @@ import {
   MapPin,
   Wrench,
   ArrowRight,
+  Bell,
+  AlertTriangle,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -428,8 +431,17 @@ function OfferDetailPanel({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const REMINDER_LABELS: Record<string, string> = {
+  RESPONSE_DUE_SOON: 'Antwort bald fällig',
+  RESPONSE_DUE_TODAY: 'Antwort heute fällig',
+  RESPONSE_OVERDUE: 'Antwort überfällig',
+  GU_DECISION_DUE_SOON: 'AG-Entscheidung bald fällig',
+  GU_DECISION_OVERDUE: 'AG-Entscheidung überfällig',
+};
+
 export default function DataOffersPage() {
   const { data: offers, isLoading } = useGetAnDataOffers();
+  const { data: reminders } = useGetAnInboxMessages();
   const [selected, setSelected] = useState<DataOfferSummary | null>(null);
 
   const grouped = {
@@ -468,6 +480,84 @@ export default function DataOffersPage() {
             Sobald ein Auftraggeber Projektdaten für Ihr Unternehmen bereitstellt, erscheinen sie hier.
           </p>
         </div>
+      )}
+
+      {/* Datenraum-Erinnerungen (TAKT_REQUEST_REMINDER / TAKT_REQUEST_EXPIRED) */}
+      {reminders && reminders.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
+            <Bell className="h-3.5 w-3.5 text-orange-500" />
+            Erinnerungen ({reminders.length})
+          </h2>
+          <div className="space-y-2">
+            {reminders.map((msg) => {
+              const p = msg.payload;
+              const isExpired = msg.messageType === 'TAKT_REQUEST_EXPIRED';
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-3 p-3 rounded-lg border ${
+                    isExpired
+                      ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-orange-500/30 bg-orange-500/5'
+                  }`}
+                >
+                  <div className={`mt-0.5 shrink-0 ${isExpired ? 'text-destructive' : 'text-orange-500'}`}>
+                    {isExpired ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : (
+                      <Bell className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                          isExpired
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-orange-500/10 text-orange-600'
+                        }`}
+                      >
+                        {isExpired
+                          ? 'Abgelaufen'
+                          : (p.reminderType
+                              ? (REMINDER_LABELS[p.reminderType] ?? p.reminderType)
+                              : 'Erinnerung')}
+                      </span>
+                      {p.requestNumber && (
+                        <span className="text-xs font-mono text-muted-foreground">{p.requestNumber}</span>
+                      )}
+                    </div>
+                    {p.taktReference && (
+                      <div className="text-sm font-medium mt-1 truncate">
+                        {[p.taktReference.taktBezeichnung, p.taktReference.zone, p.taktReference.gewerk]
+                          .filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                    {p.dueAt && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Frist: {format(new Date(p.dueAt), 'dd.MM.yyyy HH:mm', { locale: de })}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Erhalten: {format(new Date(msg.receivedAt), 'dd.MM.yyyy HH:mm', { locale: de })}
+                    </div>
+                  </div>
+                  {p.taktRequestId && (
+                    <a href={`/an/takt-requests/${p.taktRequestId}`}>
+                      <button
+                        className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted/50 shrink-0"
+                        title="Zur Anfrage"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {grouped.new.length > 0 && (

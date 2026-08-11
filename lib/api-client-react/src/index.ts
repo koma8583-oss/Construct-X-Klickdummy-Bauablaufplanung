@@ -9,3 +9,4 @@ export * from './data-publications';
 export * from './data-offers';
 export * from './resource-types';
 export * from './resource-requirements';
+export * from './inbox-messages';

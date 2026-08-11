@@ -374,6 +374,7 @@ export default function ProjectDetail() {
   const [isDelegating, setIsDelegating] = useState(false);
   const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
   const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
+  const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
 
   // State for new AN assignment dialog
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
@@ -647,7 +648,15 @@ export default function ProjectDetail() {
     setIsDelegating(true);
     try {
       const created = await createTaktRequest.mutateAsync({
-        data: { taktId: selectedTakt.id, nuOrgId, message, dataPublicationId: vergabePublicationId } as never,
+        data: {
+          taktId: selectedTakt.id,
+          nuOrgId,
+          message,
+          dataPublicationId: vergabePublicationId,
+          ...(vergabeResponseRequiredBy
+            ? { responseRequiredBy: new Date(vergabeResponseRequiredBy).toISOString() }
+            : {}),
+        } as never,
       });
       await sendTaktRequest.mutateAsync({ requestId: (created as { id: string }).id });
       toast({ title: 'TaktAnfrage gesendet' });
@@ -655,6 +664,7 @@ export default function ProjectDetail() {
       setIsVergabeOpen(false);
       setVergabeAnOrgId('');
       setVergabePublicationId('');
+      setVergabeResponseRequiredBy('');
     } catch (err) {
       toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
     } finally {
@@ -1518,6 +1528,20 @@ export default function ProjectDetail() {
                               </div>
 
                               <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
+
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">
+                                  Antwortfrist{' '}
+                                  <span className="text-muted-foreground font-normal">(optional)</span>
+                                </Label>
+                                <Input
+                                  type="datetime-local"
+                                  value={vergabeResponseRequiredBy}
+                                  onChange={(e) => setVergabeResponseRequiredBy(e.target.value)}
+                                  className="h-9"
+                                />
+                              </div>
+
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
@@ -1528,6 +1552,7 @@ export default function ProjectDetail() {
                                     setIsVergabeOpen(false);
                                     setVergabeAnOrgId('');
                                     setVergabePublicationId('');
+                                    setVergabeResponseRequiredBy('');
                                   }}
                                 >
                                   Abbrechen
