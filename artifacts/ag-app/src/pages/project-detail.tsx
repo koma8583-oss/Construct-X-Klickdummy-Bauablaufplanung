@@ -375,6 +375,7 @@ export default function ProjectDetail() {
   const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
   const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
   const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
+  const [vergabeResponseRequiredByError, setVergabeResponseRequiredByError] = useState<string>('');
 
   // State for new AN assignment dialog
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
@@ -644,6 +645,14 @@ export default function ProjectDetail() {
         variant: 'destructive',
       });
       return;
+    }
+    if (vergabeResponseRequiredBy) {
+      const deadline = new Date(vergabeResponseRequiredBy);
+      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+      if (deadline < oneHourFromNow) {
+        setVergabeResponseRequiredByError('Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen.');
+        return;
+      }
     }
     setIsDelegating(true);
     try {
@@ -1537,9 +1546,30 @@ export default function ProjectDetail() {
                                 <Input
                                   type="datetime-local"
                                   value={vergabeResponseRequiredBy}
-                                  onChange={(e) => setVergabeResponseRequiredBy(e.target.value)}
+                                  min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setVergabeResponseRequiredBy(val);
+                                    if (val) {
+                                      const deadline = new Date(val);
+                                      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+                                      setVergabeResponseRequiredByError(
+                                        deadline < oneHourFromNow
+                                          ? 'Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen.'
+                                          : '',
+                                      );
+                                    } else {
+                                      setVergabeResponseRequiredByError('');
+                                    }
+                                  }}
                                   className="h-9"
                                 />
+                                {vergabeResponseRequiredByError && (
+                                  <p className="text-xs text-destructive flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3 shrink-0" />
+                                    {vergabeResponseRequiredByError}
+                                  </p>
+                                )}
                               </div>
 
                               <div className="flex gap-2">
@@ -1553,6 +1583,7 @@ export default function ProjectDetail() {
                                     setVergabeAnOrgId('');
                                     setVergabePublicationId('');
                                     setVergabeResponseRequiredBy('');
+                                    setVergabeResponseRequiredByError('');
                                   }}
                                 >
                                   Abbrechen

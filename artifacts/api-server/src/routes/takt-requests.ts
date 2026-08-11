@@ -211,6 +211,15 @@ router.post(
     const { taktId, nuOrgId, responseRequiredBy } = parsed.data;
     const requestNumber = parsed.data.requestNumber ?? `TKR-${Date.now().toString(36).toUpperCase()}`;
 
+    if (responseRequiredBy) {
+      const deadline = new Date(responseRequiredBy);
+      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+      if (deadline < oneHourFromNow) {
+        res.status(400).json({ error: "Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen." });
+        return;
+      }
+    }
+
     let result;
     try {
       result = await createTaktRequestWithSnapshot({
@@ -327,6 +336,15 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
   }
 
   const { taktId, nuOrgId, responseRequiredBy, subject, message } = parsed.data;
+
+  if (responseRequiredBy) {
+    const deadline = new Date(responseRequiredBy);
+    const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+    if (deadline < oneHourFromNow) {
+      res.status(400).json({ error: "Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen." });
+      return;
+    }
+  }
 
   // Generate a unique, human-readable request number.
   const requestNumber = `TKR-${Date.now().toString(36).toUpperCase()}`;
