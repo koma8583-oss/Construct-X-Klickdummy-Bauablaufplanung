@@ -256,7 +256,7 @@ export default function TaktRequestsInboxPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
-          <SelectTrigger className="h-8 w-[200px] text-sm">
+          <SelectTrigger className="h-8 w-full sm:w-[200px] text-sm">
             <SelectValue placeholder="Friststatus" />
           </SelectTrigger>
           <SelectContent>
@@ -268,7 +268,7 @@ export default function TaktRequestsInboxPage() {
         </Select>
 
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-          <SelectTrigger className="h-8 w-[180px] text-sm">
+          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
             <SelectValue placeholder="Anfragestatus" />
           </SelectTrigger>
           <SelectContent>
@@ -287,18 +287,18 @@ export default function TaktRequestsInboxPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-xs">Anfrage-Nr.</TableHead>
-                <TableHead className="text-xs">Auftraggeber</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">Auftraggeber</TableHead>
                 <TableHead className="text-xs">Takt</TableHead>
                 <TableHead className="text-xs">Antwortfrist</TableHead>
                 <TableHead className="text-xs">Anfragestatus</TableHead>
-                <TableHead className="text-xs">Erinnerungen</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">Erinnerungen</TableHead>
                 <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     Keine Anfragen für diese Filter
                   </TableCell>
                 </TableRow>
@@ -316,7 +316,7 @@ export default function TaktRequestsInboxPage() {
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {item.requestNumber}
                       </TableCell>
-                      <TableCell className="text-sm max-w-[130px] truncate" title={(item as any).agOrgName ?? '–'}>
+                      <TableCell className="text-sm max-w-[130px] truncate hidden sm:table-cell" title={(item as any).agOrgName ?? '–'}>
                         {(item as any).agOrgName ?? <span className="text-muted-foreground">–</span>}
                       </TableCell>
                       <TableCell className="text-sm max-w-[160px]">
@@ -335,7 +335,7 @@ export default function TaktRequestsInboxPage() {
                       <TableCell>
                         <StatusBadge status={item.status} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         {typeof remCount === 'number' && remCount > 0 ? (
                           <span className="flex items-center gap-1 text-xs text-orange-500">
                             <Bell size={11} aria-hidden />

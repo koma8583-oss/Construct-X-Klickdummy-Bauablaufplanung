@@ -184,7 +184,7 @@ function ResourceTypeDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="rt-category" className="text-xs">
                 Kategorie *
@@ -573,7 +573,7 @@ function ResourceDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="res-type" className="text-xs">
                 Typ
@@ -615,7 +615,7 @@ function ResourceDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="res-cap" className="text-xs">
                 Tageskapazität (h)

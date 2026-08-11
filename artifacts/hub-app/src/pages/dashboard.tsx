@@ -175,6 +175,7 @@ export default function DashboardPage() {
               Noch keine Nachrichten vorhanden
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -224,6 +225,7 @@ export default function DashboardPage() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

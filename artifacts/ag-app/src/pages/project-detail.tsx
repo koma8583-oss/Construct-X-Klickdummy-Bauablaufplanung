@@ -836,7 +836,7 @@ export default function ProjectDetail() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link href={`/projects/${projectId}/proposals`}>
             <Button variant="outline" className="relative">
               {projectOverview.coordination.openRequests > 0 && (
@@ -874,7 +874,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* KPI Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="bg-card">
           <CardContent className="p-4 flex flex-col items-center text-center">
             <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Takte gesamt</span>
@@ -1042,8 +1042,8 @@ export default function ProjectDetail() {
       {/* Chart area — Gantt / Netzplan tabs */}
       <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
         {/* Tab header */}
-        <div className="border-b border-border px-4 bg-background flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1 h-12">
+        <div className="border-b border-border px-4 bg-background flex flex-wrap items-center justify-between shrink-0 gap-y-0">
+          <div className="flex items-center gap-1 h-12 overflow-x-auto min-w-0">
             <button
               onClick={() => setActiveChartTab('gantt')}
               className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
@@ -1087,7 +1087,7 @@ export default function ProjectDetail() {
           {/* Gantt view-mode selector — only shown on Gantt tab */}
           {activeChartTab === 'gantt' && (
             <Select value={viewMode} onValueChange={(val) => setViewMode(val as ViewMode)}>
-              <SelectTrigger className="w-[120px] h-8 text-xs">
+              <SelectTrigger className="w-full sm:w-[120px] h-8 text-xs shrink-0">
                 <SelectValue placeholder="Ansicht" />
               </SelectTrigger>
               <SelectContent>
@@ -1237,7 +1237,7 @@ export default function ProjectDetail() {
                 {/* Details */}
                 <Card className="bg-muted/30 border-border/50">
                   <CardContent className="p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Plan-Start</div>
                         <div className="text-sm font-medium">{format(new Date(selectedTakt.plannedStart), 'dd.MM.yyyy')}</div>
@@ -1252,7 +1252,7 @@ export default function ProjectDetail() {
                         <div className="flex items-center text-xs text-amber-500 font-medium mb-2">
                           <Info className="w-3.5 h-3.5 mr-1" /> Pufferfenster definiert
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <div className="text-xs text-muted-foreground mb-1">Frühester Start</div>
                             <div className="text-sm">{selectedTakt.earliestStart ? format(new Date(selectedTakt.earliestStart), 'dd.MM.yyyy') : '–'}</div>
@@ -1585,7 +1585,7 @@ export default function ProjectDetail() {
               {/* ── Tab: Details ────────────────────────────────────────── */}
               <TabsContent value="details" className="mt-4 space-y-4">
                 <form id="edit-takt-form" onSubmit={handleEditTakt} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Takt-Bezeichnung</Label>
                       <Input name="taktBezeichnung" required defaultValue={editTakt.taktBezeichnung} placeholder="z.B. T1, Rohbau-A" />
@@ -1603,7 +1603,7 @@ export default function ProjectDetail() {
                     <Label>Beschreibung</Label>
                     <Input name="description" defaultValue={editTakt.description ?? ''} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
                       <Label>Plan-Start</Label>
                       <Input name="plannedStart" type="date" required defaultValue={editTakt.plannedStart} />
@@ -1613,7 +1613,7 @@ export default function ProjectDetail() {
                       <Input name="plannedEnd" type="date" required defaultValue={editTakt.plannedEnd} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
                       <Input name="earliestStart" type="date" defaultValue={editTakt.earliestStart ?? ''} />
@@ -1640,7 +1640,7 @@ export default function ProjectDetail() {
                         <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
                         <Input name="costEstimate" defaultValue={(editTakt as any).costEstimate ?? ''} placeholder="z.B. 45.000 €" className="text-sm" />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">Vergabepriorität</Label>
                           <Select value={editProcPriority} onValueChange={setEditProcPriority}>
@@ -1813,11 +1813,11 @@ export default function ProjectDetail() {
             <DialogTitle>Neuen Takt anlegen</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateTakt} className="py-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
 
               {/* ── Linke Spalte: Stammdaten ─────────────────────── */}
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Takt-Bezeichnung</Label>
                     <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
@@ -1835,7 +1835,7 @@ export default function ProjectDetail() {
                   <Label>Beschreibung</Label>
                   <Input name="description" placeholder="Optional" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Plan-Start</Label>
                     <Input name="plannedStart" type="date" required />
@@ -1845,7 +1845,7 @@ export default function ProjectDetail() {
                     <Input name="plannedEnd" type="date" required />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border/50">
                   <div className="space-y-2 pt-3">
                     <Label className="text-muted-foreground flex items-center gap-1">
                       Frühester Start <span className="text-[10px]">(Puffer)</span>
@@ -2036,7 +2036,7 @@ export default function ProjectDetail() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Gewerk (optional)</Label>
                 <Input name="trade" placeholder="z.B. Trockenbau" />
@@ -2046,7 +2046,7 @@ export default function ProjectDetail() {
                 <Input name="workPackageReference" placeholder="z.B. AP-12" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Gültig ab (optional)</Label>
                 <Input type="date" name="validFrom" />
@@ -2091,7 +2091,7 @@ export default function ProjectDetail() {
                   <Label>Nachunternehmen</Label>
                   <Input value={assignment.anName || 'Unbekannt'} disabled className="bg-muted" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Gewerk (optional)</Label>
                     <Input name="trade" defaultValue={assignment.trade || ''} />
@@ -2101,7 +2101,7 @@ export default function ProjectDetail() {
                     <Input name="workPackageReference" defaultValue={assignment.workPackageReference || ''} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Gültig ab (optional)</Label>
                     <Input type="date" name="validFrom" defaultValue={assignment.validFrom ? assignment.validFrom.substring(0, 10) : ''} />

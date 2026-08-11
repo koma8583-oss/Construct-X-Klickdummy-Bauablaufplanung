@@ -143,7 +143,7 @@ function ProjectDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="lp-code" className="text-xs">Projektnummer *</Label>
               <Input
@@ -194,7 +194,7 @@ function ProjectDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="lp-start" className="text-xs">Startdatum</Label>
               <Input
@@ -345,7 +345,7 @@ export default function LocalProjectsPage() {
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-8 w-[180px] text-sm">
+          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -393,10 +393,10 @@ export default function LocalProjectsPage() {
                   <TableRow className="border-border">
                     <TableHead className="text-xs">Projektnr.</TableHead>
                     <TableHead className="text-xs">Bezeichnung</TableHead>
-                    <TableHead className="text-xs">Auftraggeber (intern)</TableHead>
-                    <TableHead className="text-xs">Zeitraum</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Auftraggeber (intern)</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Zeitraum</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs w-[140px]"></TableHead>
+                    <TableHead className="text-xs w-20 sm:w-[140px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -406,10 +406,10 @@ export default function LocalProjectsPage() {
                         {p.localProjectCode}
                       </TableCell>
                       <TableCell className="font-medium text-sm">{p.displayName}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
+                      <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
                         {p.customerAlias ?? "–"}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap hidden sm:table-cell">
                         {p.startDate || p.endDate
                           ? `${fmtDate(p.startDate)} – ${fmtDate(p.endDate)}`
                           : "–"}

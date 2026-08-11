@@ -526,7 +526,7 @@ export default function TaktRequestDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
             <div>
               <div className="text-xs text-muted-foreground mb-0.5">Status</div>
               <div className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
@@ -567,7 +567,7 @@ export default function TaktRequestDetailPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Taktbezeichnung</div>
                 <div className="font-medium">{snapBez ?? '—'}</div>
@@ -597,7 +597,7 @@ export default function TaktRequestDetailPage() {
                 </div>
               </div>
               {snapDesc && (
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <div className="text-xs text-muted-foreground mb-0.5">Beschreibung</div>
                   <div className="text-sm text-foreground/80">{snapDesc}</div>
                 </div>
@@ -671,8 +671,8 @@ export default function TaktRequestDetailPage() {
           {/* Add form */}
           {showReqForm && !hasResponded && (
             <div className="p-4 rounded-lg border border-border bg-muted/20 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs">Ressourcentyp</Label>
                   <Select value={newReqTypeId} onValueChange={setNewReqTypeId}>
                     <SelectTrigger>
@@ -710,7 +710,7 @@ export default function TaktRequestDetailPage() {
                     value={newReqEnd || (snapEnd?.substring(0, 10) ?? '')}
                     onChange={e => setNewReqEnd(e.target.value)} />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs">Erforderliche Qualifikation (optional)</Label>
                   <Input value={newReqQual} onChange={e => setNewReqQual(e.target.value)}
                     placeholder="z.B. Kranführerschein" />
@@ -865,7 +865,7 @@ export default function TaktRequestDetailPage() {
               </div>
 
               {decision === TaktDecision.ACCEPTED && (
-                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Bestätigter Start</Label>
                     <Input type="date" value={acceptStart}

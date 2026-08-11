@@ -41,7 +41,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+    <div className="flex h-[100dvh] w-full bg-background text-foreground overflow-hidden">
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div

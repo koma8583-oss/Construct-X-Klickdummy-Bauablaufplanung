@@ -160,8 +160,8 @@ function CreateBookingDialog({
           <DialogTitle>Neue Belegung anlegen</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 pt-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5 col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">Ressource *</Label>
               <Select value={form.resourceId} onValueChange={(v) => set("resourceId", v)}>
                 <SelectTrigger className="h-9">
@@ -359,7 +359,7 @@ export default function ResourceBookingsPage() {
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Art</Label>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="h-8 w-[180px] text-sm">
+            <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -374,7 +374,7 @@ export default function ResourceBookingsPage() {
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Status</Label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 w-[150px] text-sm">
+            <SelectTrigger className="h-8 w-full sm:w-[150px] text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -392,7 +392,7 @@ export default function ResourceBookingsPage() {
             type="date"
             value={startFrom}
             onChange={(e) => setStartFrom(e.target.value)}
-            className="h-8 w-[140px] text-sm"
+            className="h-8 w-full sm:w-[140px] text-sm"
           />
         </div>
         <div className="space-y-1">
@@ -401,7 +401,7 @@ export default function ResourceBookingsPage() {
             type="date"
             value={endTo}
             onChange={(e) => setEndTo(e.target.value)}
-            className="h-8 w-[140px] text-sm"
+            className="h-8 w-full sm:w-[140px] text-sm"
           />
         </div>
 
@@ -445,12 +445,12 @@ export default function ResourceBookingsPage() {
                 <TableHeader>
                   <TableRow className="border-border">
                     <TableHead className="text-xs">Ressource</TableHead>
-                    <TableHead className="text-xs">Art</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Art</TableHead>
                     <TableHead className="text-xs">Von</TableHead>
                     <TableHead className="text-xs">Bis</TableHead>
-                    <TableHead className="text-xs">Auslastung</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Auslastung</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs">Notiz</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Notiz</TableHead>
                     <TableHead className="text-xs w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>

@@ -109,9 +109,9 @@ function TaktInformationPackageView({ payload }: { payload: Record<string, unkno
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
           Taktdaten (fachliche Ansicht)
         </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           {workPackage && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <div className="text-xs text-muted-foreground mb-0.5">Arbeitspaket / Bezeichnung</div>
               <div className="font-medium">{workPackage}</div>
             </div>
@@ -135,7 +135,7 @@ function TaktInformationPackageView({ payload }: { payload: Record<string, unkno
             </div>
           )}
           {(plannedStart || plannedEnd) && (
-            <div className="col-span-2 flex items-start gap-2">
+            <div className="sm:col-span-2 flex items-start gap-2">
               <Calendar className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <div>
                 <div className="text-xs text-muted-foreground">Geplanter Zeitraum</div>

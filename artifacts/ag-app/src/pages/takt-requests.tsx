@@ -419,7 +419,7 @@ export default function TaktRequestsPage() {
 
         {/* Status filter */}
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaktRequestStatus | 'ALL')}>
-          <SelectTrigger className="h-8 w-[180px] text-sm">
+          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
             <SelectValue placeholder={t('taktRequests.filter.status')} />
           </SelectTrigger>
           <SelectContent>
@@ -435,7 +435,7 @@ export default function TaktRequestsPage() {
         {/* Project filter */}
         {projects.length > 1 && (
           <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="h-8 w-[180px] text-sm">
+            <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
               <SelectValue placeholder={t('taktRequests.filter.project')} />
             </SelectTrigger>
             <SelectContent>
@@ -450,7 +450,7 @@ export default function TaktRequestsPage() {
         {/* Contractor filter */}
         {contractors.length > 1 && (
           <Select value={nuFilter} onValueChange={setNuFilter}>
-            <SelectTrigger className="h-8 w-[180px] text-sm">
+            <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
               <SelectValue placeholder={t('taktRequests.filter.contractor')} />
             </SelectTrigger>
             <SelectContent>
@@ -464,7 +464,7 @@ export default function TaktRequestsPage() {
 
         {/* Deadline filter */}
         <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
-          <SelectTrigger className="h-8 w-[220px] text-sm">
+          <SelectTrigger className="h-8 w-full sm:w-[220px] text-sm">
             <SelectValue placeholder="Friststatus" />
           </SelectTrigger>
           <SelectContent>
@@ -484,21 +484,21 @@ export default function TaktRequestsPage() {
                 <TableHead className="text-xs">{t('taktRequests.columns.requestNumber')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.project')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.takt')}</TableHead>
-                <TableHead className="text-xs text-center">{t('taktRequests.columns.version')}</TableHead>
+                <TableHead className="text-xs text-center hidden sm:table-cell">{t('taktRequests.columns.version')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.contractor')}</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.deadline')}</TableHead>
-                <TableHead className="text-xs">Friststatus</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">Friststatus</TableHead>
                 <TableHead className="text-xs">{t('taktRequests.columns.requestStatus')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.messageStatus')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.createdAt')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.updatedAt')}</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.messageStatus')}</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.createdAt')}</TableHead>
+                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.updatedAt')}</TableHead>
                 <TableHead className="text-xs text-right">{t('taktRequests.columns.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="py-16 text-center text-muted-foreground text-sm">
+                  <TableCell colSpan={12} className="py-16 text-center text-muted-foreground text-sm">
                     {t('taktRequests.emptyFiltered')}
                   </TableCell>
                 </TableRow>

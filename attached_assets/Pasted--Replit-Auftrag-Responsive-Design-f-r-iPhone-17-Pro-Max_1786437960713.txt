@@ -1,0 +1,639 @@
+# Replit-Auftrag – Responsive Design für iPhone 17 Pro Max optimieren
+
+Optimiere das bestehende Responsive Design der Anwendungen `ag-app`, `an-app` und `hub-app` mit möglichst wenigen Änderungen.
+
+Ziel ist eine gute Bedienbarkeit auf einem iPhone 17 Pro Max im Hochformat bei ungefähr:
+
+```text
+440 × 956 CSS-Pixel
+```
+
+Kein Redesign durchführen.
+
+Bestehende Komponenten, Tailwind-Klassen und Layouts wiederverwenden.
+
+## Nicht umsetzen
+
+* keine neue UI-Bibliothek
+* keine eigene Mobile-App
+* keine neue mobile Tabellenkomponente
+* keine neue Gantt-Komponente
+* keine umfassende Designänderung
+* keine Änderung der Fachlogik
+* keine Änderung von API oder Datenbank
+* keine Änderung des Datenraum- oder Ressourcenworkflows
+* keine umfangreiche neue Testinfrastruktur
+
+---
+
+# 1. Zweispaltige Formulare mobil einspaltig darstellen
+
+Suche insbesondere in:
+
+```text
+artifacts/an-app
+artifacts/ag-app
+```
+
+nach festen Klassen wie:
+
+```text
+grid-cols-2
+grid-cols-3
+```
+
+Bei wichtigen Formularen und Detailansichten auf responsive Varianten umstellen.
+
+Beispiel:
+
+```text
+grid-cols-2
+```
+
+ändern zu:
+
+```text
+grid-cols-1 sm:grid-cols-2
+```
+
+Falls vorhanden:
+
+```text
+col-span-2
+```
+
+entsprechend prüfen und bei Bedarf ändern zu:
+
+```text
+sm:col-span-2
+```
+
+Besonders prüfen:
+
+```text
+AN:
+takt-request-detail.tsx
+resources.tsx
+resource-bookings.tsx
+local-projects.tsx
+data-offers.tsx
+availability-checks.tsx
+
+AG:
+project-detail.tsx
+Takt-Dialoge
+Projekt-Dialoge
+Datenraum-Veröffentlichungsdialoge
+TaktRequest-Dialoge
+```
+
+Auf dem Smartphone müssen Labels, Inputs, Selects und Buttons ausreichend breit bleiben.
+
+---
+
+# 2. AN-TaktRequest-Seite priorisieren
+
+Die Seite:
+
+```text
+artifacts/an-app/src/pages/takt-request-detail.tsx
+```
+
+ist die wichtigste operative Mobile-Seite.
+
+Auf dem iPhone müssen folgende Bereiche untereinander dargestellt werden:
+
+```text
+Datenraumstatus
+Taktdaten
+Ressourcenbedarf
+Verfügbarkeitsprüfung
+Antwort
+```
+
+Keine zwei sehr schmalen Spalten auf Mobilgeräten.
+
+Desktopdarstellung unverändert lassen, soweit möglich.
+
+Buttons auf kleinen Displays gegebenenfalls:
+
+```text
+w-full sm:w-auto
+```
+
+setzen.
+
+Wenn mehrere Aktionen nebeneinander stehen:
+
+```text
+flex-col sm:flex-row
+```
+
+verwenden.
+
+---
+
+# 3. Ressourcenplanung auf dem iPhone nutzbar machen
+
+Besonders prüfen:
+
+```text
+resources.tsx
+resource-bookings.tsx
+local-projects.tsx
+```
+
+## Filter
+
+Feste Breiten wie:
+
+```text
+w-[180px]
+w-[200px]
+```
+
+auf mobilen Geräten vermeiden.
+
+Beispiel:
+
+```text
+w-full sm:w-[180px]
+```
+
+Filter auf kleinen Displays untereinander anordnen:
+
+```text
+flex-col sm:flex-row
+```
+
+## Dialoge
+
+Formulare für:
+
+```text
+Ressourcentyp
+Ressource
+Ressourcenbelegung
+internes Projekt
+```
+
+mobil einspaltig darstellen.
+
+Die wichtigen Aktionen:
+
+```text
+Speichern
+Abbrechen
+Prüfen
+```
+
+müssen ohne horizontales Scrollen erreichbar sein.
+
+---
+
+# 4. Tabellen nur minimal mobil optimieren
+
+Bestehende Tabellen nicht durch Kartenlayouts ersetzen.
+
+`overflow-x-auto` weiterhin verwenden.
+
+Zusätzlich bei sehr breiten Tabellen unwichtige Spalten auf kleinen Displays ausblenden.
+
+Beispiel:
+
+```text
+hidden sm:table-cell
+```
+
+oder:
+
+```text
+hidden md:table-cell
+```
+
+## Auf Mobilgeräten sichtbar halten
+
+Bei Taktanfragen beispielsweise mindestens:
+
+```text
+Takt
+Status
+Frist
+Aktion
+```
+
+Zusätzliche Metadaten können erst ab `sm` oder `md` erscheinen.
+
+Bei Ressourcen mindestens:
+
+```text
+Name
+Typ
+Kapazität/Status
+Aktion
+```
+
+Nicht alle Detailspalten auf dem iPhone gleichzeitig anzeigen.
+
+---
+
+# 5. Gantt und Terminübersichten nicht neu entwickeln
+
+Keine neue mobile Gantt-Komponente erstellen.
+
+Die bestehende Grafik darf horizontal scrollbar bleiben.
+
+Nur Kopf- und Bedienelemente mobil optimieren.
+
+Beispiel:
+
+```text
+flex-row
+```
+
+ändern zu:
+
+```text
+flex-col sm:flex-row
+```
+
+Insbesondere prüfen:
+
+```text
+artifacts/an-app/src/pages/gantt.tsx
+artifacts/ag-app/src/pages/project-detail.tsx
+```
+
+Auf dem iPhone sollten Auswahl, Zeitraum und Ansichtsumschaltung untereinander erscheinen.
+
+Die eigentliche Grafik darf eine Mindestbreite behalten und horizontal gescrollt werden.
+
+---
+
+# 6. AG-Projektdetail mobil optimieren
+
+Prüfe:
+
+```text
+artifacts/ag-app/src/pages/project-detail.tsx
+```
+
+Die Seite enthält viele Funktionen und darf auf Mobilgeräten nicht versuchen, alle Kontrollen nebeneinander darzustellen.
+
+Mobil bevorzugen:
+
+```text
+Projekttitel
+Projektstatus
+
+[Aktion]
+
+Ansichtsauswahl
+Filter
+
+Inhalt
+```
+
+statt einer einzigen breiten Kopfzeile.
+
+Für Gruppen wie:
+
+```text
+Gantt
+Netzplan
+AN-Zuordnungen
+weitere Auswahl
+```
+
+bei Bedarf:
+
+```text
+flex-wrap
+```
+
+oder:
+
+```text
+overflow-x-auto
+```
+
+verwenden.
+
+Keine fachlichen Funktionen entfernen.
+
+---
+
+# 7. Dialoge zentral mobil optimieren
+
+Prüfe die gemeinsamen Dialog-Komponenten in AG und AN.
+
+Dialoge sollen auf Smartphones nahezu die gesamte verfügbare Breite verwenden, aber einen kleinen Außenabstand behalten.
+
+Sinngemäß:
+
+```text
+w-[calc(100%-2rem)]
+max-w-lg
+```
+
+statt einer Darstellung, die auf kleinen Displays unnötig schmal wird.
+
+Vertikale Höhe:
+
+```text
+max-h-[calc(100dvh-2rem)]
+overflow-y-auto
+```
+
+Padding:
+
+```text
+p-4 sm:p-6
+```
+
+Damit werden lange Formulare auf Safari korrekt scrollbar.
+
+Keine Dialoge individuell umbauen, wenn die Änderung zentral in der UI-Komponente möglich ist.
+
+---
+
+# 8. Side Sheets auf Mobilgeräten volle Breite
+
+Falls bestehende Sheet-/Drawer-Komponenten verwendet werden:
+
+Mobil:
+
+```text
+w-full
+```
+
+ab `sm` beispielsweise:
+
+```text
+sm:w-3/4 sm:max-w-md
+```
+
+Keine 75%-Breite auf sehr kleinen Displays erzwingen.
+
+---
+
+# 9. iOS-Höhe korrigieren
+
+Suche insbesondere in Layout-Komponenten nach:
+
+```text
+h-screen
+min-h-screen
+```
+
+Für Hauptlayouts bevorzugt:
+
+```text
+h-[100dvh]
+```
+
+beziehungsweise:
+
+```text
+min-h-[100dvh]
+```
+
+verwenden.
+
+Besonders prüfen:
+
+```text
+ag-app/src/components/layout.tsx
+an-app/src/components/layout.tsx
+hub-app/src/components/layout.tsx
+```
+
+Damit muss die Safari-Adressleiste korrekt berücksichtigt werden.
+
+---
+
+# 10. Mobile Navigation beibehalten
+
+Die bestehende Hamburger-/Off-Canvas-Navigation in AG und AN grundsätzlich nicht verändern.
+
+Nur prüfen:
+
+* Menübutton ist sichtbar
+* Menübutton überlappt keinen Inhalt
+* Navigation lässt sich schließen
+* aktiver Menüpunkt ist sichtbar
+* Scrollen im Menü funktioniert
+
+Beim Hub prüfen, ob der mobile Menübutton Inhalte oben links überdeckt.
+
+Falls ja, nur minimal korrigieren, beispielsweise durch:
+
+```text
+pt-16 sm:pt-0
+```
+
+oder eine kleine mobile Kopfzeile.
+
+---
+
+# 11. Viewport-Zoom zulassen
+
+Prüfe:
+
+```text
+ag-app/index.html
+an-app/index.html
+hub-app/index.html
+```
+
+Falls vorhanden:
+
+```html
+maximum-scale=1
+```
+
+entfernen.
+
+Viewport soll mindestens lauten:
+
+```html
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1"
+/>
+```
+
+Benutzer müssen insbesondere Tabellen, Netzplan und Gantt bei Bedarf zoomen können.
+
+---
+
+# 12. Touch-Bedienung prüfen
+
+Wichtige Buttons und Icon-Aktionen dürfen auf dem Smartphone nicht zu klein sein.
+
+Bei reinen Icon-Buttons mindestens ungefähr:
+
+```text
+h-10 w-10
+```
+
+oder vergleichbare Touch-Fläche verwenden.
+
+Besonders prüfen:
+
+```text
+Hamburger-Menü
+Bearbeiten
+Löschen/Deaktivieren
+Zurück
+Dialog schließen
+Gantt-Steuerung
+Datenraumaktionen
+```
+
+Keine unnötige Vergrößerung aller Desktopbuttons.
+
+---
+
+# 13. Keine horizontalen Seitenüberläufe
+
+Auf:
+
+```text
+440px Breite
+```
+
+darf die gesamte Seite nicht horizontal scrollen.
+
+Horizontales Scrollen ist nur innerhalb klar abgegrenzter Komponenten zulässig:
+
+```text
+Tabellen
+Gantt
+Netzplan
+```
+
+Prüfe insbesondere problematische Klassen wie:
+
+```text
+min-w-*
+w-[...]
+whitespace-nowrap
+absolute
+fixed
+```
+
+Nicht pauschal entfernen, sondern nur dort korrigieren, wo sie einen Seitenüberlauf verursachen.
+
+---
+
+# 14. Nur notwendige Tests
+
+Keine umfangreichen automatisierten Responsive-Tests aufbauen.
+
+## Technische Prüfung
+
+Nur Frontend-Typecheck und Build ausführen:
+
+```bash
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/ag-app build
+
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+
+pnpm --filter @workspace/hub-app typecheck
+pnpm --filter @workspace/hub-app build
+```
+
+Keine Backendtests notwendig, sofern keine Backenddateien geändert wurden.
+
+## Manueller Responsive-Smoke-Test
+
+Browser-DevTools auf ungefähr:
+
+```text
+440 × 956
+```
+
+setzen.
+
+Mindestens folgende Seiten prüfen:
+
+### AN
+
+```text
+Dashboard
+Taktanfragen
+TaktRequest-Detail
+Datenraum
+Ressourcentypen und Ressourcen
+Ressourcenbelegung
+Interne Projekte
+Terminübersicht
+```
+
+### AG
+
+```text
+Dashboard
+Projektliste
+Projektdetail
+Takt erstellen/bearbeiten
+TaktRequest erstellen
+Daten im Datenraum bereitstellen
+```
+
+### Hub
+
+```text
+Dashboard
+Nachrichten
+Nachrichtendetail
+```
+
+Pro Seite nur prüfen:
+
+```text
+keine horizontale Gesamtseiten-Überbreite
+Navigation funktioniert
+Dialoge vollständig erreichbar
+Buttons erreichbar
+Inputs lesbar
+Tabellen scrollbar
+Gantt/Netzplan scrollbar bzw. bedienbar
+```
+
+Zusätzlich einmal im Hochformat und einmal im Querformat prüfen.
+
+---
+
+# Abschlusskriterien
+
+Der Auftrag ist abgeschlossen, wenn:
+
+* alle Kernfunktionen auf ca. 440 px Breite bedienbar sind
+* relevante Formulare mobil einspaltig sind
+* AN-TaktRequest-Workflow vollständig nutzbar ist
+* Ressourcenplanung vollständig nutzbar ist
+* AG-Projektdetail vollständig nutzbar ist
+* Dialoge nicht über den Bildschirm hinausragen
+* Filter auf Mobilgeräten nicht zusammengedrückt werden
+* Tabellen innerhalb ihres Containers horizontal scrollen
+* Gantt und Netzplan nicht die gesamte Seite verbreitern
+* mobile Navigation funktioniert
+* Safari-Höhe über `100dvh` korrekt behandelt wird
+* Browser-Zoom nicht blockiert wird
+* Typecheck und Build aller drei Frontends erfolgreich sind
+
+# Abschlussbericht
+
+Berichte nur kurz:
+
+1. geänderte Dateien
+2. wichtigste Responsive-Anpassungen
+3. getestete Seiten bei 440 × 956
+4. bekannte verbleibende Einschränkungen
+5. Ergebnisse von Typecheck und Build
+
+Keine darüber hinausgehenden UI- oder Fachfunktionen implementieren.
