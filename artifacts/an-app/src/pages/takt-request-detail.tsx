@@ -447,7 +447,9 @@ export default function TaktRequestDetailPage() {
       payload.acceptedTimeWindow = { start: acceptStart, end: acceptEnd };
     } else if (decision === TaktDecision.ALTERNATIVES_PROPOSED) {
       payload.alternatives = alternatives.map((a, i) => ({
-        rank: i + 1, timeWindow: { start: a.start, end: a.end },
+        alternativeId: `alt-${i + 1}`,
+        rank: i + 1,
+        timeWindow: { start: a.start, end: a.end },
       }));
     } else if (decision === TaktDecision.REJECTED) {
       if (reasonCode) payload.reasonCode = reasonCode;
