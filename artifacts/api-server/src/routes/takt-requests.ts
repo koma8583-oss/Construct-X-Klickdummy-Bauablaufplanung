@@ -757,10 +757,18 @@ router.get(
 
     // ── 4. NU: enforce retrievable states ────────────────────────────────
     // GU (preview) has no state restriction — skip the checks.
+    // NU may read details in any state they themselves can cause or observe:
+    //   Pre-response:  DELIVERED → DETAILS_RETRIEVED → UNDER_REVIEW
+    //   Post-response: ALTERNATIVES_PROPOSED, ACCEPTED, REJECTED
+    // Terminal states the GU controls (CANCELLED, EXPIRED, SUPERSEDED,
+    // REVISION_REQUIRED) are excluded — NU access is no longer meaningful.
     const RETRIEVABLE_STATUSES = new Set<string>([
       "DELIVERED",
       "DETAILS_RETRIEVED",
       "UNDER_REVIEW",
+      "ALTERNATIVES_PROPOSED",
+      "ACCEPTED",
+      "REJECTED",
     ]);
 
     if (isAddressedNu && !RETRIEVABLE_STATUSES.has(request.status)) {
