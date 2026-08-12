@@ -284,7 +284,7 @@ const SECTION_H = 44;
 const HEADER_H  = 52;
 const LEFT_W    = 248;
 
-function UnifiedGantt({
+export function UnifiedGantt({
   sections,
   allDates,
   viewMode,
@@ -588,6 +588,7 @@ function UnifiedGantt({
                       <div
                         onClick={() => setSelectedItem(isSelected ? null : row.item)}
                         title={label}
+                        data-item-id={row.item.data.id}
                         style={{
                           position: "absolute", top: "50%", transform: "translateY(-50%)",
                           left, width, height: 22, borderRadius: 4,
