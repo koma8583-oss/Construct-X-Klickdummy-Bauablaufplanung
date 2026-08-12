@@ -503,6 +503,7 @@ export interface AgProjectCoordinationSummary {
   confirmedTakts: number;
   taktsInCoordination: number;
   openRequests: number;
+  /** Number of TaktRequests with status ALTERNATIVES_PROPOSED awaiting GU decision. */
   pendingProposals: number;
   overdueRequests: number;
   expiredRequests: number;
@@ -804,6 +805,7 @@ export const DataspaceMessageType = {
   TAKT_RESPONSE_REVISION_REQUESTED: 'TAKT_RESPONSE_REVISION_REQUESTED',
   TAKT_REQUEST_EXPIRED: 'TAKT_REQUEST_EXPIRED',
   TAKT_REQUEST_REMINDER: 'TAKT_REQUEST_REMINDER',
+  DATA_OFFER_PUBLISHED: 'DATA_OFFER_PUBLISHED',
 } as const;
 
 /**
@@ -1121,6 +1123,9 @@ export interface TaktRequestDetailTimeline {
 }
 
 export interface TaktRequestDetailResponseAlt {
+  /** Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision. */
+  id: string;
+  /** NU-assigned business identifier (e.g. "ALT-001"). For display only — do not submit this as acceptedAlternativeId. */
   alternativeId: string;
   rank: number;
   proposedStart: string;
@@ -1669,12 +1674,17 @@ export const NuResourceBookingStatus = {
 } as const;
 
 /**
- * A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.
+ * A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).
  */
 export interface NuResourceBooking {
   id: string;
   nuOrgId: string;
-  resourceId: string;
+  /** Null for type-level capacity bookings; set for concrete-resource bookings. */
+  resourceId?: string | null;
+  /** Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set. */
+  resourceTypeId?: string | null;
+  /** Number of units consumed for type-level bookings; null for concrete-resource bookings. */
+  quantity?: number | null;
   localProjectId?: string | null;
   sourceType: NuResourceBookingSourceType;
   sourceReferenceId?: string | null;
@@ -1712,11 +1722,24 @@ export const NuResourceBookingCreateStatus = {
 } as const;
 
 /**
- * Body for POST /nu/resource-bookings
+ * Body for POST /nu/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).
  */
 export interface NuResourceBookingCreate {
-  /** @minLength 1 */
-  resourceId: string;
+  /**
+     * Concrete resource to book. Optional when resourceTypeId is supplied.
+     * @minLength 1
+     */
+  resourceId?: string;
+  /**
+     * Resource type for DTC type-level capacity bookings. Optional when resourceId is supplied.
+     * @minLength 1
+     */
+  resourceTypeId?: string;
+  /**
+     * Number of units of the resource type to reserve. Used for type-level bookings.
+     * @minimum 1
+     */
+  quantity?: number;
   localProjectId?: string;
   sourceType: NuResourceBookingCreateSourceType;
   sourceReferenceId?: string;

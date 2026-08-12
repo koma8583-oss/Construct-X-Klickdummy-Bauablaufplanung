@@ -601,3 +601,135 @@ describe("POST /takt-requests/:id/gu-decisions — idempotency", () => {
     await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, rIdem2.id));
   });
 });
+
+// ── UUID round-trip: GET detail → ACCEPT_ALTERNATIVE ─────────────────────────
+// Verifies that the `id` (row UUID) returned in response.alternatives by
+// GET /takt-requests/:id can be submitted directly as acceptedAlternativeId.
+// Guards against the regression where the frontend passed the business
+// alternativeId string instead of the UUID, causing 400 from the service.
+describe("ACCEPT_ALTERNATIVE — UUID round-trip via GET /takt-requests/:id detail", () => {
+  let rtReqId = "";
+  const RT_BUSINESS_ID = "ALT-RT-01";
+
+  beforeAll(async () => {
+    const [req] = await db.insert(taktRequestsTable).values({
+      taktId: TAKT, taktVersion: 1, guOrgId: GU_ORG, nuOrgId: NU_ORG,
+      requestNumber: "TKR-6300-RT01",
+      status: "ALTERNATIVES_PROPOSED" as const,
+      createdByUserId: GU_USER,
+    }).returning();
+    rtReqId = req.id;
+
+    const [resp] = await db.insert(taktResponsesTable).values({
+      taktRequestId: rtReqId,
+      decision: "ALTERNATIVES_PROPOSED" as const,
+      comment: "Round-trip test alternative",
+      createdByUserId: NU_USER,
+    }).returning();
+
+    await db.insert(taktResponseAlternativesTable).values({
+      responseId: resp.id,
+      alternativeId: RT_BUSINESS_ID,
+      rank: 1,
+      proposedStart: new Date("2026-11-01T08:00:00Z"),
+      proposedEnd:   new Date("2026-11-07T17:00:00Z"),
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
+    const responses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable)
+      .where(eq(taktResponsesTable.taktRequestId, rtReqId))
+      .catch(() => []);
+    for (const r of responses) {
+      await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.responseId, r.id)).catch(() => {});
+      await db.delete(taktResponseAlternativesTable).where(eq(taktResponseAlternativesTable.responseId, r.id)).catch(() => {});
+    }
+    await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, rtReqId)).catch(() => {});
+    await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, rtReqId)).catch(() => {});
+  });
+
+  it("GET /takt-requests/:id returns alternatives with row id (UUID) distinct from business alternativeId", async () => {
+    const res = await request(app)
+      .get(`/api/takt-requests/${rtReqId}`)
+      .set("Authorization", `Bearer ${guToken}`);
+
+    expect(res.status).toBe(200);
+    const alts = res.body?.response?.alternatives;
+    expect(Array.isArray(alts)).toBe(true);
+    expect(alts).toHaveLength(1);
+
+    const alt = alts[0];
+    // Row UUID must be present
+    expect(typeof alt.id).toBe("string");
+    expect(alt.id.length).toBeGreaterThan(0);
+    // Business identifier for display
+    expect(alt.alternativeId).toBe(RT_BUSINESS_ID);
+    // UUID != business string (regression guard)
+    expect(alt.id).not.toBe(alt.alternativeId);
+  });
+
+  it("ACCEPT_ALTERNATIVE with UUID from GET detail succeeds (201)", async () => {
+    // Read the UUID from the detail endpoint exactly as the frontend would
+    const detailRes = await request(app)
+      .get(`/api/takt-requests/${rtReqId}`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect(detailRes.status).toBe(200);
+    const altUuid: string = detailRes.body.response.alternatives[0].id;
+
+    const decisionRes = await request(app)
+      .post(`/api/takt-requests/${rtReqId}/gu-decisions`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({
+        decisionType: "ACCEPT_ALTERNATIVE",
+        acceptedAlternativeId: altUuid,   // UUID from GET detail
+      });
+
+    expect(decisionRes.status).toBe(201);
+    expect(decisionRes.body.decisionType).toBe("ACCEPT_ALTERNATIVE");
+    expect(decisionRes.body.acceptedAlternativeId).toBe(altUuid);
+    expect(decisionRes.body.updatedRequestStatus).toBe("ACCEPTED");
+  });
+
+  it("ACCEPT_ALTERNATIVE with business alternativeId string (not UUID) fails (400)", async () => {
+    // Regression guard: sending the business string "ALT-RT-01" instead of the UUID
+    // must be rejected, confirming the service exclusively looks up by row UUID.
+    const [req2] = await db.insert(taktRequestsTable).values({
+      taktId: TAKT, taktVersion: 1, guOrgId: GU_ORG, nuOrgId: NU_ORG,
+      requestNumber: "TKR-6300-RT02",
+      status: "ALTERNATIVES_PROPOSED" as const,
+      createdByUserId: GU_USER,
+    }).returning();
+
+    const [resp2] = await db.insert(taktResponsesTable).values({
+      taktRequestId: req2.id,
+      decision: "ALTERNATIVES_PROPOSED" as const,
+      createdByUserId: NU_USER,
+    }).returning();
+
+    await db.insert(taktResponseAlternativesTable).values({
+      responseId: resp2.id,
+      alternativeId: RT_BUSINESS_ID,
+      rank: 1,
+      proposedStart: new Date("2026-11-10T08:00:00Z"),
+      proposedEnd:   new Date("2026-11-14T17:00:00Z"),
+    });
+
+    const res = await request(app)
+      .post(`/api/takt-requests/${req2.id}/gu-decisions`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({
+        decisionType: "ACCEPT_ALTERNATIVE",
+        acceptedAlternativeId: RT_BUSINESS_ID,  // wrong: business string, not UUID
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/does not exist/i);
+
+    // Inline cleanup
+    await db.delete(taktResponseAlternativesTable).where(eq(taktResponseAlternativesTable.responseId, resp2.id)).catch(() => {});
+    await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, req2.id)).catch(() => {});
+    await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, req2.id)).catch(() => {});
+  });
+});

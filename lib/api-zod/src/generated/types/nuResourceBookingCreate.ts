@@ -9,11 +9,24 @@ import type { NuResourceBookingCreateSourceType } from './nuResourceBookingCreat
 import type { NuResourceBookingCreateStatus } from './nuResourceBookingCreateStatus';
 
 /**
- * Body for POST /nu/resource-bookings
+ * Body for POST /nu/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).
  */
 export interface NuResourceBookingCreate {
-  /** @minLength 1 */
-  resourceId: string;
+  /**
+     * Concrete resource to book. Optional when resourceTypeId is supplied.
+     * @minLength 1
+     */
+  resourceId?: string;
+  /**
+     * Resource type for DTC type-level capacity bookings. Optional when resourceId is supplied.
+     * @minLength 1
+     */
+  resourceTypeId?: string;
+  /**
+     * Number of units of the resource type to reserve. Used for type-level bookings.
+     * @minimum 1
+     */
+  quantity?: number;
   localProjectId?: string;
   sourceType: NuResourceBookingCreateSourceType;
   sourceReferenceId?: string;

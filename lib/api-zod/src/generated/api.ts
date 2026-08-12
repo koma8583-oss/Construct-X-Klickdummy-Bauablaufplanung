@@ -410,6 +410,7 @@ export const GetAgProjectOverviewResponse = zod.object({
   "confirmedTakts": zod.number(),
   "taktsInCoordination": zod.number(),
   "openRequests": zod.number(),
+  "pendingProposals": zod.number().describe('Number of TaktRequests with status ALTERNATIVES_PROPOSED awaiting GU decision.'),
   "overdueRequests": zod.number(),
   "expiredRequests": zod.number(),
   "revisionRounds": zod.number()
@@ -1457,7 +1458,8 @@ export const UpdateResourceBody = zod.object({
   "name": zod.string().optional(),
   "qualification": zod.string().optional(),
   "dailyCapacityHours": zod.number().optional(),
-  "color": zod.string().optional()
+  "color": zod.string().optional(),
+  "resourceTypeId": zod.string().nullish().describe('Optional link to a named resource type. Pass null to clear.')
 })
 
 export const UpdateResourceResponse = zod.object({
@@ -2162,7 +2164,7 @@ export const listInboxMessagesQueryOffsetMin = 0;
 
 export const ListInboxMessagesQueryParams = zod.object({
   "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).optional(),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).optional(),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED']).optional(),
   "correlationId": zod.coerce.string().optional(),
   "limit": zod.coerce.number().min(1).max(listInboxMessagesQueryLimitMax).default(listInboxMessagesQueryLimitDefault),
   "offset": zod.coerce.number().min(listInboxMessagesQueryOffsetMin).default(listInboxMessagesQueryOffsetDefault)
@@ -2171,7 +2173,7 @@ export const ListInboxMessagesQueryParams = zod.object({
 export const ListInboxMessagesResponseItem = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
@@ -2194,7 +2196,7 @@ export const GetInboxMessageParams = zod.object({
 export const GetInboxMessageResponse = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
@@ -2352,7 +2354,8 @@ export const GetTaktRequestDetailResponse = zod.object({
   "nextAvailableDate": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "alternatives": zod.array(zod.object({
-  "alternativeId": zod.string(),
+  "id": zod.string().describe('Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision.'),
+  "alternativeId": zod.string().describe('NU-assigned business identifier (e.g. \"ALT-001\"). For display only — do not submit this as acceptedAlternativeId.'),
   "rank": zod.number(),
   "proposedStart": zod.coerce.date(),
   "proposedEnd": zod.coerce.date(),
@@ -2887,7 +2890,9 @@ export const ListNuResourceBookingsResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
-  "resourceId": zod.string(),
+  "resourceId": zod.string().nullish().describe('Null for type-level capacity bookings; set for concrete-resource bookings.'),
+  "resourceTypeId": zod.string().nullish().describe('Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.'),
+  "quantity": zod.number().nullish().describe('Number of units consumed for type-level bookings; null for concrete-resource bookings.'),
   "localProjectId": zod.string().nullish(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().nullish(),
@@ -2898,7 +2903,7 @@ export const ListNuResourceBookingsResponse = zod.object({
   "note": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')),
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).\n')),
   "limit": zod.number(),
   "offset": zod.number(),
   "count": zod.number()
@@ -2910,13 +2915,17 @@ export const ListNuResourceBookingsResponse = zod.object({
  * @summary Create a NU resource booking
  */
 
+
+
 export const createNuResourceBookingBodyUtilizationPercentDefault = 100;
 export const createNuResourceBookingBodyUtilizationPercentMax = 100;
 
 export const createNuResourceBookingBodyStatusDefault = `TENTATIVE`;
 
 export const CreateNuResourceBookingBody = zod.object({
-  "resourceId": zod.string().min(1),
+  "resourceId": zod.string().min(1).optional().describe('Concrete resource to book. Optional when resourceTypeId is supplied.'),
+  "resourceTypeId": zod.string().min(1).optional().describe('Resource type for DTC type-level capacity bookings. Optional when resourceId is supplied.'),
+  "quantity": zod.number().min(1).optional().describe('Number of units of the resource type to reserve. Used for type-level bookings.'),
   "localProjectId": zod.string().optional(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().optional(),
@@ -2925,7 +2934,7 @@ export const CreateNuResourceBookingBody = zod.object({
   "utilizationPercent": zod.number().min(1).max(createNuResourceBookingBodyUtilizationPercentMax).default(createNuResourceBookingBodyUtilizationPercentDefault),
   "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).default(createNuResourceBookingBodyStatusDefault),
   "note": zod.string().optional()
-}).describe('Body for POST \/nu\/resource-bookings')
+}).describe('Body for POST \/nu\/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).\n')
 
 export const createNuResourceBookingResponseUtilizationPercentMax = 100;
 
@@ -2934,7 +2943,9 @@ export const createNuResourceBookingResponseUtilizationPercentMax = 100;
 export const CreateNuResourceBookingResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
-  "resourceId": zod.string(),
+  "resourceId": zod.string().nullish().describe('Null for type-level capacity bookings; set for concrete-resource bookings.'),
+  "resourceTypeId": zod.string().nullish().describe('Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.'),
+  "quantity": zod.number().nullish().describe('Number of units consumed for type-level bookings; null for concrete-resource bookings.'),
   "localProjectId": zod.string().nullish(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().nullish(),
@@ -2945,7 +2956,7 @@ export const CreateNuResourceBookingResponse = zod.object({
   "note": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).\n')
 
 
 /**
@@ -2962,7 +2973,9 @@ export const getNuResourceBookingResponseUtilizationPercentMax = 100;
 export const GetNuResourceBookingResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
-  "resourceId": zod.string(),
+  "resourceId": zod.string().nullish().describe('Null for type-level capacity bookings; set for concrete-resource bookings.'),
+  "resourceTypeId": zod.string().nullish().describe('Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.'),
+  "quantity": zod.number().nullish().describe('Number of units consumed for type-level bookings; null for concrete-resource bookings.'),
   "localProjectId": zod.string().nullish(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().nullish(),
@@ -2973,7 +2986,7 @@ export const GetNuResourceBookingResponse = zod.object({
   "note": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).\n')
 
 
 /**
@@ -3005,7 +3018,9 @@ export const updateNuResourceBookingResponseUtilizationPercentMax = 100;
 export const UpdateNuResourceBookingResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
-  "resourceId": zod.string(),
+  "resourceId": zod.string().nullish().describe('Null for type-level capacity bookings; set for concrete-resource bookings.'),
+  "resourceTypeId": zod.string().nullish().describe('Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.'),
+  "quantity": zod.number().nullish().describe('Number of units consumed for type-level bookings; null for concrete-resource bookings.'),
   "localProjectId": zod.string().nullish(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().nullish(),
@@ -3016,7 +3031,18 @@ export const UpdateNuResourceBookingResponse = zod.object({
   "note": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).\n')
+
+
+/**
+ * Permanently removes a booking row. Only CANCELLED bookings may be deleted. Attempting to delete an active booking returns 409.
+ * @summary Hard-delete a cancelled NU resource booking
+ */
+export const DeleteNuResourceBookingParams = zod.object({
+  "bookingId": zod.coerce.string()
+})
+
+export const DeleteNuResourceBookingResponse = zod.void()
 
 
 /**
@@ -3034,7 +3060,9 @@ export const cancelNuResourceBookingResponseUtilizationPercentMax = 100;
 export const CancelNuResourceBookingResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
-  "resourceId": zod.string(),
+  "resourceId": zod.string().nullish().describe('Null for type-level capacity bookings; set for concrete-resource bookings.'),
+  "resourceTypeId": zod.string().nullish().describe('Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.'),
+  "quantity": zod.number().nullish().describe('Number of units consumed for type-level bookings; null for concrete-resource bookings.'),
   "localProjectId": zod.string().nullish(),
   "sourceType": zod.enum(['LOCAL_PROJECT', 'TAKT_REQUEST', 'MANUAL_BLOCK', 'ABSENCE', 'MAINTENANCE']),
   "sourceReferenceId": zod.string().nullish(),
@@ -3045,6 +3073,6 @@ export const CancelNuResourceBookingResponse = zod.object({
   "note": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.\n')
+}).describe('A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).\n')
 
 

@@ -11,6 +11,7 @@ export interface AgProjectCoordinationSummary {
   confirmedTakts: number;
   taktsInCoordination: number;
   openRequests: number;
+  /** Number of TaktRequests with status ALTERNATIVES_PROPOSED awaiting GU decision. */
   pendingProposals: number;
   overdueRequests: number;
   expiredRequests: number;

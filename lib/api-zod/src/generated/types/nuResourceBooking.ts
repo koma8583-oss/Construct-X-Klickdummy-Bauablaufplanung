@@ -9,12 +9,17 @@ import type { NuResourceBookingSourceType } from './nuResourceBookingSourceType'
 import type { NuResourceBookingStatus } from './nuResourceBookingStatus';
 
 /**
- * A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses.
+ * A NU-internal resource booking. Never exposed to GU or Hub. Internal fields (localProjectId, sourceReferenceId) must not be transmitted in TaktRequest responses. resourceId is null for type-level capacity bookings (resourceTypeId set instead).
  */
 export interface NuResourceBooking {
   id: string;
   nuOrgId: string;
-  resourceId: string;
+  /** Null for type-level capacity bookings; set for concrete-resource bookings. */
+  resourceId?: string | null;
+  /** Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set. */
+  resourceTypeId?: string | null;
+  /** Number of units consumed for type-level bookings; null for concrete-resource bookings. */
+  quantity?: number | null;
   localProjectId?: string | null;
   sourceType: NuResourceBookingSourceType;
   sourceReferenceId?: string | null;

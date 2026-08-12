@@ -44,6 +44,9 @@ export interface TaktRequestDetailTransport {
 }
 
 export interface TaktRequestDetailResponseAlt {
+  /** Row UUID — used as `acceptedAlternativeId` when submitting a GU decision */
+  id: string;
+  /** NU-assigned business identifier, e.g. "ALT-001" — display only */
   alternativeId: string;
   rank: number;
   proposedStart: Date;
@@ -237,6 +240,7 @@ export async function getTaktRequestDetailForGu(
       .where(eq(taktResponseAlternativesTable.responseId, row.responseId))
       .orderBy(taktResponseAlternativesTable.rank);
     alternatives = altRows.map((a) => ({
+      id: a.id,
       alternativeId: a.alternativeId,
       rank: a.rank,
       proposedStart: a.proposedStart,

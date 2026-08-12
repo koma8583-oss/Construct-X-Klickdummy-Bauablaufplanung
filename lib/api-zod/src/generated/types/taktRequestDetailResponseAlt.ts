@@ -7,6 +7,9 @@
  */
 
 export interface TaktRequestDetailResponseAlt {
+  /** Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision. */
+  id: string;
+  /** NU-assigned business identifier (e.g. "ALT-001"). For display only — do not submit this as acceptedAlternativeId. */
   alternativeId: string;
   rank: number;
   proposedStart: Date;

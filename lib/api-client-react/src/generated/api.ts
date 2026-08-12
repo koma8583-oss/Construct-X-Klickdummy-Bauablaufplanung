@@ -5974,6 +5974,78 @@ export const useUpdateNuResourceBooking = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpdateNuResourceBookingMutationOptions(options));
     }
 
+export const getDeleteNuResourceBookingUrl = (bookingId: string,) => {
+
+
+
+
+  return `/api/nu/resource-bookings/${bookingId}`
+}
+
+/**
+ * Permanently removes a booking row. Only CANCELLED bookings may be deleted. Attempting to delete an active booking returns 409.
+ * @summary Hard-delete a cancelled NU resource booking
+ */
+export const deleteNuResourceBooking = async (bookingId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteNuResourceBookingUrl(bookingId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteNuResourceBooking>>, TError,{bookingId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteNuResourceBooking>>, TError,{bookingId: string}, TContext> => {
+
+const mutationKey = ['deleteNuResourceBooking'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteNuResourceBooking>>, {bookingId: string}> = (props) => {
+          const {bookingId} = props ?? {};
+
+          return  deleteNuResourceBooking(bookingId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteNuResourceBookingMutationResult = NonNullable<Awaited<ReturnType<typeof deleteNuResourceBooking>>>
+
+    export type DeleteNuResourceBookingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Hard-delete a cancelled NU resource booking
+ */
+export const useDeleteNuResourceBooking = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteNuResourceBooking>>, TError,{bookingId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteNuResourceBooking>>,
+        TError,
+        {bookingId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteNuResourceBookingMutationOptions(options));
+    }
+
 export const getCancelNuResourceBookingUrl = (bookingId: string,) => {
 
 
@@ -6045,29 +6117,4 @@ export const useCancelNuResourceBooking = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCancelNuResourceBookingMutationOptions(options));
     }
-
-// ── Delete (hard-delete CANCELLED bookings) ───────────────────────────────────
-
-export const deleteNuResourceBooking = async (bookingId: string, options?: RequestInit): Promise<void> => {
-  return customFetch<void>(`/api/nu/resource-bookings/${bookingId}`, {
-    method: "DELETE",
-    ...options,
-  });
-};
-
-export const getDeleteNuResourceBookingMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
-  options?: { mutation?: UseMutationOptions<void, TError, { bookingId: string }, TContext> },
-): UseMutationOptions<void, TError, { bookingId: string }, TContext> => {
-  const mutationKey = ["deleteNuResourceBooking"];
-  const { mutation: mutationOptions } = options ?? {};
-  const mutationFn: MutationFunction<void, { bookingId: string }> = ({ bookingId }) =>
-    deleteNuResourceBooking(bookingId);
-  return { mutationKey, mutationFn, ...mutationOptions };
-};
-
-export const useDeleteNuResourceBooking = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
-  options?: { mutation?: UseMutationOptions<void, TError, { bookingId: string }, TContext> },
-): UseMutationResult<void, TError, { bookingId: string }, TContext> => {
-  return useMutation(getDeleteNuResourceBookingMutationOptions(options));
-};
 

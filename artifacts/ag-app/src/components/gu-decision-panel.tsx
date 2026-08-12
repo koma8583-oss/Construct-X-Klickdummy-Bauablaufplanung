@@ -208,22 +208,22 @@ function AlternativeTable({
           </tr>
           {/* Alternative rows */}
           {alts.map((alt) => {
-            const isSelected = selectedId === alt.alternativeId;
+            const isSelected = selectedId === alt.id;
             const shiftDays =
               origStart ? dayDiff(origStart, alt.proposedStart as string) : null;
             return (
               <tr
-                key={alt.alternativeId}
+                key={alt.id}
                 className={`border-b border-border/50 cursor-pointer transition-colors ${
                   isSelected
                     ? 'bg-primary/10 ring-1 ring-inset ring-primary/30'
                     : 'hover:bg-muted/40'
                 }`}
-                onClick={() => onSelect(alt.alternativeId)}
+                onClick={() => onSelect(alt.id)}
                 role="radio"
                 aria-checked={isSelected}
                 tabIndex={0}
-                onKeyDown={(e) => e.key === ' ' && onSelect(alt.alternativeId)}
+                onKeyDown={(e) => e.key === ' ' && onSelect(alt.id)}
               >
                 <td className="py-2 pr-3">
                   <div className="flex items-center gap-2">
@@ -785,8 +785,9 @@ function ConfirmationDetails({
   const origStart = tw?.start ?? (snap?.plannedStart as string | undefined);
   const origEnd = tw?.end ?? (snap?.plannedEnd as string | undefined);
 
+  // alternativeId here is the row UUID — look up by .id, not by .alternativeId (business string)
   const selectedAlt = alternativeId
-    ? resp?.alternatives?.find((a) => a.alternativeId === alternativeId)
+    ? resp?.alternatives?.find((a) => a.id === alternativeId)
     : null;
 
   const effectiveStart = selectedAlt

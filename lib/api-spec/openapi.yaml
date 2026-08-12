@@ -2407,6 +2407,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteNuResourceBooking
+      summary: Hard-delete a cancelled NU resource booking
+      description: >
+        Permanently removes a booking row. Only CANCELLED bookings may be deleted.
+        Attempting to delete an active booking returns 409.
+      tags: [NU Internal]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Booking deleted
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: GU or hub-admin user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found (or belongs to a different NU)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Booking is not in CANCELLED status and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /nu/resource-bookings/{bookingId}/cancel:
     post:
@@ -3197,6 +3239,9 @@ components:
           type: integer
         openRequests:
           type: integer
+        pendingProposals:
+          type: integer
+          description: Number of TaktRequests with status ALTERNATIVES_PROPOSED awaiting GU decision.
         overdueRequests:
           type: integer
         expiredRequests:
@@ -3208,6 +3253,7 @@ components:
         - confirmedTakts
         - taktsInCoordination
         - openRequests
+        - pendingProposals
         - overdueRequests
         - expiredRequests
         - revisionRounds
@@ -3424,6 +3470,10 @@ components:
           type: number
         color:
           type: string
+        resourceTypeId:
+          type: string
+          nullable: true
+          description: Optional link to a named resource type. Pass null to clear.
 
     # ── Resource Assignment ──
     ResourceAssignment:
@@ -3639,6 +3689,7 @@ components:
         - TAKT_RESPONSE_REVISION_REQUESTED
         - TAKT_REQUEST_EXPIRED
         - TAKT_REQUEST_REMINDER
+        - DATA_OFFER_PUBLISHED
 
     DataspaceMessageStatus:
       type: string
@@ -4177,8 +4228,12 @@ components:
     TaktRequestDetailResponseAlt:
       type: object
       properties:
+        id:
+          type: string
+          description: Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision.
         alternativeId:
           type: string
+          description: NU-assigned business identifier (e.g. "ALT-001"). For display only — do not submit this as acceptedAlternativeId.
         rank:
           type: integer
         proposedStart:
@@ -4196,6 +4251,7 @@ components:
           items:
             type: string
       required:
+        - id
         - alternativeId
         - rank
         - proposedStart
@@ -4970,6 +5026,7 @@ components:
         A NU-internal resource booking. Never exposed to GU or Hub.
         Internal fields (localProjectId, sourceReferenceId) must not be
         transmitted in TaktRequest responses.
+        resourceId is null for type-level capacity bookings (resourceTypeId set instead).
       properties:
         id:
           type: string
@@ -4977,6 +5034,16 @@ components:
           type: string
         resourceId:
           type: string
+          nullable: true
+          description: Null for type-level capacity bookings; set for concrete-resource bookings.
+        resourceTypeId:
+          type: string
+          nullable: true
+          description: Resource type for DTC capacity bookings. At least one of resourceId or resourceTypeId is always set.
+        quantity:
+          type: integer
+          nullable: true
+          description: Number of units consumed for type-level bookings; null for concrete-resource bookings.
         localProjectId:
           type: string
           nullable: true
@@ -5011,7 +5078,6 @@ components:
       required:
         - id
         - nuOrgId
-        - resourceId
         - sourceType
         - startAt
         - endAt
@@ -5022,11 +5088,24 @@ components:
 
     NuResourceBookingCreate:
       type: object
-      description: Body for POST /nu/resource-bookings
+      description: >
+        Body for POST /nu/resource-bookings.
+        Business rule: at least one of resourceId or resourceTypeId must be provided.
+        For concrete-resource bookings provide resourceId (and optionally resourceTypeId).
+        For type-level capacity bookings provide resourceTypeId (and optionally quantity).
       properties:
         resourceId:
           type: string
           minLength: 1
+          description: Concrete resource to book. Optional when resourceTypeId is supplied.
+        resourceTypeId:
+          type: string
+          minLength: 1
+          description: Resource type for DTC type-level capacity bookings. Optional when resourceId is supplied.
+        quantity:
+          type: integer
+          minimum: 1
+          description: Number of units of the resource type to reserve. Used for type-level bookings.
         localProjectId:
           type: string
         sourceType:
@@ -5052,7 +5131,6 @@ components:
         note:
           type: string
       required:
-        - resourceId
         - sourceType
         - startAt
         - endAt
