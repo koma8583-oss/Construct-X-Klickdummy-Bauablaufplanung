@@ -67,7 +67,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <Hexagon className="w-5 h-5 text-primary fill-primary/20 flex-shrink-0" />
               <div className="min-w-0">
                 <div className="font-bold text-xs text-sidebar-foreground leading-tight tracking-tight truncate">
-                  Construct-X Takt Coordination
+                  Construct-X Lean Construction Scheduling
                 </div>
                 <div className="text-[9px] text-primary uppercase font-bold tracking-wider">
                   Subcontractor

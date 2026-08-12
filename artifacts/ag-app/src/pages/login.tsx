@@ -55,7 +55,7 @@ export default function Login() {
             <Hexagon className="w-8 h-8 text-primary fill-primary/20" />
             <div>
               <div className="font-bold text-lg tracking-tight text-foreground leading-tight">
-                Construct-X Takt Coordination
+                Construct-X Lean Construction Scheduling
               </div>
               <div className="text-[10px] text-primary uppercase font-bold tracking-widest">
                 General Contractor

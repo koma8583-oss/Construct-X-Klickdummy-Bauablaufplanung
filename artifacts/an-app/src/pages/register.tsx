@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "react-i18next";
-import { SiHexo } from "react-icons/si";
-import { Loader2 } from "lucide-react";
+import { Hexagon, Loader2 } from "lucide-react";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -46,86 +45,103 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded bg-primary/20 flex items-center justify-center text-primary mb-4">
-            <SiHexo size={24} />
+    <div className="min-h-screen w-full flex bg-background">
+      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-20 xl:px-24">
+        <div className="mx-auto w-full max-w-sm lg:w-96">
+          <div className="flex items-center gap-3 mb-8">
+            <Hexagon className="w-8 h-8 text-primary fill-primary/20" />
+            <div>
+              <div className="font-bold text-lg tracking-tight text-foreground leading-tight">
+                Construct-X Lean Construction Scheduling
+              </div>
+              <div className="text-[10px] text-primary uppercase font-bold tracking-widest">
+                Subcontractor
+              </div>
+            </div>
           </div>
-          <h1 className="text-lg font-bold tracking-tight">Construct-X Takt Coordination</h1>
-          <p className="text-sm text-primary uppercase font-bold tracking-widest mt-1">
-            Subcontractor
-          </p>
-        </div>
 
-        <div className="bg-card border border-border p-6 rounded-lg shadow-xl">
-          <h2 className="text-lg font-semibold mb-6">{t("auth.register")}</h2>
-          
+          <h2 className="mt-8 text-2xl font-bold tracking-tight text-foreground">
+            {t("auth.register")}
+          </h2>
+
           {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded mb-4">
+            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md text-sm text-destructive">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">{t("auth.name")}</Label>
-              <Input
-                id="name"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-background"
-              />
-            </div>
+          <div className="mt-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="name">{t("auth.name")}</Label>
+                <Input
+                  id="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="bg-card border-card-border"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="companyName">{t("auth.companyName")}</Label>
-              <Input
-                id="companyName"
-                required
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="bg-background"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="companyName">{t("auth.companyName")}</Label>
+                <Input
+                  id="companyName"
+                  required
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="bg-card border-card-border"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">{t("auth.email")}</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-background"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password">{t("auth.password")}</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-background"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">{t("auth.email")}</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-card border-card-border"
+                />
+              </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t("auth.register")}
-            </Button>
-          </form>
+              <div className="space-y-2">
+                <Label htmlFor="password">{t("auth.password")}</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-card border-card-border"
+                />
+              </div>
 
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            {t("auth.haveAccount")}{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              {t("auth.login")}
-            </Link>
+              <Button type="submit" className="w-full mt-2" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t("auth.register")}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center text-sm">
+              <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
+              <Link href="/login">
+                <span className="text-primary hover:text-primary/90 font-medium cursor-pointer">
+                  {t("auth.login")}
+                </span>
+              </Link>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div className="hidden lg:block relative w-0 flex-1 bg-card border-l border-border">
+        <div className="absolute inset-0 h-full w-full object-cover bg-[url('https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=2071&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent"></div>
+        <div className="absolute bottom-12 left-12 right-12 text-foreground">
+          <h3 className="text-2xl font-bold mb-2">Werden Sie Teil des Netzwerks</h3>
+          <p className="text-muted-foreground max-w-lg">Registrieren Sie Ihr Unternehmen und starten Sie mit der digitalen Koordination Ihrer Bauprojekte.</p>
         </div>
       </div>
     </div>

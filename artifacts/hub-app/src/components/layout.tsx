@@ -64,7 +64,7 @@ export function Layout({ children }: LayoutProps) {
             </div>
             <div className="flex flex-col">
               <div className="text-sm font-bold text-sidebar-foreground leading-tight">
-                Construct-X Takt Coordination
+                Construct-X Lean Construction Scheduling
               </div>
               <div className="text-xs text-sidebar-foreground/60 font-medium tracking-wider mt-0.5">
                 HUB

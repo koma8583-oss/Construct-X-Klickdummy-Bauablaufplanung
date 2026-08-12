@@ -44,7 +44,7 @@ export default function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">
-              Construct-X Takt Coordination
+              Construct-X Lean Construction Scheduling
             </CardTitle>
             <CardDescription className="mt-2">
               Melden Sie sich an, um fortzufahren
