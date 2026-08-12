@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link } from 'wouter';
+import { useParams, Link, useLocation } from 'wouter';
 import NetzplanView from '@/components/NetzplanView';
 import { format } from 'date-fns';
 import {
@@ -20,8 +20,10 @@ import {
   useListTaktDependencies,
   useCreateTaktDependency,
   useDeleteTaktDependency,
+  getTaktRequestDetail,
   getListTakteQueryKey,
   getListTaktRequestsQueryKey,
+  getGetTaktRequestDetailQueryKey,
   getGetProjectQueryKey,
   getListProjectContractorsQueryKey,
   getListOrganizationsQueryKey,
@@ -30,8 +32,8 @@ import {
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment } from '@workspace/api-client-react';
+import { useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
 
@@ -55,7 +57,7 @@ import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
-  AlertCircle, Building2, Globe,
+  AlertCircle, Building2, Globe, ArrowRightLeft,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -245,7 +247,8 @@ function makeGanttListTable(
     return (
       <div style={{ fontFamily, fontSize, borderRight: '1px solid hsl(var(--border))' }}>
         {tasks.map((task, idx) => {
-          const lc = taktById.get(task.id)?.lifecycleStatus ?? null;
+          const isAlt = task.id.startsWith('alt-');
+          const lc = !isAlt ? (taktById.get(task.id)?.lifecycleStatus ?? null) : null;
           const lcColor = getLifecycleColor(lc as TaktLifecycleStatus | null);
           const lcLabel = lc ? (LIFECYCLE_LABEL[lc as TaktLifecycleStatus] ?? lc) : null;
           return (
@@ -254,31 +257,45 @@ function makeGanttListTable(
               onClick={() => setSelectedTask(task.id)}
               style={{
                 height: rowHeight, width: rowWidth,
-                display: 'flex', alignItems: 'center', padding: '0 12px', gap: 6,
+                display: 'flex', alignItems: 'center',
+                padding: isAlt ? '0 12px 0 28px' : '0 12px',
+                gap: 6,
                 cursor: 'pointer', userSelect: 'none',
                 borderBottom: '1px solid hsl(var(--border) / 0.4)',
+                borderLeft: isAlt ? '3px solid #f9731680' : undefined,
                 background: task.id === selectedTaskId
                   ? 'hsl(var(--sidebar-accent))'
-                  : idx % 2 === 0 ? 'hsl(var(--background))' : 'hsl(var(--card) / 0.6)',
-                color: 'hsl(var(--foreground))',
+                  : isAlt
+                    ? '#f9731410'
+                    : idx % 2 === 0 ? 'hsl(var(--background))' : 'hsl(var(--card) / 0.6)',
+                color: isAlt ? '#c2410c' : 'hsl(var(--foreground))',
               }}
             >
+              {isAlt && (
+                <span style={{ fontSize: '10px', opacity: 0.8, flexShrink: 0 }}>↩</span>
+              )}
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: '11px' }}>
                 {task.name}
               </div>
-              {lcLabel && lc !== 'PLANNED' && (
+              {isAlt ? (
                 <span style={{
-                  flexShrink: 0,
-                  fontSize: '9px', fontWeight: 600, lineHeight: 1,
+                  flexShrink: 0, fontSize: '9px', fontWeight: 600, lineHeight: 1,
                   padding: '2px 5px', borderRadius: 4,
-                  background: lcColor + '22',
-                  color: lcColor,
-                  border: `1px solid ${lcColor}44`,
+                  background: '#f9731422', color: '#c2410c', border: '1px solid #f9731444',
+                  whiteSpace: 'nowrap',
+                }}>
+                  Vorschlag
+                </span>
+              ) : lcLabel && lc !== 'PLANNED' ? (
+                <span style={{
+                  flexShrink: 0, fontSize: '9px', fontWeight: 600, lineHeight: 1,
+                  padding: '2px 5px', borderRadius: 4,
+                  background: lcColor + '22', color: lcColor, border: `1px solid ${lcColor}44`,
                   whiteSpace: 'nowrap',
                 }}>
                   {lcLabel}
                 </span>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -301,9 +318,12 @@ export default function ProjectDetail() {
   const canManageContractors = !user?.roles.length || hasRole('AG_ADMIN');
   const canManageTaktRequests = !user?.roles.length || hasRole('AG_ADMIN', 'GENERAL_PLANNER');
 
+  const [, setLocation] = useLocation();
+
   const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan'>('gantt');
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
   const [selectedTaktId, setSelectedTaktId] = useState<string | null>(null);
+  const [showAlternatives, setShowAlternatives] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
@@ -377,7 +397,15 @@ export default function ProjectDetail() {
   const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
   const [vergabeResponseRequiredByError, setVergabeResponseRequiredByError] = useState<string>('');
 
-  // State for new AN assignment dialog
+  // State for new AN assignment dialog (controlled form)
+  const [newAnOrgId, setNewAnOrgId] = useState('');
+  const [newTrades, setNewTrades] = useState<string[]>([]);
+  const [newTradeInput, setNewTradeInput] = useState('');
+  const [newWorkPackage, setNewWorkPackage] = useState('');
+  const [newValidFrom, setNewValidFrom] = useState('');
+  const [newValidTo, setNewValidTo] = useState('');
+  const [newAssignmentStatus, setNewAssignmentStatus] = useState<'PLANNED' | 'ACTIVE'>('PLANNED');
+
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
   // Dataspace publication wizard
@@ -439,13 +467,36 @@ export default function ProjectDetail() {
     [activeConflicts],
   );
 
-  // Gantt tasks with dependency arrows
+  // TaktRequests with ALTERNATIVES_PROPOSED status for this project
+  const proposalRequests = useMemo(
+    () => (taktRequests ?? []).filter(
+      r => r.status === 'ALTERNATIVES_PROPOSED' && r.projectId === projectId,
+    ),
+    [taktRequests, projectId],
+  );
+
+  // Batch-fetch detail for each proposal (typically 0–3 at a time)
+  const proposalDetailResults = useQueries({
+    queries: proposalRequests.map(r => ({
+      queryKey: getGetTaktRequestDetailQueryKey(r.id),
+      queryFn: () => getTaktRequestDetail(r.id),
+      staleTime: 30_000,
+      enabled: showAlternatives && proposalRequests.length > 0,
+    })),
+  });
+
+  const proposalDetails = useMemo(
+    () => proposalDetailResults.map(r => r.data).filter((d): d is TaktRequestDetail => !!d),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [proposalDetailResults.map(r => r.dataUpdatedAt).join(',')],
+  );
+
+  // Gantt tasks with dependency arrows + interleaved alternative bars
   const ganttTasks: Task[] = useMemo(() => {
     if (!takte || takte.length === 0) return [];
-    return takte.map(takt => {
+
+    const baseTasks = takte.map(takt => {
       const color = getTaktColor(takt.status);
-      // All predecessor IDs — the library renders finish-to-start arrows for these;
-      // dep type (EA/AA/EE) and lag are shown in the custom TooltipContent.
       const predecessorIds = (depsBySuccessor.get(takt.id) ?? []).map(d => d.predecessorId);
       const isConflict = conflictTaktIdSet.has(takt.id);
       return {
@@ -470,9 +521,44 @@ export default function ProjectDetail() {
               backgroundColor: color + '80',
               backgroundSelectedColor: color + 'aa',
             },
-      };
+      } satisfies Task;
     }).sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [takte, depsBySuccessor, conflictTaktIdSet]);
+
+    if (!showAlternatives || proposalDetails.length === 0) return baseTasks;
+
+    // Build map: taktId → alternative Task[]
+    const altsByTaktId = new Map<string, Task[]>();
+    for (const detail of proposalDetails) {
+      if (!detail.response?.alternatives?.length) continue;
+      const taktId = detail.taktId;
+      const alts: Task[] = detail.response.alternatives.map(alt => ({
+        id: `alt-${detail.id}-${alt.id}`,
+        name: `Alt. ${alt.rank} — ${detail.nuOrgName}`,
+        start: new Date(alt.proposedStart as string),
+        end: new Date(alt.proposedEnd as string),
+        type: 'task' as const,
+        progress: 100,
+        isDisabled: false,
+        dependencies: [],
+        styles: {
+          progressColor: '#f97316',
+          progressSelectedColor: '#ea6c00',
+          backgroundColor: '#f9731438',
+          backgroundSelectedColor: '#f9731460',
+        },
+      }));
+      altsByTaktId.set(taktId, alts);
+    }
+
+    // Interleave: insert alt tasks immediately after their parent Takt row
+    const combined: Task[] = [];
+    for (const task of baseTasks) {
+      combined.push(task);
+      const alts = altsByTaktId.get(task.id);
+      if (alts) combined.push(...alts);
+    }
+    return combined;
+  }, [takte, depsBySuccessor, conflictTaktIdSet, showAlternatives, proposalDetails]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
@@ -484,6 +570,29 @@ export default function ProjectDetail() {
       .filter(r => r.taktId === selectedTaktId && r.status !== 'EXPIRED')
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
   }, [taktRequests, selectedTaktId]);
+
+  // Group takt requests by nuOrgId, filtered to this project
+  const projectRequestsByAnOrg = useMemo(() => {
+    const map = new Map<string, TaktRequestListItem[]>();
+    for (const r of (taktRequests ?? [])) {
+      if (r.projectId !== projectId) continue;
+      const list = map.get(r.nuOrgId) ?? [];
+      list.push(r);
+      map.set(r.nuOrgId, list);
+    }
+    return map;
+  }, [taktRequests, projectId]);
+
+  // Group assignments by anOrgId
+  const assignmentsByAnOrg = useMemo(() => {
+    const map = new Map<string, ProjectSubcontractorAssignment[]>();
+    for (const a of (assignments ?? [])) {
+      const list = map.get(a.anOrgId) ?? [];
+      list.push(a);
+      map.set(a.anOrgId, list);
+    }
+    return map;
+  }, [assignments]);
 
   // Predecessors for the info panel (read-only display)
   const selectedTaktPredecessors = useMemo(
@@ -519,8 +628,18 @@ export default function ProjectDetail() {
     );
   }, [dataPublications, selectedTakt, vergabeAnOrgId]);
 
-  function handleGanttClick(taktId: string) {
-    setSelectedTaktId(taktId);
+  function handleGanttClick(taskId: string) {
+    if (taskId.startsWith('alt-')) {
+      // alt-{requestId}-{altId} — navigate directly to the request detail
+      const requestId = taskId.split('-').slice(1, -1).join('-');
+      // requestId is a UUID (5 parts separated by -), altId is also a UUID
+      // Pattern: alt-{uuid-5parts}-{uuid-5parts} → split on 'alt-' prefix, then take first UUID
+      const parts = taskId.slice(4); // remove "alt-"
+      const requestUuid = parts.slice(0, 36); // first UUID is 36 chars
+      setLocation(`/takt-requests/${requestUuid}`);
+      return;
+    }
+    setSelectedTaktId(taskId);
     setIsVergabeOpen(false);
   }
 
@@ -779,27 +898,60 @@ export default function ProjectDetail() {
     }
   };
 
+  const resetNewAssignmentForm = () => {
+    setNewAnOrgId('');
+    setNewTrades([]);
+    setNewTradeInput('');
+    setNewWorkPackage('');
+    setNewValidFrom('');
+    setNewValidTo('');
+    setNewAssignmentStatus('PLANNED');
+  };
+
+  const handleAddTrade = () => {
+    const val = newTradeInput.trim();
+    if (val && !newTrades.includes(val)) setNewTrades(prev => [...prev, val]);
+    setNewTradeInput('');
+  };
+
   const handleCreateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    createAssignment.mutate({
-      projectId,
-      data: {
-        anOrgId: fd.get('anOrgId') as string,
-        trade: (fd.get('trade') as string) || undefined,
-        workPackageReference: (fd.get('workPackageReference') as string) || undefined,
-        validFrom: (fd.get('validFrom') as string) || undefined,
-        validTo: (fd.get('validTo') as string) || undefined,
-        assignmentStatus: (fd.get('assignmentStatus') as 'PLANNED' | 'ACTIVE') || 'ACTIVE',
-      }
-    }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
-        toast({ title: 'AN-Zuordnung angelegt' });
+    // One assignment per trade; if no trades → one assignment for all trades (trade: null)
+    const tradesToCreate: (string | undefined)[] = newTrades.length > 0 ? newTrades : [undefined];
+    let remaining = tradesToCreate.length;
+    let successCount = 0;
+
+    const onDone = (success: boolean) => {
+      if (success) successCount++;
+      remaining--;
+      if (remaining > 0) return;
+      queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
+      if (successCount > 0) {
+        toast({ title: successCount > 1 ? `${successCount} Zuordnungen angelegt` : 'AN-Zuordnung angelegt' });
         setIsAssignAnOpen(false);
-      },
-      onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
-    });
+        resetNewAssignmentForm();
+      }
+    };
+
+    for (const trade of tradesToCreate) {
+      createAssignment.mutate({
+        projectId,
+        data: {
+          anOrgId: newAnOrgId,
+          trade: trade ?? undefined,
+          workPackageReference: newWorkPackage || undefined,
+          validFrom: newValidFrom || undefined,
+          validTo: newValidTo || undefined,
+          assignmentStatus: newAssignmentStatus,
+        }
+      }, {
+        onSuccess: () => onDone(true),
+        onError: (err) => {
+          toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
+          onDone(false);
+        }
+      });
+    }
   };
 
   const handleUpdateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
@@ -1103,18 +1255,35 @@ export default function ProjectDetail() {
             </button>
           </div>
 
-          {/* Gantt view-mode selector — only shown on Gantt tab */}
+          {/* Gantt controls — only shown on Gantt tab */}
           {activeChartTab === 'gantt' && (
-            <Select value={viewMode} onValueChange={(val) => setViewMode(val as ViewMode)}>
-              <SelectTrigger className="w-full sm:w-[120px] h-8 text-xs shrink-0">
-                <SelectValue placeholder="Ansicht" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ViewMode.Day}>Tag</SelectItem>
-                <SelectItem value={ViewMode.Week}>Woche</SelectItem>
-                <SelectItem value={ViewMode.Month}>Monat</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Alternativvorschläge toggle */}
+              {proposalRequests.length > 0 && (
+                <button
+                  onClick={() => setShowAlternatives(v => !v)}
+                  className={`flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium border transition-colors ${
+                    showAlternatives
+                      ? 'bg-orange-500/10 border-orange-400/40 text-orange-700'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                  }`}
+                  title={showAlternatives ? 'Alternativvorschläge ausblenden' : 'Alternativvorschläge einblenden'}
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  {proposalRequests.length} Gegenvorschlag{proposalRequests.length !== 1 ? 'schläge' : ''}
+                </button>
+              )}
+              <Select value={viewMode} onValueChange={(val) => setViewMode(val as ViewMode)}>
+                <SelectTrigger className="w-full sm:w-[120px] h-8 text-xs">
+                  <SelectValue placeholder="Ansicht" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ViewMode.Day}>Tag</SelectItem>
+                  <SelectItem value={ViewMode.Week}>Woche</SelectItem>
+                  <SelectItem value={ViewMode.Month}>Monat</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 
@@ -1211,115 +1380,210 @@ export default function ProjectDetail() {
         )}
 
         {/* ── AN-Zuordnungen panel ──────────────────────────────────────── */}
-        {(activeChartTab as string) === 'an-zuordnungen' && (
-          <div className="flex-1 overflow-auto p-4">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">
-                Nachunternehmen, die für dieses Projekt zugeordnet sind
-              </p>
-              <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
-                <Plus className="w-4 h-4 mr-1.5" />
-                AN zuordnen
-              </Button>
-            </div>
+        {(activeChartTab as string) === 'an-zuordnungen' && (() => {
+          const assignmentStatusLabel: Record<string, string> = {
+            ACTIVE: 'Aktiv', PLANNED: 'Geplant', INACTIVE: 'Inaktiv',
+            COMPLETED: 'Abgeschlossen', CANCELLED: 'Storniert',
+          };
+          const assignmentStatusClass: Record<string, string> = {
+            ACTIVE: 'bg-green-500/15 text-green-700 dark:text-green-400',
+            PLANNED: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+            INACTIVE: 'bg-muted text-muted-foreground',
+            COMPLETED: 'bg-muted text-muted-foreground',
+            CANCELLED: 'bg-destructive/10 text-destructive',
+          };
+          const requestStatusLabel: Record<string, string> = {
+            DRAFT: 'Entwurf', SENT: 'Gesendet', DELIVERED: 'Zugestellt',
+            DETAILS_RETRIEVED: 'Abgerufen', UNDER_REVIEW: 'In Prüfung',
+            ACCEPTED: 'Angenommen', ALTERNATIVES_PROPOSED: 'Gegenvorschlag',
+            REJECTED: 'Abgelehnt', REVISION_REQUIRED: 'Revision',
+            CANCELLED: 'Storniert', EXPIRED: 'Abgelaufen', SUPERSEDED: 'Ersetzt',
+          };
+          const requestStatusClass: Record<string, string> = {
+            DRAFT: 'bg-muted text-muted-foreground',
+            SENT: 'bg-blue-500/12 text-blue-700 dark:text-blue-400',
+            DELIVERED: 'bg-blue-500/12 text-blue-700 dark:text-blue-400',
+            DETAILS_RETRIEVED: 'bg-blue-500/12 text-blue-700 dark:text-blue-400',
+            UNDER_REVIEW: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+            ACCEPTED: 'bg-green-500/15 text-green-700 dark:text-green-400',
+            ALTERNATIVES_PROPOSED: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+            REJECTED: 'bg-destructive/10 text-destructive',
+            REVISION_REQUIRED: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+            CANCELLED: 'bg-muted text-muted-foreground',
+            EXPIRED: 'bg-muted text-muted-foreground',
+            SUPERSEDED: 'bg-muted text-muted-foreground',
+          };
 
-            {!assignments || assignments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-14 h-14 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                  <Users className="w-7 h-7 text-muted-foreground" />
-                </div>
-                <h3 className="font-medium text-base mb-1">Noch keine Nachunternehmen zugeordnet</h3>
-                <p className="text-sm text-muted-foreground max-w-xs mb-5">
-                  Ordnen Sie Nachunternehmen zu, um Takte an sie zu vergeben.
+          // unique ANs in assignment order
+          const seenOrgIds = new Set<string>();
+          const uniqueAnOrgs: string[] = [];
+          for (const a of (assignments ?? [])) {
+            if (!seenOrgIds.has(a.anOrgId)) {
+              seenOrgIds.add(a.anOrgId);
+              uniqueAnOrgs.push(a.anOrgId);
+            }
+          }
+
+          return (
+            <div className="flex-1 overflow-auto p-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-muted-foreground">
+                  Zuordnungen und Taktanfragen pro Nachunternehmen
                 </p>
                 <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
                   <Plus className="w-4 h-4 mr-1.5" />
-                  Erstes AN zuordnen
+                  AN zuordnen
                 </Button>
               </div>
-            ) : (
-              <div className="rounded-lg border border-border overflow-hidden bg-card">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Nachunternehmen</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Gewerk</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Arbeitspaket</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Status</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Gültig von – bis</th>
-                      <th className="px-4 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assignments.map((a, idx) => {
-                      const statusLabel: Record<string, string> = {
-                        ACTIVE: 'Aktiv', PLANNED: 'Geplant', INACTIVE: 'Inaktiv',
-                        COMPLETED: 'Abgeschlossen', CANCELLED: 'Storniert',
-                      };
-                      const statusClass: Record<string, string> = {
-                        ACTIVE: 'bg-green-500/15 text-green-700 dark:text-green-400',
-                        PLANNED: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
-                        INACTIVE: 'bg-muted text-muted-foreground',
-                        COMPLETED: 'bg-muted text-muted-foreground',
-                        CANCELLED: 'bg-destructive/10 text-destructive',
-                      };
-                      const canDeactivate = a.assignmentStatus === 'ACTIVE' || a.assignmentStatus === 'PLANNED';
-                      return (
-                        <tr
-                          key={a.id}
-                          className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}
-                        >
-                          <td className="px-4 py-3 font-medium">{a.anName ?? a.anOrgId}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{a.trade || '–'}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{a.workPackageReference || '–'}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass[a.assignmentStatus] ?? 'bg-muted text-muted-foreground'}`}>
-                              {statusLabel[a.assignmentStatus] ?? a.assignmentStatus}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs">
-                            {a.validFrom
-                              ? format(new Date(a.validFrom), 'dd.MM.yyyy')
-                              : '–'}
-                            {' – '}
-                            {a.validTo
-                              ? format(new Date(a.validTo), 'dd.MM.yyyy')
-                              : 'offen'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Zuordnung bearbeiten"
-                                onClick={() => setEditAssignmentId(a.id)}
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </Button>
-                              {canDeactivate && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                  title="Zuordnung deaktivieren"
-                                  onClick={() => handleDeactivateAssignment(a.id)}
-                                >
-                                  <XCircle className="w-3.5 h-3.5" />
-                                </Button>
-                              )}
+
+              {uniqueAnOrgs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="w-14 h-14 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Users className="w-7 h-7 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-medium text-base mb-1">Noch keine Nachunternehmen zugeordnet</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs mb-5">
+                    Ordnen Sie Nachunternehmen zu, um Takte an sie zu vergeben.
+                  </p>
+                  <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Erstes AN zuordnen
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {uniqueAnOrgs.map(anOrgId => {
+                    const anAssignments = assignmentsByAnOrg.get(anOrgId) ?? [];
+                    const anRequests = (projectRequestsByAnOrg.get(anOrgId) ?? [])
+                      .filter(r => r.status !== 'SUPERSEDED')
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                    const anName = anAssignments[0]?.anName ?? anOrgId;
+                    const activeCount = anAssignments.filter(a => a.assignmentStatus === 'ACTIVE').length;
+
+                    return (
+                      <div key={anOrgId} className="rounded-lg border border-border bg-card overflow-hidden">
+                        {/* Card header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                              <Building2 className="w-4 h-4 text-primary" />
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate">{anName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {activeCount > 0
+                                  ? `${activeCount} aktive Zuordnung${activeCount !== 1 ? 'en' : ''}`
+                                  : 'Keine aktiven Zuordnungen'}
+                                {anRequests.length > 0 && ` · ${anRequests.length} Taktanfrage${anRequests.length !== 1 ? 'n' : ''}`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Assignments */}
+                        <div className="px-4 pt-3 pb-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                            Zuordnungen
+                          </p>
+                          <div className="flex flex-col gap-1.5">
+                            {anAssignments.map(a => (
+                              <div key={a.id} className="flex items-center gap-2 text-sm">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${assignmentStatusClass[a.assignmentStatus] ?? 'bg-muted text-muted-foreground'}`}>
+                                  {assignmentStatusLabel[a.assignmentStatus] ?? a.assignmentStatus}
+                                </span>
+                                <span className="text-muted-foreground shrink-0">
+                                  {a.trade || <span className="italic opacity-60">Alle Gewerke</span>}
+                                </span>
+                                {a.workPackageReference && (
+                                  <>
+                                    <span className="text-border">·</span>
+                                    <span className="text-muted-foreground text-xs">{a.workPackageReference}</span>
+                                  </>
+                                )}
+                                <span className="text-border mx-1">·</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {a.validFrom ? format(new Date(a.validFrom), 'dd.MM.yy') : '–'}
+                                  {' – '}
+                                  {a.validTo ? format(new Date(a.validTo), 'dd.MM.yy') : 'offen'}
+                                </span>
+                                <div className="ml-auto flex items-center gap-0.5">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6" title="Bearbeiten"
+                                    onClick={() => setEditAssignmentId(a.id)}>
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                  {(a.assignmentStatus === 'ACTIVE' || a.assignmentStatus === 'PLANNED') && (
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                      title="Deaktivieren" onClick={() => handleDeactivateAssignment(a.id)}>
+                                      <XCircle className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* TaktRequests */}
+                        <div className="px-4 pb-3 pt-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 mt-1">
+                            Taktanfragen
+                          </p>
+                          {anRequests.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">Noch keine Taktanfragen für dieses Projekt</p>
+                          ) : (
+                            <div className="rounded-md border border-border overflow-hidden">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-border bg-muted/30">
+                                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">Vorgang</th>
+                                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">Gewerk</th>
+                                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">Termin</th>
+                                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
+                                    <th className="px-3 py-2" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {anRequests.map((r, idx) => {
+                                    const taktInfo = takte?.find(t => t.id === r.taktId);
+                                    return (
+                                    <tr key={r.id}
+                                      className={`border-b border-border/60 last:border-0 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                                      <td className="px-3 py-2 font-medium">{r.taktBezeichnung}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{taktInfo?.gewerk ?? '–'}</td>
+                                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                                        {taktInfo?.plannedStart && taktInfo?.plannedEnd
+                                          ? `${format(new Date(taktInfo.plannedStart), 'dd.MM.yy')} – ${format(new Date(taktInfo.plannedEnd), 'dd.MM.yy')}`
+                                          : '–'}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${requestStatusClass[r.status] ?? 'bg-muted text-muted-foreground'}`}>
+                                          {requestStatusLabel[r.status] ?? r.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        <button
+                                          onClick={() => setLocation(`/takt-requests/${r.id}`)}
+                                          className="text-primary hover:underline text-xs font-medium"
+                                        >
+                                          Öffnen →
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Info Side Panel ─────────────────────────────────────────────────── */}
@@ -2184,17 +2448,18 @@ export default function ProjectDetail() {
         </DialogContent>
       </Dialog>
       {/* ── Assign AN Dialog ────────────────────────────────────────────────── */}
-      <Dialog open={isAssignAnOpen} onOpenChange={setIsAssignAnOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={isAssignAnOpen} onOpenChange={(open) => { setIsAssignAnOpen(open); if (!open) resetNewAssignmentForm(); }}>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>AN zuordnen</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateAssignment} className="space-y-4 py-4">
+            {/* AN selection */}
             <div className="space-y-2">
               <Label>Nachunternehmen</Label>
-              <Select name="anOrgId" required>
+              <Select value={newAnOrgId} onValueChange={setNewAnOrgId} required>
                 <SelectTrigger>
-                  <SelectValue placeholder="Wählen Sie ein Nachunternehmen..." />
+                  <SelectValue placeholder="Nachunternehmen wählen…" />
                 </SelectTrigger>
                 <SelectContent>
                   {allAnOrgs?.map(org => (
@@ -2203,29 +2468,76 @@ export default function ProjectDetail() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Gewerk (optional)</Label>
-                <Input name="trade" placeholder="z.B. Trockenbau" />
+
+            {/* Multi-trade input */}
+            <div className="space-y-2">
+              <Label>Gewerke <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newTradeInput}
+                  onChange={(e) => setNewTradeInput(e.target.value)}
+                  placeholder="z.B. Trockenbau, Estrich …"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTrade(); } }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 px-3"
+                  onClick={handleAddTrade}
+                  disabled={!newTradeInput.trim()}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label>Arbeitspaket (optional)</Label>
-                <Input name="workPackageReference" placeholder="z.B. AP-12" />
-              </div>
+              {/* Trade chips */}
+              {newTrades.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {newTrades.map(trade => (
+                    <span key={trade} className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+                      {trade}
+                      <button
+                        type="button"
+                        onClick={() => setNewTrades(prev => prev.filter(t => t !== trade))}
+                        className="rounded-full hover:bg-primary/20 p-0.5 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {newTrades.length === 0
+                  ? 'Ohne Gewerk → eine Zuordnung für alle Gewerke.'
+                  : `Es werden ${newTrades.length} Zuordnung${newTrades.length !== 1 ? 'en' : ''} angelegt (je eine pro Gewerk).`}
+              </p>
             </div>
+
+            {/* Work package + dates */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Gültig ab (optional)</Label>
-                <Input type="date" name="validFrom" />
+                <Label>Gültig ab <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input type="date" value={newValidFrom} onChange={(e) => setNewValidFrom(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Gültig bis (optional)</Label>
-                <Input type="date" name="validTo" />
+                <Label>Gültig bis <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input type="date" value={newValidTo} onChange={(e) => setNewValidTo(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
+              <Label>Arbeitspaket-Referenz <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input
+                value={newWorkPackage}
+                onChange={(e) => setNewWorkPackage(e.target.value)}
+                placeholder="z.B. AP-12"
+              />
+            </div>
+
+            {/* Status */}
+            <div className="space-y-2">
               <Label>Status</Label>
-              <Select name="assignmentStatus" defaultValue="PLANNED" required>
+              <Select value={newAssignmentStatus} onValueChange={(v) => setNewAssignmentStatus(v as 'PLANNED' | 'ACTIVE')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -2235,9 +2547,14 @@ export default function ProjectDetail() {
                 </SelectContent>
               </Select>
             </div>
+
             <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => setIsAssignAnOpen(false)}>Abbrechen</Button>
-              <Button type="submit" disabled={createAssignment.isPending}>Zuordnen</Button>
+              <Button type="button" variant="outline" onClick={() => { setIsAssignAnOpen(false); resetNewAssignmentForm(); }}>
+                Abbrechen
+              </Button>
+              <Button type="submit" disabled={!newAnOrgId || createAssignment.isPending}>
+                {newTrades.length > 1 ? `${newTrades.length} Zuordnungen anlegen` : 'Zuordnen'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
