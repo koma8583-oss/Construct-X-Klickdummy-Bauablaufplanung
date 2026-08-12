@@ -299,6 +299,27 @@ function UnifiedGantt({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<GanttItem | null>(null);
 
+  // IDs of booking bars that belong to the currently selected Takt bar
+  const highlightedBookingIds = useMemo(() => {
+    if (!selectedItem || selectedItem.kind !== "takt") return new Set<string>();
+    const taktId = selectedItem.data.id;
+    const ids = new Set<string>();
+    sections.forEach((section) =>
+      section.groups.forEach((group) =>
+        group.items.forEach((item) => {
+          if (
+            item.kind === "booking" &&
+            item.data.sourceType === "TAKT_REQUEST" &&
+            item.data.sourceReferenceId === taktId
+          ) {
+            ids.add(item.data.id);
+          }
+        }),
+      ),
+    );
+    return ids;
+  }, [selectedItem, sections]);
+
   // Expand all groups once sections are known
   useEffect(() => {
     const ids = new Set<string>();
@@ -539,6 +560,11 @@ function UnifiedGantt({
                         ? selectedItem.kind === "takt" && selectedItem.data.id === row.item.data.id
                         : selectedItem.kind === "booking" && selectedItem.data.id === row.item.data.id);
 
+                    const isHighlighted =
+                      !isSelected &&
+                      row.item.kind === "booking" &&
+                      highlightedBookingIds.has(row.item.data.id);
+
                     let startAt: string, endAt: string, color: string, label: string, dimmed = false;
 
                     if (row.item.kind === "takt") {
@@ -565,14 +591,23 @@ function UnifiedGantt({
                         style={{
                           position: "absolute", top: "50%", transform: "translateY(-50%)",
                           left, width, height: 22, borderRadius: 4,
-                          background: color, opacity: dimmed ? 0.35 : 0.88,
+                          background: color,
+                          opacity: isHighlighted ? 1 : dimmed ? 0.35 : 0.88,
                           cursor: "pointer", display: "flex", alignItems: "center",
                           paddingLeft: 5, overflow: "hidden", fontSize: 10,
-                          color: "#fff", fontWeight: 500, zIndex: 2,
-                          outline: isSelected ? "2px solid hsl(var(--foreground))" : undefined,
-                          outlineOffset: 1,
-                          boxShadow: isSelected ? "0 0 0 2px hsl(var(--background))" : undefined,
-                          transition: "opacity 0.1s",
+                          color: "#fff", fontWeight: 500, zIndex: isHighlighted ? 3 : 2,
+                          outline: isSelected
+                            ? "2px solid hsl(var(--foreground))"
+                            : isHighlighted
+                            ? "2px solid #6366f1"
+                            : undefined,
+                          outlineOffset: isHighlighted ? 2 : 1,
+                          boxShadow: isSelected
+                            ? "0 0 0 2px hsl(var(--background))"
+                            : isHighlighted
+                            ? "0 0 0 2px hsl(var(--background)), 0 0 10px 3px rgba(99,102,241,0.55)"
+                            : undefined,
+                          transition: "opacity 0.15s, box-shadow 0.15s, outline 0.15s",
                         }}
                       >
                         {width > 30 ? label : ""}
