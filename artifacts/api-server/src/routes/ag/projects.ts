@@ -220,6 +220,7 @@ router.get("/ag/projects/:projectId/overview", async (req, res): Promise<void> =
       confirmedTakts:      sql<number>`COUNT(DISTINCT t.id) FILTER (WHERE t.lifecycle_status = 'CONFIRMED')`.as("confirmed_takts"),
       taktsInCoordination: sql<number>`COUNT(DISTINCT tr.takt_id) FILTER (WHERE tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED'))`.as("takts_in_coordination"),
       openRequests:        sql<number>`COUNT(tr.id) FILTER (WHERE tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("open_requests"),
+      pendingProposals:    sql<number>`COUNT(tr.id) FILTER (WHERE tr.status = 'ALTERNATIVES_PROPOSED')`.as("pending_proposals"),
       overdueRequests:     sql<number>`COUNT(tr.id) FILTER (WHERE tr.response_required_by < now() AND tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("overdue_requests"),
       expiredRequests:     sql<number>`COUNT(tr.id) FILTER (WHERE tr.status = 'EXPIRED')`.as("expired_requests"),
       revisionRounds:      sql<number>`COUNT(tr.id) FILTER (WHERE tr.supersedes_request_id IS NOT NULL)`.as("revision_rounds"),
@@ -267,7 +268,7 @@ router.get("/ag/projects/:projectId/overview", async (req, res): Promise<void> =
     assignedAn,
     coordination: coordRow ?? {
       numberOfTakts: 0, confirmedTakts: 0, taktsInCoordination: 0,
-      openRequests: 0, overdueRequests: 0, expiredRequests: 0, revisionRounds: 0,
+      openRequests: 0, pendingProposals: 0, overdueRequests: 0, expiredRequests: 0, revisionRounds: 0,
     },
     recentRequests,
   });

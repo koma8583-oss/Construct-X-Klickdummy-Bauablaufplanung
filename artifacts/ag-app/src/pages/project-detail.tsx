@@ -858,7 +858,7 @@ export default function ProjectDetail() {
         <div className="flex flex-wrap items-center gap-3">
           <Link href={`/projects/${projectId}/proposals`}>
             <Button variant="outline" className="relative">
-              {projectOverview.coordination.openRequests > 0 && (
+              {(projectOverview.coordination.pendingProposals ?? 0) > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
@@ -1206,6 +1206,117 @@ export default function ProjectDetail() {
               <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
             ) : (
               <NetzplanView takte={takte ?? []} deps={deps ?? []} />
+            )}
+          </div>
+        )}
+
+        {/* ── AN-Zuordnungen panel ──────────────────────────────────────── */}
+        {(activeChartTab as string) === 'an-zuordnungen' && (
+          <div className="flex-1 overflow-auto p-4">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted-foreground">
+                Nachunternehmen, die für dieses Projekt zugeordnet sind
+              </p>
+              <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
+                <Plus className="w-4 h-4 mr-1.5" />
+                AN zuordnen
+              </Button>
+            </div>
+
+            {!assignments || assignments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="w-14 h-14 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <Users className="w-7 h-7 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium text-base mb-1">Noch keine Nachunternehmen zugeordnet</h3>
+                <p className="text-sm text-muted-foreground max-w-xs mb-5">
+                  Ordnen Sie Nachunternehmen zu, um Takte an sie zu vergeben.
+                </p>
+                <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Erstes AN zuordnen
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border overflow-hidden bg-card">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Nachunternehmen</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Gewerk</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Arbeitspaket</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Status</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Gültig von – bis</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assignments.map((a, idx) => {
+                      const statusLabel: Record<string, string> = {
+                        ACTIVE: 'Aktiv', PLANNED: 'Geplant', INACTIVE: 'Inaktiv',
+                        COMPLETED: 'Abgeschlossen', CANCELLED: 'Storniert',
+                      };
+                      const statusClass: Record<string, string> = {
+                        ACTIVE: 'bg-green-500/15 text-green-700 dark:text-green-400',
+                        PLANNED: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+                        INACTIVE: 'bg-muted text-muted-foreground',
+                        COMPLETED: 'bg-muted text-muted-foreground',
+                        CANCELLED: 'bg-destructive/10 text-destructive',
+                      };
+                      const canDeactivate = a.assignmentStatus === 'ACTIVE' || a.assignmentStatus === 'PLANNED';
+                      return (
+                        <tr
+                          key={a.id}
+                          className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}
+                        >
+                          <td className="px-4 py-3 font-medium">{a.anName ?? a.anOrgId}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{a.trade || '–'}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{a.workPackageReference || '–'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass[a.assignmentStatus] ?? 'bg-muted text-muted-foreground'}`}>
+                              {statusLabel[a.assignmentStatus] ?? a.assignmentStatus}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {a.validFrom
+                              ? format(new Date(a.validFrom), 'dd.MM.yyyy')
+                              : '–'}
+                            {' – '}
+                            {a.validTo
+                              ? format(new Date(a.validTo), 'dd.MM.yyyy')
+                              : 'offen'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Zuordnung bearbeiten"
+                                onClick={() => setEditAssignmentId(a.id)}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              {canDeactivate && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  title="Zuordnung deaktivieren"
+                                  onClick={() => handleDeactivateAssignment(a.id)}
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}

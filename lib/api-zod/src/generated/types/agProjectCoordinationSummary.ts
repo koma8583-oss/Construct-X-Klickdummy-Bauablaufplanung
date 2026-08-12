@@ -11,6 +11,7 @@ export interface AgProjectCoordinationSummary {
   confirmedTakts: number;
   taktsInCoordination: number;
   openRequests: number;
+  pendingProposals: number;
   overdueRequests: number;
   expiredRequests: number;
   revisionRounds: number;
