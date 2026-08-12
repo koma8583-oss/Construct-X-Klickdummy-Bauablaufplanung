@@ -320,6 +320,19 @@ export function UnifiedGantt({
     return ids;
   }, [selectedItem, sections]);
 
+  // ID of the Takt bar that the currently selected booking bar originated from
+  const highlightedTaktId = useMemo(() => {
+    if (
+      !selectedItem ||
+      selectedItem.kind !== "booking" ||
+      selectedItem.data.sourceType !== "TAKT_REQUEST" ||
+      !selectedItem.data.sourceReferenceId
+    ) {
+      return null;
+    }
+    return selectedItem.data.sourceReferenceId;
+  }, [selectedItem]);
+
   // Expand all groups once sections are known
   useEffect(() => {
     const ids = new Set<string>();
@@ -562,8 +575,10 @@ export function UnifiedGantt({
 
                     const isHighlighted =
                       !isSelected &&
-                      row.item.kind === "booking" &&
-                      highlightedBookingIds.has(row.item.data.id);
+                      (row.item.kind === "booking"
+                        ? highlightedBookingIds.has(row.item.data.id)
+                        : row.item.kind === "takt" &&
+                          highlightedTaktId === row.item.data.id);
 
                     let startAt: string, endAt: string, color: string, label: string, dimmed = false;
 
