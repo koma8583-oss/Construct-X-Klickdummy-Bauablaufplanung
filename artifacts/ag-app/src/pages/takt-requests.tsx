@@ -10,7 +10,6 @@ import {
   type MessageOutboxStatus,
 } from '@workspace/api-client-react';
 import {
-  Send,
   AlertTriangle,
   Clock,
   CheckCircle,
@@ -21,20 +20,20 @@ import {
   ArrowRightLeft,
   Ban,
   Loader2,
+  Building2,
+  FolderOpen,
+  Calendar,
 } from 'lucide-react';
 import { DeadlineStatusBadge } from '@/components/deadline-status-badge';
 import { classifyDeadline } from '@/lib/deadline-utils';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { ChevronDown } from 'lucide-react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  AccordionContent,
+  AccordionItem,
+} from '@/components/ui/accordion';
 import {
   Select,
   SelectContent,
@@ -49,12 +48,12 @@ type OpenClosedFilter = 'ALL' | 'OPEN' | 'CLOSED';
 
 type DeadlineFilter =
   | 'ALL'
-  | 'DUE_SOON'           // bald fällig (≤ 48h)
-  | 'DUE_TODAY'          // heute fällig (≤ 8h)
-  | 'OVERDUE'            // Antwortfrist überschritten
-  | 'EXPIRED'            // abgelaufen
-  | 'GU_DECISION'        // GU-Entscheidung ausstehend (guDecisionRequiredBy gesetzt & keine Entscheidung)
-  | 'FAILED';            // technische Zustellung fehlgeschlagen
+  | 'DUE_SOON'
+  | 'DUE_TODAY'
+  | 'OVERDUE'
+  | 'EXPIRED'
+  | 'GU_DECISION'
+  | 'FAILED';
 
 const DEADLINE_FILTER_LABELS: Record<DeadlineFilter, string> = {
   ALL:         'Alle Fristen',
@@ -88,162 +87,79 @@ function matchesDeadlineFilter(item: TaktRequestListItem, f: DeadlineFilter): bo
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
 const OPEN_STATUSES = new Set<TaktRequestStatus>([
-  'DRAFT',
-  'SENT',
-  'DELIVERED',
-  'DETAILS_RETRIEVED',
-  'UNDER_REVIEW',
-  'ALTERNATIVES_PROPOSED',
-  'REVISION_REQUIRED',
+  'DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED',
+  'UNDER_REVIEW', 'ALTERNATIVES_PROPOSED', 'REVISION_REQUIRED',
 ]);
 
 const CLOSED_STATUSES = new Set<TaktRequestStatus>([
-  'ACCEPTED',
-  'REJECTED',
-  'CANCELLED',
-  'EXPIRED',
-  'SUPERSEDED',
+  'ACCEPTED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED',
 ]);
 
 function isOpen(status: TaktRequestStatus): boolean {
   return OPEN_STATUSES.has(status);
 }
 
-/** Fachlicher Status badge */
-function RequestStatusBadge({ status }: { status: TaktRequestStatus }) {
-  const { t } = useTranslation();
-  const label = t(`taktRequests.requestStatus.${status}`, status);
+// Status display config
+const STATUS_CONFIG: Record<TaktRequestStatus, { label: string; className: string; icon?: React.ReactNode }> = {
+  DRAFT:                { label: 'Entwurf',           className: 'text-muted-foreground bg-muted/60' },
+  SENT:                 { label: 'Gesendet',           className: 'text-blue-600 bg-blue-500/10' },
+  DELIVERED:            { label: 'Zugestellt',         className: 'text-blue-600 bg-blue-500/10' },
+  DETAILS_RETRIEVED:    { label: 'Abgerufen',          className: 'text-amber-600 bg-amber-500/10' },
+  UNDER_REVIEW:         { label: 'In Prüfung',         className: 'text-amber-600 bg-amber-500/10' },
+  ACCEPTED:             { label: 'Angenommen',         className: 'text-emerald-600 bg-emerald-500/10', icon: <CheckCircle className="w-3 h-3" /> },
+  ALTERNATIVES_PROPOSED:{ label: 'Gegenvorschlag',     className: 'text-orange-600 bg-orange-500/10', icon: <ArrowRightLeft className="w-3 h-3" /> },
+  REJECTED:             { label: 'Abgelehnt',          className: 'text-red-600 bg-red-500/10',        icon: <XCircle className="w-3 h-3" /> },
+  REVISION_REQUIRED:    { label: 'Revision erforderlich', className: 'text-orange-600 bg-orange-500/10' },
+  CANCELLED:            { label: 'Storniert',          className: 'text-muted-foreground bg-muted/40', icon: <Ban className="w-3 h-3" /> },
+  EXPIRED:              { label: 'Abgelaufen',         className: 'text-muted-foreground bg-muted/40' },
+  SUPERSEDED:           { label: 'Ersetzt',            className: 'text-muted-foreground bg-muted/40' },
+};
 
-  const variants: Record<TaktRequestStatus, string> = {
-    DRAFT:                'text-muted-foreground bg-muted/60',
-    SENT:                 'text-blue-600 bg-blue-500/10',
-    DELIVERED:            'text-blue-600 bg-blue-500/10',
-    DETAILS_RETRIEVED:    'text-amber-600 bg-amber-500/10',
-    UNDER_REVIEW:         'text-amber-600 bg-amber-500/10',
-    ACCEPTED:             'text-emerald-600 bg-emerald-500/10',
-    ALTERNATIVES_PROPOSED:'text-orange-600 bg-orange-500/10',
-    REJECTED:             'text-red-600 bg-red-500/10',
-    REVISION_REQUIRED:    'text-orange-600 bg-orange-500/10',
-    CANCELLED:            'text-muted-foreground bg-muted/40 line-through',
-    EXPIRED:              'text-muted-foreground bg-muted/40',
-    SUPERSEDED:           'text-muted-foreground bg-muted/40',
-  };
-
-  const icons: Partial<Record<TaktRequestStatus, React.ReactNode>> = {
-    ACCEPTED:             <CheckCircle className="w-3 h-3" />,
-    REJECTED:             <XCircle className="w-3 h-3" />,
-    ALTERNATIVES_PROPOSED:<ArrowRightLeft className="w-3 h-3" />,
-    CANCELLED:            <Ban className="w-3 h-3" />,
-  };
-
+function StatusBadge({ status }: { status: TaktRequestStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? { label: status, className: 'bg-muted text-muted-foreground' };
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}
-      aria-label={`Anfragestatus: ${label}`}
-    >
-      {icons[status]}
-      {label}
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 ${cfg.className}`}>
+      {cfg.icon}
+      {cfg.label}
     </span>
   );
 }
 
-/** Technischer Nachrichtenstatus badge — visually distinct (blue/purple tones) */
 function OutboxStatusBadge({ status }: { status: MessageOutboxStatus | null | undefined }) {
-  const { t } = useTranslation();
-
-  if (!status) {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-background border border-border text-muted-foreground">
-        {t('taktRequests.messageStatus.none')}
-      </span>
-    );
-  }
-
-  const label = t(`taktRequests.messageStatus.${status}`, status);
-
+  if (!status) return <span className="text-xs text-muted-foreground">—</span>;
   const styles: Record<string, string> = {
-    PENDING:   'text-slate-500 bg-slate-100 border border-slate-200',
-    SENT:      'text-indigo-600 bg-indigo-50 border border-indigo-200',
-    DELIVERED: 'text-indigo-700 bg-indigo-100 border border-indigo-300',
-    READ:      'text-violet-700 bg-violet-100 border border-violet-300',
-    FAILED:    'text-red-700 bg-red-100 border border-red-300',
+    PENDING:   'text-slate-500',
+    SENT:      'text-indigo-600',
+    DELIVERED: 'text-indigo-700',
+    READ:      'text-violet-700',
+    FAILED:    'text-red-600 font-semibold',
   };
-
+  const labels: Record<string, string> = {
+    PENDING: 'Ausstehend', SENT: 'Gesendet', DELIVERED: 'Zugestellt',
+    READ: 'Gelesen', FAILED: 'Fehlgeschlagen',
+  };
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] ?? 'bg-muted text-muted-foreground'}`}
-      aria-label={`Nachrichtenstatus: ${label}`}
-    >
+    <span className={`inline-flex items-center gap-1 text-xs ${styles[status] ?? 'text-muted-foreground'}`}>
       {status === 'FAILED' && <AlertTriangle className="w-3 h-3" />}
-      {label}
+      {labels[status] ?? status}
     </span>
   );
 }
 
-/** Deadline cell with overdue highlight */
-function DeadlineCell({ date }: { date: string | null | undefined }) {
-  const { t } = useTranslation();
-  if (!date) {
-    return <span className="text-muted-foreground text-sm">{t('taktRequests.noDeadline')}</span>;
-  }
+function DeadlineText({ date }: { date: string | null | undefined }) {
+  if (!date) return <span className="text-muted-foreground text-xs">—</span>;
   const d = new Date(date);
   const overdue = isPast(d);
   const soonish = !overdue && isAfter(addDays(new Date(), 3), d);
   return (
-    <span className={`text-sm ${overdue ? 'text-red-600 font-medium' : soonish ? 'text-amber-600' : 'text-foreground'}`}>
-      {overdue && <Clock className="w-3 h-3 inline mr-1" />}
-      {format(d, 'dd.MM.yyyy HH:mm')}
+    <span className={`text-xs whitespace-nowrap ${overdue ? 'text-red-600 font-semibold' : soonish ? 'text-amber-600' : 'text-muted-foreground'}`}>
+      {overdue && <Clock className="w-3 h-3 inline mr-0.5" />}
+      {format(d, 'dd.MM.yy HH:mm')}
     </span>
   );
 }
 
-/** Row-level actions, only showing what's valid for the current status */
-function ActionButtons({ item, onNavigate }: { item: TaktRequestListItem; onNavigate: () => void }) {
-  const { t } = useTranslation();
-  const { status, outboxStatus } = item;
-
-  const actions: React.ReactNode[] = [];
-
-  if (status === 'DRAFT') {
-    actions.push(
-      <Button key="edit" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
-        {t('taktRequests.actions.edit')}
-      </Button>,
-      <Button key="send" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
-        <Send className="w-3 h-3 mr-1" />
-        {t('taktRequests.actions.send')}
-      </Button>,
-    );
-  } else if (outboxStatus === 'FAILED') {
-    actions.push(
-      <Button key="resend" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
-        <RefreshCw className="w-3 h-3 mr-1" />
-        {t('taktRequests.actions.resend')}
-      </Button>,
-    );
-  }
-
-  if (status === 'ALTERNATIVES_PROPOSED' || status === 'ACCEPTED') {
-    actions.push(
-      <Button key="response" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
-        <ChevronRight className="w-3 h-3 mr-1" />
-        {t('taktRequests.actions.viewResponse')}
-      </Button>,
-    );
-  }
-
-  if (!CLOSED_STATUSES.has(status) && status !== 'DRAFT') {
-    actions.push(
-      <Button key="open" variant="ghost" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
-        {t('taktRequests.actions.open')}
-      </Button>,
-    );
-  }
-
-  return <div className="flex items-center gap-1 justify-end">{actions}</div>;
-}
-
-// ── Unique value helpers for filter dropdowns ─────────────────────────────────
+// ── Unique value helpers ───────────────────────────────────────────────────────
 
 function uniqueProjects(items: TaktRequestListItem[]) {
   const seen = new Map<string, string>();
@@ -257,122 +173,99 @@ function uniqueContractors(items: TaktRequestListItem[]) {
   return [...seen.entries()].map(([id, name]) => ({ id, name }));
 }
 
-// ── Main page component ───────────────────────────────────────────────────────
+// ── Status list for filter dropdown ───────────────────────────────────────────
 
 const ALL_STATUSES: TaktRequestStatus[] = [
-  'DRAFT',
-  'SENT',
-  'DELIVERED',
-  'DETAILS_RETRIEVED',
-  'UNDER_REVIEW',
-  'ACCEPTED',
-  'ALTERNATIVES_PROPOSED',
-  'REJECTED',
-  'REVISION_REQUIRED',
-  'CANCELLED',
-  'EXPIRED',
-  'SUPERSEDED',
+  'DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW',
+  'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED',
+  'CANCELLED', 'EXPIRED', 'SUPERSEDED',
 ];
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function TaktRequestsPage() {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
 
-  // ── Filter state ────────────────────────────────────────────────────────────
-  const [openClosed, setOpenClosed] = useState<OpenClosedFilter>('ALL');
-  const [statusFilter, setStatusFilter] = useState<TaktRequestStatus | 'ALL'>('ALL');
+  // ── Filter state ─────────────────────────────────────────────────────────────
+  const [openClosed, setOpenClosed]       = useState<OpenClosedFilter>('ALL');
+  const [statusFilter, setStatusFilter]   = useState<TaktRequestStatus | 'ALL'>('ALL');
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
-  const [nuFilter, setNuFilter] = useState<string>('ALL');
+  const [nuFilter, setNuFilter]           = useState<string>('ALL');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('ALL');
 
-  // ── Data fetching ───────────────────────────────────────────────────────────
-  // Pass server-side status filter when a specific status is chosen; otherwise
-  // fetch all and filter client-side for the open/closed tab.
-  const apiStatusFilter =
-    statusFilter !== 'ALL' ? statusFilter : undefined;
+  // ── Data ─────────────────────────────────────────────────────────────────────
+  const apiStatusFilter = statusFilter !== 'ALL' ? statusFilter : undefined;
 
-  const {
-    data: allItems,
-    isLoading,
-    isError,
-    refetch,
-  } = useListTaktRequests(
+  const { data: allItems, isLoading, isError, refetch } = useListTaktRequests(
     apiStatusFilter ? { status: apiStatusFilter } : undefined,
     {
       query: {
         queryKey: getListTaktRequestsQueryKey(apiStatusFilter ? { status: apiStatusFilter } : undefined),
-        // Poll every 8 s — will stop once data is all-closed (see staleTime below)
         refetchInterval: (query) => {
           const data = query.state.data as TaktRequestListItem[] | undefined;
           if (!data) return 8_000;
-          const hasOpen = data.some((r) => isOpen(r.status as TaktRequestStatus));
-          return hasOpen ? 8_000 : false;
+          return data.some((r) => isOpen(r.status as TaktRequestStatus)) ? 8_000 : false;
         },
         refetchIntervalInBackground: false,
       },
     },
   );
 
-  // ── Client-side filtering & sorting ────────────────────────────────────────
+  // ── Client-side filter + sort ─────────────────────────────────────────────────
   const filtered = useMemo(() => {
     if (!allItems) return [];
-
     return allItems
       .filter((r) => {
         const s = r.status as TaktRequestStatus;
-        if (openClosed === 'OPEN' && !isOpen(s)) return false;
+        if (openClosed === 'OPEN'   && !isOpen(s))             return false;
         if (openClosed === 'CLOSED' && !CLOSED_STATUSES.has(s)) return false;
         if (projectFilter !== 'ALL' && r.projectId !== projectFilter) return false;
-        if (nuFilter !== 'ALL' && r.nuOrgId !== nuFilter) return false;
-        if (!matchesDeadlineFilter(r, deadlineFilter)) return false;
+        if (nuFilter !== 'ALL' && r.nuOrgId !== nuFilter)       return false;
+        if (!matchesDeadlineFilter(r, deadlineFilter))           return false;
         return true;
       })
       .sort((a, b) => {
-        // Open requests first
         const aOpen = isOpen(a.status as TaktRequestStatus) ? 0 : 1;
         const bOpen = isOpen(b.status as TaktRequestStatus) ? 0 : 1;
         if (aOpen !== bOpen) return aOpen - bOpen;
-        // Then newest first
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       });
-  }, [allItems, openClosed, statusFilter, projectFilter, nuFilter]);
+  }, [allItems, openClosed, statusFilter, projectFilter, nuFilter, deadlineFilter]);
 
-  const projects = useMemo(() => (allItems ? uniqueProjects(allItems) : []), [allItems]);
+  const projects    = useMemo(() => (allItems ? uniqueProjects(allItems)    : []), [allItems]);
   const contractors = useMemo(() => (allItems ? uniqueContractors(allItems) : []), [allItems]);
 
-  // ── Loading state ───────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="h-8 w-64"><Skeleton className="h-full w-full" /></div>
+      <div className="space-y-4 max-w-5xl mx-auto">
+        <Skeleton className="h-8 w-64" />
         <div className="space-y-2">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
         </div>
       </div>
     );
   }
 
-  // ── Error state ─────────────────────────────────────────────────────────────
+  // ── Error ─────────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <AlertTriangle className="w-10 h-10 text-destructive" />
-          <p className="text-muted-foreground">{t('taktRequests.error')}</p>
-          <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            {t('taktRequests.retry')}
-          </Button>
-        </div>
+      <div className="max-w-5xl mx-auto flex flex-col items-center justify-center py-20 gap-4">
+        <AlertTriangle className="w-10 h-10 text-destructive" />
+        <p className="text-muted-foreground">{t('taktRequests.error')}</p>
+        <Button variant="outline" onClick={() => refetch()}>
+          <RefreshCw className="w-4 h-4 mr-2" />{t('taktRequests.retry')}
+        </Button>
       </div>
     );
   }
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
+  // ── Empty ─────────────────────────────────────────────────────────────────────
   if (!allItems || allItems.length === 0) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="mb-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div>
           <h1 className="text-2xl font-bold">{t('taktRequests.title')}</h1>
           <p className="text-muted-foreground mt-1 text-sm">{t('taktRequests.description')}</p>
         </div>
@@ -385,185 +278,258 @@ export default function TaktRequestsPage() {
     );
   }
 
-  // ── Main view ───────────────────────────────────────────────────────────────
+  const hasOpenItems = allItems.some((r) => isOpen(r.status as TaktRequestStatus));
+
+  // ── Main ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="space-y-5 max-w-5xl mx-auto animate-in fade-in duration-300">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{t('taktRequests.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">{t('taktRequests.description')}</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            {t('taktRequests.title')}
+            {hasOpenItems && (
+              <span className="text-sm font-normal text-muted-foreground flex items-center gap-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Live
+              </span>
+            )}
+          </h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">{t('taktRequests.description')}</p>
         </div>
-        {/* Status indicator while polling */}
-        {allItems.some((r) => isOpen(r.status as TaktRequestStatus)) && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Live
-          </div>
-        )}
+        <p className="text-xs text-muted-foreground shrink-0">
+          {filtered.length} / {allItems.length} Anfragen
+        </p>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         {/* Open / Closed tabs */}
-        <div className="flex rounded-md border border-border overflow-hidden text-sm">
+        <div className="flex rounded-lg border border-border overflow-hidden text-sm shrink-0">
           {(['ALL', 'OPEN', 'CLOSED'] as OpenClosedFilter[]).map((v) => (
             <button
               key={v}
               onClick={() => setOpenClosed(v)}
-              className={`px-3 py-1.5 transition-colors ${openClosed === v ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/60 text-muted-foreground'}`}
+              className={`px-3 py-1.5 transition-colors ${
+                openClosed === v
+                  ? 'bg-primary text-primary-foreground font-medium'
+                  : 'hover:bg-muted/60 text-muted-foreground'
+              }`}
             >
               {t(`taktRequests.filter.${v.toLowerCase()}`)}
             </button>
           ))}
         </div>
 
-        {/* Status filter */}
+        {/* Status */}
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaktRequestStatus | 'ALL')}>
-          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
-            <SelectValue placeholder={t('taktRequests.filter.status')} />
+          <SelectTrigger className="h-8 w-[170px] text-sm">
+            <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">{t('taktRequests.filter.allStatuses')}</SelectItem>
-            {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {t(`taktRequests.requestStatus.${s}`, s)}
-              </SelectItem>
+            <SelectItem value="ALL">Alle Status</SelectItem>
+            {ALL_STATUSES.map(s => (
+              <SelectItem key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* Project filter */}
+        {/* Project */}
         {projects.length > 1 && (
           <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
-              <SelectValue placeholder={t('taktRequests.filter.project')} />
+            <SelectTrigger className="h-8 w-[170px] text-sm">
+              <SelectValue placeholder="Projekt" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">{t('taktRequests.filter.allProjects')}</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
+              <SelectItem value="ALL">Alle Projekte</SelectItem>
+              {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
 
-        {/* Contractor filter */}
+        {/* Contractor */}
         {contractors.length > 1 && (
           <Select value={nuFilter} onValueChange={setNuFilter}>
-            <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
-              <SelectValue placeholder={t('taktRequests.filter.contractor')} />
+            <SelectTrigger className="h-8 w-[170px] text-sm">
+              <SelectValue placeholder="Nachunternehmen" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">{t('taktRequests.filter.allContractors')}</SelectItem>
-              {contractors.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
+              <SelectItem value="ALL">Alle NU</SelectItem>
+              {contractors.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
 
-        {/* Deadline filter */}
+        {/* Deadline */}
         <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[220px] text-sm">
+          <SelectTrigger className="h-8 w-[200px] text-sm">
             <SelectValue placeholder="Friststatus" />
           </SelectTrigger>
           <SelectContent>
-            {(Object.keys(DEADLINE_FILTER_LABELS) as DeadlineFilter[]).map((key) => (
+            {(Object.keys(DEADLINE_FILTER_LABELS) as DeadlineFilter[]).map(key => (
               <SelectItem key={key} value={key}>{DEADLINE_FILTER_LABELS[key]}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {/* Reset */}
+        {(openClosed !== 'ALL' || statusFilter !== 'ALL' || projectFilter !== 'ALL' || nuFilter !== 'ALL' || deadlineFilter !== 'ALL') && (
+          <button
+            onClick={() => { setOpenClosed('ALL'); setStatusFilter('ALL'); setProjectFilter('ALL'); setNuFilter('ALL'); setDeadlineFilter('ALL'); }}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            Filter zurücksetzen
+          </button>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-border">
-                <TableHead className="text-xs">{t('taktRequests.columns.requestNumber')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.project')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.takt')}</TableHead>
-                <TableHead className="text-xs text-center hidden sm:table-cell">{t('taktRequests.columns.version')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.contractor')}</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.deadline')}</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">Friststatus</TableHead>
-                <TableHead className="text-xs">{t('taktRequests.columns.requestStatus')}</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.messageStatus')}</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.createdAt')}</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">{t('taktRequests.columns.updatedAt')}</TableHead>
-                <TableHead className="text-xs text-right">{t('taktRequests.columns.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={12} className="py-16 text-center text-muted-foreground text-sm">
-                    {t('taktRequests.emptyFiltered')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className={`border-border hover:bg-muted/30 transition-colors cursor-pointer ${CLOSED_STATUSES.has(item.status as TaktRequestStatus) ? 'opacity-60' : ''}`}
-                    onClick={() => setLocation(`/takt-requests/${item.id}`)}
-                  >
-                    <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {item.requestNumber}
-                    </TableCell>
-                    <TableCell className="text-sm max-w-[140px] truncate" title={item.projectName}>
-                      {item.projectName}
-                    </TableCell>
-                    <TableCell className="text-sm max-w-[140px] truncate" title={item.taktBezeichnung}>
-                      {item.taktBezeichnung}
-                    </TableCell>
-                    <TableCell className="text-sm text-center">
-                      <Badge variant="outline" className="text-xs">v{item.taktVersion}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm max-w-[140px] truncate" title={item.nuOrgName}>
-                      {item.nuOrgName}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <DeadlineCell date={item.responseRequiredBy ?? null} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <DeadlineStatusBadge
-                        responseRequiredBy={(item as any).responseRequiredBy}
-                        expiresAt={(item as any).expiresAt}
-                        expiredAt={(item as any).expiredAt}
-                        guDecisionRequiredBy={(item as any).guDecisionRequiredBy}
-                        compact
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <RequestStatusBadge status={item.status as TaktRequestStatus} />
-                    </TableCell>
-                    <TableCell>
-                      <OutboxStatusBadge status={(item.outboxStatus as MessageOutboxStatus) ?? null} />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(item.createdAt), 'dd.MM.yy HH:mm')}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(item.updatedAt), 'dd.MM.yy HH:mm')}
-                    </TableCell>
-                    <TableCell>
-                      <ActionButtons item={item} onNavigate={() => setLocation(`/takt-requests/${item.id}`)} />
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+      {/* Accordion list */}
+      {filtered.length === 0 ? (
+        <div className="py-16 text-center text-muted-foreground text-sm border border-dashed rounded-xl">
+          {t('taktRequests.emptyFiltered')}
         </div>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-border overflow-hidden bg-card divide-y divide-border">
+          <AccordionPrimitive.Root type="single" collapsible>
+            {filtered.map((item) => {
+              const closed = CLOSED_STATUSES.has(item.status as TaktRequestStatus);
+              return (
+                <AccordionItem
+                  key={item.id}
+                  value={item.id}
+                  className={`border-0 ${closed ? 'opacity-60' : ''}`}
+                >
+                  {/* Header: trigger + Öffnen side-by-side (no button-in-button) */}
+                  <AccordionPrimitive.Header className="flex items-stretch hover:bg-muted/30 transition-colors [&[data-state=open]]:bg-muted/20">
 
-      {/* Row count */}
-      <p className="text-xs text-muted-foreground">
-        {filtered.length} von {allItems.length} Anfragen
-      </p>
+                    {/* Clickable expand area */}
+                    <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-3 px-4 py-3 min-w-0 text-left [&[data-state=open]>span.chevron]:rotate-180">
+
+                      {/* Status badge */}
+                      <StatusBadge status={item.status as TaktRequestStatus} />
+
+                      {/* Main info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm truncate leading-tight">
+                          {item.taktBezeichnung}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <FolderOpen className="w-3 h-3 opacity-60" />
+                            {item.projectName}
+                          </span>
+                          <span className="text-muted-foreground/40 text-xs">·</span>
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Building2 className="w-3 h-3 opacity-60" />
+                            {item.nuOrgName}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Deadline info (desktop) */}
+                      <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+                        <DeadlineStatusBadge
+                          responseRequiredBy={(item as any).responseRequiredBy}
+                          expiresAt={(item as any).expiresAt}
+                          expiredAt={(item as any).expiredAt}
+                          guDecisionRequiredBy={(item as any).guDecisionRequiredBy}
+                          compact
+                        />
+                        {(item as any).responseRequiredBy && (
+                          <DeadlineText date={(item as any).responseRequiredBy} />
+                        )}
+                      </div>
+
+                      {/* Chevron */}
+                      <span className="chevron ml-1 flex-shrink-0 transition-transform duration-200">
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      </span>
+                    </AccordionPrimitive.Trigger>
+
+                    {/* Öffnen — sibling to trigger, NOT nested inside it */}
+                    <div className="flex items-center px-3 border-l border-border/50 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => setLocation(`/takt-requests/${item.id}`)}
+                      >
+                        <ChevronRight className="w-3 h-3 mr-1" />
+                        Öffnen
+                      </Button>
+                    </div>
+                  </AccordionPrimitive.Header>
+
+                  {/* Expanded body */}
+                  <AccordionContent className="px-4 pb-4 pt-0">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm bg-muted/20 rounded-lg p-3 border border-border/50">
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Nr.</div>
+                        <div className="font-mono text-xs">{item.requestNumber}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Version</div>
+                        <div className="text-xs">v{item.taktVersion}</div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Zustellung</div>
+                        <OutboxStatusBadge status={(item.outboxStatus as MessageOutboxStatus) ?? null} />
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Antwortfrist</div>
+                        <DeadlineText date={(item as any).responseRequiredBy} />
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Erstellt</div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3 opacity-60" />
+                          {format(new Date(item.createdAt), 'dd.MM.yy HH:mm')}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Zuletzt aktualisiert</div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3 opacity-60" />
+                          {format(new Date(item.updatedAt), 'dd.MM.yy HH:mm')}
+                        </div>
+                      </div>
+
+                      {/* Mobile: deadline info */}
+                      <div className="col-span-2 sm:hidden">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Antwortfrist</div>
+                        <div className="flex items-center gap-2">
+                          <DeadlineStatusBadge
+                            responseRequiredBy={(item as any).responseRequiredBy}
+                            expiresAt={(item as any).expiresAt}
+                            expiredAt={(item as any).expiredAt}
+                            guDecisionRequiredBy={(item as any).guDecisionRequiredBy}
+                            compact
+                          />
+                          <DeadlineText date={(item as any).responseRequiredBy} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* FAILED alert */}
+                    {item.outboxStatus === 'FAILED' && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        Technische Zustellung fehlgeschlagen — bitte Verbindung prüfen.
+                      </div>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </AccordionPrimitive.Root>
+        </div>
+      )}
     </div>
   );
 }
