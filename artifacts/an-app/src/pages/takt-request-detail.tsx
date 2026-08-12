@@ -430,6 +430,17 @@ export default function TaktRequestDetailPage() {
     });
   };
 
+  // ── Alternative validation ────────────────────────────────────────────────
+  const altRowErrors: Array<{ emptyStart: boolean; emptyEnd: boolean; endBeforeStart: boolean }> =
+    alternatives.map(a => ({
+      emptyStart:     !a.start,
+      emptyEnd:       !a.end,
+      endBeforeStart: !!a.start && !!a.end && a.end < a.start,
+    }));
+  const altDatesInvalid =
+    decision === TaktDecision.ALTERNATIVES_PROPOSED &&
+    altRowErrors.some(e => e.emptyStart || e.emptyEnd || e.endBeforeStart);
+
   const handleDecisionChange = (val: string) => {
     setDecision(val);
     if (val === TaktDecision.ACCEPTED && snapStart && !acceptStart) {
@@ -959,29 +970,42 @@ export default function TaktRequestDetailPage() {
                       </Button>
                     )}
                   </div>
-                  {alternatives.map((alt, idx) => (
-                    <div key={idx} className="flex items-end gap-2">
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-xs">Alternative {idx + 1} — Start</Label>
-                        <Input type="date" value={alt.start}
-                          onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, start: e.target.value } : a))}
-                          required />
+                  {alternatives.map((alt, idx) => {
+                    const rowErr = altRowErrors[idx];
+                    return (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Alternative {idx + 1} — Start</Label>
+                            <Input type="date" value={alt.start}
+                              className={rowErr?.emptyStart ? 'border-destructive' : ''}
+                              onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, start: e.target.value } : a))}
+                              required />
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Ende</Label>
+                            <Input type="date" value={alt.end}
+                              className={(rowErr?.emptyEnd || rowErr?.endBeforeStart) ? 'border-destructive' : ''}
+                              onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, end: e.target.value } : a))}
+                              required />
+                          </div>
+                          {alternatives.length > 1 && (
+                            <Button type="button" variant="ghost" size="icon"
+                              className="shrink-0 text-muted-foreground hover:text-red-500"
+                              onClick={() => setAlternatives(prev => prev.filter((_, i) => i !== idx))}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                        {rowErr?.endBeforeStart && (
+                          <p className="flex items-center gap-1.5 text-xs text-destructive">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            Ende-Datum muss nach dem Start-Datum liegen.
+                          </p>
+                        )}
                       </div>
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-xs">Ende</Label>
-                        <Input type="date" value={alt.end}
-                          onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, end: e.target.value } : a))}
-                          required />
-                      </div>
-                      {alternatives.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon"
-                          className="shrink-0 text-muted-foreground hover:text-red-500"
-                          onClick={() => setAlternatives(prev => prev.filter((_, i) => i !== idx))}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -1010,7 +1034,8 @@ export default function TaktRequestDetailPage() {
               )}
 
               {decision && (
-                <Button type="submit" className="w-full gap-2" disabled={submitResponse.isPending}>
+                <Button type="submit" className="w-full gap-2"
+                  disabled={submitResponse.isPending || altDatesInvalid}>
                   {submitResponse.isPending
                     ? <><Loader2 className="w-4 h-4 animate-spin" />Einreichen…</>
                     : <><Send className="w-4 h-4" />Antwort einreichen</>}
