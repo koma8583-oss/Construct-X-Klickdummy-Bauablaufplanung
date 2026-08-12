@@ -66,6 +66,7 @@ const TAKT_FIXTURE: Takt = {
   costEstimate: null,
   procurementPriority: null,
   riskClassification: null,
+  durationDays: null,
 };
 
 const PREDECESSORS: TaktDependency[] = [

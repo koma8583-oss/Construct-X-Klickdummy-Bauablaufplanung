@@ -251,6 +251,8 @@ export interface Takt {
      */
   version?: number;
   lifecycleStatus?: TaktLifecycleStatus;
+  /** Duration in working days (0.5 steps). When set, plannedEnd is derived from this. */
+  durationDays?: string | null;
 }
 
 export interface CreateTaktRequest {
@@ -259,7 +261,9 @@ export interface CreateTaktRequest {
   gewerk: string;
   description?: string;
   plannedStart: string;
-  plannedEnd: string;
+  plannedEnd?: string;
+  /** Duration in working days (0.5 steps). If provided, plannedEnd is computed from plannedStart. */
+  durationDays?: number;
   earliestStart?: string;
   latestEnd?: string;
   lvReference?: string;
@@ -274,11 +278,35 @@ export interface UpdateTaktRequest {
   description?: string;
   plannedStart?: string;
   plannedEnd?: string;
+  /** Duration in working days (0.5 steps). If provided, plannedEnd is recomputed. */
+  durationDays?: number | null;
   earliestStart?: string;
   latestEnd?: string;
   lvReference?: string;
   bimReference?: string;
   requiredResources?: string;
+}
+
+/** Working-hours calendar config for a project (Mon–Sun, 0 = non-working). */
+export interface ProjectCalendar {
+  projectId: string;
+  monHours: string;
+  tueHours: string;
+  wedHours: string;
+  thuHours: string;
+  friHours: string;
+  satHours: string;
+  sunHours: string;
+}
+
+export interface UpdateProjectCalendarRequest {
+  monHours: number;
+  tueHours: number;
+  wedHours: number;
+  thuHours: number;
+  friHours: number;
+  satHours: number;
+  sunHours: number;
 }
 
 /**

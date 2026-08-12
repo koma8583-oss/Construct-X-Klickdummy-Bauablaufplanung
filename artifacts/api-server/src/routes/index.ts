@@ -11,12 +11,14 @@ import dashboardRouter from "./dashboard";
 import taktRequestsRouter from "./takt-requests";
 import messagesRouter from "./messages";
 import nuRouter from "./nu";
+import projectCalendarsRouter from "./project-calendars";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(organizationsRouter);
 router.use(projectsRouter);
+router.use(projectCalendarsRouter);
 router.use(takteRouter);
 router.use(taktDependenciesRouter);
 router.use(delegationsRouter);

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, date, pgEnum, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, date, pgEnum, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
@@ -88,6 +88,13 @@ export const takteTable = pgTable("takte", {
   procurementPriority: taktProcurementPriorityEnum("procurement_priority"),
   /** Risk classification (A/B/C) — not shared with NU */
   riskClassification: taktRiskClassificationEnum("risk_classification"),
+
+  /**
+   * Duration in working days (0.5 steps).
+   * When set, plannedEnd is computed from plannedStart + durationDays using
+   * the project calendar. Null = manual end date (legacy behaviour).
+   */
+  durationDays: numeric("duration_days", { precision: 4, scale: 1 }),
 });
 
 export const insertTaktSchema = createInsertSchema(takteTable).omit({

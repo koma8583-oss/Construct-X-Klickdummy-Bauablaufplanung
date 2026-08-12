@@ -1,4 +1,5 @@
 export * from "./availability-checks";
+export * from "./project-calendars";
 export * from "./takt-request-resource-requirements";
 export * from "./data-publications";
 export * from "./delegations";

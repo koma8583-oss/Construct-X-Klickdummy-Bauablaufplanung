@@ -134,13 +134,19 @@ router.post(
       return;
     }
 
-    // Insert + reschedule atomically
+    // skipReschedule=true → client will ask the user whether to reschedule
+    const skipReschedule = req.query.skipReschedule === "true";
+
+    // Insert (+ optional reschedule) atomically
     const result = await db.transaction(async (tx) => {
       const [dep] = await tx
         .insert(taktDependenciesTable)
         .values({ projectId, predecessorId, successorId, type, lagDays })
         .returning();
 
+      if (skipReschedule) {
+        return { dependency: { ...dep, predecessor: pred, successor: succ }, moved: [], conflicts: [] };
+      }
       const { moved, conflicts } = await rescheduleTakte(projectId, tx);
       return { dependency: { ...dep, predecessor: pred, successor: succ }, moved, conflicts };
     });

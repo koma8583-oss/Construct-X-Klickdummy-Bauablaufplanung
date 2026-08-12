@@ -4,6 +4,8 @@ import { takteTable, projectsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { rescheduleTakte } from "../lib/reschedule";
+import { computePlannedEnd, toCalendarConfig, DEFAULT_CALENDAR } from "../lib/working-days";
+import { projectCalendarsTable } from "@workspace/db";
 import { z } from "zod";
 
 const router = Router();
@@ -105,7 +107,8 @@ router.post(
       gewerk: z.string().min(1),
       description: z.string().optional(),
       plannedStart: z.string(),
-      plannedEnd: z.string(),
+      plannedEnd: z.string().optional(),
+      durationDays: z.number().min(0.5).optional(),
       earliestStart: z.string().optional(),
       latestEnd: z.string().optional(),
       lvReference: z.string().optional(),
@@ -124,9 +127,32 @@ router.post(
       return;
     }
 
+    // Resolve plannedEnd: use durationDays if provided, fall back to explicit end
+    let plannedEnd = parsed.data.plannedEnd;
+    const { durationDays } = parsed.data;
+    if (durationDays != null) {
+      const [calRow] = await db
+        .select()
+        .from(projectCalendarsTable)
+        .where(eq(projectCalendarsTable.projectId, projectId))
+        .limit(1);
+      const cal = calRow ? toCalendarConfig(calRow) : DEFAULT_CALENDAR;
+      plannedEnd = computePlannedEnd(parsed.data.plannedStart, durationDays, cal);
+    }
+    if (!plannedEnd) {
+      res.status(400).json({ error: "plannedEnd or durationDays required" });
+      return;
+    }
+
     const [takt] = await db
       .insert(takteTable)
-      .values({ ...parsed.data, projectId, status: "GEPLANT" })
+      .values({
+        ...parsed.data,
+        plannedEnd,
+        durationDays: durationDays != null ? String(durationDays) : null,
+        projectId,
+        status: "GEPLANT",
+      })
       .returning();
 
     res.status(201).json(takt);
@@ -208,6 +234,7 @@ router.patch(
       description: z.string().optional().nullable(),
       plannedStart: z.string().optional(),
       plannedEnd: z.string().optional(),
+      durationDays: z.number().min(0.5).optional().nullable(),
       earliestStart: z.string().optional().nullable(),
       latestEnd: z.string().optional().nullable(),
       lvReference: z.string().optional().nullable(),
@@ -226,11 +253,28 @@ router.patch(
       return;
     }
 
+    // Recompute plannedEnd when durationDays is set
+    let patchData: Record<string, unknown> = { ...parsed.data };
+    const { durationDays } = parsed.data;
+    if (durationDays != null) {
+      const startForCalc = parsed.data.plannedStart ?? existing.plannedStart;
+      const [calRow] = await db
+        .select()
+        .from(projectCalendarsTable)
+        .where(eq(projectCalendarsTable.projectId, projectId))
+        .limit(1);
+      const cal = calRow ? toCalendarConfig(calRow) : DEFAULT_CALENDAR;
+      patchData.plannedEnd = computePlannedEnd(startForCalc, durationDays, cal);
+      patchData.durationDays = String(durationDays);
+    } else if (durationDays === null) {
+      patchData.durationDays = null;
+    }
+
     // Update takt + cascade-reschedule inside a single transaction
     const result = await db.transaction(async (tx) => {
       const [takt] = await tx
         .update(takteTable)
-        .set(parsed.data)
+        .set(patchData as any)
         .where(
           and(
             eq(takteTable.id, taktId),

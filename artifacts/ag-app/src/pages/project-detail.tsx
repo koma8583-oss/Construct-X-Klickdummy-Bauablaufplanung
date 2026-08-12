@@ -32,7 +32,7 @@ import {
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult } from '@workspace/api-client-react';
 import { useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -57,8 +57,18 @@ import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
-  AlertCircle, Building2, Globe, ArrowRightLeft,
+  AlertCircle, Building2, Globe, ArrowRightLeft, Settings2,
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -96,9 +106,39 @@ import {
   useGetProjectDataPublications,
   useSuspendDataPublication,
   useWithdrawDataPublication,
+  useGetProjectCalendar,
+  getGetProjectCalendarQueryKey,
+  useUpdateProjectCalendar,
+  useCreateTaktDependencySkipReschedule,
   type DataPublication,
+  type ProjectCalendar,
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
+
+// ── Working-days client utility ────────────────────────────────────────────────
+
+function clientComputePlannedEnd(
+  plannedStart: string,
+  durationDays: number,
+  cal: ProjectCalendar,
+): string {
+  const hoursByDow = [
+    Number(cal.sunHours), Number(cal.monHours), Number(cal.tueHours),
+    Number(cal.wedHours), Number(cal.thuHours), Number(cal.friHours),
+    Number(cal.satHours),
+  ];
+  const isWorkday = (d: Date) => hoursByDow[d.getDay()] > 0;
+  const parts = plannedStart.split('-').map(Number);
+  let cur = new Date(parts[0], parts[1] - 1, parts[2]);
+  while (!isWorkday(cur)) cur.setDate(cur.getDate() + 1);
+  const fullDays = Math.max(0, Math.ceil(durationDays) - 1);
+  let remaining = fullDays;
+  while (remaining > 0) {
+    cur.setDate(cur.getDate() + 1);
+    if (isWorkday(cur)) remaining--;
+  }
+  return `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+}
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -320,7 +360,7 @@ export default function ProjectDetail() {
 
   const [, setLocation] = useLocation();
 
-  const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan'>('gantt');
+  const [activeChartTab, setActiveChartTab] = useState<'gantt' | 'netzplan' | 'an-zuordnungen' | 'kalender'>('gantt');
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
   const [selectedTaktId, setSelectedTaktId] = useState<string | null>(null);
   const [showAlternatives, setShowAlternatives] = useState(true);
@@ -340,6 +380,24 @@ export default function ProjectDetail() {
   const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
   const [newDepType, setNewDepType] = useState<TaktDependencyType>('EA');
   const [newDepLag, setNewDepLag] = useState(0);
+
+  // Dependency reschedule prompt
+  const [depRescheduleOpen, setDepRescheduleOpen] = useState(false);
+  const [pendingDepData, setPendingDepData] = useState<{ predecessorId: string; successorId: string; type: TaktDependencyType; lagDays: number } | null>(null);
+
+  // Duration state — create form
+  const [createDurationDays, setCreateDurationDays] = useState<string>('');
+  const [createPlannedStart, setCreatePlannedStart] = useState('');
+  const [createPlannedEnd, setCreatePlannedEnd] = useState('');
+
+  // Duration state — edit form
+  const [editDurationDays, setEditDurationDays] = useState<string>('');
+  const [editPlannedStart, setEditPlannedStart] = useState('');
+  const [editPlannedEnd, setEditPlannedEnd] = useState('');
+
+  // Calendar config state
+  const [calendarEditing, setCalendarEditing] = useState(false);
+  const [calendarDraft, setCalendarDraft] = useState<Record<string, string>>({});
 
   // Persistent conflict state — populated from the latest reschedule result
   const [activeConflicts, setActiveConflicts] = useState<RescheduledTakt[]>([]);
@@ -370,6 +428,12 @@ export default function ProjectDetail() {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
 
+  // Project calendar — used for duration-based end-date computation
+  const { data: projectCalendar } = useGetProjectCalendar(projectId, {
+    query: { enabled: !!projectId, queryKey: getGetProjectCalendarQueryKey(projectId) },
+  });
+  const updateCalendar = useUpdateProjectCalendar();
+
   // Dataspace publications for this project
   const { data: dataPublications } = useGetProjectDataPublications(projectId);
   const suspendPublication = useSuspendDataPublication();
@@ -385,6 +449,7 @@ export default function ProjectDetail() {
   const addContractor = useAddProjectContractor();
   const removeContractor = useRemoveProjectContractor();
   const createDep = useCreateTaktDependency();
+  const createDepSkip = useCreateTaktDependencySkipReschedule();
   const deleteDep = useDeleteTaktDependency();
   
   const createAssignment = useCreateProjectSubcontractor();
@@ -686,6 +751,8 @@ export default function ProjectDetail() {
   const handleCreateTakt = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const durVal = createDurationDays ? Number(createDurationDays) : undefined;
+    const explicitEnd = (fd.get('plannedEnd') as string) || undefined;
     createTakt.mutate({
       projectId,
       data: {
@@ -694,7 +761,8 @@ export default function ProjectDetail() {
         gewerk: fd.get('gewerk') as string,
         description: (fd.get('description') as string) || undefined,
         plannedStart: fd.get('plannedStart') as string,
-        plannedEnd: fd.get('plannedEnd') as string,
+        plannedEnd: durVal != null ? undefined : explicitEnd,
+        durationDays: durVal,
         earliestStart: (fd.get('earliestStart') as string) || undefined,
         latestEnd: (fd.get('latestEnd') as string) || undefined,
         // GU-internal fields
@@ -710,6 +778,9 @@ export default function ProjectDetail() {
         setIsCreateOpen(false);
         setCreateProcPriority('');
         setCreateRiskClass('');
+        setCreateDurationDays('');
+        setCreatePlannedStart('');
+        setCreatePlannedEnd('');
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
@@ -719,6 +790,8 @@ export default function ProjectDetail() {
     e.preventDefault();
     if (!editTargetId) return;
     const fd = new FormData(e.currentTarget);
+    const durVal = editDurationDays ? Number(editDurationDays) : null;
+    const explicitEnd = (fd.get('plannedEnd') as string) || undefined;
     updateTakt.mutate({
       projectId,
       taktId: editTargetId,
@@ -728,7 +801,8 @@ export default function ProjectDetail() {
         gewerk: fd.get('gewerk') as string,
         description: (fd.get('description') as string) || undefined,
         plannedStart: fd.get('plannedStart') as string,
-        plannedEnd: fd.get('plannedEnd') as string,
+        plannedEnd: durVal != null ? undefined : explicitEnd,
+        durationDays: durVal,
         earliestStart: (fd.get('earliestStart') as string) || undefined,
         latestEnd: (fd.get('latestEnd') as string) || undefined,
         // GU-internal fields
@@ -744,6 +818,9 @@ export default function ProjectDetail() {
         showRescheduleToasts(result.moved, result.conflicts);
         setIsEditOpen(false);
         setEditTargetId(null);
+        setEditDurationDays('');
+        setEditPlannedStart('');
+        setEditPlannedEnd('');
       },
       onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
     });
@@ -850,29 +927,40 @@ export default function ProjectDetail() {
   };
 
   // Add dependency — only callable from the edit dialog
+  // Shows a reschedule-confirmation dialog first; actual mutation runs in the handlers below.
   const handleAddDependency = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editTargetId || !newDepPredecessorId) return;
-    createDep.mutate({
-      projectId,
-      data: {
-        predecessorId: newDepPredecessorId,
-        successorId: editTargetId,
-        type: newDepType,
-        lagDays: newDepLag,
-      },
-    }, {
-      onSuccess: (result) => {
+    setPendingDepData({
+      predecessorId: newDepPredecessorId,
+      successorId: editTargetId,
+      type: newDepType,
+      lagDays: newDepLag,
+    });
+    setDepRescheduleOpen(true);
+  };
+
+  const executeDepCreate = (skip: boolean) => {
+    if (!pendingDepData) return;
+    const mutateOpts = {
+      onSuccess: (result: TaktDependencyCreateResult) => {
         toast({ title: 'Abhängigkeit angelegt' });
         invalidateTakte();
-        showRescheduleToasts(result.moved, result.conflicts);
+        showRescheduleToasts(result.moved as any, result.conflicts);
         setNewDepPredecessorId('');
         setNewDepLag(0);
+        setPendingDepData(null);
       },
-      onError: (err) => {
-        toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
+      onError: (err: Error) => {
+        toast({ title: 'Fehler', description: err.message, variant: 'destructive' });
+        setPendingDepData(null);
       },
-    });
+    };
+    if (skip) {
+      createDepSkip.mutate({ projectId, data: pendingDepData }, mutateOpts as any);
+    } else {
+      createDep.mutate({ projectId, data: pendingDepData }, mutateOpts as any);
+    }
   };
 
   const handleDeleteDependency = (depId: string) => {
@@ -1238,9 +1326,9 @@ export default function ProjectDetail() {
               Netzplan
             </button>
             <button
-              onClick={() => setActiveChartTab('an-zuordnungen' as any)}
+              onClick={() => setActiveChartTab('an-zuordnungen')}
               className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
-                activeChartTab === 'an-zuordnungen' as any
+                activeChartTab === 'an-zuordnungen'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
@@ -1252,6 +1340,17 @@ export default function ProjectDetail() {
                   {assignments.length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveChartTab('kalender')}
+              className={`flex items-center gap-1.5 h-full px-3 text-sm font-medium border-b-2 transition-colors ${
+                activeChartTab === 'kalender'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Settings2 className="w-4 h-4" />
+              Kalender
             </button>
           </div>
 
@@ -1380,7 +1479,7 @@ export default function ProjectDetail() {
         )}
 
         {/* ── AN-Zuordnungen panel ──────────────────────────────────────── */}
-        {(activeChartTab as string) === 'an-zuordnungen' && (() => {
+        {activeChartTab === 'an-zuordnungen' && (() => {
           const assignmentStatusLabel: Record<string, string> = {
             ACTIVE: 'Aktiv', PLANNED: 'Geplant', INACTIVE: 'Inaktiv',
             COMPLETED: 'Abgeschlossen', CANCELLED: 'Storniert',
@@ -1585,6 +1684,122 @@ export default function ProjectDetail() {
           );
         })()}
       </div>
+
+        {/* ── Kalender panel ────────────────────────────────────────────── */}
+        {activeChartTab === 'kalender' && (() => {
+          const cal = projectCalendar;
+          const WEEKDAYS: Array<{ key: keyof ProjectCalendar; label: string; short: string }> = [
+            { key: 'monHours', label: 'Montag',     short: 'Mo' },
+            { key: 'tueHours', label: 'Dienstag',   short: 'Di' },
+            { key: 'wedHours', label: 'Mittwoch',   short: 'Mi' },
+            { key: 'thuHours', label: 'Donnerstag', short: 'Do' },
+            { key: 'friHours', label: 'Freitag',    short: 'Fr' },
+            { key: 'satHours', label: 'Samstag',    short: 'Sa' },
+            { key: 'sunHours', label: 'Sonntag',    short: 'So' },
+          ];
+          const draft = calendarEditing ? calendarDraft : (cal ? Object.fromEntries(WEEKDAYS.map(w => [w.key, String(cal[w.key])])) : {});
+          return (
+            <div className="flex-1 overflow-auto p-6">
+              <div className="max-w-lg mx-auto space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold flex items-center gap-2 mb-1">
+                    <Settings2 className="w-4 h-4 text-primary" />
+                    Projektwochenkalender
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Legen Sie fest, wie viele Arbeitsstunden pro Wochentag im Projekt zur Verfügung stehen.
+                    0 Stunden = kein Arbeitstag. Die Werte werden genutzt, um aus einer Dauer in Arbeitstagen das Plan-Ende zu berechnen.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="grid grid-cols-7 divide-x divide-border border-b border-border bg-muted/30">
+                    {WEEKDAYS.map(w => (
+                      <div key={w.key} className="flex flex-col items-center py-2 px-1">
+                        <span className="text-xs font-semibold text-muted-foreground">{w.short}</span>
+                        <span className="text-[10px] text-muted-foreground/60 hidden sm:block">{w.label.slice(0, 2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 divide-x divide-border">
+                    {WEEKDAYS.map(w => {
+                      const hours = calendarEditing ? (draft[w.key] ?? '0') : (cal ? String(cal[w.key]) : '8');
+                      const isWorkday = Number(hours) > 0;
+                      return (
+                        <div key={w.key} className={`flex flex-col items-center py-4 px-2 gap-2 ${!isWorkday && !calendarEditing ? 'bg-muted/30' : ''}`}>
+                          {calendarEditing ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              max={24}
+                              step={0.5}
+                              value={draft[w.key] ?? '0'}
+                              onChange={e => setCalendarDraft(d => ({ ...d, [w.key]: e.target.value }))}
+                              className="h-9 w-full text-center text-sm font-semibold px-1"
+                            />
+                          ) : (
+                            <span className={`text-lg font-bold ${isWorkday ? 'text-foreground' : 'text-muted-foreground/40'}`}>
+                              {hours}
+                            </span>
+                          )}
+                          {!calendarEditing && (
+                            <span className={`text-[10px] ${isWorkday ? 'text-primary' : 'text-muted-foreground/40'}`}>
+                              {isWorkday ? 'Arbeitstag' : 'Frei'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  {calendarEditing ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => { setCalendarEditing(false); setCalendarDraft({}); }}
+                        disabled={updateCalendar.isPending}
+                      >
+                        Abbrechen
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const data = Object.fromEntries(
+                            WEEKDAYS.map(w => [w.key, Number(draft[w.key] ?? 0)])
+                          );
+                          updateCalendar.mutate({ projectId, data: data as any }, {
+                            onSuccess: () => {
+                              toast({ title: 'Kalender gespeichert' });
+                              queryClient.invalidateQueries({ queryKey: getGetProjectCalendarQueryKey(projectId) });
+                              setCalendarEditing(false);
+                              setCalendarDraft({});
+                            },
+                            onError: (err) => toast({ title: 'Fehler', description: err.message, variant: 'destructive' }),
+                          });
+                        }}
+                        disabled={updateCalendar.isPending}
+                      >
+                        {updateCalendar.isPending ? 'Speichere…' : 'Kalender speichern'}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setCalendarDraft(Object.fromEntries(WEEKDAYS.map(w => [w.key, String(cal ? cal[w.key] : w.key.startsWith('sat') || w.key.startsWith('sun') ? '0' : '8')])));
+                        setCalendarEditing(true);
+                      }}
+                    >
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Kalender bearbeiten
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* ── Info Side Panel ─────────────────────────────────────────────────── */}
       <Sheet open={!!selectedTaktId} onOpenChange={(open) => { if (!open) { setSelectedTaktId(null); setIsVergabeOpen(false); } }}>
@@ -2037,12 +2252,61 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
                       <Label>Plan-Start</Label>
-                      <Input name="plannedStart" type="date" required defaultValue={editTakt.plannedStart} />
+                      <Input
+                        name="plannedStart"
+                        type="date"
+                        required
+                        defaultValue={editTakt.plannedStart}
+                        onChange={e => {
+                          setEditPlannedStart(e.target.value);
+                          if (editDurationDays && projectCalendar) {
+                            setEditPlannedEnd(clientComputePlannedEnd(e.target.value, Number(editDurationDays), projectCalendar));
+                          }
+                        }}
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label>Plan-Ende</Label>
-                      <Input name="plannedEnd" type="date" required defaultValue={editTakt.plannedEnd} />
+                      <Label className="flex items-center gap-2">
+                        Dauer (Arbeitstage)
+                        <span className="text-[10px] text-muted-foreground font-normal">0,5-Schritte</span>
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0.5}
+                        step={0.5}
+                        placeholder={editTakt.durationDays ?? 'z.B. 5'}
+                        value={editDurationDays}
+                        onChange={e => {
+                          setEditDurationDays(e.target.value);
+                          const startVal = editPlannedStart || editTakt.plannedStart;
+                          if (e.target.value && startVal && projectCalendar) {
+                            setEditPlannedEnd(clientComputePlannedEnd(startVal, Number(e.target.value), projectCalendar));
+                          } else {
+                            setEditPlannedEnd('');
+                          }
+                        }}
+                      />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      Plan-Ende
+                      {editDurationDays && editPlannedEnd && (
+                        <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-normal">
+                          berechnet aus Dauer
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      name="plannedEnd"
+                      type="date"
+                      value={editPlannedEnd || editTakt.plannedEnd}
+                      onChange={e => {
+                        setEditPlannedEnd(e.target.value);
+                        setEditDurationDays('');
+                      }}
+                      required
+                    />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
                     <div className="space-y-2">
@@ -2269,12 +2533,61 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Plan-Start</Label>
-                    <Input name="plannedStart" type="date" required />
+                    <Input
+                      name="plannedStart"
+                      type="date"
+                      required
+                      value={createPlannedStart}
+                      onChange={e => {
+                        setCreatePlannedStart(e.target.value);
+                        if (createDurationDays && projectCalendar) {
+                          setCreatePlannedEnd(clientComputePlannedEnd(e.target.value, Number(createDurationDays), projectCalendar));
+                        }
+                      }}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Plan-Ende</Label>
-                    <Input name="plannedEnd" type="date" required />
+                    <Label className="flex items-center gap-2">
+                      Dauer (Arbeitstage)
+                      <span className="text-[10px] text-muted-foreground font-normal">0,5-Schritte</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      placeholder="z.B. 5"
+                      value={createDurationDays}
+                      onChange={e => {
+                        setCreateDurationDays(e.target.value);
+                        if (e.target.value && createPlannedStart && projectCalendar) {
+                          setCreatePlannedEnd(clientComputePlannedEnd(createPlannedStart, Number(e.target.value), projectCalendar));
+                        } else {
+                          setCreatePlannedEnd('');
+                        }
+                      }}
+                    />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    Plan-Ende
+                    {createDurationDays && createPlannedEnd && (
+                      <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-normal">
+                        berechnet aus Dauer
+                      </span>
+                    )}
+                  </Label>
+                  <Input
+                    name="plannedEnd"
+                    type="date"
+                    value={createPlannedEnd}
+                    onChange={e => {
+                      setCreatePlannedEnd(e.target.value);
+                      setCreateDurationDays('');
+                    }}
+                    required={!createDurationDays}
+                    placeholder={createDurationDays ? 'Wird berechnet…' : ''}
+                  />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border/50">
                   <div className="space-y-2 pt-3">
@@ -2617,6 +2930,36 @@ export default function ProjectDetail() {
           })()}
         </DialogContent>
       </Dialog>
+      {/* ── Dep reschedule confirmation dialog ───────────────────────────────── */}
+      <AlertDialog open={depRescheduleOpen} onOpenChange={setDepRescheduleOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Plantermine automatisch anpassen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Soll das System die Plan-Start- und -Endtermine der Nachfolger-Takte aufgrund dieser neuen Abhängigkeit automatisch neu berechnen?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setDepRescheduleOpen(false);
+                executeDepCreate(true); // skip = no reschedule
+              }}
+            >
+              Nein, nicht anpassen
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setDepRescheduleOpen(false);
+                executeDepCreate(false); // reschedule
+              }}
+            >
+              Ja, Termine anpassen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ── Dataspace Publication Wizard ──────────────────────────────────────── */}
       {project && (
         <DataPublicationWizard

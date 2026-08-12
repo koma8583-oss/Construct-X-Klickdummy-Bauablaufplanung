@@ -6118,3 +6118,106 @@ export const useCancelNuResourceBooking = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCancelNuResourceBookingMutationOptions(options));
     }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project Calendar — manually appended (not auto-generated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getProjectCalendarUrl = (projectId: string) => `/api/projects/${projectId}/calendar`;
+
+export const getProjectCalendar = (
+  projectId: string,
+  options?: SecondParameter<typeof customFetch>,
+): Promise<ProjectCalendar> =>
+  customFetch<ProjectCalendar>(getProjectCalendarUrl(projectId), options);
+
+export const getGetProjectCalendarQueryKey = (projectId: string) =>
+  [`/api/projects/${projectId}/calendar`] as const;
+
+export const getGetProjectCalendarQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProjectCalendar>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
+): UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData> & { queryKey: readonly string[] } => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetProjectCalendarQueryKey(projectId);
+  return {
+    queryKey: queryKey as unknown as readonly string[],
+    queryFn: () => getProjectCalendar(projectId, requestOptions),
+    ...queryOptions,
+  };
+};
+
+export function useGetProjectCalendar<
+  TData = Awaited<ReturnType<typeof getProjectCalendar>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
+) {
+  const queryOptions = getGetProjectCalendarQueryOptions(projectId, options);
+  return useQuery(queryOptions);
+}
+
+export const updateProjectCalendar = (
+  projectId: string,
+  updateProjectCalendarRequest: UpdateProjectCalendarRequest,
+  options?: SecondParameter<typeof customFetch>,
+): Promise<ProjectCalendar> =>
+  customFetch<ProjectCalendar>(getProjectCalendarUrl(projectId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateProjectCalendarRequest),
+    ...options,
+  } as any);
+
+export const getUpdateProjectCalendarMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  return {
+    mutationFn: ({ projectId, data }) => updateProjectCalendar(projectId, data, requestOptions),
+    ...mutationOptions,
+  };
+};
+
+export const useUpdateProjectCalendar = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => useMutation(getUpdateProjectCalendarMutationOptions(options));
+
+// ── Takt Dependency — variant that skips cascade-reschedule ──────────────────
+export const createTaktDependencySkipReschedule = (
+  projectId: string,
+  createTaktDependencyRequest: CreateTaktDependencyRequest,
+  options?: SecondParameter<typeof customFetch>,
+): Promise<TaktDependencyCreateResult> =>
+  customFetch<TaktDependencyCreateResult>(
+    `/api/projects/${projectId}/takt-dependencies?skipReschedule=true`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(createTaktDependencyRequest),
+      ...options,
+    } as any,
+  );
+
+export const useCreateTaktDependencySkipReschedule = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof createTaktDependencySkipReschedule>>, TError, { projectId: string; data: CreateTaktDependencyRequest }, TContext>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) =>
+  useMutation({
+    mutationFn: ({ projectId, data }: { projectId: string; data: CreateTaktDependencyRequest }) =>
+      createTaktDependencySkipReschedule(projectId, data),
+    ...options?.mutation,
+  });
