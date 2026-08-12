@@ -402,6 +402,8 @@ export function UnifiedGantt({
     return out;
   }, [sections, expandedSections, expandedGroups]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   if (!sections.length) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -410,8 +412,6 @@ export function UnifiedGantt({
       </div>
     );
   }
-
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="flex flex-col overflow-hidden" style={{ maxHeight: "calc(100vh - 260px)", minHeight: 320 }}>
