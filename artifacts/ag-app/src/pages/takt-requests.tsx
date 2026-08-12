@@ -198,7 +198,7 @@ function DeadlineCell({ date }: { date: string | null | undefined }) {
 }
 
 /** Row-level actions, only showing what's valid for the current status */
-function ActionButtons({ item }: { item: TaktRequestListItem }) {
+function ActionButtons({ item, onNavigate }: { item: TaktRequestListItem; onNavigate: () => void }) {
   const { t } = useTranslation();
   const { status, outboxStatus } = item;
 
@@ -206,17 +206,17 @@ function ActionButtons({ item }: { item: TaktRequestListItem }) {
 
   if (status === 'DRAFT') {
     actions.push(
-      <Button key="edit" variant="outline" size="sm" className="h-7 text-xs">
+      <Button key="edit" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
         {t('taktRequests.actions.edit')}
       </Button>,
-      <Button key="send" size="sm" className="h-7 text-xs">
+      <Button key="send" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
         <Send className="w-3 h-3 mr-1" />
         {t('taktRequests.actions.send')}
       </Button>,
     );
   } else if (outboxStatus === 'FAILED') {
     actions.push(
-      <Button key="resend" variant="outline" size="sm" className="h-7 text-xs">
+      <Button key="resend" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
         <RefreshCw className="w-3 h-3 mr-1" />
         {t('taktRequests.actions.resend')}
       </Button>,
@@ -225,7 +225,7 @@ function ActionButtons({ item }: { item: TaktRequestListItem }) {
 
   if (status === 'ALTERNATIVES_PROPOSED' || status === 'ACCEPTED') {
     actions.push(
-      <Button key="response" variant="outline" size="sm" className="h-7 text-xs">
+      <Button key="response" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
         <ChevronRight className="w-3 h-3 mr-1" />
         {t('taktRequests.actions.viewResponse')}
       </Button>,
@@ -234,7 +234,7 @@ function ActionButtons({ item }: { item: TaktRequestListItem }) {
 
   if (!CLOSED_STATUSES.has(status) && status !== 'DRAFT') {
     actions.push(
-      <Button key="open" variant="ghost" size="sm" className="h-7 text-xs">
+      <Button key="open" variant="ghost" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onNavigate(); }}>
         {t('taktRequests.actions.open')}
       </Button>,
     );
@@ -276,6 +276,7 @@ const ALL_STATUSES: TaktRequestStatus[] = [
 
 export default function TaktRequestsPage() {
   const { t } = useTranslation();
+  const [, setLocation] = useLocation();
 
   // ── Filter state ────────────────────────────────────────────────────────────
   const [openClosed, setOpenClosed] = useState<OpenClosedFilter>('ALL');
@@ -506,7 +507,8 @@ export default function TaktRequestsPage() {
                 filtered.map((item) => (
                   <TableRow
                     key={item.id}
-                    className={`border-border hover:bg-muted/30 transition-colors ${CLOSED_STATUSES.has(item.status as TaktRequestStatus) ? 'opacity-60' : ''}`}
+                    className={`border-border hover:bg-muted/30 transition-colors cursor-pointer ${CLOSED_STATUSES.has(item.status as TaktRequestStatus) ? 'opacity-60' : ''}`}
+                    onClick={() => setLocation(`/takt-requests/${item.id}`)}
                   >
                     <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {item.requestNumber}
@@ -548,7 +550,7 @@ export default function TaktRequestsPage() {
                       {format(new Date(item.updatedAt), 'dd.MM.yy HH:mm')}
                     </TableCell>
                     <TableCell>
-                      <ActionButtons item={item} />
+                      <ActionButtons item={item} onNavigate={() => setLocation(`/takt-requests/${item.id}`)} />
                     </TableCell>
                   </TableRow>
                 ))

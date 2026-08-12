@@ -500,6 +500,12 @@ function ProjectCard({ project }: { project: AgProjectSummary }) {
           {/* Footer: alerts + last activity */}
           <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-border/30">
             <div className="flex items-center gap-2">
+              {(project.alternativeTaktRequests ?? 0) > 0 && (
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  {project.alternativeTaktRequests} Vorschlag{(project.alternativeTaktRequests ?? 0) > 1 ? 'vorschläge' : ''}
+                </div>
+              )}
               {(project.overdueTaktRequests ?? 0) > 0 && (
                 <div className="flex items-center gap-1 text-[11px] font-semibold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -511,7 +517,7 @@ function ProjectCard({ project }: { project: AgProjectSummary }) {
                   {project.revisionRequiredRequests} Revision
                 </div>
               )}
-              {(project.acceptedTaktRequests ?? 0) > 0 && (project.overdueTaktRequests ?? 0) === 0 && (project.openTaktRequests ?? 0) === 0 && (
+              {(project.acceptedTaktRequests ?? 0) > 0 && (project.overdueTaktRequests ?? 0) === 0 && (project.openTaktRequests ?? 0) === 0 && (project.alternativeTaktRequests ?? 0) === 0 && (
                 <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="w-3 h-3" />
                   Koordiniert

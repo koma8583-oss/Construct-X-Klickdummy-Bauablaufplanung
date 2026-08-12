@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/auth-context';
 import { useTranslation } from 'react-i18next';
+import { useGetAgProjectsOverview } from '@workspace/api-client-react';
 import {
   LayoutDashboard,
   Briefcase,
   Send,
-  Inbox,
   Users,
   Database,
   Settings,
@@ -18,6 +18,13 @@ import {
   X,
 } from 'lucide-react';
 
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -25,11 +32,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navigation = [
+  // Aggregate counts across all projects — drive sidebar badges
+  const { data: projectsOverview } = useGetAgProjectsOverview();
+  const pendingProposalsTotal = (projectsOverview ?? []).reduce(
+    (sum, p) => sum + (p.alternativeTaktRequests ?? 0),
+    0,
+  );
+  const openTaktRequestsTotal = (projectsOverview ?? []).reduce(
+    (sum, p) => sum + (p.openTaktRequests ?? 0),
+    0,
+  );
+
+  const navigation: NavItem[] = [
     { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
-    { name: t('nav.projects'), href: '/projects', icon: Briefcase },
-    { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send },
-    { name: t('nav.proposals'), href: '/proposals', icon: Inbox },
+    { name: t('nav.projects'), href: '/projects', icon: Briefcase, badge: pendingProposalsTotal },
+    { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send, badge: openTaktRequestsTotal },
     { name: t('nav.contractors'), href: '/contractors', icon: Users },
     { name: t('nav.datenraum'), href: '/datenraum', icon: Database },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
@@ -96,6 +113,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <nav className={`flex-1 overflow-y-auto px-3 pb-3 ${collapsed ? 'sm:px-1.5 sm:py-3' : ''} space-y-0.5`}>
           {navigation.map((item) => {
             const isActive = location === item.href || (item.href !== '/' && location.startsWith(item.href));
+            const hasBadge = (item.badge ?? 0) > 0;
             return (
               <Link key={item.name} href={item.href} onClick={closeMobile}>
                 <div
@@ -108,8 +126,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
                   ].join(' ')}
                 >
-                  <item.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
-                  <span className={`truncate ${collapsed ? 'sm:hidden' : ''}`}>{item.name}</span>
+                  {/* Icon — with dot overlay in collapsed mode */}
+                  <span className="relative flex-shrink-0">
+                    <item.icon className={`w-4 h-4 ${isActive ? 'text-primary' : ''}`} />
+                    {hasBadge && collapsed && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary" />
+                    )}
+                  </span>
+
+                  {/* Label + badge (hidden when collapsed on desktop) */}
+                  <span className={`truncate flex-1 ${collapsed ? 'sm:hidden' : ''}`}>{item.name}</span>
+                  {hasBadge && !collapsed && (
+                    <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 leading-none">
+                      {(item.badge ?? 0) > 9 ? '9+' : item.badge}
+                    </span>
+                  )}
                 </div>
               </Link>
             );
