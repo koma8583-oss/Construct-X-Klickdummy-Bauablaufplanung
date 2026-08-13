@@ -24,6 +24,7 @@ import {
   organizationsTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
+import { buildOdrl } from "../lib/odrl-builder";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
@@ -528,46 +529,14 @@ router.get(
     const { pub, policy, agOrgId } = row;
     const nuOrgId = caller.orgType === "AN" ? caller.orgId : null;
 
-    // Map policy code → ODRL purpose constraint value
-    const purposeMap: Record<string, string> = {
-      SCHEDULE_COORDINATION: "scheduleCoordination",
-      COORDINATION_USE:      "coordinationUse",
-      READ_ONLY:             "readOnly",
-      SUBCONTRACTOR_FULL:    "subcontractorFull",
-    };
-    const purposeValue =
-      purposeMap[policy?.code ?? ""] ??
-      (policy?.code ?? "unspecified").toLowerCase().replace(/_/g, "");
-
-    const permConstraints: unknown[] = [
-      { leftOperand: "purpose", operator: "eq", rightOperand: purposeValue },
-      ...(pub.validFrom
-        ? [{ leftOperand: "dateTime", operator: "gteq", rightOperand: pub.validFrom }]
-        : []),
-      ...(pub.validUntil
-        ? [{ leftOperand: "dateTime", operator: "lteq", rightOperand: pub.validUntil }]
-        : []),
-    ];
-
-    const odrl = {
-      "@context": "http://www.w3.org/ns/odrl.jsonld",
-      "@type": "Set",
-      "uid": `urn:odrl:data-publication:${pub.id}`,
-      "permission": [
-        {
-          "target":   `data-publication:${pub.id}`,
-          "assigner": `organization:${agOrgId}`,
-          ...(nuOrgId ? { "assignee": `organization:${nuOrgId}` } : {}),
-          "action":   "use",
-          "constraint": permConstraints,
-        },
-      ],
-      "prohibition": ["distribute", "derive"].map((action) => ({
-        "target": `data-publication:${pub.id}`,
-        ...(nuOrgId ? { "assignee": `organization:${nuOrgId}` } : {}),
-        "action": action,
-      })),
-    };
+    const odrl = buildOdrl({
+      publicationId: pub.id,
+      policyCode:    policy?.code ?? undefined,
+      agOrgId:       agOrgId ?? "unknown",
+      nuOrgId,
+      validFrom:     pub.validFrom,
+      validUntil:    pub.validUntil,
+    });
 
     res.json(odrl);
   },

@@ -260,8 +260,8 @@ router.post(
       res.status(404).json({ error: "Data offer not found" });
       return;
     }
-    if (!["OFFERED", "ACCEPTED"].includes(recipient.status)) {
-      res.status(409).json({ error: `Cannot reject an offer with status "${recipient.status}"` });
+    if (recipient.status !== "OFFERED") {
+      res.status(409).json({ error: `Cannot reject an offer with status "${recipient.status}". Only OFFERED offers can be rejected.` });
       return;
     }
 

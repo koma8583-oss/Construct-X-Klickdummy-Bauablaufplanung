@@ -96,30 +96,67 @@ function PolicyContentTab({ policy }: { policy: PolicyTemplate }) {
 }
 
 // ── Client-side ODRL preview generator (wizard — no publicationId yet) ────────
+// Must stay in sync with artifacts/api-server/src/lib/odrl-builder.ts
+
+type OdrlConstraint = { leftOperand: string; operator: string; rightOperand: string };
+
+const POLICY_DEFINITIONS: Record<string, {
+  purposeValue:    string;
+  extraConstraints?: OdrlConstraint[];
+  prohibitionActions: string[];
+}> = {
+  SCHEDULE_COORDINATION: {
+    purposeValue: 'scheduleCoordination',
+    extraConstraints: [
+      { leftOperand: 'taktkoord:scope',       operator: 'eq', rightOperand: 'taktkoord:projectSpecific' },
+      { leftOperand: 'taktkoord:internalUse', operator: 'eq', rightOperand: 'taktkoord:restrictedToRecipient' },
+    ],
+    prohibitionActions: ['distribute'], // no "derive" for this policy
+  },
+  COORDINATION_USE: {
+    purposeValue: 'coordinationUse',
+    extraConstraints: [
+      { leftOperand: 'taktkoord:scope', operator: 'eq', rightOperand: 'taktkoord:projectSpecific' },
+    ],
+    prohibitionActions: ['distribute', 'derive', 'modify'],
+  },
+  READ_ONLY: {
+    purposeValue: 'readOnly',
+    prohibitionActions: ['distribute', 'derive', 'modify', 'archive'],
+  },
+  SUBCONTRACTOR_FULL: {
+    purposeValue: 'subcontractorFull',
+    extraConstraints: [
+      { leftOperand: 'taktkoord:scope', operator: 'eq', rightOperand: 'taktkoord:contractScope' },
+    ],
+    prohibitionActions: ['distribute', 'commercialize'],
+  },
+};
 
 function buildPreviewOdrl(policy: PolicyTemplate, agOrgId: string): Record<string, unknown> {
-  const purposeMap: Record<string, string> = {
-    SCHEDULE_COORDINATION: 'scheduleCoordination',
-    COORDINATION_USE:      'coordinationUse',
-    READ_ONLY:             'readOnly',
-    SUBCONTRACTOR_FULL:    'subcontractorFull',
+  const def = POLICY_DEFINITIONS[policy.code] ?? {
+    purposeValue:       policy.code.toLowerCase().replace(/_/g, ''),
+    prohibitionActions: ['distribute', 'derive'],
   };
-  const purposeValue = purposeMap[policy.code] ?? policy.code.toLowerCase().replace(/_/g, '');
+  const constraints: OdrlConstraint[] = [
+    { leftOperand: 'purpose', operator: 'eq', rightOperand: def.purposeValue },
+    ...(def.extraConstraints ?? []),
+  ];
   return {
     '@context': 'http://www.w3.org/ns/odrl.jsonld',
     '@type':    'Set',
     'uid':      'urn:odrl:data-publication:preview',
     'permission': [{
-      'target':   'data-publication:preview',
-      'assigner': `organization:${agOrgId}`,
-      'assignee': 'organization:<nu-org-id>',
-      'action':   'use',
-      'constraint': [{ 'leftOperand': 'purpose', 'operator': 'eq', 'rightOperand': purposeValue }],
+      'target':     'data-publication:preview',
+      'assigner':   `organization:${agOrgId}`,
+      'assignee':   'organization:<nu-org-id>',
+      'action':     'use',
+      'constraint': constraints,
     }],
-    'prohibition': [
-      { 'target': 'data-publication:preview', 'action': 'distribute' },
-      { 'target': 'data-publication:preview', 'action': 'derive' },
-    ],
+    'prohibition': def.prohibitionActions.map((action) => ({
+      'target': 'data-publication:preview',
+      action,
+    })),
   };
 }
 

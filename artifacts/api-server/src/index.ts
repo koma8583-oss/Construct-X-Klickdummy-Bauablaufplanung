@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startDeadlineWorker, stopDeadlineWorker } from "./lib/local-deadline-worker";
 import { loadDeadlineConfig } from "./services/deadline-config";
+import { seedPolicyTemplates } from "./lib/seed-policy-templates";
 
 // Fail fast if the JWT secret is missing or is the known insecure dev fallback in production.
 // In development the fallback is allowed so that `pnpm dev` works without pre-configuring secrets.
@@ -38,6 +39,11 @@ const server = app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // ── Seed canonical policy templates ─────────────────────────────────────
+  seedPolicyTemplates().catch((err) =>
+    logger.error({ err }, "Failed to seed policy templates"),
+  );
 
   // ── Start deadline worker ────────────────────────────────────────────────
   // Reads DEADLINE_WORKER_ENABLED and DEADLINE_WORKER_INTERVAL_MINUTES from env.
