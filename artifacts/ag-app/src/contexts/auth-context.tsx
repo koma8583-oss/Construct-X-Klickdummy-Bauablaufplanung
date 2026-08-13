@@ -63,6 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accessToken: string;
         user: User;
       }>('/auth-service/refresh', { method: 'POST' });
+
+      // AG-App only accepts AG accounts — clear any cross-app session silently
+      if (userData.orgType !== 'AG') {
+        await authFetch('/auth-service/logout', { method: 'POST' }).catch(() => {});
+        setToken(null);
+        const url = new URL(window.location.href);
+        url.searchParams.set('wrong_role', '1');
+        url.searchParams.delete('session_expired');
+        window.history.replaceState({}, '', url.toString());
+        setUser(null);
+        return;
+      }
+
       setToken(accessToken);
       setUser(normaliseUser(userData));
     } catch {
@@ -81,6 +94,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
+
+    // Reject non-AG accounts with a clear error
+    if (userData.orgType !== 'AG') {
+      await authFetch('/auth-service/logout', { method: 'POST' }).catch(() => {});
+      throw new Error(
+        'Dieses Konto ist ein Nachunternehmer-Konto. Bitte melden Sie sich in der Nachunternehmer-App an.',
+      );
+    }
+
     setToken(accessToken);
     setUser(normaliseUser(userData));
   };

@@ -66,11 +66,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: AuthUser;
       }>('/auth-service/refresh', { method: 'POST' });
 
-      // AN-App only accepts AN accounts
+      // AN-App only accepts AN accounts — clear any cross-app session and signal login page
       if (userData.orgType !== 'AN') {
+        await authFetch('/auth-service/logout', { method: 'POST' }).catch(() => {});
+        setToken(null);
+        const url = new URL(window.location.href);
+        url.searchParams.set('wrong_role', '1');
+        url.searchParams.delete('session_expired');
+        window.history.replaceState({}, '', url.toString());
         setUser(null);
         return;
       }
+
       setToken(accessToken);
       setUser(normaliseUser(userData));
     } catch {

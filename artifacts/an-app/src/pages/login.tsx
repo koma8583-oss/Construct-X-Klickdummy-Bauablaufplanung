@@ -12,8 +12,13 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const sessionExpired = new URLSearchParams(window.location.search).get("session_expired") === "1";
+  const wrongRole = new URLSearchParams(window.location.search).get("wrong_role") === "1";
   const [error, setError] = useState(
-    sessionExpired ? "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an." : ""
+    wrongRole
+      ? "Dieses Konto ist ein Auftraggeber-Konto. Bitte melden Sie sich in der Auftraggeber-App an."
+      : sessionExpired
+      ? "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+      : ""
   );
   const { login, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();

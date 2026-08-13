@@ -26,6 +26,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
 
   const sessionExpired = new URLSearchParams(window.location.search).get('session_expired') === '1';
+  const wrongRole = new URLSearchParams(window.location.search).get('wrong_role') === '1';
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -67,7 +68,13 @@ export default function Login() {
             {t('login.title')}
           </h2>
 
-          {sessionExpired && (
+          {wrongRole && (
+            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md text-sm text-destructive">
+              Dieses Konto ist ein Nachunternehmer-Konto. Bitte melden Sie sich in der Nachunternehmer-App an.
+            </div>
+          )}
+
+          {sessionExpired && !wrongRole && (
             <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700 dark:text-amber-400">
               Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.
             </div>

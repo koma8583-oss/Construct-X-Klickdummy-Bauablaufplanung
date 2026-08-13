@@ -25,6 +25,7 @@ import {
   getListTaktRequestsQueryKey,
   getGetTaktRequestDetailQueryKey,
   getGetProjectQueryKey,
+  getGetAgProjectsOverviewQueryKey,
   getListProjectContractorsQueryKey,
   getListOrganizationsQueryKey,
   getListTaktDependenciesQueryKey,
@@ -110,6 +111,7 @@ import {
   getGetProjectCalendarQueryKey,
   useUpdateProjectCalendar,
   useCreateTaktDependencySkipReschedule,
+  useUpdateProject,
   type DataPublication,
   type ProjectCalendar,
 } from '@workspace/api-client-react';
@@ -390,10 +392,19 @@ export default function ProjectDetail() {
   const [createPlannedStart, setCreatePlannedStart] = useState('');
   const [createPlannedEnd, setCreatePlannedEnd] = useState('');
 
+  // Dependency rows — create form
+  const [createDeps, setCreateDeps] = useState<
+    { _id: number; predecessorId: string; type: TaktDependencyType; lagDays: number }[]
+  >([]);
+  const [createDepCounter, setCreateDepCounter] = useState(0);
+
   // Duration state — edit form
   const [editDurationDays, setEditDurationDays] = useState<string>('');
   const [editPlannedStart, setEditPlannedStart] = useState('');
   const [editPlannedEnd, setEditPlannedEnd] = useState('');
+
+  // Project edit dialog
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
 
   // Calendar config state
   const [calendarEditing, setCalendarEditing] = useState(false);
@@ -428,6 +439,11 @@ export default function ProjectDetail() {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
 
+  // Full project data (includes description + location not in overview)
+  const { data: fullProject } = useGetProject(projectId, {
+    query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) },
+  });
+
   // Project calendar — used for duration-based end-date computation
   const { data: projectCalendar } = useGetProjectCalendar(projectId, {
     query: { enabled: !!projectId, queryKey: getGetProjectCalendarQueryKey(projectId) },
@@ -452,6 +468,7 @@ export default function ProjectDetail() {
   const createDepSkip = useCreateTaktDependencySkipReschedule();
   const deleteDep = useDeleteTaktDependency();
   
+  const updateProject = useUpdateProject();
   const createAssignment = useCreateProjectSubcontractor();
   const updateAssignment = useUpdateProjectSubcontractor();
   const deactivateAssignment = useDeactivateProjectSubcontractor();
@@ -748,42 +765,50 @@ export default function ProjectDetail() {
     setActiveConflicts(conflicts);
   }
 
-  const handleCreateTakt = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateTakt = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const durVal = createDurationDays ? Number(createDurationDays) : undefined;
     const explicitEnd = (fd.get('plannedEnd') as string) || undefined;
-    createTakt.mutate({
-      projectId,
-      data: {
-        taktBezeichnung: fd.get('taktBezeichnung') as string,
-        zone: fd.get('zone') as string,
-        gewerk: fd.get('gewerk') as string,
-        description: (fd.get('description') as string) || undefined,
-        plannedStart: fd.get('plannedStart') as string,
-        plannedEnd: durVal != null ? undefined : explicitEnd,
-        durationDays: durVal,
-        earliestStart: (fd.get('earliestStart') as string) || undefined,
-        latestEnd: (fd.get('latestEnd') as string) || undefined,
-        // GU-internal fields
-        internalNote: (fd.get('internalNote') as string) || undefined,
-        costEstimate: (fd.get('costEstimate') as string) || undefined,
-        procurementPriority: (createProcPriority as any) || undefined,
-        riskClassification: (createRiskClass as any) || undefined,
-      } as any,
-    }, {
-      onSuccess: () => {
-        toast({ title: 'Takt angelegt' });
-        invalidateTakte();
-        setIsCreateOpen(false);
-        setCreateProcPriority('');
-        setCreateRiskClass('');
-        setCreateDurationDays('');
-        setCreatePlannedStart('');
-        setCreatePlannedEnd('');
-      },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
-    });
+    try {
+      const newTakt = await createTakt.mutateAsync({
+        projectId,
+        data: {
+          taktBezeichnung: fd.get('taktBezeichnung') as string,
+          zone: fd.get('zone') as string,
+          gewerk: fd.get('gewerk') as string,
+          description: (fd.get('description') as string) || undefined,
+          plannedStart: fd.get('plannedStart') as string,
+          plannedEnd: durVal != null ? undefined : explicitEnd,
+          durationDays: durVal,
+          earliestStart: (fd.get('earliestStart') as string) || undefined,
+          latestEnd: (fd.get('latestEnd') as string) || undefined,
+          internalNote: (fd.get('internalNote') as string) || undefined,
+          costEstimate: (fd.get('costEstimate') as string) || undefined,
+          procurementPriority: (createProcPriority as any) || undefined,
+          riskClassification: (createRiskClass as any) || undefined,
+        } as any,
+      });
+      // Create any pre-defined dependencies (skip reschedule — Takt was just created)
+      for (const dep of createDeps) {
+        if (!dep.predecessorId) continue;
+        await createDepSkip.mutateAsync({
+          projectId,
+          data: { predecessorId: dep.predecessorId, successorId: newTakt.id, type: dep.type, lagDays: dep.lagDays },
+        });
+      }
+      toast({ title: 'Takt angelegt', description: createDeps.length > 0 ? `${createDeps.length} Abhängigkeit${createDeps.length > 1 ? 'en' : ''} verknüpft` : undefined });
+      invalidateTakte();
+      setIsCreateOpen(false);
+      setCreateProcPriority('');
+      setCreateRiskClass('');
+      setCreateDurationDays('');
+      setCreatePlannedStart('');
+      setCreatePlannedEnd('');
+      setCreateDeps([]);
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
+    }
   };
 
   const handleEditTakt = (e: React.FormEvent<HTMLFormElement>) => {
@@ -1084,7 +1109,18 @@ export default function ProjectDetail() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{project.projectName}</h1>
-              <Badge variant={project.status === 'ACTIVE' ? 'default' : 'secondary'}>{project.status}</Badge>
+              <Badge variant={project.status === 'ACTIVE' ? 'default' : 'secondary'}>
+                {project.status === 'ACTIVE' ? 'Aktiv' : project.status === 'COMPLETED' ? 'Abgeschlossen' : project.status === 'ARCHIVED' ? 'Archiviert' : project.status}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => setIsEditProjectOpen(true)}
+                title="Projektdaten bearbeiten"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
             </div>
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
               <span className="flex items-center">
@@ -1092,6 +1128,18 @@ export default function ProjectDetail() {
                 {project.startDate ? format(new Date(project.startDate), 'dd.MM.yyyy') : 'TBD'} –{' '}
                 {project.endDate ? format(new Date(project.endDate), 'dd.MM.yyyy') : 'TBD'}
               </span>
+              {fullProject?.location && (
+                <span className="flex items-center">
+                  <MapPin className="w-3.5 h-3.5 mr-1" />
+                  {fullProject.location}
+                </span>
+              )}
+              {fullProject?.description && (
+                <span className="flex items-center">
+                  <AlignLeft className="w-3.5 h-3.5 mr-1" />
+                  {fullProject.description}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -2651,9 +2699,106 @@ export default function ProjectDetail() {
               </div>
             </div>
 
+            {/* ── Abhängigkeiten (optional) ──────────────────────────── */}
+            <div className="mt-6 pt-5 border-t border-border/50">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" />
+                  Abhängigkeiten
+                  <span className="text-[10px] font-normal text-muted-foreground/60">(optional)</span>
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const id = createDepCounter + 1;
+                    setCreateDepCounter(id);
+                    setCreateDeps(prev => [...prev, { _id: id, predecessorId: '', type: 'EA', lagDays: 0 }]);
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Vorgänger hinzufügen
+                </Button>
+              </div>
+
+              {createDeps.length === 0 && (
+                <p className="text-xs text-muted-foreground/60 italic">Keine Abhängigkeiten definiert.</p>
+              )}
+
+              <div className="space-y-2">
+                {createDeps.map((dep) => (
+                  <div key={dep._id} className="flex items-center gap-2 bg-muted/30 rounded-md px-3 py-2">
+                    {/* Predecessor picker */}
+                    <Select
+                      value={dep.predecessorId}
+                      onValueChange={(v) =>
+                        setCreateDeps(prev => prev.map(d => d._id === dep._id ? { ...d, predecessorId: v } : d))
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1 min-w-0">
+                        <SelectValue placeholder="Vorgänger wählen…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(takte ?? []).map(t => (
+                          <SelectItem key={t.id} value={t.id} className="text-xs">
+                            {t.taktBezeichnung} — {t.zone} ({t.gewerk})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Type */}
+                    <Select
+                      value={dep.type}
+                      onValueChange={(v) =>
+                        setCreateDeps(prev => prev.map(d => d._id === dep._id ? { ...d, type: v as TaktDependencyType } : d))
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs w-36 shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.entries(DEP_TYPE_LABEL) as [TaktDependencyType, string][]).map(([k, label]) => (
+                          <SelectItem key={k} value={k} className="text-xs">{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Lag */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={dep.lagDays}
+                        onChange={(e) =>
+                          setCreateDeps(prev => prev.map(d => d._id === dep._id ? { ...d, lagDays: Number(e.target.value) } : d))
+                        }
+                        className="h-8 text-xs w-16 text-center"
+                      />
+                      <span className="text-[10px] text-muted-foreground">d</span>
+                    </div>
+
+                    {/* Remove */}
+                    <button
+                      type="button"
+                      onClick={() => setCreateDeps(prev => prev.filter(d => d._id !== dep._id))}
+                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <DialogFooter className="mt-6 pt-4 border-t border-border/50">
-              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Abbrechen</Button>
-              <Button type="submit" disabled={createTakt.isPending}>Takt anlegen</Button>
+              <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); setCreateDeps([]); }}>Abbrechen</Button>
+              <Button type="submit" disabled={createTakt.isPending || createDepSkip.isPending}>
+                {createTakt.isPending || createDepSkip.isPending ? 'Wird angelegt…' : 'Takt anlegen'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -2959,6 +3104,94 @@ export default function ProjectDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Edit Project Dialog ───────────────────────────────────────────────── */}
+      <Dialog open={isEditProjectOpen} onOpenChange={setIsEditProjectOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-primary" />
+              Projektdaten bearbeiten
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const name = (fd.get('name') as string).trim();
+              if (!name) return;
+              updateProject.mutate(
+                {
+                  projectId,
+                  data: {
+                    name,
+                    description: (fd.get('description') as string).trim() || undefined,
+                    location: (fd.get('location') as string).trim() || undefined,
+                    status: fd.get('status') as 'ACTIVE' | 'COMPLETED' | 'ARCHIVED',
+                    startDate: (fd.get('startDate') as string) || undefined,
+                    endDate: (fd.get('endDate') as string) || undefined,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    toast({ title: 'Projekt aktualisiert' });
+                    queryClient.invalidateQueries({ queryKey: ['getAgProjectOverview', projectId] });
+                    queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+                    queryClient.invalidateQueries({ queryKey: getGetAgProjectsOverviewQueryKey() });
+                    setIsEditProjectOpen(false);
+                  },
+                  onError: (err) => toast({ title: 'Fehler', description: err.message, variant: 'destructive' }),
+                },
+              );
+            }}
+            className="space-y-4 mt-2"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="ep-name">Projektname *</Label>
+              <Input id="ep-name" name="name" required defaultValue={project?.projectName ?? ''} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ep-description">Beschreibung</Label>
+              <Textarea id="ep-description" name="description" rows={2} defaultValue={fullProject?.description ?? ''} placeholder="Kurze Projektbeschreibung…" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ep-location">Standort / Adresse</Label>
+              <Input id="ep-location" name="location" defaultValue={fullProject?.location ?? ''} placeholder="z. B. Hauptstraße 1, 44801 Bochum" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="ep-start">Startdatum</Label>
+                <Input id="ep-start" name="startDate" type="date" defaultValue={project?.startDate?.slice(0, 10) ?? ''} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ep-end">Enddatum</Label>
+                <Input id="ep-end" name="endDate" type="date" defaultValue={project?.endDate?.slice(0, 10) ?? ''} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ep-status">Status</Label>
+              <Select name="status" defaultValue={project?.status ?? 'ACTIVE'}>
+                <SelectTrigger id="ep-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Aktiv</SelectItem>
+                  <SelectItem value="COMPLETED">Abgeschlossen</SelectItem>
+                  <SelectItem value="ARCHIVED">Archiviert</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditProjectOpen(false)}>
+                Abbrechen
+              </Button>
+              <Button type="submit" disabled={updateProject.isPending}>
+                {updateProject.isPending ? 'Wird gespeichert…' : 'Speichern'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dataspace Publication Wizard ──────────────────────────────────────── */}
       {project && (
