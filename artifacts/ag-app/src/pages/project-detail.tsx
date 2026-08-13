@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useLocation } from 'wouter';
 import NetzplanView from '@/components/NetzplanView';
@@ -405,6 +405,26 @@ export default function ProjectDetail() {
 
   // Project edit dialog
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [epName, setEpName] = useState('');
+  const [epDescription, setEpDescription] = useState('');
+  const [epLocation, setEpLocation] = useState('');
+  const [epStartDate, setEpStartDate] = useState('');
+  const [epEndDate, setEpEndDate] = useState('');
+  const [epStatus, setEpStatus] = useState<'ACTIVE' | 'COMPLETED' | 'ARCHIVED'>('ACTIVE');
+
+  // Sync edit-project form fields whenever the dialog is opened so that a
+  // second open always reflects the latest saved values (defaultValue alone
+  // won't re-initialize Radix Select after the first render).
+  useEffect(() => {
+    if (isEditProjectOpen) {
+      setEpName(project?.projectName ?? '');
+      setEpDescription(fullProject?.description ?? '');
+      setEpLocation(fullProject?.location ?? '');
+      setEpStartDate(project?.startDate?.slice(0, 10) ?? '');
+      setEpEndDate(project?.endDate?.slice(0, 10) ?? '');
+      setEpStatus((project?.status as 'ACTIVE' | 'COMPLETED' | 'ARCHIVED') ?? 'ACTIVE');
+    }
+  }, [isEditProjectOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Calendar config state
   const [calendarEditing, setCalendarEditing] = useState(false);
@@ -3117,19 +3137,18 @@ export default function ProjectDetail() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const name = (fd.get('name') as string).trim();
+              const name = epName.trim();
               if (!name) return;
               updateProject.mutate(
                 {
                   projectId,
                   data: {
                     name,
-                    description: (fd.get('description') as string).trim() || undefined,
-                    location: (fd.get('location') as string).trim() || undefined,
-                    status: fd.get('status') as 'ACTIVE' | 'COMPLETED' | 'ARCHIVED',
-                    startDate: (fd.get('startDate') as string) || undefined,
-                    endDate: (fd.get('endDate') as string) || undefined,
+                    description: epDescription.trim() || undefined,
+                    location: epLocation.trim() || undefined,
+                    status: epStatus,
+                    startDate: epStartDate || undefined,
+                    endDate: epEndDate || undefined,
                   },
                 },
                 {
@@ -3148,29 +3167,29 @@ export default function ProjectDetail() {
           >
             <div className="space-y-2">
               <Label htmlFor="ep-name">Projektname *</Label>
-              <Input id="ep-name" name="name" required defaultValue={project?.projectName ?? ''} />
+              <Input id="ep-name" name="name" required value={epName} onChange={(e) => setEpName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="ep-description">Beschreibung</Label>
-              <Textarea id="ep-description" name="description" rows={2} defaultValue={fullProject?.description ?? ''} placeholder="Kurze Projektbeschreibung…" />
+              <Textarea id="ep-description" name="description" rows={2} value={epDescription} onChange={(e) => setEpDescription(e.target.value)} placeholder="Kurze Projektbeschreibung…" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="ep-location">Standort / Adresse</Label>
-              <Input id="ep-location" name="location" defaultValue={fullProject?.location ?? ''} placeholder="z. B. Hauptstraße 1, 44801 Bochum" />
+              <Input id="ep-location" name="location" value={epLocation} onChange={(e) => setEpLocation(e.target.value)} placeholder="z. B. Hauptstraße 1, 44801 Bochum" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="ep-start">Startdatum</Label>
-                <Input id="ep-start" name="startDate" type="date" defaultValue={project?.startDate?.slice(0, 10) ?? ''} />
+                <Input id="ep-start" name="startDate" type="date" value={epStartDate} onChange={(e) => setEpStartDate(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ep-end">Enddatum</Label>
-                <Input id="ep-end" name="endDate" type="date" defaultValue={project?.endDate?.slice(0, 10) ?? ''} />
+                <Input id="ep-end" name="endDate" type="date" value={epEndDate} onChange={(e) => setEpEndDate(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="ep-status">Status</Label>
-              <Select name="status" defaultValue={project?.status ?? 'ACTIVE'}>
+              <Select value={epStatus} onValueChange={(v) => setEpStatus(v as 'ACTIVE' | 'COMPLETED' | 'ARCHIVED')}>
                 <SelectTrigger id="ep-status">
                   <SelectValue />
                 </SelectTrigger>
