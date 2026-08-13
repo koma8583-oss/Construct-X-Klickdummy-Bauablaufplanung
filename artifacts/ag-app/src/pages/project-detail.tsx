@@ -403,6 +403,16 @@ export default function ProjectDetail() {
   const [editPlannedStart, setEditPlannedStart] = useState('');
   const [editPlannedEnd, setEditPlannedEnd] = useState('');
 
+  // Controlled field state — edit form (synced via useEffect whenever editTakt changes)
+  const [editTaktBezeichnung, setEditTaktBezeichnung] = useState('');
+  const [editZone, setEditZone] = useState('');
+  const [editGewerk, setEditGewerk] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editEarliestStart, setEditEarliestStart] = useState('');
+  const [editLatestEnd, setEditLatestEnd] = useState('');
+  const [editInternalNote, setEditInternalNote] = useState('');
+  const [editCostEstimate, setEditCostEstimate] = useState('');
+
   // Project edit dialog
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
   const [epName, setEpName] = useState('');
@@ -442,6 +452,31 @@ export default function ProjectDetail() {
   const { data: takte, isLoading: takteLoading } = useListTakte(projectId, {
     query: { enabled: !!projectId, queryKey: getListTakteQueryKey(projectId) },
   });
+
+  // Sync Takt edit form fields whenever the target takt changes or the dialog
+  // opens/closes. Controlled inputs ensure stale defaultValues never surface
+  // when the dialog stays mounted.
+  useEffect(() => {
+    const takt = takte?.find(t => t.id === editTargetId);
+    if (!takt) return;
+    setEditTaktBezeichnung(takt.taktBezeichnung ?? '');
+    setEditZone(takt.zone ?? '');
+    setEditGewerk(takt.gewerk ?? '');
+    setEditDescription(takt.description ?? '');
+    setEditPlannedStart(takt.plannedStart ?? '');
+    setEditPlannedEnd(''); // clear computed end so plain plannedEnd is shown
+    setEditDurationDays(''); // clear duration override on reopen
+    setEditEarliestStart(takt.earliestStart ?? '');
+    setEditLatestEnd(takt.latestEnd ?? '');
+    setEditInternalNote((takt as any).internalNote ?? '');
+    setEditCostEstimate((takt as any).costEstimate ?? '');
+    setEditProcPriority((takt as any).procurementPriority ?? '');
+    setEditRiskClass((takt as any).riskClassification ?? '');
+  }, [editTargetId, isEditOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Intentionally omits `takte` so a background query refresh never wipes
+  // in-progress edits. The dialog can only be opened after takte are loaded
+  // (the user must click on a visible Takt), so the lookup succeeds on mount.
+
   const { data: contractors } = useListProjectContractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectContractorsQueryKey(projectId) },
   });
@@ -2325,20 +2360,20 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Takt-Bezeichnung</Label>
-                      <Input name="taktBezeichnung" required defaultValue={editTakt.taktBezeichnung} placeholder="z.B. T1, Rohbau-A" />
+                      <Input name="taktBezeichnung" required value={editTaktBezeichnung} onChange={e => setEditTaktBezeichnung(e.target.value)} placeholder="z.B. T1, Rohbau-A" />
                     </div>
                     <div className="space-y-2">
                       <Label>Zone</Label>
-                      <Input name="zone" required defaultValue={editTakt.zone} placeholder="z.B. OG 1, Abschnitt A" />
+                      <Input name="zone" required value={editZone} onChange={e => setEditZone(e.target.value)} placeholder="z.B. OG 1, Abschnitt A" />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Gewerk</Label>
-                    <Input name="gewerk" required defaultValue={editTakt.gewerk} placeholder="z.B. Trockenbau, Elektro" />
+                    <Input name="gewerk" required value={editGewerk} onChange={e => setEditGewerk(e.target.value)} placeholder="z.B. Trockenbau, Elektro" />
                   </div>
                   <div className="space-y-2">
                     <Label>Beschreibung</Label>
-                    <Input name="description" defaultValue={editTakt.description ?? ''} />
+                    <Input name="description" value={editDescription} onChange={e => setEditDescription(e.target.value)} />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
@@ -2347,7 +2382,7 @@ export default function ProjectDetail() {
                         name="plannedStart"
                         type="date"
                         required
-                        defaultValue={editTakt.plannedStart}
+                        value={editPlannedStart}
                         onChange={e => {
                           setEditPlannedStart(e.target.value);
                           if (editDurationDays && projectCalendar) {
@@ -2402,11 +2437,11 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
-                      <Input name="earliestStart" type="date" defaultValue={editTakt.earliestStart ?? ''} />
+                      <Input name="earliestStart" type="date" value={editEarliestStart} onChange={e => setEditEarliestStart(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-muted-foreground flex items-center gap-1">Spätestes Ende <span className="text-[10px]">(Puffer)</span></Label>
-                      <Input name="latestEnd" type="date" defaultValue={editTakt.latestEnd ?? ''} />
+                      <Input name="latestEnd" type="date" value={editLatestEnd} onChange={e => setEditLatestEnd(e.target.value)} />
                     </div>
                   </div>
 
@@ -2420,11 +2455,11 @@ export default function ProjectDetail() {
                     <div className="space-y-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Interne Notiz</Label>
-                        <Textarea name="internalNote" defaultValue={(editTakt as any).internalNote ?? ''} placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-16 text-sm" />
+                        <Textarea name="internalNote" value={editInternalNote} onChange={e => setEditInternalNote(e.target.value)} placeholder="Interne Hinweise für das GU-Team…" className="resize-none h-16 text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Kostenschätzung</Label>
-                        <Input name="costEstimate" defaultValue={(editTakt as any).costEstimate ?? ''} placeholder="z.B. 45.000 €" className="text-sm" />
+                        <Input name="costEstimate" value={editCostEstimate} onChange={e => setEditCostEstimate(e.target.value)} placeholder="z.B. 45.000 €" className="text-sm" />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
