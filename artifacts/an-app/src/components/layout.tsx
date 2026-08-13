@@ -132,11 +132,6 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                 </div>
                 <span className={`truncate flex-1 ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
-                {item.badge > 0 && !collapsed && (
-                  <span className="ml-auto flex-shrink-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[11px] font-semibold px-1.5 sm:flex hidden">
-                    {item.badge}
-                  </span>
-                )}
               </Link>
             );
           })}
