@@ -2,6 +2,7 @@ import { useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
+import { useGetAnDataOffers } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
   Inbox,
@@ -27,15 +28,21 @@ export function Layout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Count OFFERED (= policy-pending) data offers for the Datenraum badge
+  const { data: dataOffers } = useGetAnDataOffers();
+  const pendingPolicyCount = (dataOffers ?? []).filter(
+    (o) => o.recipientStatus === "OFFERED",
+  ).length;
+
   const navItems = [
-    { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/takt-requests", icon: Inbox, label: "Anfragen" },
-    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
-    { href: "/resources", icon: HardHat, label: "Ressourcen" },
-    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
-    { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
-    { href: "/data-offers", icon: Globe, label: "Datenraum" },
-    { href: "/settings", icon: Settings, label: t("nav.settings") },
+    { href: "/", icon: LayoutDashboard, label: t("nav.dashboard"), badge: 0 },
+    { href: "/takt-requests", icon: Inbox, label: "Anfragen", badge: 0 },
+    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht", badge: 0 },
+    { href: "/resources", icon: HardHat, label: "Ressourcen", badge: 0 },
+    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung", badge: 0 },
+    { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte", badge: 0 },
+    { href: "/data-offers", icon: Globe, label: "Datenraum", badge: pendingPolicyCount },
+    { href: "/settings", icon: Settings, label: t("nav.settings"), badge: 0 },
   ];
 
   const closeMobile = () => setMobileOpen(false);
@@ -116,8 +123,20 @@ export function Layout({ children }: { children: ReactNode }) {
                     : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                 ].join(" ")}
               >
-                <item.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-primary" : ""}`} />
-                <span className={`truncate ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
+                <div className="relative flex-shrink-0">
+                  <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : ""}`} />
+                  {item.badge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white leading-none">
+                      {item.badge > 9 ? "9+" : item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className={`truncate flex-1 ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
+                {item.badge > 0 && !collapsed && (
+                  <span className="ml-auto flex-shrink-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[11px] font-semibold px-1.5 sm:flex hidden">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

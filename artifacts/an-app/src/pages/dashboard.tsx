@@ -16,6 +16,7 @@ import {
   ClipboardList,
   CheckCircle2,
   Layers,
+  Globe,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { de } from "date-fns/locale";
@@ -109,6 +110,26 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold text-foreground">{t("nav.dashboard")}</h1>
+
+      {/* ── Policy-Hinweis Banner ─────────────────────────────────────────── */}
+      {policyPending > 0 && (
+        <Link href="/data-offers">
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 cursor-pointer hover:bg-amber-500/15 transition-colors">
+            <Shield className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                {policyPending === 1
+                  ? "1 Datenraum-Policy muss noch akzeptiert werden"
+                  : `${policyPending} Datenraum-Policies müssen noch akzeptiert werden`}
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                Ohne Akzeptanz können die verknüpften Taktdaten nicht abgerufen werden. Zum Datenraum →
+              </p>
+            </div>
+            <Globe className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+          </div>
+        </Link>
+      )}
 
       {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
