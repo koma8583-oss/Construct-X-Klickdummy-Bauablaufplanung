@@ -510,6 +510,30 @@ export default function ProjectDetail() {
 
   const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
+
+  // Controlled state for the edit-assignment form — synced on open so reopening
+  // always reflects the latest saved values (defaultValue is one-time-only).
+  const [editTrade, setEditTrade] = useState('');
+  const [editWorkPackageReference, setEditWorkPackageReference] = useState('');
+  const [editValidFrom, setEditValidFrom] = useState('');
+  const [editValidTo, setEditValidTo] = useState('');
+  const [editAssignmentStatus, setEditAssignmentStatus] = useState<'PLANNED' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
+
+  // Sync edit-assignment form fields whenever the dialog opens OR when the
+  // assignments query result refreshes while the dialog is already open (so an
+  // immediate reopen after a save always reflects the just-persisted values).
+  useEffect(() => {
+    if (!editAssignmentId || !assignments) return;
+    const a = assignments.find(x => x.id === editAssignmentId);
+    if (a) {
+      setEditTrade(a.trade || '');
+      setEditWorkPackageReference(a.workPackageReference || '');
+      setEditValidFrom(a.validFrom ? a.validFrom.substring(0, 10) : '');
+      setEditValidTo(a.validTo ? a.validTo.substring(0, 10) : '');
+      setEditAssignmentStatus((a.assignmentStatus as 'PLANNED' | 'ACTIVE' | 'INACTIVE') ?? 'ACTIVE');
+    }
+  }, [editAssignmentId, assignments]);
+
   // Dataspace publication wizard
   const [isDataspaceOpen, setIsDataspaceOpen] = useState(false);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
@@ -1090,16 +1114,15 @@ export default function ProjectDetail() {
   const handleUpdateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editAssignmentId) return;
-    const fd = new FormData(e.currentTarget);
     updateAssignment.mutate({
       projectId,
       assignmentId: editAssignmentId,
       data: {
-        trade: (fd.get('trade') as string) || undefined,
-        workPackageReference: (fd.get('workPackageReference') as string) || undefined,
-        validFrom: (fd.get('validFrom') as string) || undefined,
-        validTo: (fd.get('validTo') as string) || undefined,
-        assignmentStatus: (fd.get('assignmentStatus') as 'PLANNED' | 'ACTIVE' | 'INACTIVE') || 'ACTIVE',
+        trade: editTrade || undefined,
+        workPackageReference: editWorkPackageReference || undefined,
+        validFrom: editValidFrom || undefined,
+        validTo: editValidTo || undefined,
+        assignmentStatus: editAssignmentStatus,
       }
     }, {
       onSuccess: () => {
@@ -3056,26 +3079,26 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Gewerk (optional)</Label>
-                    <Input name="trade" defaultValue={assignment.trade || ''} />
+                    <Input value={editTrade} onChange={(e) => setEditTrade(e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <Label>Arbeitspaket (optional)</Label>
-                    <Input name="workPackageReference" defaultValue={assignment.workPackageReference || ''} />
+                    <Input value={editWorkPackageReference} onChange={(e) => setEditWorkPackageReference(e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Gültig ab (optional)</Label>
-                    <Input type="date" name="validFrom" defaultValue={assignment.validFrom ? assignment.validFrom.substring(0, 10) : ''} />
+                    <Input type="date" value={editValidFrom} onChange={(e) => setEditValidFrom(e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <Label>Gültig bis (optional)</Label>
-                    <Input type="date" name="validTo" defaultValue={assignment.validTo ? assignment.validTo.substring(0, 10) : ''} />
+                    <Input type="date" value={editValidTo} onChange={(e) => setEditValidTo(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Status</Label>
-                  <Select name="assignmentStatus" defaultValue={assignment.assignmentStatus} required>
+                  <Select value={editAssignmentStatus} onValueChange={(v) => setEditAssignmentStatus(v as 'PLANNED' | 'ACTIVE' | 'INACTIVE')}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
