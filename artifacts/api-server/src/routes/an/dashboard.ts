@@ -8,6 +8,7 @@ import { db } from "@workspace/db";
 import {
   taktRequestsTable,
   takteTable,
+  projectsTable,
   organizationsTable,
   resourceBookingsTable,
   dataPublicationsTable,
@@ -107,9 +108,12 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
       request: taktRequestsTable,
       takt: takteTable,
       guOrg: organizationsTable,
+      projectLocation: projectsTable.location,
+      projectDescription: projectsTable.description,
     })
     .from(taktRequestsTable)
     .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
     .leftJoin(organizationsTable, eq(taktRequestsTable.guOrgId, organizationsTable.id))
     .where(
       and(
@@ -189,7 +193,7 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
   }
 
   const actions = openRequests
-    .map(({ request: req, takt, guOrg }) => ({
+    .map(({ request: req, takt, guOrg, projectLocation, projectDescription }) => ({
       id:             req.id,
       requestNumber:  req.requestNumber,
       status:         req.status,
@@ -198,6 +202,8 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
       gewerk:          (takt as any)?.gewerk ?? null,
       zone:            (takt as any)?.zone ?? null,
       agName:          (guOrg as any)?.name ?? null,
+      projectLocation:    projectLocation ?? null,
+      projectDescription: projectDescription ?? null,
       ...getPriority(req),
     }))
     .sort((a, b) => a.priority - b.priority || 0)
@@ -206,32 +212,40 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
   // ── Recent requests (latest 10) ───────────────────────────────────────────
   const recentRaw = await db
     .select({
-      request: taktRequestsTable,
-      takt:    takteTable,
-      guOrg:   organizationsTable,
+      request:            taktRequestsTable,
+      takt:               takteTable,
+      guOrg:              organizationsTable,
+      projectLocation:    projectsTable.location,
+      projectDescription: projectsTable.description,
     })
     .from(taktRequestsTable)
     .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
     .leftJoin(organizationsTable, eq(taktRequestsTable.guOrgId, organizationsTable.id))
     .where(eq(taktRequestsTable.nuOrgId, orgId))
     .orderBy(taktRequestsTable.createdAt)
     .limit(10);
 
-  const recentRequests = recentRaw.map(({ request: req, takt, guOrg }) => ({
+  const recentRequests = recentRaw.map(({ request: req, takt, guOrg, projectLocation, projectDescription }) => ({
     ...req,
     takt,
     agOrganization: guOrg,
+    projectLocation:    projectLocation    ?? null,
+    projectDescription: projectDescription ?? null,
   }));
 
   // Upcoming deadlines (next 14 days)
   const upcomingRaw = await db
     .select({
-      request: taktRequestsTable,
-      takt:    takteTable,
-      guOrg:   organizationsTable,
+      request:            taktRequestsTable,
+      takt:               takteTable,
+      guOrg:              organizationsTable,
+      projectLocation:    projectsTable.location,
+      projectDescription: projectsTable.description,
     })
     .from(taktRequestsTable)
     .leftJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .leftJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
     .leftJoin(organizationsTable, eq(taktRequestsTable.guOrgId, organizationsTable.id))
     .where(
       and(
@@ -243,10 +257,12 @@ router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
     )
     .limit(10);
 
-  const upcomingDeadlines = upcomingRaw.map(({ request: req, takt, guOrg }) => ({
+  const upcomingDeadlines = upcomingRaw.map(({ request: req, takt, guOrg, projectLocation, projectDescription }) => ({
     ...req,
     takt,
     agOrganization: guOrg,
+    projectLocation:    projectLocation    ?? null,
+    projectDescription: projectDescription ?? null,
   }));
 
   res.json({

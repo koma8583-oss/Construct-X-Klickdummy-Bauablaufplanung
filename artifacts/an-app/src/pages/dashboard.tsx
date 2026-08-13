@@ -16,7 +16,7 @@ import {
   ClipboardList,
   CheckCircle2,
   Layers,
-  Globe,
+  MapPin,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { de } from "date-fns/locale";
@@ -190,12 +190,23 @@ export default function Dashboard() {
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-[11px] opacity-70">{action.agName ?? "AG"}</span>
+                          {action.projectLocation && (
+                            <span className="flex items-center gap-0.5 text-[11px] opacity-70">
+                              <MapPin className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate max-w-[120px]">{action.projectLocation}</span>
+                            </span>
+                          )}
                           {deadline && (
                             <span className={`text-[11px] font-medium ${isOverdue ? "text-red-500" : "opacity-70"}`}>
                               Frist: {fmtDateTime(deadline)}
                             </span>
                           )}
                         </div>
+                        {action.projectDescription && (
+                          <div className="text-[11px] opacity-60 truncate mt-0.5">
+                            {action.projectDescription}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-[10px] font-semibold uppercase tracking-wide opacity-70 hidden sm:block">
@@ -252,14 +263,25 @@ export default function Dashboard() {
                             ? `${takt.gewerk} – ${takt.zone ?? ""}`
                             : req.requestNumber}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {req.agOrganization?.name ?? "AG"}
+                        <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                          <span>{req.agOrganization?.name ?? "AG"}</span>
+                          {req.projectLocation && (
+                            <span className="flex items-center gap-0.5">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate max-w-[110px]">{req.projectLocation}</span>
+                            </span>
+                          )}
                           {deadline && (
-                            <span className={`ml-2 ${isOverdue ? "text-red-500 font-semibold" : ""}`}>
+                            <span className={isOverdue ? "text-red-500 font-semibold" : ""}>
                               Frist: {fmtDate(deadline)}
                             </span>
                           )}
                         </div>
+                        {req.projectDescription && (
+                          <div className="text-[11px] text-muted-foreground/70 truncate mt-0.5">
+                            {req.projectDescription}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Link>
