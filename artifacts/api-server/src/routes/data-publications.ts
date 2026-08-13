@@ -466,6 +466,113 @@ router.post(
   },
 );
 
+// ── GET /data-publications/:publicationId/odrl ────────────────────────────────
+// Accessible by the owning AG org or any AN recipient of the publication.
+router.get(
+  "/data-publications/:publicationId/odrl",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const publicationId = req.params.publicationId as string;
+    const caller = req.user!;
+
+    // Load publication + policy template + project AG org ID
+    const [row] = await db
+      .select({
+        pub: dataPublicationsTable,
+        policy: policyTemplatesTable,
+        agOrgId: projectsTable.agOrgId,
+      })
+      .from(dataPublicationsTable)
+      .leftJoin(
+        policyTemplatesTable,
+        eq(dataPublicationsTable.policyTemplateId, policyTemplatesTable.id),
+      )
+      .leftJoin(
+        projectsTable,
+        eq(dataPublicationsTable.projectId, projectsTable.id),
+      )
+      .where(eq(dataPublicationsTable.id, publicationId))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Publication not found" });
+      return;
+    }
+
+    // Access control
+    if (caller.orgType === "AG") {
+      if (row.agOrgId !== caller.orgId) {
+        res.status(404).json({ error: "Publication not found" });
+        return;
+      }
+    } else if (caller.orgType === "AN") {
+      const [recipient] = await db
+        .select({ id: dataPublicationRecipientsTable.id })
+        .from(dataPublicationRecipientsTable)
+        .where(
+          and(
+            eq(dataPublicationRecipientsTable.publicationId, publicationId),
+            eq(dataPublicationRecipientsTable.anOrgId, caller.orgId!),
+          ),
+        )
+        .limit(1);
+      if (!recipient) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    } else {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const { pub, policy, agOrgId } = row;
+    const nuOrgId = caller.orgType === "AN" ? caller.orgId : null;
+
+    // Map policy code → ODRL purpose constraint value
+    const purposeMap: Record<string, string> = {
+      SCHEDULE_COORDINATION: "scheduleCoordination",
+      COORDINATION_USE:      "coordinationUse",
+      READ_ONLY:             "readOnly",
+      SUBCONTRACTOR_FULL:    "subcontractorFull",
+    };
+    const purposeValue =
+      purposeMap[policy?.code ?? ""] ??
+      (policy?.code ?? "unspecified").toLowerCase().replace(/_/g, "");
+
+    const permConstraints: unknown[] = [
+      { leftOperand: "purpose", operator: "eq", rightOperand: purposeValue },
+      ...(pub.validFrom
+        ? [{ leftOperand: "dateTime", operator: "gteq", rightOperand: pub.validFrom }]
+        : []),
+      ...(pub.validUntil
+        ? [{ leftOperand: "dateTime", operator: "lteq", rightOperand: pub.validUntil }]
+        : []),
+    ];
+
+    const odrl = {
+      "@context": "http://www.w3.org/ns/odrl.jsonld",
+      "@type": "Set",
+      "uid": `urn:odrl:data-publication:${pub.id}`,
+      "permission": [
+        {
+          "target":   `data-publication:${pub.id}`,
+          "assigner": `organization:${agOrgId}`,
+          ...(nuOrgId ? { "assignee": `organization:${nuOrgId}` } : {}),
+          "action":   "use",
+          "constraint": permConstraints,
+        },
+      ],
+      "prohibition": ["distribute", "derive"].map((action) => ({
+        "target": `data-publication:${pub.id}`,
+        ...(nuOrgId ? { "assignee": `organization:${nuOrgId}` } : {}),
+        "action": action,
+      })),
+    };
+
+    res.json(odrl);
+  },
+);
+
 // ── POST /data-publications/:publicationId/withdraw ───────────────────────────
 router.post(
   "/data-publications/:publicationId/withdraw",

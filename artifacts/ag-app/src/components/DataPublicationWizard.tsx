@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
 import {
   useGetPolicyTemplates,
   useCreateDataPublication,
@@ -33,7 +35,93 @@ import {
   type DataProductType,
   type PolicyTemplate,
 } from '@workspace/api-client-react';
-import { ChevronRight, ChevronLeft, Globe, CheckCircle2, Lock, Shield } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Globe, CheckCircle2, Lock, Shield, Eye } from 'lucide-react';
+
+// ── Policy content display (shared by wizard + AG detail) ─────────────────────
+
+function PolicyContentTab({ policy }: { policy: PolicyTemplate }) {
+  const permissions  = policy.permissions  as string[];
+  const prohibitions = policy.prohibitions as string[];
+  return (
+    <div className="space-y-4 text-sm">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Zweck</div>
+        <p className="text-foreground/80">{policy.purpose}</p>
+      </div>
+      {permissions.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Erlaubt</div>
+          <ul className="space-y-1">
+            {permissions.map((p, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {prohibitions.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400 mb-1">Nicht erlaubt</div>
+          <ul className="space-y-1">
+            {prohibitions.map((p, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {policy.validityRule && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Bedingungen</div>
+          <p className="text-foreground/80">{policy.validityRule}</p>
+        </div>
+      )}
+      {policy.retentionRule && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Aufbewahrung</div>
+          <p className="text-foreground/80">{policy.retentionRule}</p>
+        </div>
+      )}
+      {policy.description && (
+        <div className="rounded-md bg-muted/40 border border-border px-3 py-2.5 text-xs text-muted-foreground italic">
+          {policy.description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Client-side ODRL preview generator (wizard — no publicationId yet) ────────
+
+function buildPreviewOdrl(policy: PolicyTemplate, agOrgId: string): Record<string, unknown> {
+  const purposeMap: Record<string, string> = {
+    SCHEDULE_COORDINATION: 'scheduleCoordination',
+    COORDINATION_USE:      'coordinationUse',
+    READ_ONLY:             'readOnly',
+    SUBCONTRACTOR_FULL:    'subcontractorFull',
+  };
+  const purposeValue = purposeMap[policy.code] ?? policy.code.toLowerCase().replace(/_/g, '');
+  return {
+    '@context': 'http://www.w3.org/ns/odrl.jsonld',
+    '@type':    'Set',
+    'uid':      'urn:odrl:data-publication:preview',
+    'permission': [{
+      'target':   'data-publication:preview',
+      'assigner': `organization:${agOrgId}`,
+      'assignee': 'organization:<nu-org-id>',
+      'action':   'use',
+      'constraint': [{ 'leftOperand': 'purpose', 'operator': 'eq', 'rightOperand': purposeValue }],
+    }],
+    'prohibition': [
+      { 'target': 'data-publication:preview', 'action': 'distribute' },
+      { 'target': 'data-publication:preview', 'action': 'derive' },
+    ],
+  };
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -92,6 +180,7 @@ export function DataPublicationWizard({
   const { toast } = useToast();
 
   // wizard state
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [productType, setProductType] = useState<DataProductType | ''>('');
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
@@ -102,6 +191,7 @@ export function DataPublicationWizard({
   const [description, setDescription] = useState('');
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  const [policyViewOpen, setPolicyViewOpen] = useState(false);
 
   // queries
   const { data: policyTemplates } = useGetPolicyTemplates();
@@ -217,6 +307,7 @@ export function DataPublicationWizard({
   const isPending = createPub.isPending || publishPub.isPending;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
@@ -415,26 +506,32 @@ export function DataPublicationWizard({
               </div>
               <div className="space-y-2">
                 <Label>Nutzungsrichtlinie (Policy)</Label>
-                <Select value={policyTemplateId} onValueChange={setPolicyTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Richtlinie wählen…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {policyTemplates?.map((pt) => (
-                      <SelectItem key={pt.id} value={pt.id}>
-                        {pt.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedPolicy && (
-                  <div className="text-xs text-muted-foreground border rounded p-2.5 bg-muted/30 space-y-1 mt-1">
-                    <div><span className="font-medium">Zweck:</span> {selectedPolicy.purpose}</div>
-                    <div><span className="font-medium">Erlaubt:</span> {(selectedPolicy.permissions as string[]).join(', ')}</div>
-                    <div><span className="font-medium">Verboten:</span> {(selectedPolicy.prohibitions as string[]).join(', ')}</div>
-                    <div><span className="font-medium">Gültigkeit:</span> {selectedPolicy.validityRule}</div>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <Select value={policyTemplateId} onValueChange={setPolicyTemplateId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Richtlinie wählen…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {policyTemplates?.map((pt) => (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          {pt.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedPolicy && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPolicyViewOpen(true)}
+                      className="shrink-0 gap-1.5"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Policy anzeigen
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -554,5 +651,40 @@ export function DataPublicationWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* ── Policy-Ansicht Dialog (Inhalt + ODRL) ─────────────────────────── */}
+    {selectedPolicy && (
+      <Dialog open={policyViewOpen} onOpenChange={setPolicyViewOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              {selectedPolicy.name}
+            </DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="inhalt" className="mt-2">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="inhalt">Inhalt</TabsTrigger>
+              <TabsTrigger value="odrl">ODRL / JSON-LD</TabsTrigger>
+            </TabsList>
+            <TabsContent value="inhalt" className="mt-4 max-h-[420px] overflow-y-auto pr-1">
+              <PolicyContentTab policy={selectedPolicy} />
+            </TabsContent>
+            <TabsContent value="odrl" className="mt-4">
+              <p className="text-[11px] text-muted-foreground mb-2 italic">
+                Vorschau — Platzhalter werden beim Veröffentlichen durch die tatsächliche Publication-ID und NU-ID ersetzt.
+              </p>
+              <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-3 max-h-[380px] overflow-y-auto">
+                {JSON.stringify(buildPreviewOdrl(selectedPolicy, user?.orgId ?? 'ag-org'), null, 2)}
+              </pre>
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPolicyViewOpen(false)}>Schließen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+  </>
   );
 }

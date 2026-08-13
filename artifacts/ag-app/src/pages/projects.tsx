@@ -441,17 +441,17 @@ function ProjectCard({ project }: { project: AgProjectSummary }) {
           </div>
 
           {/* Location */}
-          {project.location && (
+          {(project as any).location && (
             <div className="flex items-center text-xs text-muted-foreground gap-1.5 mb-1.5">
               <MapPin className="w-3.5 h-3.5 opacity-60 shrink-0" />
-              <span className="line-clamp-1">{project.location}</span>
+              <span className="line-clamp-1">{(project as any).location}</span>
             </div>
           )}
 
           {/* Description */}
-          {project.description && (
+          {(project as any).description && (
             <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
-              {project.description}
+              {(project as any).description}
             </p>
           )}
 

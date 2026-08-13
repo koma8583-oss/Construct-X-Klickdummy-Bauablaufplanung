@@ -72,6 +72,7 @@ import type {
   OrganizationMembership,
   PatchProjectSubcontractorRequest,
   Project,
+  ProjectCalendar,
   ProjectSubcontractorAssignment,
   Resource,
   ResourceAssignment,
@@ -91,6 +92,7 @@ import type {
   UpdateDelegationResponseDecisionRequest,
   UpdateOrganizationRequest,
   UpdateProfileRequest,
+  UpdateProjectCalendarRequest,
   UpdateProjectRequest,
   UpdateResourceAssignmentRequest,
   UpdateResourceRequest,
@@ -6140,14 +6142,14 @@ export const getGetProjectCalendarQueryOptions = <
 >(
   projectId: string,
   options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
-): UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData> & { queryKey: readonly string[] } => {
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
   const queryKey = queryOptions?.queryKey ?? getGetProjectCalendarQueryKey(projectId);
   return {
-    queryKey: queryKey as unknown as readonly string[],
+    queryKey,
     queryFn: () => getProjectCalendar(projectId, requestOptions),
     ...queryOptions,
-  };
+  } as UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData> & { queryKey: QueryKey };
 };
 
 export function useGetProjectCalendar<

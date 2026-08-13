@@ -16,9 +16,11 @@ import {
   useAcceptDataOffer,
   useRejectDataOffer,
   useGetDataOfferContent,
+  useGetDataPublicationOdrl,
   useGetAnInboxMessages,
   type DataOfferSummary,
 } from '@workspace/api-client-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -223,9 +225,14 @@ function OfferDetailPanel({
   const accept = useAcceptDataOffer();
   const reject = useRejectDataOffer();
   const [showContent, setShowContent] = useState(false);
+  const [odrlEnabled, setOdrlEnabled] = useState(false);
   const { data: content, isLoading: contentLoading } = useGetDataOfferContent(
     offerSummary.publicationId,
     showContent,
+  );
+  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
+    offerSummary.publicationId,
+    odrlEnabled,
   );
 
   const handleAccept = async () => {
@@ -317,34 +324,94 @@ function OfferDetailPanel({
         </div>
       )}
 
-      {/* Policy */}
+      {/* Policy — tabbed view */}
       {offer.policy && (
-        <div className="rounded-lg border p-3.5 space-y-2 bg-muted/30">
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm">{offer.policy.name}</span>
+        <div className="rounded-lg border bg-muted/20">
+          <div className="flex items-center gap-2 px-3.5 pt-3 pb-2 border-b border-border/60">
+            <Shield className="h-4 w-4 text-primary shrink-0" />
+            <div>
+              <p className="text-xs text-muted-foreground leading-tight">Vom GU vorgegebene Policy</p>
+              <p className="font-semibold text-sm leading-tight">{offer.policy.name}</p>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">{offer.policy.purpose}</p>
-          <div className="text-xs space-y-0.5">
-            <div>
-              <span className="font-medium">Erlaubt: </span>
-              {(offer.policy.permissions as string[]).join(', ')}
-            </div>
-            <div>
-              <span className="font-medium">Verboten: </span>
-              {(offer.policy.prohibitions as string[]).join(', ')}
-            </div>
-            <div>
-              <span className="font-medium">Gültigkeit: </span>
-              {offer.policy.validityRule}
-            </div>
-            {offer.policy.retentionRule && (
-              <div>
-                <span className="font-medium">Aufbewahrung: </span>
-                {offer.policy.retentionRule}
+          <Tabs defaultValue="inhalt" className="px-3.5 pb-3.5 pt-2">
+            <TabsList className="grid w-full grid-cols-2 h-8">
+              <TabsTrigger value="inhalt" className="text-xs">Inhalt</TabsTrigger>
+              <TabsTrigger
+                value="odrl"
+                className="text-xs"
+                onClick={() => setOdrlEnabled(true)}
+              >
+                ODRL / JSON-LD
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="inhalt" className="mt-3 max-h-[300px] overflow-y-auto pr-1">
+              <div className="space-y-3 text-xs">
+                {offer.policy.purpose && (
+                  <div>
+                    <div className="font-semibold uppercase tracking-wider text-muted-foreground mb-1">Zweck</div>
+                    <p className="text-foreground/80">{offer.policy.purpose}</p>
+                  </div>
+                )}
+                {(offer.policy.permissions as string[]).length > 0 && (
+                  <div>
+                    <div className="font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Erlaubt</div>
+                    <ul className="space-y-0.5">
+                      {(offer.policy.permissions as string[]).map((p, i) => (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="mt-1.5 w-1 h-1 rounded-full bg-emerald-500 shrink-0" />
+                          <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {(offer.policy.prohibitions as string[]).length > 0 && (
+                  <div>
+                    <div className="font-semibold uppercase tracking-wider text-red-600 dark:text-red-400 mb-1">Nicht erlaubt</div>
+                    <ul className="space-y-0.5">
+                      {(offer.policy.prohibitions as string[]).map((p, i) => (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="mt-1.5 w-1 h-1 rounded-full bg-red-500 shrink-0" />
+                          <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {offer.policy.validityRule && (
+                  <div>
+                    <div className="font-semibold uppercase tracking-wider text-muted-foreground mb-1">Bedingungen</div>
+                    <p className="text-foreground/80">{offer.policy.validityRule}</p>
+                  </div>
+                )}
+                {offer.policy.retentionRule && (
+                  <div>
+                    <div className="font-semibold uppercase tracking-wider text-muted-foreground mb-1">Aufbewahrung</div>
+                    <p className="text-foreground/80">{offer.policy.retentionRule}</p>
+                  </div>
+                )}
+                {(offer.policy as any).description && (
+                  <div className="rounded bg-muted/50 px-2.5 py-2 text-muted-foreground italic">
+                    {(offer.policy as any).description}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </TabsContent>
+            <TabsContent value="odrl" className="mt-3">
+              {odrlLoading && (
+                <p className="text-xs text-muted-foreground py-2">ODRL wird geladen…</p>
+              )}
+              {!odrlLoading && odrl && (
+                <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2.5 max-h-[260px] overflow-y-auto">
+                  {JSON.stringify(odrl, null, 2)}
+                </pre>
+              )}
+              {!odrlLoading && !odrl && odrlEnabled && (
+                <p className="text-xs text-muted-foreground py-2">ODRL konnte nicht geladen werden.</p>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 

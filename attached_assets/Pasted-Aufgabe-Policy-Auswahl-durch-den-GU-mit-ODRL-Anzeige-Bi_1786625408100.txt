@@ -1,0 +1,152 @@
+Aufgabe: Policy-Auswahl durch den GU mit ODRL-Anzeige
+
+Bitte die bestehende Data-Publication-/Policy-Funktion nur minimal erweitern. Bestehende Tabellen und Acceptance-Logik weiterverwenden.
+
+1. Neue feste Policy-Vorlage anlegen
+
+Code:
+SCHEDULE_COORDINATION
+
+Name:
+Abstimmung von Rahmenterminen
+
+Die Policy ist systemseitig fest definiert und darf nicht durch Benutzer bearbeitet werden.
+
+Inhalt:
+
+Erlaubt:
+- Nutzung zur Abstimmung der angefragten Rahmentermine
+- interne Termin-, Ressourcen- und Kapazitätsplanung
+- Ermittlung möglicher Alternativtermine
+
+Bedingungen:
+- nur für das konkrete Projekt
+- nur für die angefragten Leistungen
+- ausschließlich interne Nutzung beim NU
+- vertrauliche Behandlung
+- nur erforderliche Daten speichern
+- nicht mehr benötigte Daten löschen
+
+Nicht erlaubt:
+- Weitergabe an Dritte
+- Nutzung für andere Projekte
+- Marketing oder Benchmarking
+- KI-/ML-Training
+
+Zusätzlicher Hinweis:
+„Die interne Ressourcenplanung des NU verbleibt beim NU. An den GU werden nur die für die Terminabstimmung notwendigen Ergebnisse übermittelt.“
+
+2. Policy-Auswahl durch den GU
+
+Beim Erstellen bzw. Veröffentlichen einer Data Publication muss der GU eine der vorhandenen Policy-Vorlagen auswählen.
+
+Die Auswahl erfolgt über die bereits vorhandenen policy_templates.
+
+Beispiel UI:
+
+Policy
+[ Abstimmung von Rahmenterminen ▼ ]
+
+[ Policy anzeigen ]
+
+Die ausgewählte policyTemplateId wie bisher in data_publications speichern.
+
+Nach Veröffentlichung darf die Policy dieser Publication nicht mehr geändert werden.
+
+3. Policy-Anzeige beim GU
+
+Bei „Policy anzeigen“ einen Dialog mit zwei Tabs anzeigen:
+
+[ Inhalt ] [ ODRL / JSON-LD ]
+
+„Inhalt“:
+Menschenlesbare Darstellung der ausgewählten Policy.
+
+„ODRL / JSON-LD“:
+Maschinenlesbare ODRL-Darstellung der konkreten Policy für Publication und Empfänger.
+
+4. Policy-Anzeige beim NU
+
+Der NU kann die Policy nicht auswählen oder verändern.
+
+Vor Zugriff auf die veröffentlichten Daten anzeigen:
+
+Vom GU vorgegebene Policy
+
+Abstimmung von Rahmenterminen
+
+[ Inhalt ] [ ODRL / JSON-LD ]
+
+[ Akzeptieren ] [ Ablehnen ]
+
+Die bestehende Policy-Acceptance-Logik weiterverwenden.
+
+Erst nach Akzeptanz darf der NU auf die veröffentlichten Daten zugreifen.
+
+5. ODRL-Darstellung
+
+Die ODRL-Instanz serverseitig dynamisch aus
+
+- ausgewähltem Policy-Template
+- Publication
+- GU
+- NU
+- Projekt
+
+erzeugen.
+
+Für den PoC keine neue Tabelle und keine zusätzliche Hash-Logik einführen.
+
+Beispiel:
+
+{
+  "@context": "http://www.w3.org/ns/odrl.jsonld",
+  "@type": "Set",
+
+  "permission": [{
+    "target": "data-publication:<publicationId>",
+    "assigner": "organization:<guOrgId>",
+    "assignee": "organization:<nuOrgId>",
+    "action": "use",
+    "constraint": [{
+      "leftOperand": "purpose",
+      "operator": "eq",
+      "rightOperand": "scheduleCoordination"
+    }]
+  }],
+
+  "prohibition": [{
+    "target": "data-publication:<publicationId>",
+    "assignee": "organization:<nuOrgId>",
+    "action": "distribute"
+  }]
+}
+
+Die ODRL-Darstellung read-only und formatiert als JSON anzeigen.
+
+6. Technische Vorgaben
+
+- bestehende policy_templates verwenden
+- bestehende data_publications verwenden
+- bestehende data_publication_recipients verwenden
+- bestehende Policy-Acceptance-Logik beibehalten
+- keine neue Policy-Tabelle
+- keine zusätzliche Hash- oder Versionierungslogik
+- keinen EDC implementieren
+- OpenAPI bei notwendigen API-Änderungen aktualisieren
+- generierte Dateien nicht manuell ändern
+
+7. Abschluss
+
+Nach Umsetzung:
+
+pnpm --filter @workspace/api-spec run codegen
+pnpm run typecheck
+pnpm run build
+
+Am Ende kurz berichten:
+- welche Dateien geändert wurden
+- wo die neue Policy definiert wurde
+- wie der GU die Policy auswählt
+- wie Inhalt und ODRL beim GU und NU angezeigt werden
+- ob Typecheck und Build erfolgreich sind

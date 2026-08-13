@@ -82,6 +82,21 @@ export function useGetAnDataOffer(
   });
 }
 
+export function useGetDataPublicationOdrl(
+  publicationId: string | undefined,
+  enabled = false,
+): UseQueryResult<Record<string, unknown>, Error> {
+  return useQuery({
+    queryKey: ["data-publication-odrl", publicationId],
+    queryFn: () =>
+      customFetch<Record<string, unknown>>(
+        `/api/data-publications/${publicationId}/odrl`,
+        { method: "GET" },
+      ),
+    enabled: !!publicationId && enabled,
+  });
+}
+
 export function useGetDataOfferContent(
   publicationId: string | undefined,
   enabled = false,

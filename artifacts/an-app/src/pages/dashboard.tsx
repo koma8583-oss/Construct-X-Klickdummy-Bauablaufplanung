@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Layers,
   MapPin,
+  Globe,
 } from "lucide-react";
 import { format, isPast } from "date-fns";
 import { de } from "date-fns/locale";
