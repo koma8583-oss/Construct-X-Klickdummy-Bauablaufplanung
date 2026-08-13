@@ -489,6 +489,10 @@ export interface AgProjectSummary {
   projectId: string;
   projectName: string;
   projectStatus: AgProjectSummaryProjectStatus;
+  /** Physical location or address of the construction site */
+  location?: string | null;
+  /** Short description of the project scope */
+  description?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   /** Number of distinct ACTIVE AN organisations on this project */

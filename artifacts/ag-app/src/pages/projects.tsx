@@ -24,6 +24,7 @@ import {
   ArrowUpDown,
   Filter,
   RefreshCw,
+  MapPin,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -438,6 +439,21 @@ function ProjectCard({ project }: { project: AgProjectSummary }) {
               {STATUS_LABEL[project.projectStatus] ?? project.projectStatus}
             </Badge>
           </div>
+
+          {/* Location */}
+          {project.location && (
+            <div className="flex items-center text-xs text-muted-foreground gap-1.5 mb-1.5">
+              <MapPin className="w-3.5 h-3.5 opacity-60 shrink-0" />
+              <span className="line-clamp-1">{project.location}</span>
+            </div>
+          )}
+
+          {/* Description */}
+          {project.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
+              {project.description}
+            </p>
+          )}
 
           {/* Dates */}
           <div className="flex items-center text-xs text-muted-foreground gap-1.5 mb-3">

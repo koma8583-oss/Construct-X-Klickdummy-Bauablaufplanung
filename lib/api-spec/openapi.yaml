@@ -3165,6 +3165,14 @@ components:
           type: integer
         expiredTaktRequests:
           type: integer
+        location:
+          type: string
+          nullable: true
+          description: Physical location or address of the construction site
+        description:
+          type: string
+          nullable: true
+          description: Short description of the project scope
         lastActivityAt:
           type: string
           format: date-time

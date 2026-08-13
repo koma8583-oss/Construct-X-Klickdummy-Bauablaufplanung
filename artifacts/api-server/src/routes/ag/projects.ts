@@ -112,6 +112,8 @@ router.get("/ag/projects/overview", async (req, res): Promise<void> => {
       projectId:                p.id,
       projectName:              p.name,
       projectStatus:            p.status,
+      location:                 p.location ?? null,
+      description:              p.description ?? null,
       startDate:                p.startDate,
       endDate:                  p.endDate,
       assignedAnCount:          ct?.assignedAnCount  ?? 0,
