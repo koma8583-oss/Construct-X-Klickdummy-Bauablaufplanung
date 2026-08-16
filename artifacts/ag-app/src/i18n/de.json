@@ -20,7 +20,7 @@
   "nav": {
     "dashboard": "Übersicht",
     "projects": "Projekte",
-    "taktRequests": "ANfragen",
+    "taktRequests": "Anfragen",
     "proposals": "Vorschläge",
     "contractors": "Nachunternehmer",
     "datenraum": "Datenraum",
@@ -33,7 +33,7 @@
     "pending": "Ausstehend",
     "critical": "Kritisch",
     "confirmed": "Bestätigt",
-    "upcoming": "Anstehende Takte (7 Tage)",
+    "upcoming": "Anstehende Leistungen (7 Tage)",
     "recentActivity": "Kürzliche Aktivität"
   },
   "projects": {
@@ -41,7 +41,7 @@
     "create": "Neues Projekt",
     "search": "Projekte durchsuchen...",
     "status": "Status",
-    "takte": "Takte",
+    "takte": "Leistungen",
     "noProjects": "Keine Projekte gefunden.",
     "newProject": "Projekt erstellen",
     "name": "Projektname",

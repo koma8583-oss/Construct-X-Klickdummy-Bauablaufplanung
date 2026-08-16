@@ -829,14 +829,14 @@ export default function ProjectDetail() {
   function showRescheduleToasts(moved: TaktUpdateResult['moved'], conflicts: TaktUpdateResult['conflicts']) {
     if (moved.length > 0) {
       toast({
-        title: `${moved.length} Takt${moved.length > 1 ? 'e' : ''} automatisch verschoben`,
+        title: `${moved.length} Leistung${moved.length > 1 ? 'en' : ''} automatisch verschoben`,
         description: moved.map(t => t.taktBezeichnung).join(', '),
       });
     }
     if (conflicts.length > 0) {
       toast({
         variant: 'destructive',
-        title: `${conflicts.length} Takt${conflicts.length > 1 ? 'e' : ''} konnten nicht verschoben werden`,
+        title: `${conflicts.length} Leistung${conflicts.length > 1 ? 'en' : ''} konnten nicht verschoben werden`,
         description: conflicts.map(c => `${c.takt.taktBezeichnung} (${STATUS_LABEL[c.takt.status as TaktStatus]}): erforderlich ab ${format(new Date(c.requiredStart), 'dd.MM.yyyy')}`).join(' · '),
       });
     }
@@ -876,7 +876,7 @@ export default function ProjectDetail() {
           data: { predecessorId: dep.predecessorId, successorId: newTakt.id, type: dep.type, lagDays: dep.lagDays },
         });
       }
-      toast({ title: 'Takt angelegt', description: createDeps.length > 0 ? `${createDeps.length} Abhängigkeit${createDeps.length > 1 ? 'en' : ''} verknüpft` : undefined });
+      toast({ title: 'Leistung angelegt', description: createDeps.length > 0 ? `${createDeps.length} Abhängigkeit${createDeps.length > 1 ? 'en' : ''} verknüpft` : undefined });
       invalidateTakte();
       setIsCreateOpen(false);
       setCreateProcPriority('');
@@ -917,7 +917,7 @@ export default function ProjectDetail() {
       } as any,
     }, {
       onSuccess: (result) => {
-        toast({ title: 'Takt gespeichert' });
+        toast({ title: 'Leistung gespeichert' });
         invalidateTakte();
         showRescheduleToasts(result.moved, result.conflicts);
         setIsEditOpen(false);
@@ -968,7 +968,7 @@ export default function ProjectDetail() {
         } as never,
       });
       await sendTaktRequest.mutateAsync({ requestId: (created as { id: string }).id });
-      toast({ title: 'TaktAnfrage gesendet' });
+      toast({ title: 'Anfrage gesendet' });
       invalidateTakte();
       setIsVergabeOpen(false);
       setVergabeAnOrgId('');
@@ -985,7 +985,7 @@ export default function ProjectDetail() {
     if (!editTargetId) return;
     deleteTakt.mutate({ projectId, taktId: editTargetId }, {
       onSuccess: () => {
-        toast({ title: 'Takt gelöscht' });
+        toast({ title: 'Leistung gelöscht' });
         invalidateTakte();
         setIsEditOpen(false);
         setEditTargetId(null);
@@ -1253,7 +1253,7 @@ export default function ProjectDetail() {
           )}
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Neuer Takt
+            Neue Leistung
           </Button>
         </div>
       </div>
@@ -1262,7 +1262,7 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="bg-card">
           <CardContent className="p-4 flex flex-col items-center text-center">
-            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Takte gesamt</span>
+            <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Leistungen gesamt</span>
             <span className="text-2xl font-bold">{projectOverview.coordination.numberOfTakts}</span>
           </CardContent>
         </Card>
@@ -1580,13 +1580,13 @@ export default function ProjectDetail() {
                 <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
                   <Calendar className="w-8 h-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium text-lg">Noch keine Takte geplant</h3>
+                <h3 className="font-medium text-lg">Noch keine Leistungen geplant</h3>
                 <p className="text-muted-foreground text-sm max-w-sm mt-1">
-                  Legen Sie Takte an, um Ihren Projektablauf zu strukturieren.
+                  Legen Sie Leistungen an, um Ihren Projektablauf zu strukturieren.
                 </p>
                 <Button onClick={() => setIsCreateOpen(true)} className="mt-6">
                   <Plus className="w-4 h-4 mr-2" />
-                  Ersten Takt anlegen
+                  Erste Leistung anlegen
                 </Button>
               </div>
             )}
@@ -1653,7 +1653,7 @@ export default function ProjectDetail() {
             <div className="flex-1 overflow-auto p-4">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-muted-foreground">
-                  Zuordnungen und Taktanfragen pro Nachunternehmen
+                  Zuordnungen und Anfragen pro Nachunternehmen
                 </p>
                 <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
                   <Plus className="w-4 h-4 mr-1.5" />
@@ -1668,7 +1668,7 @@ export default function ProjectDetail() {
                   </div>
                   <h3 className="font-medium text-base mb-1">Noch keine Nachunternehmen zugeordnet</h3>
                   <p className="text-sm text-muted-foreground max-w-xs mb-5">
-                    Ordnen Sie Nachunternehmen zu, um Takte an sie zu vergeben.
+                    Ordnen Sie Nachunternehmen zu, um Leistungen an sie zu vergeben.
                   </p>
                   <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
                     <Plus className="w-4 h-4 mr-1.5" />
@@ -1699,7 +1699,7 @@ export default function ProjectDetail() {
                                 {activeCount > 0
                                   ? `${activeCount} aktive Zuordnung${activeCount !== 1 ? 'en' : ''}`
                                   : 'Keine aktiven Zuordnungen'}
-                                {anRequests.length > 0 && ` · ${anRequests.length} Taktanfrage${anRequests.length !== 1 ? 'n' : ''}`}
+                                {anRequests.length > 0 && ` · ${anRequests.length} Anfrage${anRequests.length !== 1 ? 'n' : ''}`}
                               </p>
                             </div>
                           </div>
@@ -1751,10 +1751,10 @@ export default function ProjectDetail() {
                         {/* TaktRequests */}
                         <div className="px-4 pb-3 pt-2">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 mt-1">
-                            Taktanfragen
+                            Anfragen
                           </p>
                           {anRequests.length === 0 ? (
-                            <p className="text-xs text-muted-foreground italic">Noch keine Taktanfragen für dieses Projekt</p>
+                            <p className="text-xs text-muted-foreground italic">Noch keine Anfragen für dieses Projekt</p>
                           ) : (
                             <div className="rounded-md border border-border overflow-hidden">
                               <table className="w-full text-xs">
@@ -2103,7 +2103,7 @@ export default function ProjectDetail() {
                     /* Existing TaktRequest — show status */
                     <div className="space-y-3">
                       <div className="p-4 rounded-lg border border-border bg-card">
-                        <div className="text-sm font-medium mb-0.5">TaktAnfrage</div>
+                        <div className="text-sm font-medium mb-0.5">Anfrage</div>
                         <div className="text-xs text-muted-foreground font-mono mb-2">{activeTaktRequest.requestNumber}</div>
                         <div className="text-sm text-muted-foreground mb-3">
                           AN: <span className="text-foreground">{activeTaktRequest.nuOrgName ?? '—'}</span>
@@ -2333,7 +2333,7 @@ export default function ProjectDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4 text-primary" />
-              Takt bearbeiten
+              Leistung bearbeiten
               {editTakt && (
                 <Badge style={{ backgroundColor: getTaktColor(editTakt.status) + '20', color: getTaktColor(editTakt.status) }} className="border-transparent ml-1">
                   {STATUS_LABEL[editTakt.status]}
@@ -2508,7 +2508,7 @@ export default function ProjectDetail() {
                     onClick={handleDeleteTakt}
                     disabled={deleteTakt.isPending}
                   >
-                    {deleteTakt.isPending ? 'Löscht…' : 'Takt löschen'}
+                    {deleteTakt.isPending ? 'Löscht…' : 'Leistung löschen'}
                   </Button>
                   <div className="flex gap-2">
                     <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditTargetId(null); }}>
@@ -2631,7 +2631,7 @@ export default function ProjectDetail() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-3xl w-full">
           <DialogHeader>
-            <DialogTitle>Neuen Takt anlegen</DialogTitle>
+            <DialogTitle>Neue Leistung anlegen</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateTakt} className="py-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
@@ -2875,7 +2875,7 @@ export default function ProjectDetail() {
             <DialogFooter className="mt-6 pt-4 border-t border-border/50">
               <Button type="button" variant="outline" onClick={() => { setIsCreateOpen(false); setCreateDeps([]); }}>Abbrechen</Button>
               <Button type="submit" disabled={createTakt.isPending || createDepSkip.isPending}>
-                {createTakt.isPending || createDepSkip.isPending ? 'Wird angelegt…' : 'Takt anlegen'}
+                {createTakt.isPending || createDepSkip.isPending ? 'Wird angelegt…' : 'Leistung anlegen'}
               </Button>
             </DialogFooter>
           </form>
