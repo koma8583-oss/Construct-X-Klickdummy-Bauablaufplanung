@@ -1251,10 +1251,6 @@ export default function ProjectDetail() {
               Im Datenraum bereitstellen
             </Button>
           )}
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Neue Leistung
-          </Button>
         </div>
       </div>
 
@@ -1479,6 +1475,14 @@ export default function ProjectDetail() {
               Kalender
             </button>
           </div>
+
+          {/* Tab-level actions — shown for Gantt and Netzplan */}
+          {(activeChartTab === 'gantt' || activeChartTab === 'netzplan') && (
+            <Button size="sm" onClick={() => setIsCreateOpen(true)} className="shrink-0 my-1.5">
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Neue Leistung
+            </Button>
+          )}
 
           {/* Gantt controls — only shown on Gantt tab */}
           {activeChartTab === 'gantt' && (
