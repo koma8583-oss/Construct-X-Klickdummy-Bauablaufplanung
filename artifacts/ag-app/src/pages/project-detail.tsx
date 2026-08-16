@@ -1422,6 +1422,10 @@ export default function ProjectDetail() {
 
       {/* Chart area — Gantt / Netzplan tabs */}
       <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+        {/* Section heading */}
+        <div className="px-4 pt-3 pb-0 shrink-0">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Bauablaufplanung</h2>
+        </div>
         {/* Tab header */}
         <div className="border-b border-border px-4 bg-background flex flex-wrap items-center justify-between shrink-0 gap-y-0">
           <div className="flex items-center gap-1 h-12 overflow-x-auto min-w-0">
@@ -1434,7 +1438,7 @@ export default function ProjectDetail() {
               }`}
             >
               <AlignLeft className="w-4 h-4" />
-              {t('projects.gantt')}
+              Gantt
             </button>
             <button
               onClick={() => setActiveChartTab('netzplan')}
