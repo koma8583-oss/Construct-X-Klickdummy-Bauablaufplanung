@@ -405,7 +405,12 @@ export function DataPublicationWizard({
                         selectedRecipients.has(c.orgId) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted/30'
                       }`}
                     >
-                      <Checkbox checked={selectedRecipients.has(c.orgId)} onCheckedChange={() => toggleRecipient(c.orgId)} className="shrink-0" />
+                      <Checkbox
+                        checked={selectedRecipients.has(c.orgId)}
+                        onCheckedChange={() => toggleRecipient(c.orgId)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0"
+                      />
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{c.name}</div>
                         {c.trade && <div className="text-xs text-muted-foreground">{c.trade}</div>}
