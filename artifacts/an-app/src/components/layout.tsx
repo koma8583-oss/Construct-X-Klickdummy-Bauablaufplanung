@@ -2,7 +2,7 @@ import { useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
-import { useGetAnDataOffers } from "@workspace/api-client-react";
+import { useGetAnDataOffers, useGetAnDashboard } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
   Inbox,
@@ -34,9 +34,13 @@ export function Layout({ children }: { children: ReactNode }) {
     (o) => o.recipientStatus === "OFFERED",
   ).length;
 
+  // Count pending TaktRequests for the Anfragen badge
+  const { data: dashboard } = useGetAnDashboard();
+  const pendingRequestsCount = (dashboard as any)?.pendingRequests ?? 0;
+
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard"), badge: 0 },
-    { href: "/takt-requests", icon: Inbox, label: "Anfragen", badge: 0 },
+    { href: "/takt-requests", icon: Inbox, label: "Anfragen", badge: pendingRequestsCount },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht", badge: 0 },
     { href: "/resources", icon: HardHat, label: "Ressourcen", badge: 0 },
     { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung", badge: 0 },
@@ -123,15 +127,21 @@ export function Layout({ children }: { children: ReactNode }) {
                     : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                 ].join(" ")}
               >
-                <div className="relative flex-shrink-0">
+                {/* Icon — dot overlay in collapsed mode */}
+                <span className="relative flex-shrink-0">
                   <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : ""}`} />
-                  {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white leading-none">
-                      {item.badge > 9 ? "9+" : item.badge}
-                    </span>
+                  {item.badge > 0 && collapsed && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary" />
                   )}
-                </div>
+                </span>
+                {/* Label */}
                 <span className={`truncate flex-1 ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
+                {/* Badge — number to the right when expanded */}
+                {item.badge > 0 && !collapsed && (
+                  <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 leading-none">
+                    {item.badge > 9 ? "9+" : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

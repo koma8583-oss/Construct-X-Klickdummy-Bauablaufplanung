@@ -256,6 +256,7 @@ export default function TaktRequestDetailPage() {
   const [newReqStart, setNewReqStart]                 = useState('');
   const [newReqEnd, setNewReqEnd]                     = useState('');
   const [showReqForm, setShowReqForm]                 = useState(false);
+  const [confirmDeleteReq, setConfirmDeleteReq]       = useState<string | null>(null);
 
   // Data queries
   const {
@@ -433,8 +434,6 @@ export default function TaktRequestDetailPage() {
       onError: (err) => toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' }),
     });
   };
-
-  const [confirmDeleteReq, setConfirmDeleteReq] = useState<string | null>(null);
 
   const handleDeleteReq = (reqId: string) => {
     setConfirmDeleteReq(reqId);

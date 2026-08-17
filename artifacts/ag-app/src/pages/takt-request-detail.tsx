@@ -503,9 +503,7 @@ export default function TaktRequestDetailPage() {
     { label: t('taktRequestDetail.timeline.snapshotCreated'), timestamp: tl.snapshotCreatedAt },
     { label: t('taktRequestDetail.timeline.messageSent'), timestamp: tl.sentAt },
     { label: t('taktRequestDetail.timeline.messageDelivered'), timestamp: tl.deliveredAt },
-    { label: t('taktRequestDetail.timeline.messageRead'), timestamp: tl.inboxReadAt },
     { label: t('taktRequestDetail.timeline.detailsRetrieved'), timestamp: tl.detailsRetrievedAt },
-    { label: t('taktRequestDetail.timeline.reviewStarted'), timestamp: tl.checkedAt, notTracked: tl.checkedAt === null },
     { label: t('taktRequestDetail.timeline.responseReceived'), timestamp: tl.responseCreatedAt },
     { label: t('taktRequestDetail.timeline.decisionMade'), timestamp: detail.guDecision?.decidedAt ?? null },
   ];
