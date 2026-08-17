@@ -20,13 +20,26 @@ import {
   FileText,
   Users,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import {
   useGetAllAgDataPublications,
+  useDeleteDataPublication,
   type AgDataPublication,
   type PublicationStatus,
   type PublicationRecipientStatus,
 } from "@workspace/api-client-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 
@@ -124,10 +137,17 @@ function SummaryCard({
 
 // ── Publication row (expandable) ──────────────────────────────────────────────
 
-function PublicationRow({ pub }: { pub: AgDataPublication }) {
+function PublicationRow({
+  pub,
+  onDelete,
+}: {
+  pub: AgDataPublication;
+  onDelete: (id: string, title: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const recipients = pub.recipients ?? [];
   const accepted = recipients.filter((r) => r.status === "ACCEPTED").length;
+  const isWithdrawn = pub.status === "WITHDRAWN";
 
   return (
     <>
@@ -212,12 +232,28 @@ function PublicationRow({ pub }: { pub: AgDataPublication }) {
             "–"
           )}
         </td>
+
+        {/* Actions */}
+        <td className="px-4 py-3 w-12 text-right">
+          {isWithdrawn && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(pub.id, pub.title);
+              }}
+              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Publikation endgültig löschen"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </td>
       </tr>
 
       {/* Expanded: recipient detail */}
       {expanded && recipients.length > 0 && (
         <tr className="border-b border-border bg-muted/10">
-          <td colSpan={7} className="px-8 py-3">
+          <td colSpan={8} className="px-8 py-3">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
               Empfänger
             </div>
@@ -274,9 +310,15 @@ const STATUS_FILTER_LABELS: Record<PublicationStatus | "ALL", string> = {
 
 export default function DatenraumPage() {
   const { data: publications, isLoading, isError } = useGetAllAgDataPublications();
+  const deletePublication = useDeleteDataPublication();
+  const { toast } = useToast();
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PublicationStatus | "ALL">("ALL");
   const [projectFilter, setProjectFilter] = useState<string>("ALL");
+
+  // Delete confirmation dialog state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
 
   const pubs = publications ?? [];
 
@@ -319,6 +361,22 @@ export default function DatenraumPage() {
       return true;
     });
   }, [pubs, statusFilter, projectFilter, search]);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deletePublication.mutateAsync(deleteTarget.id);
+      toast({ title: "Publikation gelöscht", description: deleteTarget.title });
+    } catch (err) {
+      toast({
+        title: "Fehler beim Löschen",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
@@ -473,11 +531,16 @@ export default function DatenraumPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Gültig
                   </th>
+                  <th className="w-12 px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((pub) => (
-                  <PublicationRow key={pub.id} pub={pub} />
+                  <PublicationRow
+                    key={pub.id}
+                    pub={pub}
+                    onDelete={(id, title) => setDeleteTarget({ id, title })}
+                  />
                 ))}
               </tbody>
             </table>
@@ -487,6 +550,37 @@ export default function DatenraumPage() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-4 h-4" />
+              Publikation endgültig löschen?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">„{deleteTarget?.title}"</span> wird
+              unwiderruflich gelöscht — einschließlich aller Empfängerdaten. Diese Aktion kann
+              nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deletePublication.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletePublication.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Wird gelöscht…</>
+              ) : (
+                "Endgültig löschen"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -294,3 +294,21 @@ export function useWithdrawDataPublication(): UseMutationResult<
     },
   });
 }
+
+export function useDeleteDataPublication(): UseMutationResult<
+  { ok: boolean },
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (publicationId) =>
+      customFetch<{ ok: boolean }>(
+        `/api/data-publications/${publicationId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-publications"] });
+    },
+  });
+}

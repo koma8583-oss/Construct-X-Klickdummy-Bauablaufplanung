@@ -22,6 +22,7 @@ import {
   projectsTable,
   projectContractorsTable,
   organizationsTable,
+  taktRequestsTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { buildOdrl } from "../lib/odrl-builder";
@@ -572,6 +573,49 @@ router.post(
       .where(eq(dataPublicationsTable.id, publicationId));
 
     res.json({ ok: true, status: "WITHDRAWN" });
+  },
+);
+
+// ── DELETE /data-publications/:publicationId ──────────────────────────────────
+// Permanently removes a WITHDRAWN publication and all related recipient rows.
+// takt_requests referencing this publication have their FK nulled first (no cascade).
+router.delete(
+  "/data-publications/:publicationId",
+  requireJwt,
+  requireRole("AG_ADMIN", "GENERAL_PLANNER"),
+  async (req, res): Promise<void> => {
+    const caller = req.user!;
+    const publicationId = req.params.publicationId as string;
+
+    const [pub] = await db
+      .select({ id: dataPublicationsTable.id, agOrgId: dataPublicationsTable.agOrgId, status: dataPublicationsTable.status })
+      .from(dataPublicationsTable)
+      .where(eq(dataPublicationsTable.id, publicationId))
+      .limit(1);
+
+    if (!pub || pub.agOrgId !== caller.orgId) {
+      res.status(404).json({ error: "DataPublication not found" });
+      return;
+    }
+    if (pub.status !== "WITHDRAWN") {
+      res.status(409).json({ error: `Only WITHDRAWN publications can be deleted (current status: "${pub.status}").` });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      // Null out FK in takt_requests (no ON DELETE CASCADE on that FK)
+      await tx
+        .update(taktRequestsTable)
+        .set({ dataPublicationId: null } as any)
+        .where(eq(taktRequestsTable.dataPublicationId as any, publicationId));
+
+      // Delete publication — CASCADE removes data_publication_recipients rows
+      await tx
+        .delete(dataPublicationsTable)
+        .where(eq(dataPublicationsTable.id, publicationId));
+    });
+
+    res.json({ ok: true });
   },
 );
 
