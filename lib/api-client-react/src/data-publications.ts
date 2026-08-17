@@ -15,10 +15,7 @@ import { customFetch } from "./custom-fetch";
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
-export type DataProductType =
-  | "PROJECT_OVERVIEW"
-  | "PROJECT_COORDINATION_PACKAGE"
-  | "TAKT_INFORMATION_PACKAGE";
+export type DataProductType = "TAKT_INFORMATION_PACKAGE";
 
 export type PublicationStatus =
   | "DRAFT"
@@ -105,28 +102,6 @@ export interface AgDataPublication extends DataPublication {
 // ── FIELD_WHITELISTS (must mirror the server-side constant) ───────────────────
 
 export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
-  PROJECT_OVERVIEW: [
-    "projectReference",
-    "projectName",
-    "projectStatus",
-    "startDate",
-    "endDate",
-    "assignedTrade",
-    "workPackageReference",
-    "milestones",
-    "documentReferences",
-  ],
-  PROJECT_COORDINATION_PACKAGE: [
-    "projectReference",
-    "assignedTrade",
-    "workPackageReference",
-    "milestones",
-    "logisticsConstraints",
-    "coordinationConstraints",
-    "interfaceDescriptions",
-    "relevantTimeWindows",
-    "documentReferences",
-  ],
   TAKT_INFORMATION_PACKAGE: [
     // Leistungsdaten
     "workPackage",
@@ -184,8 +159,6 @@ export const FIELD_LABELS: Record<string, string> = {
 // ── FIELD_GROUPS — grouped layout for TAKT_INFORMATION_PACKAGE Step 1 ─────────
 
 export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: string[] }[] | null> = {
-  PROJECT_OVERVIEW: null,
-  PROJECT_COORDINATION_PACKAGE: null,
   TAKT_INFORMATION_PACKAGE: [
     {
       label: "Leistungsdaten",

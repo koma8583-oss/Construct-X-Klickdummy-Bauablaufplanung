@@ -50,28 +50,6 @@ export class PublicationRecipientError extends Error {
 // ── Whitelists ────────────────────────────────────────────────────────────────
 
 export const FIELD_WHITELISTS = {
-  PROJECT_OVERVIEW: [
-    "projectReference",
-    "projectName",
-    "projectStatus",
-    "startDate",
-    "endDate",
-    "assignedTrade",
-    "workPackageReference",
-    "milestones",
-    "documentReferences",
-  ],
-  PROJECT_COORDINATION_PACKAGE: [
-    "projectReference",
-    "assignedTrade",
-    "workPackageReference",
-    "milestones",
-    "logisticsConstraints",
-    "coordinationConstraints",
-    "interfaceDescriptions",
-    "relevantTimeWindows",
-    "documentReferences",
-  ],
   TAKT_INFORMATION_PACKAGE: [
     // Leistungsdaten
     "workPackage",
@@ -139,14 +117,6 @@ export async function buildContentSnapshot(
 
   const include = new Set(safeFields);
 
-  if (
-    dataProductType === "PROJECT_OVERVIEW" ||
-    dataProductType === "PROJECT_COORDINATION_PACKAGE"
-  ) {
-    return buildProjectSnapshot(project, include);
-  }
-
-  // TAKT_INFORMATION_PACKAGE
   return buildTaktSnapshot(project, include, selectedTaktIds ?? []);
 }
 
