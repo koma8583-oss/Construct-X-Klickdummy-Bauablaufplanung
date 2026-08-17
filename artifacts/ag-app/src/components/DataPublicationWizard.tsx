@@ -32,10 +32,14 @@ import {
   usePublishDataPublication,
   FIELD_WHITELISTS,
   FIELD_LABELS,
+  FIELD_GROUPS,
   type DataProductType,
   type PolicyTemplate,
 } from '@workspace/api-client-react';
-import { ChevronRight, ChevronLeft, Globe, CheckCircle2, Lock, Shield, Eye } from 'lucide-react';
+import {
+  ChevronRight, ChevronLeft, Globe, CheckCircle2, Lock, Shield, Eye,
+  Package, FolderKanban, ClipboardList,
+} from 'lucide-react';
 
 // ── Policy content display (shared by wizard + AG detail) ─────────────────────
 
@@ -179,22 +183,73 @@ interface Props {
   takte?: { id: string; taktBezeichnung: string; zone: string }[];
 }
 
-// ── Labels ────────────────────────────────────────────────────────────────────
+// ── Labels & product metadata ─────────────────────────────────────────────────
 
-const PRODUCT_LABELS: Record<DataProductType, { label: string; description: string }> = {
+type ProductMeta = {
+  label: string;
+  tagline: string;
+  description: string;
+  contents: string[];
+  icon: React.ElementType;
+  color: string;
+};
+
+const PRODUCT_META: Record<DataProductType, ProductMeta> = {
+  TAKT_INFORMATION_PACKAGE: {
+    label: 'Informationspaket Leistungsvergabe',
+    tagline: 'Für die Auftragsvergabe an Nachunternehmen',
+    description:
+      'Enthält alle relevanten Informationen zu einer Leistung, die ein Nachunternehmen für die Angebotsstellung oder Ausführungsplanung benötigt.',
+    contents: [
+      'Leistungsbezeichnung & Gewerk',
+      'Geplantes Zeitfenster & Puffer',
+      'Ausführungsort / Zone',
+      'Hinweise zur Ausführung',
+      'Ressourcenbedarf & Logistische Vorgaben',
+      'Vorgänger- & Nachfolger-Leistungen',
+    ],
+    icon: ClipboardList,
+    color: 'text-primary bg-primary/10 border-primary/20',
+  },
   PROJECT_OVERVIEW: {
     label: 'Projektübersicht',
-    description: 'Allgemeine Projektinformationen: Name, Status, Zeitplan, Gewerk',
+    tagline: 'Basisinformationen zum Projekt',
+    description:
+      'Stellt allgemeine Projektdaten bereit: Name, Status, Laufzeit und beteiligte Gewerke. Geeignet für eine erste Übersicht.',
+    contents: [
+      'Projektname & Status',
+      'Projektbeginn & -ende',
+      'Gewerk / Fachbereich',
+      'Arbeitspaket-Referenz',
+      'Meilensteine',
+    ],
+    icon: FolderKanban,
+    color: 'text-blue-600 bg-blue-500/10 border-blue-500/20',
   },
   PROJECT_COORDINATION_PACKAGE: {
     label: 'Koordinationspaket',
-    description: 'Koordinationsrelevante Informationen: Meilensteine, Schnittstellen, Zeitfenster',
-  },
-  TAKT_INFORMATION_PACKAGE: {
-    label: 'Taktinformationspaket',
-    description: 'Taktbezogene Details: Zeitfenster, Ressourcen, Vorgänger/Nachfolger',
+    tagline: 'Für die übergreifende Terminkoordination',
+    description:
+      'Koordinationsrelevante Daten für die gemeinsame Ablaufplanung: Meilensteine, Schnittstellen, Zeitfenster und Logistikvorgaben.',
+    contents: [
+      'Meilensteine & Zeitfenster',
+      'Logistische Vorgaben',
+      'Koordinations-Vorgaben',
+      'Schnittstellenbeschreibungen',
+      'Dokumentenverweise',
+    ],
+    icon: Package,
+    color: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20',
   },
 };
+
+// For backward compatibility with autoTitle etc.
+const PRODUCT_LABELS: Record<DataProductType, { label: string; description: string }> = Object.fromEntries(
+  (Object.entries(PRODUCT_META) as [DataProductType, ProductMeta][]).map(([k, v]) => [
+    k,
+    { label: v.label, description: v.description },
+  ]),
+) as Record<DataProductType, { label: string; description: string }>;
 
 const STEP_LABELS = [
   'Datenprodukt',
@@ -389,31 +444,62 @@ export function DataPublicationWizard({
           {/* ── Step 0: Datenprodukt ─────────────────────────────────────── */}
           {step === 0 && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground mb-3">
-                Wählen Sie den Datenprodukt-Typ, den Sie für Ihre Nachunternehmer bereitstellen möchten.
+              <p className="text-sm text-muted-foreground">
+                Wählen Sie das Datenprodukt, das Sie für Ihre Nachunternehmen bereitstellen möchten.
               </p>
-              {(Object.entries(PRODUCT_LABELS) as [DataProductType, (typeof PRODUCT_LABELS)[DataProductType]][]).map(
-                ([type, { label, description }]) => (
+              {/* Primary product first, then others */}
+              {(['TAKT_INFORMATION_PACKAGE', 'PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE'] as DataProductType[]).map((type) => {
+                const meta = PRODUCT_META[type];
+                const Icon = meta.icon;
+                const isPrimary = type === 'TAKT_INFORMATION_PACKAGE';
+                const isSelected = productType === type;
+                return (
                   <button
                     key={type}
                     type="button"
                     onClick={() => setProductType(type)}
-                    className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                      productType === type
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                    className={`w-full text-left rounded-xl border-2 transition-all ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-border hover:border-primary/40 hover:bg-muted/20'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">{label}</span>
-                      {productType === type && (
-                        <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                      )}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${meta.color}`}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm">{meta.label}</span>
+                              {isPrimary && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                  Empfohlen
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">{meta.tagline}</p>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        )}
+                      </div>
+
+                      {/* Inhalt-Bullets */}
+                      <div className={`mt-3 grid grid-cols-2 gap-x-4 gap-y-0.5 transition-all ${isSelected ? 'opacity-100' : 'opacity-60'}`}>
+                        {meta.contents.map((c) => (
+                          <div key={c} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground/60 shrink-0" />
+                            {c}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{description}</p>
                   </button>
-                ),
-              )}
+                );
+              })}
             </div>
           )}
 
@@ -422,23 +508,39 @@ export function DataPublicationWizard({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Wählen Sie die Felder, die für Empfänger sichtbar sein sollen.
+                  Wählen Sie die Informationen, die für den Empfänger sichtbar sein sollen.
                 </p>
                 <button
                   type="button"
                   onClick={handleSelectAllFields}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline shrink-0 ml-3"
                 >
                   {selectedFields.size === currentFields.length ? 'Alle abwählen' : 'Alle wählen'}
                 </button>
               </div>
 
+              {/* Leistungs-Auswahl (nur TAKT_INFORMATION_PACKAGE) */}
               {productType === 'TAKT_INFORMATION_PACKAGE' && takte && takte.length > 0 && (
-                <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Takte einschließen
-                  </Label>
-                  <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                <div className="border rounded-xl p-3 space-y-2 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Leistungen einschließen
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedTaktIds.size === takte.length) {
+                          setSelectedTaktIds(new Set());
+                        } else {
+                          setSelectedTaktIds(new Set(takte.map(t => t.id)));
+                        }
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {selectedTaktIds.size === takte.length ? 'Alle abwählen' : 'Alle wählen'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto pr-1">
                     {takte.map((t) => (
                       <div key={t.id} className="flex items-center gap-2">
                         <Checkbox
@@ -456,24 +558,71 @@ export function DataPublicationWizard({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                {currentFields.map((f) => (
-                  <div key={f} className="flex items-center gap-2 py-1">
-                    <Checkbox
-                      id={`field-${f}`}
-                      checked={selectedFields.has(f)}
-                      onCheckedChange={() => toggleField(f)}
-                    />
-                    <label htmlFor={`field-${f}`} className="text-sm cursor-pointer">
-                      {FIELD_LABELS[f] ?? f}
-                    </label>
-                  </div>
-                ))}
-              </div>
+              {/* Grouped fields (TAKT_INFORMATION_PACKAGE) */}
+              {FIELD_GROUPS[productType] ? (
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {FIELD_GROUPS[productType]!.map((group) => (
+                    <div key={group.label} className="border border-border rounded-xl overflow-hidden">
+                      {/* Group header with select-all toggle */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allSelected = group.fields.every(f => selectedFields.has(f));
+                          setSelectedFields(prev => {
+                            const next = new Set(prev);
+                            if (allSelected) group.fields.forEach(f => next.delete(f));
+                            else group.fields.forEach(f => next.add(f));
+                            return next;
+                          });
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {group.label}
+                        </span>
+                        <span className="text-[10px] text-primary">
+                          {group.fields.filter(f => selectedFields.has(f)).length}/{group.fields.length}
+                        </span>
+                      </button>
+                      {/* Fields */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 px-3 py-2">
+                        {group.fields.map((f) => (
+                          <div key={f} className="flex items-center gap-2 py-1">
+                            <Checkbox
+                              id={`field-${f}`}
+                              checked={selectedFields.has(f)}
+                              onCheckedChange={() => toggleField(f)}
+                            />
+                            <label htmlFor={`field-${f}`} className="text-sm cursor-pointer leading-tight">
+                              {FIELD_LABELS[f] ?? f}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Flat field list for PROJECT_OVERVIEW / PROJECT_COORDINATION_PACKAGE */
+                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                  {currentFields.map((f) => (
+                    <div key={f} className="flex items-center gap-2 py-1">
+                      <Checkbox
+                        id={`field-${f}`}
+                        checked={selectedFields.has(f)}
+                        onCheckedChange={() => toggleField(f)}
+                      />
+                      <label htmlFor={`field-${f}`} className="text-sm cursor-pointer">
+                        {FIELD_LABELS[f] ?? f}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <p className="text-xs text-muted-foreground mt-1">
-                <Lock className="inline h-3 w-3 mr-1" />
-                Interne Felder (Kalkulation, Risikobewertung, etc.) werden niemals übertragen.
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Lock className="h-3 w-3 shrink-0" />
+                Interne Felder (Kalkulation, Risikobewertung, Notizen) werden niemals übertragen.
               </p>
             </div>
           )}

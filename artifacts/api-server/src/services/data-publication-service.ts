@@ -73,18 +73,25 @@ export const FIELD_WHITELISTS = {
     "documentReferences",
   ],
   TAKT_INFORMATION_PACKAGE: [
-    "projectReference",
+    // Leistungsdaten
+    "workPackage",
+    "trade",
     "taktReference",
     "taktVersion",
-    "location",
-    "trade",
-    "workPackage",
+    // Zeitplanung
     "plannedTimeWindow",
     "bufferTimeWindow",
+    // Ausführung
+    "location",
+    "executionNotes",
+    // Anordnung
     "predecessors",
     "successors",
+    // Ressourcen & Logistik
     "resourceRequirements",
     "constraints",
+    // Referenzen
+    "projectReference",
     "documentReferences",
   ],
 } as const;
@@ -263,6 +270,7 @@ async function buildTaktSnapshot(
       obj.successors = depMap.get(t.id)?.successors ?? [];
     if (include.has("resourceRequirements"))
       obj.resourceRequirements = t.requiredResources ?? null;
+    if (include.has("executionNotes")) obj.executionNotes = (t as any).description ?? null;
     if (include.has("constraints")) obj.constraints = null;
     if (include.has("documentReferences")) obj.documentReferences = [];
     return obj;

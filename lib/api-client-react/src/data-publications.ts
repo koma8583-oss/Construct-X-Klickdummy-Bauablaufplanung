@@ -128,47 +128,90 @@ export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
     "documentReferences",
   ],
   TAKT_INFORMATION_PACKAGE: [
-    "projectReference",
+    // Leistungsdaten
+    "workPackage",
+    "trade",
     "taktReference",
     "taktVersion",
-    "location",
-    "trade",
-    "workPackage",
+    // Zeitplanung
     "plannedTimeWindow",
     "bufferTimeWindow",
+    // Ausführung
+    "location",
+    "executionNotes",
+    // Anordnung
     "predecessors",
     "successors",
+    // Ressourcen & Logistik
     "resourceRequirements",
     "constraints",
+    // Referenzen
+    "projectReference",
     "documentReferences",
   ],
 };
 
 export const FIELD_LABELS: Record<string, string> = {
+  // Projektfelder
   projectReference: "Projektreferenz",
   projectName: "Projektname",
   projectStatus: "Projektstatus",
-  startDate: "Startdatum",
-  endDate: "Enddatum",
-  assignedTrade: "Gewerk",
+  startDate: "Projektbeginn",
+  endDate: "Projektende",
+  assignedTrade: "Gewerk / Fachbereich",
   workPackageReference: "Arbeitspaket-Referenz",
   milestones: "Meilensteine",
-  logisticsConstraints: "Logistikbeschränkungen",
-  coordinationConstraints: "Koordinationsbeschränkungen",
+  logisticsConstraints: "Logistische Vorgaben",
+  coordinationConstraints: "Koordinations-Vorgaben",
   interfaceDescriptions: "Schnittstellenbeschreibungen",
   relevantTimeWindows: "Relevante Zeitfenster",
-  documentReferences: "Dokumentreferenzen",
-  taktReference: "Takt-Referenz",
-  taktVersion: "Taktversion",
-  location: "Bereich / Zone",
+  documentReferences: "Dokumentenverweise",
+  // Leistungsfelder (TAKT_INFORMATION_PACKAGE)
+  workPackage: "Leistungsbezeichnung",
   trade: "Gewerk",
-  workPackage: "Arbeitspaket",
+  taktReference: "Leistungs-ID",
+  taktVersion: "Version",
   plannedTimeWindow: "Geplantes Zeitfenster",
-  bufferTimeWindow: "Pufferzeiten",
-  predecessors: "Vorgänger",
-  successors: "Nachfolger",
-  resourceRequirements: "Ressourcenanforderungen",
-  constraints: "Einschränkungen",
+  bufferTimeWindow: "Puffer (Frühest / Spätest)",
+  location: "Ausführungsort / Zone",
+  executionNotes: "Hinweise zur Ausführung",
+  predecessors: "Vorgänger-Leistungen",
+  successors: "Nachfolger-Leistungen",
+  resourceRequirements: "Ressourcenbedarf / Logistik",
+  constraints: "Randbedingungen",
+};
+
+// ── FIELD_GROUPS — grouped layout for TAKT_INFORMATION_PACKAGE Step 1 ─────────
+
+export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: string[] }[] | null> = {
+  PROJECT_OVERVIEW: null,
+  PROJECT_COORDINATION_PACKAGE: null,
+  TAKT_INFORMATION_PACKAGE: [
+    {
+      label: "Leistungsdaten",
+      fields: ["workPackage", "trade", "taktReference", "taktVersion"],
+    },
+    {
+      label: "Zeitplanung",
+      fields: ["plannedTimeWindow", "bufferTimeWindow"],
+    },
+    {
+      label: "Ausführung",
+      fields: ["location", "executionNotes"],
+    },
+    {
+      label: "Anordnungsbeziehungen",
+      fields: ["predecessors", "successors"],
+    },
+    {
+      label: "Ressourcen & Logistik",
+      fields: ["resourceRequirements", "constraints"],
+    },
+    {
+      label: "Referenzen",
+      fields: ["projectReference", "documentReferences"],
+    },
+  ],
 };
 
 // ── Query hooks ───────────────────────────────────────────────────────────────
