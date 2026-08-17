@@ -295,9 +295,7 @@ export function DataPublicationWizard({
             </p>
             <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-0.5">
               <Lock className="h-3 w-3 shrink-0 mt-0.5" />
-              Detailinformationen zu einer konkreten Leistung sind erst zugänglich,
-              wenn der Empfänger die Nutzungsrichtlinie akzeptiert hat <em>und</em> ihm
-              diese Leistung explizit zugeordnet wurde.
+              <span>Detailinformationen zu einer konkreten Leistung sind erst zugänglich, wenn der Empfänger die Nutzungsrichtlinie akzeptiert hat <em>und</em> ihm diese Leistung explizit zugeordnet wurde.</span>
             </p>
           </div>
         </DialogHeader>
