@@ -35,6 +35,10 @@ export interface TaktRequestSnapshotPayload {
   schemaVersion: "1.0";
   /** Project identifier — the project this Takt belongs to */
   projectReference: string;
+  /** Physical location of the project site (from projects.location) — nullable */
+  projectLocation: string | null;
+  /** Human-readable description of the project (from projects.description) — nullable */
+  projectDescription: string | null;
   /** Takt identifier */
   taktReference: string;
   /** Takt version at the time of snapshot creation */
@@ -173,10 +177,12 @@ export { DuplicateSnapshotError } from "./takt-request-repository";
 export function buildTaktRequestSnapshot(input: {
   takt: Takt;
   projectId: string;
+  projectLocation?: string | null;
+  projectDescription?: string | null;
   predecessors: TaktDependency[];
   successors: TaktDependency[];
 }): TaktRequestSnapshotPayload {
-  const { takt, projectId, predecessors, successors } = input;
+  const { takt, projectId, projectLocation, projectDescription, predecessors, successors } = input;
 
   // Validate required fields before building
   if (!takt.plannedStart || !takt.plannedEnd) {
@@ -200,6 +206,8 @@ export function buildTaktRequestSnapshot(input: {
 
     // ── Whitelisted identification fields ─────────────────────────────────────
     projectReference: projectId,
+    projectLocation: projectLocation ?? null,
+    projectDescription: projectDescription ?? null,
     taktReference: takt.id,
     taktVersion: takt.version,
 
@@ -383,6 +391,8 @@ export async function createTaktRequestWithSnapshot(
   const basePayload = buildTaktRequestSnapshot({
     takt,
     projectId: project.id,
+    projectLocation: project.location ?? null,
+    projectDescription: project.description ?? null,
     predecessors,
     successors,
   });

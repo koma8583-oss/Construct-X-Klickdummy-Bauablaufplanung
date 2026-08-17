@@ -187,7 +187,8 @@ describe("buildTaktRequestSnapshot() — pure function", () => {
 
     // These are the ONLY top-level keys allowed in the snapshot
     const allowedKeys = [
-      "schemaVersion", "projectReference", "taktReference", "taktVersion",
+      "schemaVersion", "projectReference", "projectLocation", "projectDescription",
+      "taktReference", "taktVersion",
       "trade", "workPackage", "location", "plannedTimeWindow", "bufferTimeWindow",
       "requiredOutput", "resourceRequirements", "constraints",
       "predecessors", "successors", "documentReferences",
