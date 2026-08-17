@@ -49,28 +49,30 @@ export class PublicationRecipientError extends Error {
 
 // ── Whitelists ────────────────────────────────────────────────────────────────
 
-export const FIELD_WHITELISTS = {
+export const FIELD_WHITELISTS: Record<string, readonly string[]> = {
   TAKT_INFORMATION_PACKAGE: [
+    // Projektdaten
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
     // Leistungsdaten
     "workPackage",
     "trade",
-    "taktReference",
-    "taktVersion",
     // Zeitplanung
     "plannedTimeWindow",
     "bufferTimeWindow",
     // Ausführung
     "location",
     "executionNotes",
-    // Anordnung
+    // Anordnungsbeziehungen
     "predecessors",
     "successors",
     // Ressourcen & Logistik
     "resourceRequirements",
-    "constraints",
-    // Referenzen
-    "projectReference",
-    "documentReferences",
   ],
 } as const;
 
@@ -150,12 +152,30 @@ function buildProjectSnapshot(
 }
 
 async function buildTaktSnapshot(
-  project: { id: string; name: string },
+  project: {
+    id: string;
+    name: string;
+    description: string | null;
+    location: string | null;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+  },
   include: Set<string>,
   taktIds: string[],
 ): Promise<Record<string, unknown>> {
+  // Project-level fields always populate the top-level snapshot object
+  const snap: Record<string, unknown> = {};
+  if (include.has("projectReference")) snap.projectReference = project.id;
+  if (include.has("projectName")) snap.projectName = project.name;
+  if (include.has("projectStatus")) snap.projectStatus = project.status;
+  if (include.has("startDate")) snap.startDate = project.startDate ?? null;
+  if (include.has("endDate")) snap.endDate = project.endDate ?? null;
+  if (include.has("projectLocation")) snap.projectLocation = project.location ?? null;
+  if (include.has("projectDescription")) snap.projectDescription = project.description ?? null;
+
   if (taktIds.length === 0) {
-    return { projectReference: project.id, takte: [] };
+    return { ...snap, takte: [] };
   }
 
   const taktRows = await db
@@ -218,9 +238,6 @@ async function buildTaktSnapshot(
 
   const takte = taktRows.map((t) => {
     const obj: Record<string, unknown> = {};
-    if (include.has("projectReference")) obj.projectReference = project.id;
-    if (include.has("taktReference")) obj.taktReference = t.id;
-    if (include.has("taktVersion")) obj.taktVersion = t.version;
     if (include.has("location")) obj.location = t.zone;
     if (include.has("trade")) obj.trade = t.gewerk;
     if (include.has("workPackage")) obj.workPackage = t.taktBezeichnung;
@@ -241,12 +258,10 @@ async function buildTaktSnapshot(
     if (include.has("resourceRequirements"))
       obj.resourceRequirements = t.requiredResources ?? null;
     if (include.has("executionNotes")) obj.executionNotes = (t as any).description ?? null;
-    if (include.has("constraints")) obj.constraints = null;
-    if (include.has("documentReferences")) obj.documentReferences = [];
     return obj;
   });
 
-  return { projectReference: project.id, takte };
+  return { ...snap, takte };
 }
 
 // ── Content hash ──────────────────────────────────────────────────────────────

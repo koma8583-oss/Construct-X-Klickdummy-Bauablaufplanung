@@ -23,6 +23,7 @@ interface PolicySeed {
 }
 
 const CANONICAL_POLICIES: PolicySeed[] = [
+  // Deactivated — kept for ON CONFLICT upsert so existing DB rows are updated
   {
     code: "COORDINATION_USE",
     name: "Koordinationsnutzung",
@@ -32,12 +33,7 @@ const CANONICAL_POLICIES: PolicySeed[] = [
     purpose:
       "Nutzung der bereitgestellten Takt- und Koordinationsdaten ausschließlich " +
       "zur Baustellenkoordination und Ressourcenplanung innerhalb des jeweiligen Projekts.",
-    permissions: [
-      "Lesen",
-      "Projektinterne Weitergabe",
-      "Ressourcenplanung",
-      "Terminplanung",
-    ],
+    permissions: ["Lesen", "Projektinterne Weitergabe", "Ressourcenplanung", "Terminplanung"],
     prohibitions: [
       "Kommerzielle Nutzung",
       "Weitergabe an Dritte außerhalb des Projekts",
@@ -46,61 +42,36 @@ const CANONICAL_POLICIES: PolicySeed[] = [
     ],
     validityRule:
       "Gültig für die gesamte Laufzeit des Projekts, endet automatisch mit Projektabschluss.",
-    retentionRule:
-      "Daten sind spätestens 30 Tage nach Projektabschluss zu löschen.",
-    active: true,
+    retentionRule: "Daten sind spätestens 30 Tage nach Projektabschluss zu löschen.",
+    active: false,
   },
   {
     code: "READ_ONLY",
     name: "Lesezugriff (eingeschränkt)",
     description:
-      "Minimale Richtlinie für den reinen Lesezugriff ohne Weitergabemöglichkeit. " +
-      "Geeignet für Statusabfragen und Abstimmungsgespräche.",
-    purpose:
-      "Reine Einsichtnahme in bereitgestellte Projektdaten zur Vorbereitung von " +
-      "Abstimmungsgesprächen und Statusüberprüfungen.",
+      "Minimale Richtlinie für den reinen Lesezugriff ohne Weitergabemöglichkeit.",
+    purpose: "Reine Einsichtnahme zur Vorbereitung von Abstimmungsgesprächen.",
     permissions: ["Lesen"],
-    prohibitions: [
-      "Weitergabe jeglicher Art",
-      "Kommerzielle Nutzung",
-      "Speicherung",
-      "Veränderung der Daten",
-      "Druckausgabe ohne Genehmigung",
-    ],
-    validityRule:
-      "Gültig für 30 Tage ab Bereitstellung, danach automatischer Zugriffsentzug.",
+    prohibitions: ["Weitergabe jeglicher Art", "Kommerzielle Nutzung", "Speicherung"],
+    validityRule: "Gültig für 30 Tage ab Bereitstellung.",
     retentionRule: "Keine Speicherung gestattet.",
-    active: true,
+    active: false,
   },
   {
     code: "SUBCONTRACTOR_FULL",
     name: "Nachunternehmerpaket (vollständig)",
     description:
-      "Erweiterte Richtlinie für Nachunternehmer mit umfangreichen Planungsaufgaben — " +
-      "erlaubt interne Dokumentation und Ressourcenplanung.",
+      "Erweiterte Richtlinie für Nachunternehmer mit umfangreichen Planungsaufgaben.",
     purpose:
-      "Umfassende Nutzung der Takt- und Projektdaten zur Koordination, internen " +
-      "Ressourcenplanung und baubezogenen Dokumentation im Rahmen des Vertragsverhältnisses.",
-    permissions: [
-      "Lesen",
-      "Projektinterne Weitergabe",
-      "Ressourcenplanung",
-      "Terminplanung",
-      "Interne Dokumentation",
-      "Druckausgabe für Baustelleneinsatz",
-    ],
-    prohibitions: [
-      "Kommerzielle Nutzung",
-      "Weitergabe an Dritte außerhalb des Projekts",
-      "Veränderung der Originaldaten ohne Kennzeichnung",
-    ],
-    validityRule:
-      "Gültig für die Vertragslaufzeit des Nachunternehmers, längstens bis zum Projektabschluss.",
+      "Umfassende Nutzung der Takt- und Projektdaten zur Koordination und Dokumentation.",
+    permissions: ["Lesen", "Ressourcenplanung", "Terminplanung", "Interne Dokumentation"],
+    prohibitions: ["Kommerzielle Nutzung", "Weitergabe an Dritte außerhalb des Projekts"],
+    validityRule: "Gültig für die Vertragslaufzeit des Nachunternehmers.",
     retentionRule:
-      "Daten sind innerhalb von 60 Tagen nach Vertragsende oder Projektabschluss " +
-      "(je nachdem, was früher eintritt) zu löschen.",
-    active: true,
+      "Daten sind innerhalb von 60 Tagen nach Vertragsende oder Projektabschluss zu löschen.",
+    active: false,
   },
+  // ── Aktive Richtlinie ──────────────────────────────────────────────────────
   {
     code: "SCHEDULE_COORDINATION",
     name: "Abstimmung von Rahmenterminen",

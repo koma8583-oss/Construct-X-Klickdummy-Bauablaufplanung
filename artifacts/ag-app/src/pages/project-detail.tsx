@@ -3332,11 +3332,6 @@ export default function ProjectDetail() {
             assignmentStatus: a.assignmentStatus,
             trade: a.trade,
           }))}
-          takte={(takte ?? []).map(t => ({
-            id: t.id,
-            taktBezeichnung: t.taktBezeichnung,
-            zone: t.zone ?? '',
-          }))}
         />
       )}
 

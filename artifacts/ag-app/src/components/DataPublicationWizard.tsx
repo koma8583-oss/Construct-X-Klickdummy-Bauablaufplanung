@@ -179,7 +179,6 @@ interface Props {
   projectId: string;
   projectName: string;
   contractors: ContractorOption[];
-  takte?: { id: string; taktBezeichnung: string; zone: string }[];
 }
 
 // The only product type is TAKT_INFORMATION_PACKAGE — no selection step needed.
@@ -198,14 +197,12 @@ export function DataPublicationWizard({
   projectId,
   projectName,
   contractors,
-  takte,
 }: Props) {
   const { toast } = useToast();
   const { user } = useAuth();
 
   const [step, setStep] = useState(0);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
-  const [selectedTaktIds, setSelectedTaktIds] = useState<Set<string>>(new Set());
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [policyTemplateId, setPolicyTemplateId] = useState('');
   const [title, setTitle] = useState('');
@@ -230,7 +227,6 @@ export function DataPublicationWizard({
     if (!v) {
       setStep(0);
       setSelectedFields(new Set(ALL_FIELDS));
-      setSelectedTaktIds(new Set());
       setSelectedRecipients(new Set());
       setPolicyTemplateId('');
       setTitle('');
@@ -246,9 +242,6 @@ export function DataPublicationWizard({
 
   const toggleRecipient = (orgId: string) =>
     setSelectedRecipients((prev) => { const n = new Set(prev); n.has(orgId) ? n.delete(orgId) : n.add(orgId); return n; });
-
-  const toggleTakt = (id: string) =>
-    setSelectedTaktIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const canNext = useMemo(() => {
     if (step === 0) return selectedFields.size > 0;
@@ -271,7 +264,6 @@ export function DataPublicationWizard({
         description: description.trim() || undefined,
         policyTemplateId,
         selectedFields: Array.from(selectedFields),
-        selectedTaktIds: Array.from(selectedTaktIds),
         recipientAnOrgIds: Array.from(selectedRecipients),
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
@@ -295,6 +287,19 @@ export function DataPublicationWizard({
             <ClipboardList className="h-5 w-5 text-primary" />
             <span>{PRODUCT_LABEL}</span>
           </DialogTitle>
+          <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80 space-y-1">
+            <p>
+              Dieses Paket stellt <strong>allgemeine Projektdaten</strong> sowie eine
+              strukturierte Übersicht der Leistungsmerkmale bereit — ohne konkrete
+              Terminpositionen oder sensible Kalkulationsdetails.
+            </p>
+            <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-0.5">
+              <Lock className="h-3 w-3 shrink-0 mt-0.5" />
+              Detailinformationen zu einer konkreten Leistung sind erst zugänglich,
+              wenn der Empfänger die Nutzungsrichtlinie akzeptiert hat <em>und</em> ihm
+              diese Leistung explizit zugeordnet wurde.
+            </p>
+          </div>
         </DialogHeader>
 
         {/* Step indicator */}
@@ -339,37 +344,6 @@ export function DataPublicationWizard({
                   {selectedFields.size === ALL_FIELDS.length ? 'Alle abwählen' : 'Alle wählen'}
                 </button>
               </div>
-
-              {/* Leistungsauswahl */}
-              {takte && takte.length > 0 && (
-                <div className="border rounded-xl p-3 space-y-2 bg-muted/20">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Leistungen einschließen
-                    </Label>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTaktIds(
-                        selectedTaktIds.size === takte!.length ? new Set() : new Set(takte!.map(t => t.id))
-                      )}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {selectedTaktIds.size === takte.length ? 'Alle abwählen' : 'Alle wählen'}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto pr-1">
-                    {takte.map((t) => (
-                      <div key={t.id} className="flex items-center gap-2">
-                        <Checkbox id={`takt-${t.id}`} checked={selectedTaktIds.has(t.id)} onCheckedChange={() => toggleTakt(t.id)} />
-                        <label htmlFor={`takt-${t.id}`} className="text-xs cursor-pointer leading-tight">
-                          {t.taktBezeichnung}
-                          {t.zone && <span className="text-muted-foreground"> · {t.zone}</span>}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Grouped fields */}
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -506,12 +480,6 @@ export function DataPublicationWizard({
                     <div>
                       <div className="text-muted-foreground text-xs uppercase tracking-wider">Gültig</div>
                       <div className="font-medium">{validFrom || '…'} – {validUntil || '∞'}</div>
-                    </div>
-                  )}
-                  {selectedTaktIds.size > 0 && (
-                    <div>
-                      <div className="text-muted-foreground text-xs uppercase tracking-wider">Leistungen</div>
-                      <div className="font-medium">{selectedTaktIds.size} eingeschlossen</div>
                     </div>
                   )}
                 </div>

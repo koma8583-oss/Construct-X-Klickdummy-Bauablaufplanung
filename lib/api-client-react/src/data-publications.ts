@@ -103,49 +103,43 @@ export interface AgDataPublication extends DataPublication {
 
 export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
   TAKT_INFORMATION_PACKAGE: [
+    // Projektdaten
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
     // Leistungsdaten
     "workPackage",
     "trade",
-    "taktReference",
-    "taktVersion",
     // Zeitplanung
     "plannedTimeWindow",
     "bufferTimeWindow",
     // Ausführung
     "location",
     "executionNotes",
-    // Anordnung
+    // Anordnungsbeziehungen
     "predecessors",
     "successors",
     // Ressourcen & Logistik
     "resourceRequirements",
-    "constraints",
-    // Referenzen
-    "projectReference",
-    "documentReferences",
   ],
 };
 
 export const FIELD_LABELS: Record<string, string> = {
   // Projektfelder
-  projectReference: "Projektreferenz",
+  projectReference: "Projektreferenz (ID)",
   projectName: "Projektname",
   projectStatus: "Projektstatus",
   startDate: "Projektbeginn",
   endDate: "Projektende",
-  assignedTrade: "Gewerk / Fachbereich",
-  workPackageReference: "Arbeitspaket-Referenz",
-  milestones: "Meilensteine",
-  logisticsConstraints: "Logistische Vorgaben",
-  coordinationConstraints: "Koordinations-Vorgaben",
-  interfaceDescriptions: "Schnittstellenbeschreibungen",
-  relevantTimeWindows: "Relevante Zeitfenster",
-  documentReferences: "Dokumentenverweise",
+  projectLocation: "Projektstandort / Bauvorhaben",
+  projectDescription: "Projektbeschreibung",
   // Leistungsfelder (TAKT_INFORMATION_PACKAGE)
   workPackage: "Leistungsbezeichnung",
   trade: "Gewerk",
-  taktReference: "Leistungs-ID",
-  taktVersion: "Version",
   plannedTimeWindow: "Geplantes Zeitfenster",
   bufferTimeWindow: "Puffer (Frühest / Spätest)",
   location: "Ausführungsort / Zone",
@@ -153,7 +147,6 @@ export const FIELD_LABELS: Record<string, string> = {
   predecessors: "Vorgänger-Leistungen",
   successors: "Nachfolger-Leistungen",
   resourceRequirements: "Ressourcenbedarf / Logistik",
-  constraints: "Randbedingungen",
 };
 
 // ── FIELD_GROUPS — grouped layout for TAKT_INFORMATION_PACKAGE Step 1 ─────────
@@ -161,8 +154,12 @@ export const FIELD_LABELS: Record<string, string> = {
 export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: string[] }[] | null> = {
   TAKT_INFORMATION_PACKAGE: [
     {
+      label: "Projektdaten",
+      fields: ["projectName", "projectStatus", "startDate", "endDate", "projectLocation", "projectDescription", "projectReference"],
+    },
+    {
       label: "Leistungsdaten",
-      fields: ["workPackage", "trade", "taktReference", "taktVersion"],
+      fields: ["workPackage", "trade"],
     },
     {
       label: "Zeitplanung",
@@ -178,11 +175,7 @@ export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: stri
     },
     {
       label: "Ressourcen & Logistik",
-      fields: ["resourceRequirements", "constraints"],
-    },
-    {
-      label: "Referenzen",
-      fields: ["projectReference", "documentReferences"],
+      fields: ["resourceRequirements"],
     },
   ],
 };
