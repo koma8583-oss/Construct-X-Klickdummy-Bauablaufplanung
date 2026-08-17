@@ -322,7 +322,7 @@ export default function RequestDetail() {
                   <Button variant="ghost" onClick={() => setIsRejecting(false)}>{t("common.cancel")}</Button>
                   <Button variant="destructive" onClick={handleReject} disabled={createResponse.isPending}>
                     {createResponse.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    {t("common.confirm")}
+                    Anfrage endgültig ablehnen
                   </Button>
                 </div>
               </CardContent>

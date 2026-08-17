@@ -35,6 +35,16 @@ import {
   Lock, Unlock, ChevronDown, ChevronUp, ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -424,9 +434,20 @@ export default function TaktRequestDetailPage() {
     });
   };
 
+  const [confirmDeleteReq, setConfirmDeleteReq] = useState<string | null>(null);
+
   const handleDeleteReq = (reqId: string) => {
-    deleteReq.mutate({ requestId: requestId!, requirementId: reqId }, {
-      onError: (err) => toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' }),
+    setConfirmDeleteReq(reqId);
+  };
+
+  const doDeleteReq = () => {
+    if (!confirmDeleteReq) return;
+    deleteReq.mutate({ requestId: requestId!, requirementId: confirmDeleteReq }, {
+      onSuccess: () => setConfirmDeleteReq(null),
+      onError: (err) => {
+        toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
+        setConfirmDeleteReq(null);
+      },
     });
   };
 
@@ -1046,6 +1067,28 @@ export default function TaktRequestDetailPage() {
         </CardContent>
       </StepSection>
 
+      {/* ── Bestätigungsdialog: Ressourcenbedarf löschen ─────────────────── */}
+      <AlertDialog open={!!confirmDeleteReq} onOpenChange={(o) => !o && setConfirmDeleteReq(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ressourcenbedarf entfernen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dieser Ressourcenbedarf-Eintrag wird aus der Anfrage gelöscht.
+              Sie können ihn anschließend neu erfassen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doDeleteReq}
+              disabled={deleteReq.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteReq.isPending ? 'Entfernt…' : 'Entfernen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

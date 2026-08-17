@@ -529,6 +529,12 @@ export default function ProjectDetail() {
   const deactivateAssignment = useDeactivateProjectSubcontractor();
 
   const [isDelegating, setIsDelegating] = useState(false);
+
+  // Confirm-dialogs für destruktive Aktionen
+  const [confirmDeleteTakt, setConfirmDeleteTakt] = useState(false);
+  const [confirmRemoveContractor, setConfirmRemoveContractor] = useState<string | null>(null);
+  const [confirmCloseRequest, setConfirmCloseRequest] = useState(false);
+  const [confirmDeleteDep, setConfirmDeleteDep] = useState<string | null>(null);
   const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
   const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
   const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
@@ -982,6 +988,10 @@ export default function ProjectDetail() {
   };
 
   const handleDeleteTakt = () => {
+    setConfirmDeleteTakt(true);
+  };
+
+  const doDeleteTakt = () => {
     if (!editTargetId) return;
     deleteTakt.mutate({ projectId, taktId: editTargetId }, {
       onSuccess: () => {
@@ -989,8 +999,12 @@ export default function ProjectDetail() {
         invalidateTakte();
         setIsEditOpen(false);
         setEditTargetId(null);
+        setConfirmDeleteTakt(false);
       },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+      onError: (err) => {
+        toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
+        setConfirmDeleteTakt(false);
+      },
     });
   };
 
@@ -1006,17 +1020,30 @@ export default function ProjectDetail() {
   };
 
   const handleRemoveContractor = (anOrgId: string) => {
-    removeContractor.mutate({ projectId, anOrgId }, {
+    setConfirmRemoveContractor(anOrgId);
+  };
+
+  const doRemoveContractor = () => {
+    if (!confirmRemoveContractor) return;
+    removeContractor.mutate({ projectId, anOrgId: confirmRemoveContractor }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
         queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
         toast({ title: 'Nachunternehmer entfernt' });
+        setConfirmRemoveContractor(null);
       },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+      onError: (err) => {
+        toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
+        setConfirmRemoveContractor(null);
+      },
     });
   };
 
   const handleCloseRequest = () => {
+    setConfirmCloseRequest(true);
+  };
+
+  const doCloseRequest = () => {
     if (!activeTaktRequest) return;
     closeRequest.mutate({
       requestId: activeTaktRequest.id,
@@ -1025,8 +1052,12 @@ export default function ProjectDetail() {
       onSuccess: () => {
         toast({ title: 'Anfrage ohne Einigung geschlossen' });
         invalidateTakte();
+        setConfirmCloseRequest(false);
       },
-      onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' }),
+      onError: (err) => {
+        toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
+        setConfirmCloseRequest(false);
+      },
     });
   };
 
@@ -1068,13 +1099,22 @@ export default function ProjectDetail() {
   };
 
   const handleDeleteDependency = (depId: string) => {
-    deleteDep.mutate({ projectId, depId }, {
+    setConfirmDeleteDep(depId);
+  };
+
+  const doDeleteDependency = () => {
+    if (!confirmDeleteDep) return;
+    deleteDep.mutate({ projectId, depId: confirmDeleteDep }, {
       onSuccess: (result) => {
         toast({ title: 'Abhängigkeit gelöscht' });
         invalidateTakte();
         showRescheduleToasts(result.moved, result.conflicts);
+        setConfirmDeleteDep(null);
       },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+      onError: (err) => {
+        toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
+        setConfirmDeleteDep(null);
+      },
     });
   };
 
@@ -3299,6 +3339,99 @@ export default function ProjectDetail() {
           }))}
         />
       )}
+
+      {/* ── Bestätigungsdialog: Leistung löschen ─────────────────────────── */}
+      <AlertDialog open={confirmDeleteTakt} onOpenChange={setConfirmDeleteTakt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leistung löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Die Leistung und alle zugehörigen Anordnungsbeziehungen werden
+              unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doDeleteTakt}
+              disabled={deleteTakt.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteTakt.isPending ? 'Löscht…' : 'Endgültig löschen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Bestätigungsdialog: Nachunternehmer entfernen ────────────────── */}
+      <AlertDialog open={!!confirmRemoveContractor} onOpenChange={(o) => !o && setConfirmRemoveContractor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Nachunternehmer entfernen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Der Nachunternehmer wird aus der Projektliste entfernt. Bereits
+              gestellte Anfragen bleiben im System erhalten.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doRemoveContractor}
+              disabled={removeContractor.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removeContractor.isPending ? 'Entfernt…' : 'Entfernen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Bestätigungsdialog: Ohne Einigung schließen ───────────────────── */}
+      <AlertDialog open={confirmCloseRequest} onOpenChange={setConfirmCloseRequest}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Anfrage ohne Einigung schließen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Die laufende Koordinationsanfrage wird beendet, ohne dass eine Einigung
+              erzielt wurde. Der Nachunternehmer wird nicht mehr antworten können.
+              Sie können danach eine neue Anfrage stellen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doCloseRequest}
+              disabled={closeRequest.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {closeRequest.isPending ? 'Schließt…' : 'Ohne Einigung schließen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Bestätigungsdialog: Anordnungsbeziehung löschen ─────────────── */}
+      <AlertDialog open={!!confirmDeleteDep} onOpenChange={(o) => !o && setConfirmDeleteDep(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Anordnungsbeziehung löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Die Anordnungsbeziehung zwischen den Leistungen wird gelöscht. Die
+              Plantermine der Leistungen bleiben unverändert.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doDeleteDependency}
+              disabled={deleteDep.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteDep.isPending ? 'Löscht…' : 'Beziehung löschen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

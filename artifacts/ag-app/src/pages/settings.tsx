@@ -28,6 +28,16 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Plus, Trash2, Webhook, Users, UserCircle, Globe } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 
 export default function Settings() {
@@ -169,6 +179,8 @@ function TeamSettings({ orgId }: { orgId: string }) {
   const addMember = useAddOrganizationMember();
   const removeMember = useRemoveOrganizationMember();
 
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ userId: string; name: string } | null>(null);
+
   const handleAddMember = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -190,16 +202,17 @@ function TeamSettings({ orgId }: { orgId: string }) {
     });
   };
 
-  const handleRemove = (userId: string) => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
-    
-    removeMember.mutate({ orgId, userId }, {
+  const doRemoveMember = () => {
+    if (!confirmRemoveMember) return;
+    removeMember.mutate({ orgId, userId: confirmRemoveMember.userId }, {
       onSuccess: () => {
-        toast({ title: 'Member removed' });
+        toast({ title: 'Mitglied entfernt' });
         queryClient.invalidateQueries({ queryKey: getListOrganizationMembersQueryKey(orgId) });
+        setConfirmRemoveMember(null);
       },
       onError: (err) => {
         toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
+        setConfirmRemoveMember(null);
       }
     });
   };
@@ -260,7 +273,7 @@ function TeamSettings({ orgId }: { orgId: string }) {
                       variant="ghost" 
                       size="icon" 
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemove(member.userId)}
+                      onClick={() => setConfirmRemoveMember({ userId: member.userId, name: member.name })}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -271,6 +284,30 @@ function TeamSettings({ orgId }: { orgId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Bestätigungsdialog: Mitglied entfernen ───────────────────────── */}
+      <AlertDialog open={!!confirmRemoveMember} onOpenChange={(o) => !o && setConfirmRemoveMember(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Teammitglied entfernen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">{confirmRemoveMember?.name}</span> verliert
+              damit den Zugriff auf Ihre Organisation und alle Projekte. Diese Aktion kann
+              nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doRemoveMember}
+              disabled={removeMember.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removeMember.isPending ? 'Entfernt…' : 'Entfernen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -353,6 +390,19 @@ function WebhookSettings() {
   const createWebhook = useCreateWebhook();
   const deleteWebhook = useDeleteWebhook();
 
+  const [confirmDeleteWebhook, setConfirmDeleteWebhook] = useState<string | null>(null);
+
+  const doDeleteWebhook = () => {
+    if (!confirmDeleteWebhook) return;
+    deleteWebhook.mutate({ webhookId: confirmDeleteWebhook }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListWebhooksQueryKey() });
+        setConfirmDeleteWebhook(null);
+      },
+      onError: () => setConfirmDeleteWebhook(null),
+    });
+  };
+
   const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -428,13 +478,7 @@ function WebhookSettings() {
                       variant="ghost" 
                       size="icon" 
                       className="text-destructive h-8 w-8"
-                      onClick={() => {
-                        if (confirm('Delete webhook?')) {
-                          deleteWebhook.mutate({ webhookId: wh.id }, {
-                            onSuccess: () => queryClient.invalidateQueries({ queryKey: getListWebhooksQueryKey() })
-                          });
-                        }
-                      }}
+                      onClick={() => setConfirmDeleteWebhook(wh.id)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -470,6 +514,29 @@ function WebhookSettings() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Bestätigungsdialog: Webhook löschen ──────────────────────────── */}
+      <AlertDialog open={!!confirmDeleteWebhook} onOpenChange={(o) => !o && setConfirmDeleteWebhook(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Webhook löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Der Webhook-Endpunkt wird dauerhaft entfernt. Zukünftige Ereignisse werden
+              nicht mehr an diese URL gesendet.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={doDeleteWebhook}
+              disabled={deleteWebhook.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteWebhook.isPending ? 'Löscht…' : 'Webhook löschen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
