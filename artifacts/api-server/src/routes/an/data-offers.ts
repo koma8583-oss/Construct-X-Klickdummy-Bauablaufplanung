@@ -23,6 +23,8 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
   organizationsTable,
+  projectsTable,
+  projectContractorsTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
@@ -143,6 +145,38 @@ router.get(
       .where(eq(organizationsTable.id, pub.agOrgId))
       .limit(1);
 
+    // Load project info for the publication (general fields visible before acceptance)
+    const [project] = await db
+      .select({
+        name: projectsTable.name,
+        status: projectsTable.status,
+        startDate: projectsTable.startDate,
+        endDate: projectsTable.endDate,
+        location: projectsTable.location,
+        description: projectsTable.description,
+      })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, pub.projectId))
+      .limit(1);
+
+    // Load this AN's package assignments for the publication's project
+    const assignments = await db
+      .select({
+        id: projectContractorsTable.id,
+        trade: projectContractorsTable.trade,
+        workPackageReference: projectContractorsTable.workPackageReference,
+        assignmentStatus: projectContractorsTable.assignmentStatus,
+        validFrom: projectContractorsTable.validFrom,
+        validTo: projectContractorsTable.validTo,
+      })
+      .from(projectContractorsTable)
+      .where(
+        and(
+          eq(projectContractorsTable.projectId, pub.projectId),
+          eq(projectContractorsTable.anOrgId, anOrgId),
+        ),
+      );
+
     res.json({
       publicationId: pub.id,
       title: pub.title,
@@ -159,6 +193,24 @@ router.get(
       policyAcceptedAt: recipient.policyAcceptedAt?.toISOString() ?? null,
       policyRejectedAt: recipient.policyRejectedAt?.toISOString() ?? null,
       firstAccessedAt: recipient.firstAccessedAt?.toISOString() ?? null,
+      projectInfo: project
+        ? {
+            name: project.name,
+            status: project.status,
+            startDate: project.startDate ?? null,
+            endDate: project.endDate ?? null,
+            location: project.location ?? null,
+            description: project.description ?? null,
+          }
+        : null,
+      assignments: assignments.map((a) => ({
+        id: a.id,
+        trade: a.trade ?? null,
+        workPackageReference: a.workPackageReference ?? null,
+        assignmentStatus: a.assignmentStatus,
+        validFrom: a.validFrom ?? null,
+        validTo: a.validTo ?? null,
+      })),
       policy: policy
         ? {
             id: policy.id,

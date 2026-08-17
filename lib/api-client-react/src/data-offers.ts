@@ -39,9 +39,29 @@ export interface DataOfferSummary {
   policyRejectedAt: string | null;
 }
 
+export interface DataOfferProjectInfo {
+  name: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+export interface DataOfferAssignment {
+  id: string;
+  trade: string | null;
+  workPackageReference: string | null;
+  assignmentStatus: string;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
 export interface DataOfferDetail extends DataOfferSummary {
   description: string | null;
   firstAccessedAt: string | null;
+  projectInfo: DataOfferProjectInfo | null;
+  assignments: DataOfferAssignment[];
   policy: PolicyTemplate | null;
 }
 

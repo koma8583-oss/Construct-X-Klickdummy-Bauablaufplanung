@@ -19,6 +19,8 @@ import {
   useGetDataPublicationOdrl,
   useGetAnInboxMessages,
   type DataOfferSummary,
+  type DataOfferProjectInfo,
+  type DataOfferAssignment,
 } from '@workspace/api-client-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +53,8 @@ import {
   ArrowRight,
   Bell,
   AlertTriangle,
+  Info,
+  FolderOpen,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -88,6 +92,137 @@ const PRODUCT_LABEL: Record<string, string> = {
   PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
   TAKT_INFORMATION_PACKAGE:     'Taktinformationspaket',
 };
+
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  ACTIVE:    'Aktiv',
+  COMPLETED: 'Abgeschlossen',
+  ARCHIVED:  'Archiviert',
+};
+
+// ── Project Info Section ───────────────────────────────────────────────────────
+
+function ProjectInfoSection({ info }: { info: DataOfferProjectInfo }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3.5 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <FolderOpen className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Projektinformationen
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="sm:col-span-2">
+          <div className="text-xs text-muted-foreground mb-0.5">Projektname</div>
+          <div className="font-medium">{info.name}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-0.5">Status</div>
+          <div className="font-medium">{PROJECT_STATUS_LABEL[info.status] ?? info.status}</div>
+        </div>
+        {(info.startDate || info.endDate) && (
+          <div className="flex items-start gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Zeitraum</div>
+              <div className="font-medium">
+                {fmtDateOnly(info.startDate)} – {fmtDateOnly(info.endDate)}
+              </div>
+            </div>
+          </div>
+        )}
+        {info.location && (
+          <div className="flex items-start gap-1.5 sm:col-span-2">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">Standort</div>
+              <div className="font-medium">{info.location}</div>
+            </div>
+          </div>
+        )}
+        {info.description && (
+          <div className="sm:col-span-2">
+            <div className="text-xs text-muted-foreground mb-0.5">Beschreibung</div>
+            <div className="text-sm text-foreground/80">{info.description}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Package Assignments Section ────────────────────────────────────────────────
+
+const ASSIGNMENT_STATUS_LABEL: Record<string, string> = {
+  PLANNED:   'Geplant',
+  ACTIVE:    'Aktiv',
+  INACTIVE:  'Inaktiv',
+  COMPLETED: 'Abgeschlossen',
+  CANCELLED: 'Storniert',
+};
+
+function PackageAssignmentsSection({ assignments }: { assignments: DataOfferAssignment[] }) {
+  if (assignments.length === 0) return null;
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3.5 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <Wrench className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Ihre Leistungszuordnung
+        </span>
+      </div>
+      <div className="space-y-2">
+        {assignments.map((a) => (
+          <div key={a.id} className="rounded-md border bg-background px-3 py-2 text-sm space-y-1">
+            {a.workPackageReference && (
+              <div>
+                <span className="text-xs text-muted-foreground">Arbeitspaket: </span>
+                <span className="font-medium">{a.workPackageReference}</span>
+              </div>
+            )}
+            {a.trade && (
+              <div>
+                <span className="text-xs text-muted-foreground">Gewerk: </span>
+                <span className="font-medium">{a.trade}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+              <span>
+                Status:{' '}
+                <span className="font-medium text-foreground">
+                  {ASSIGNMENT_STATUS_LABEL[a.assignmentStatus] ?? a.assignmentStatus}
+                </span>
+              </span>
+              {(a.validFrom || a.validTo) && (
+                <span>
+                  Gültig: {fmtDateOnly(a.validFrom)} – {fmtDateOnly(a.validTo)}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Access Notice ──────────────────────────────────────────────────────────────
+
+function AccessNotice({ recipientStatus }: { recipientStatus: string }) {
+  if (recipientStatus === 'ACCEPTED') return null;
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800/40 dark:bg-blue-950/20 px-3.5 py-3 flex gap-2.5">
+      <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+      <div className="text-xs text-blue-700 dark:text-blue-300 space-y-0.5">
+        <div className="font-semibold">Leistungsdetails erst nach Akzeptanz sichtbar</div>
+        <div className="leading-relaxed text-blue-600/90 dark:text-blue-400/90">
+          Die vollständigen Leistungsdetails (Takt-Daten, Zeitfenster, Ressourcenanforderungen)
+          sind erst nach Akzeptanz der Nutzungsrichtlinie abrufbar. Leistungszuordnungen
+          durch den Auftraggeber werden oben angezeigt, soweit sie bereits vergeben sind.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Fachliche Takt-Content-View ────────────────────────────────────────────────
 
@@ -302,6 +437,19 @@ function OfferDetailPanel({
           </div>
         )}
       </div>
+
+      {/* Project info — visible before acceptance */}
+      {offer.projectInfo && (
+        <ProjectInfoSection info={offer.projectInfo} />
+      )}
+
+      {/* Package assignments — show this AN's allocated work packages */}
+      {offer.assignments && offer.assignments.length > 0 && (
+        <PackageAssignmentsSection assignments={offer.assignments} />
+      )}
+
+      {/* Access notice — shown when policy not yet accepted */}
+      <AccessNotice recipientStatus={offer.recipientStatus} />
 
       {/* Linked TaktRequest */}
       {linkedTaktRequestId && (
