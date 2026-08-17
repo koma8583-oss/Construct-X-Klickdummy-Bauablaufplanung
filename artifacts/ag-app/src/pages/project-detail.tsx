@@ -1252,13 +1252,12 @@ export default function ProjectDetail() {
                   {fullProject.location}
                 </span>
               )}
-              {fullProject?.description && (
-                <span className="flex items-center">
-                  <AlignLeft className="w-3.5 h-3.5 mr-1" />
-                  {fullProject.description}
-                </span>
-              )}
             </div>
+            {fullProject?.description && (
+              <p className="mt-1 text-sm text-muted-foreground max-w-prose">
+                {fullProject.description}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
