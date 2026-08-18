@@ -30,8 +30,10 @@ import {
   taktResponseAlternativesTable,
   taktResponseDecisionsTable,
   takteTable,
+  resourceBookingsTable,
+  availabilityChecksTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import type {
   TaktResponseDecision,
   TaktCoordinationDecisionType,
@@ -167,6 +169,9 @@ export async function createGuDecision(
   }
 
   // ── 4. Validate ACCEPT_ALTERNATIVE constraints ───────────────────────────────
+  // Also capture the alternative row so we can use its time window for auto-booking.
+  let acceptedAltRow: typeof taktResponseAlternativesTable.$inferSelect | null = null;
+
   if (decisionType === "ACCEPT_ALTERNATIVE") {
     if (!acceptedAlternativeId) {
       throw new GuDecisionError(
@@ -190,6 +195,7 @@ export async function createGuDecision(
         400,
       );
     }
+    acceptedAltRow = alt;
   } else if (acceptedAlternativeId) {
     throw new GuDecisionError(
       `acceptedAlternativeId must not be set for decision type "${decisionType}"`, 400,
@@ -259,6 +265,49 @@ export async function createGuDecision(
 
   const expectedTaktVersion = taktRow.version;
   const nextRequestStatus   = targetRequestStatus(decisionType);
+
+  // ── 7b. Resolve booking time window + available resources (pre-tx) ────────────
+  // For acceptance decisions we auto-create resource_bookings from the latest
+  // completed availability check so the resources appear in Ressourcenbelegung
+  // and Terminübersicht without any manual step by the NU.
+  let bookingStart: Date | null = null;
+  let bookingEnd:   Date | null = null;
+  let autoBookResourceIds: string[] = [];
+
+  const isAcceptance =
+    decisionType === "CONFIRM_ACCEPTED" || decisionType === "ACCEPT_ALTERNATIVE";
+
+  if (isAcceptance) {
+    // Determine accepted time window
+    if (decisionType === "CONFIRM_ACCEPTED") {
+      bookingStart = responseRow.acceptedStart ?? null;
+      bookingEnd   = responseRow.acceptedEnd   ?? null;
+    } else if (acceptedAltRow) {
+      bookingStart = acceptedAltRow.proposedStart;
+      bookingEnd   = acceptedAltRow.proposedEnd;
+    }
+
+    // Load the latest completed availability check to get concrete resource IDs
+    if (bookingStart && bookingEnd && request.nuOrgId) {
+      const [latestCheck] = await db
+        .select({ internalResultPayload: availabilityChecksTable.internalResultPayload })
+        .from(availabilityChecksTable)
+        .where(
+          and(
+            eq(availabilityChecksTable.taktRequestId, taktRequestId),
+            eq(availabilityChecksTable.nuOrgId, request.nuOrgId),
+            eq(availabilityChecksTable.status, "COMPLETED"),
+          ),
+        )
+        .orderBy(desc(availabilityChecksTable.runNumber))
+        .limit(1);
+
+      const available = latestCheck?.internalResultPayload?.availableResources ?? [];
+      autoBookResourceIds = available
+        .map((r) => r.resourceId)
+        .filter((id): id is string => Boolean(id));
+    }
+  }
 
   // ── 8. Transactional write ────────────────────────────────────────────────────
   const result = await db.transaction(async (tx) => {
@@ -334,6 +383,33 @@ export async function createGuDecision(
           .set({ status: "ACCEPTED" })
           .where(eq(taktRequestsTable.id, taktRequestId));
       }
+    }
+
+    // d. Auto-create resource bookings for accepted resources
+    // Only for acceptance decisions where we have a time window and resources
+    // from the latest availability check.
+    if (
+      isAcceptance &&
+      bookingStart &&
+      bookingEnd &&
+      autoBookResourceIds.length > 0 &&
+      request.nuOrgId
+    ) {
+      const bookingValues = autoBookResourceIds.map((resourceId) => ({
+        nuOrgId:           request.nuOrgId as string,
+        resourceId,
+        sourceType:        "TAKT_REQUEST" as const,
+        sourceReferenceId: taktRequestId,
+        startAt:           bookingStart!,
+        endAt:             bookingEnd!,
+        utilizationPercent: 100,
+        status:            "CONFIRMED" as const,
+      }));
+      await tx.insert(resourceBookingsTable).values(bookingValues);
+      logger.info(
+        { taktRequestId, count: bookingValues.length },
+        "Auto-created resource bookings for accepted TaktRequest",
+      );
     }
 
     const [updatedRequest] = await tx
