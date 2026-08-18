@@ -43,13 +43,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 import {
@@ -674,7 +667,8 @@ const REMINDER_LABELS: Record<string, string> = {
 export default function DataOffersPage() {
   const { data: offers, isLoading } = useGetAnDataOffers();
   const { data: reminders } = useGetAnInboxMessages();
-  const [selected, setSelected] = useState<DataOfferSummary | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const toggleOffer = (id: string) => setOpenId((prev) => (prev === id ? null : id));
 
   const grouped = {
     new: offers?.filter((o) => o.recipientStatus === 'OFFERED' && o.publicationStatus === 'PUBLISHED') ?? [],
@@ -800,7 +794,7 @@ export default function DataOffersPage() {
           </h2>
           <div className="space-y-2">
             {grouped.new.map((o) => (
-              <OfferRow key={o.publicationId} offer={o} onClick={() => setSelected(o)} />
+              <OfferAccordionItem key={o.publicationId} offer={o} openId={openId} onToggle={toggleOffer} />
             ))}
           </div>
         </section>
@@ -813,7 +807,7 @@ export default function DataOffersPage() {
           </h2>
           <div className="space-y-2">
             {grouped.accepted.map((o) => (
-              <OfferRow key={o.publicationId} offer={o} onClick={() => setSelected(o)} />
+              <OfferAccordionItem key={o.publicationId} offer={o} openId={openId} onToggle={toggleOffer} />
             ))}
           </div>
         </section>
@@ -826,68 +820,78 @@ export default function DataOffersPage() {
           </h2>
           <div className="space-y-2">
             {grouped.other.map((o) => (
-              <OfferRow key={o.publicationId} offer={o} onClick={() => setSelected(o)} />
+              <OfferAccordionItem key={o.publicationId} offer={o} openId={openId} onToggle={toggleOffer} />
             ))}
           </div>
         </section>
       )}
 
-      {/* Detail sheet */}
-      <Sheet open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
-          {selected && (
-            <>
-              <SheetHeader className="mb-4">
-                <SheetTitle className="text-base leading-tight">{selected.title}</SheetTitle>
-                <SheetDescription>
-                  {PRODUCT_LABEL[selected.dataProductType] ?? selected.dataProductType}
-                </SheetDescription>
-              </SheetHeader>
-              <OfferDetailPanel
-                offer={selected}
-                onClose={() => setSelected(null)}
-              />
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
 
-// ── Row component ─────────────────────────────────────────────────────────────
+// ── Accordion row component ───────────────────────────────────────────────────
 
-function OfferRow({ offer, onClick }: { offer: DataOfferSummary; onClick: () => void }) {
+function OfferAccordionItem({
+  offer,
+  openId,
+  onToggle,
+}: {
+  offer: DataOfferSummary;
+  openId: string | null;
+  onToggle: (id: string) => void;
+}) {
+  const isOpen    = openId === offer.publicationId;
   const statusInfo = RECIPIENT_STATUS_BADGE[offer.recipientStatus];
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border border-border hover:border-primary/40 hover:bg-muted/30 transition-colors"
-    >
-      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{offer.title}</div>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <span className="text-[11px] text-muted-foreground">{offer.agName}</span>
-          <span className="text-[11px] text-muted-foreground">·</span>
-          <span className="text-[11px] text-muted-foreground">{PRODUCT_LABEL[offer.dataProductType] ?? offer.dataProductType}</span>
-          {offer.validUntil && (
-            <>
-              <span className="text-[11px] text-muted-foreground">·</span>
-              <span className="text-[11px] text-muted-foreground">bis {fmtDate(offer.validUntil)}</span>
-            </>
-          )}
+    <div className={`rounded-lg border transition-colors ${isOpen ? 'border-primary/40' : 'border-border'}`}>
+      {/* Header row — click to expand/collapse */}
+      <button
+        type="button"
+        onClick={() => onToggle(offer.publicationId)}
+        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors rounded-lg"
+      >
+        <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{offer.title}</div>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-[11px] text-muted-foreground">{offer.agName}</span>
+            <span className="text-[11px] text-muted-foreground">·</span>
+            <span className="text-[11px] text-muted-foreground">
+              {PRODUCT_LABEL[offer.dataProductType] ?? offer.dataProductType}
+            </span>
+            {offer.validUntil && (
+              <>
+                <span className="text-[11px] text-muted-foreground">·</span>
+                <span className="text-[11px] text-muted-foreground">
+                  bis {fmtDateOnly(offer.validUntil)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {statusInfo && (
-          <Badge variant={statusInfo.variant} className="text-[10px]">
-            {statusInfo.label}
-          </Badge>
-        )}
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-      </div>
-    </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {statusInfo && (
+            <Badge variant={statusInfo.variant} className="text-[10px]">
+              {statusInfo.label}
+            </Badge>
+          )}
+          {isOpen
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
+
+      {/* Inline detail panel — expands below the header */}
+      {isOpen && (
+        <div className="border-t border-border/60 px-4 pt-4 pb-5">
+          <OfferDetailPanel
+            offer={offer}
+            onClose={() => onToggle(offer.publicationId)}
+          />
+        </div>
+      )}
+    </div>
   );
 }

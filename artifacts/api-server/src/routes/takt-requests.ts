@@ -769,6 +769,9 @@ router.get(
       "ALTERNATIVES_PROPOSED",
       "ACCEPTED",
       "REJECTED",
+      // Allow NU to see the request after a revision is requested — they need to
+      // know why their response was returned and that a new request will follow.
+      "REVISION_REQUIRED",
     ]);
 
     if (isAddressedNu && !RETRIEVABLE_STATUSES.has(request.status)) {
@@ -1582,7 +1585,8 @@ router.post(
           decisionType === "CONFIRM_ACCEPTED"     ? "TAKT_REQUEST_CONFIRMED"
           : decisionType === "ACCEPT_ALTERNATIVE" ? "TAKT_REQUEST_ALT_ACCEPTED"
           : decisionType === "CLOSE_WITHOUT_AGREEMENT" ? "TAKT_REQUEST_CLOSED"
-          : null; // REQUEST_REVISION — no hub message needed (new round will have its own SENT)
+          : decisionType === "REQUEST_REVISION" ? "TAKT_REQUEST_REVISION_REQUESTED"
+          : null;
         if (guDecisionHubType) {
           const taktReq = await getTaktRequestById(id);
           if (taktReq) {
@@ -1723,6 +1727,33 @@ router.post(
           sent: result.sent,
         },
       });
+
+      // Write audit events on the NEW request so its audit trail starts properly.
+      await writeAuditEvent({
+        requestId: result.newRequest.id,
+        eventType: "REQUEST_CREATED",
+        actorOrgId: guOrgId,
+        actorUserId: userId,
+        actorRole: "GU",
+        metadata: {
+          supersededRequestId: id,
+          requestNumber: result.newRequest.requestNumber,
+          newTaktVersion: result.newTaktVersion.version,
+        },
+      });
+      if (result.sent) {
+        await writeAuditEvent({
+          requestId: result.newRequest.id,
+          eventType: "NOTIFICATION_SENT",
+          actorOrgId: guOrgId,
+          actorUserId: userId,
+          actorRole: "GU",
+          metadata: {
+            supersededRequestId: id,
+            requestNumber: result.newRequest.requestNumber,
+          },
+        });
+      }
 
       res.status(201).json({
         oldRequestId:        result.oldRequest.id,

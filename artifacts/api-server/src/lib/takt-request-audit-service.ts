@@ -33,6 +33,11 @@ const NU_VISIBLE_EVENT_TYPES = new Set<TaktAuditEventType>([
   "AVAILABILITY_CHECK_DONE",
   "RESPONSE_SUBMITTED",
   "RESPONSE_DELIVERED",
+  // GU decisions are shown to NU so they can see revision requests and outcomes.
+  "GU_DECISION_MADE",
+  // Audit events on revision successor requests
+  "NOTIFICATION_SENT",
+  "REVISION_CREATED",
 ]);
 
 // ── Write helpers ─────────────────────────────────────────────────────────────

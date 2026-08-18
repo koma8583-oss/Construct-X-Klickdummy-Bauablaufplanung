@@ -62,6 +62,8 @@ const STATUS_LABELS: Record<string, string> = {
   DETAILS_RETRIEVED: 'Details abgerufen', UNDER_REVIEW: 'In Prüfung',
   ACCEPTED: 'Angenommen', ALTERNATIVES_PROPOSED: 'Gegenvorschlag',
   REJECTED: 'Abgelehnt', EXPIRED: 'Abgelaufen',
+  REVISION_REQUIRED: 'Überarbeitung angefordert',
+  SUPERSEDED: 'Ersetzt', CANCELLED: 'Storniert',
 };
 
 const REASON_CODES = [
@@ -324,6 +326,55 @@ export default function TaktRequestDetailPage() {
       );
     }
 
+    // 409: request is in a terminal status the NU cannot directly view
+    const currentStatus = errData?.currentStatus as string | undefined;
+    if (currentStatus === 'SUPERSEDED') {
+      return (
+        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
+          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
+            onClick={() => setLocation('/takt-requests')}>
+            <ArrowLeft className="w-4 h-4" /> Zurück zu Anfragen
+          </Button>
+          <div className="rounded-xl border border-muted bg-muted/30 p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <RefreshCw className="w-5 h-5 shrink-0" />
+              <p className="font-semibold text-foreground">Diese Anfrage wurde ersetzt</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Der Auftraggeber hat eine neue Koordinierungsrunde gestartet. Diese Anfrage ist
+              abgeschlossen und wurde durch eine neue TaktAnfrage ersetzt. Bitte prüfen Sie
+              Ihren Posteingang.
+            </p>
+            <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/takt-requests')}>
+              Zum Posteingang
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (currentStatus === 'CANCELLED') {
+      return (
+        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
+          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
+            onClick={() => setLocation('/takt-requests')}>
+            <ArrowLeft className="w-4 h-4" /> Zurück zu Anfragen
+          </Button>
+          <div className="rounded-xl border border-muted bg-muted/30 p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-muted-foreground" />
+              <p className="font-semibold text-foreground">Anfrage wurde storniert</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Diese TaktAnfrage wurde vom Auftraggeber ohne Einigung abgeschlossen.
+            </p>
+            <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/takt-requests')}>
+              Zurück zur Übersicht
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
         <AlertTriangle className="w-10 h-10 text-destructive" />
@@ -534,6 +585,23 @@ export default function TaktRequestDetailPage() {
           {STATUS_LABELS[status] ?? status}
         </Badge>
       </div>
+
+      {/* Revision-requested banner — shown when GU has sent REQUEST_REVISION */}
+      {status === 'REVISION_REQUIRED' && (
+        <div className="rounded-xl border border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20 p-4 flex items-start gap-3">
+          <RefreshCw className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
+              Überarbeitung angefordert
+            </p>
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Der Auftraggeber hat für diese Anfrage eine Überarbeitung angefordert. Sie erhalten
+              in Kürze eine neue TaktAnfrage, auf die Sie antworten können. Ihre bisherige Antwort
+              bleibt im Koordinierungsverlauf erhalten.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Deadline banner */}
       {details.responseRequiredBy ? (

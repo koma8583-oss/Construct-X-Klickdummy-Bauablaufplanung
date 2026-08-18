@@ -24,6 +24,7 @@ export const hubMessageTypeEnum = pgEnum("hub_message_type", [
   "TAKT_REQUEST_CONFIRMED",
   "TAKT_REQUEST_ALT_ACCEPTED",
   "TAKT_REQUEST_CLOSED",
+  "TAKT_REQUEST_REVISION_REQUESTED",
 ]);
 
 /** Central message log — every delegation event is written here by the broker middleware */
