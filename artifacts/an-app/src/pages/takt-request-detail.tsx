@@ -365,6 +365,8 @@ export default function TaktRequestDetailPage() {
   const snapZone   = ((snapLocation?.zone ?? snap?.zone)            as string | undefined);
   const snapGewerk = ((snap?.trade        ?? snap?.gewerk)          as string | undefined);
   const snapDesc   = ((snap?.requiredOutput ?? snap?.description)    as string | undefined);
+  const snapProjectLocation    = (snap?.projectLocation    as string | null | undefined) ?? null;
+  const snapProjectDescription = (snap?.projectDescription as string | null | undefined) ?? null;
   const bufferWindow = snap?.bufferTimeWindow as Record<string, unknown> | undefined;
   const bufferStart  = bufferWindow?.earliestStart as string | undefined;
   const bufferEnd    = bufferWindow?.latestEnd     as string | undefined;
@@ -630,6 +632,28 @@ export default function TaktRequestDetailPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              {/* ── Projektinformationen ──────────────────────────────────── */}
+              {(snapProjectLocation || snapProjectDescription) && (
+                <div className="sm:col-span-2 pb-2 border-b border-border mb-1">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Projektinformationen
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                    {snapProjectLocation && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Standort</div>
+                        <div className="font-medium">{snapProjectLocation}</div>
+                      </div>
+                    )}
+                    {snapProjectDescription && (
+                      <div className={snapProjectLocation ? '' : 'sm:col-span-2'}>
+                        <div className="text-xs text-muted-foreground mb-0.5">Projektbeschreibung</div>
+                        <div className="text-foreground/80">{snapProjectDescription}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="text-xs text-muted-foreground mb-0.5">Taktbezeichnung</div>
                 <div className="font-medium">{snapBez ?? '—'}</div>
