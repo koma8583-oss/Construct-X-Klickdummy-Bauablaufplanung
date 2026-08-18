@@ -363,6 +363,25 @@ export async function createGuDecision(
         .update(takteTable)
         .set({ lifecycleStatus: "PLANNED" })
         .where(eq(takteTable.id, request.taktId));
+
+      // Cancel any auto-created resource bookings for this TaktRequest so they
+      // no longer appear as blocked capacity in Terminübersicht / Ressourcenbelegung.
+      const cancelledBookings = await tx
+        .update(resourceBookingsTable)
+        .set({ status: "CANCELLED" })
+        .where(
+          and(
+            eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
+            eq(resourceBookingsTable.sourceReferenceId, taktRequestId),
+          ),
+        )
+        .returning({ id: resourceBookingsTable.id });
+      if (cancelledBookings.length > 0) {
+        logger.info(
+          { taktRequestId, count: cancelledBookings.length },
+          "Cancelled resource bookings on CLOSE_WITHOUT_AGREEMENT",
+        );
+      }
     }
 
     // c. Update TaktRequest status (for CONFIRM/ACCEPT this was already done inside apply*)

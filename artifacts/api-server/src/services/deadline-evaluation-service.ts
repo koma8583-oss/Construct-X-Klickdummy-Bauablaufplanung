@@ -20,6 +20,7 @@ import {
   taktResponsesTable,
   takteTable,
   messageOutboxTable,
+  resourceBookingsTable,
 } from "@workspace/db";
 import {
   and, eq, inArray, not, sql,
@@ -300,6 +301,25 @@ async function expireRequest(
       ));
 
     logger.info({ requestId: req.id }, "TaktRequest set to EXPIRED");
+
+    // Cancel any auto-created resource bookings so they no longer block
+    // capacity in Terminübersicht / Ressourcenbelegung.
+    const cancelledBookings = await tx
+      .update(resourceBookingsTable)
+      .set({ status: "CANCELLED" })
+      .where(
+        and(
+          eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
+          eq(resourceBookingsTable.sourceReferenceId, req.id),
+        ),
+      )
+      .returning({ id: resourceBookingsTable.id });
+    if (cancelledBookings.length > 0) {
+      logger.info(
+        { requestId: req.id, count: cancelledBookings.length },
+        "Cancelled resource bookings on TaktRequest expiry",
+      );
+    }
 
     // Revert takt lifecycle if no other open requests remain
     await revertTaktIfNoOpenRequests(req.taktId, req.id, tx);
