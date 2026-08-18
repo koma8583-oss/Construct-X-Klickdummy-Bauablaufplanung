@@ -614,12 +614,16 @@ export default function ResourceBookingsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5">
-                            {!isCancelled && b.sourceType !== "TAKT_REQUEST" && (
+                            {!isCancelled && (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-red-500 hover:bg-red-500/10"
-                                title="Stornieren"
+                                title={
+                                  b.sourceType === "TAKT_REQUEST"
+                                    ? "Ressourcenreservierung stornieren (automatisch aus TaktAnfrage erstellt — die TaktAnfrage selbst bleibt unberührt)"
+                                    : "Stornieren"
+                                }
                                 onClick={() => void handleCancel(b)}
                               >
                                 <XCircle className="w-3.5 h-3.5" />
