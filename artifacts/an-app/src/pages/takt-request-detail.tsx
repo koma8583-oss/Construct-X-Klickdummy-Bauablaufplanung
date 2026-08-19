@@ -74,7 +74,7 @@ const REASON_CODES = [
 ];
 
 function canRespond(status: string): boolean {
-  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW'].includes(status);
+  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'REVISION_REQUIRED'].includes(status);
 }
 
 function fmtDate(s?: string | null): string {
@@ -595,8 +595,8 @@ export default function TaktRequestDetailPage() {
               Überarbeitung angefordert
             </p>
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              Der Auftraggeber hat für diese Anfrage eine Überarbeitung angefordert. Sie erhalten
-              in Kürze eine neue TaktAnfrage, auf die Sie antworten können. Ihre bisherige Antwort
+              Der Auftraggeber hat eine Überarbeitung Ihrer Antwort angefordert. Bitte reichen
+              Sie in Schritt&nbsp;5 eine überarbeitete Antwort ein — Ihre bisherige Antwort
               bleibt im Koordinierungsverlauf erhalten.
             </p>
           </div>

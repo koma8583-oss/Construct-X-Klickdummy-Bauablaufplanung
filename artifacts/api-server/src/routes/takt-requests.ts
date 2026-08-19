@@ -1299,7 +1299,7 @@ router.post(
     }
 
     // ── 5. Call unified service (idempotency + transaction + status update) ───
-    const ANSWERABLE_STATUSES = new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED"]);
+    const ANSWERABLE_STATUSES = new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED", "REVISION_REQUIRED"]);
     const msgId = `taktresponse-${id}`;
 
     let result;

@@ -98,7 +98,7 @@ function canRespond(item: TaktRequestListItem): boolean {
   const state = getDeadlineState(item);
   if (state.kind === 'expired') return false;
   const s = item.status as TaktRequestStatus;
-  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW'].includes(s);
+  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'REVISION_REQUIRED'].includes(s);
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────

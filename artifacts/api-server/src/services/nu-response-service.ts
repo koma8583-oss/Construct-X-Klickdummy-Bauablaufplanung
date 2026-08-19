@@ -202,33 +202,39 @@ export async function processNuResponse(
 
   const payloadHash = computeResponsePayloadHash(canonicalPayload);
 
-  // ── Idempotency check against existing response ───────────────────────────
+  // ── Idempotency / revision check against existing response ──────────────
   const existing = await getTaktResponseWithAlternatives(taktRequestId);
   if (existing) {
-    if (existing.response.responsePayloadHash !== payloadHash) {
-      // Different payload — check if it's a decision change or same decision / different content
+    if (existing.response.responsePayloadHash === payloadHash) {
+      // Identical payload — idempotent return
+      const newStatus: TaktRequestStatus =
+        existing.response.decision === "ACCEPTED"              ? "ACCEPTED" :
+        existing.response.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
+                                                                 "REJECTED";
+      return {
+        response:    existing.response,
+        alternatives: existing.alternatives,
+        newStatus,
+        payloadHash,
+        idempotent: true,
+      };
+    }
+
+    if (currentRequestStatus !== "REVISION_REQUIRED") {
+      // Normal case: conflict — NU already responded and GU has not requested revision
       const reason = existing.response.decision !== decision
         ? "DIFFERENT_DECISION" as const
         : "DIFFERENT_PAYLOAD" as const;
       throw new ResponseConflictError(existing.response.decision, decision, reason);
     }
-    // Identical payload — idempotent return
-    const newStatus: TaktRequestStatus =
-      existing.response.decision === "ACCEPTED"              ? "ACCEPTED" :
-      existing.response.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
-                                                               "REJECTED";
-    return {
-      response:    existing.response,
-      alternatives: existing.alternatives,
-      newStatus,
-      payloadHash,
-      idempotent: true,
-    };
-  }
-
-  // ── Status guard (first-time response) ───────────────────────────────────
-  if (!answerableStatuses.has(currentRequestStatus)) {
-    throw new ResponseStatusError(currentRequestStatus, answerableStatuses);
+    // REVISION_REQUIRED + different payload → the GU requested a revision and the NU is
+    // now submitting a revised response. Fall through to insert a new response row.
+    // The old response row is kept for audit history.
+  } else {
+    // First-time response: enforce answerable-status guard
+    if (!answerableStatuses.has(currentRequestStatus)) {
+      throw new ResponseStatusError(currentRequestStatus, answerableStatuses);
+    }
   }
 
   // ── Single DB transaction: save response + alternatives + update status ───

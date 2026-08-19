@@ -48,7 +48,8 @@ const VALID_TRANSITIONS: Readonly<Record<TaktRequestStatus, readonly TaktRequest
   UNDER_REVIEW:         ["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED", "CANCELLED", "EXPIRED"],
   ALTERNATIVES_PROPOSED:["ACCEPTED", "REVISION_REQUIRED", "SUPERSEDED"],
   REJECTED:             ["REVISION_REQUIRED", "SUPERSEDED"],
-  REVISION_REQUIRED:    ["SUPERSEDED"],
+  // NU may submit a revised response → request moves back to a response status.
+  REVISION_REQUIRED:    ["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED", "SUPERSEDED"],
   // Terminal — no outgoing transitions
   ACCEPTED:             [],
   CANCELLED:            [],
