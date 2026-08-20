@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useTranslation } from 'react-i18next';
 import { format, isPast, isAfter, addDays } from 'date-fns';
 import {
@@ -448,6 +448,15 @@ export default function TaktRequestsPage() {
 
                     {/* Öffnen — sibling to trigger, NOT nested inside it */}
                     <div className="flex items-center px-3 border-l border-border/50 flex-shrink-0">
+                      <Link
+                        href={`/projects/${item.projectId}`}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        title={`Projekt öffnen: ${item.projectName}`}
+                        aria-label={`Projekt öffnen: ${item.projectName}`}
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span className="hidden md:inline">Projekt</span>
+                      </Link>
                       <Button
                         size="sm"
                         variant="ghost"
