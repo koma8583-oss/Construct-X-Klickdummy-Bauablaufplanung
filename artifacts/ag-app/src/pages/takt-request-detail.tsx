@@ -324,6 +324,14 @@ function ResponsePanel({ detail }: { detail: TaktRequestDetail }) {
     return <p className="text-sm text-muted-foreground">{t('taktRequestDetail.response.noResponse')}</p>;
   }
 
+  // Keep the coordination history readable after the GU accepts one
+  // alternative: the accepted window remains visible, while the rejected
+  // alternatives are no longer presented as selectable options.
+  const displayedAlternatives = detail.guDecision?.decisionType === 'ACCEPT_ALTERNATIVE' &&
+    detail.guDecision.acceptedAlternativeId
+    ? resp.alternatives.filter(alternative => alternative.id === detail.guDecision?.acceptedAlternativeId)
+    : resp.alternatives;
+
   const decisionStyles: Record<string, string> = {
     ACCEPTED:              'text-emerald-700 bg-emerald-50 border border-emerald-200',
     ALTERNATIVES_PROPOSED: 'text-orange-700 bg-orange-50 border border-orange-200',
@@ -372,11 +380,11 @@ function ResponsePanel({ detail }: { detail: TaktRequestDetail }) {
       </dl>
 
       {/* Alternatives */}
-      {resp.alternatives && resp.alternatives.length > 0 && (
+      {displayedAlternatives && displayedAlternatives.length > 0 && (
         <div>
           <p className="text-sm font-medium mb-2">{t('taktRequestDetail.response.alternatives')}</p>
           <div className="space-y-2">
-            {resp.alternatives.map((alt) => (
+            {displayedAlternatives.map((alt) => (
               <div key={alt.alternativeId} className="border border-border rounded-md p-3 text-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline" className="text-xs">#{alt.rank}</Badge>

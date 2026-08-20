@@ -31,6 +31,9 @@ import {
 import {
   useCreateGuDecision,
   getGetTaktRequestDetailQueryKey,
+  getListTakteQueryKey,
+  getListTaktRequestsQueryKey,
+  getGetProjectQueryKey,
   type TaktRequestDetail,
   type GuDecisionResponse,
 } from '@workspace/api-client-react';
@@ -347,6 +350,16 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
         await queryClient.invalidateQueries({
           queryKey: getGetTaktRequestDetailQueryKey(detail.id),
         });
+        // ACCEPT_ALTERNATIVE changes the persisted Takt window and closes the
+        // request. Refresh the project data as well so the Gantt immediately
+        // drops the proposal bars and renders the accepted dates.
+        if (decisionType === 'ACCEPT_ALTERNATIVE' || decisionType === 'CONFIRM_ACCEPTED') {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(detail.projectId) }),
+            queryClient.invalidateQueries({ queryKey: getListTaktRequestsQueryKey() }),
+            queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(detail.projectId) }),
+          ]);
+        }
       } catch (err: unknown) {
         const msg =
           err instanceof Error
