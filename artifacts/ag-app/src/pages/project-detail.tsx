@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useLocation } from 'wouter';
 import NetzplanView from '@/components/NetzplanView';
@@ -59,7 +59,7 @@ import {
   ArrowLeft, Plus, Calendar, MapPin,
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
-  AlertCircle, Building2, Globe, ArrowRightLeft, Settings2,
+  AlertCircle, Building2, Globe, ArrowRightLeft, Settings2, ChevronRight,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -287,6 +287,9 @@ const GanttListHeader: React.FC<TaskListHeaderProps> = ({ headerHeight, rowWidth
 /** Build a memoisation-safe GanttListTable that closes over takte for lifecycle badges. */
 function makeGanttListTable(
   taktById: Map<string, { lifecycleStatus?: TaktLifecycleStatus | null }>,
+  alternativeCountByTaktId: Map<string, number>,
+  collapsedAlternativeTaktIds: Set<string>,
+  onToggleAlternatives: (taktId: string) => void,
 ): React.FC<TaskListTableProps> {
   return function GanttListTable({ rowHeight, rowWidth, fontFamily, fontSize, tasks, selectedTaskId, setSelectedTask }) {
     return (
@@ -316,6 +319,26 @@ function makeGanttListTable(
                 color: isAlt ? '#c2410c' : 'hsl(var(--foreground))',
               }}
             >
+              {!isAlt && (alternativeCountByTaktId.get(task.id) ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  aria-label={collapsedAlternativeTaktIds.has(task.id) ? 'Alternativen einblenden' : 'Alternativen ausblenden'}
+                  title={collapsedAlternativeTaktIds.has(task.id) ? 'Alternativen einblenden' : 'Alternativen ausblenden'}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleAlternatives(task.id);
+                  }}
+                  style={{
+                    width: 16, height: 16, display: 'inline-flex', alignItems: 'center',
+                    justifyContent: 'center', flexShrink: 0, border: 0, padding: 0,
+                    background: 'transparent', color: '#c2410c', cursor: 'pointer',
+                  }}
+                >
+                  {collapsedAlternativeTaktIds.has(task.id)
+                    ? <ChevronRight size={13} />
+                    : <ChevronDown size={13} />}
+                </button>
+              ) : !isAlt ? <span style={{ width: 16, flexShrink: 0 }} /> : null}
               {isAlt && (
                 <span style={{ fontSize: '10px', opacity: 0.8, flexShrink: 0 }}>↩</span>
               )}
@@ -369,6 +392,7 @@ export default function ProjectDetail() {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
   const [selectedTaktId, setSelectedTaktId] = useState<string | null>(null);
   const [showAlternatives, setShowAlternatives] = useState(true);
+  const [collapsedAlternativeTaktIds, setCollapsedAlternativeTaktIds] = useState<Set<string>>(new Set());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
@@ -625,12 +649,6 @@ export default function ProjectDetail() {
     [depsBySuccessor, taktNameById],
   );
 
-  // Stable list table component (recreated when lifecycle statuses change)
-  const GanttListTable = useMemo(
-    () => makeGanttListTable(taktById),
-    [taktById],
-  );
-
   // Set of takt IDs that are currently in conflict
   const conflictTaktIdSet = useMemo(
     () => new Set(activeConflicts.map(c => c.takt.id)),
@@ -659,6 +677,35 @@ export default function ProjectDetail() {
     () => proposalDetailResults.map(r => r.data).filter((d): d is TaktRequestDetail => !!d),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [proposalDetailResults.map(r => r.dataUpdatedAt).join(',')],
+  );
+
+  const alternativeCountByTaktId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const detail of proposalDetails) {
+      const count = detail.response?.alternatives?.length ?? 0;
+      if (count > 0) counts.set(detail.taktId, count);
+    }
+    return counts;
+  }, [proposalDetails]);
+
+  const toggleAlternativeGroup = useCallback((taktId: string) => {
+    setCollapsedAlternativeTaktIds(previous => {
+      const next = new Set(previous);
+      if (next.has(taktId)) next.delete(taktId);
+      else next.add(taktId);
+      return next;
+    });
+  }, []);
+
+  // Stable list table component (recreated when lifecycle/grouping state changes)
+  const GanttListTable = useMemo(
+    () => makeGanttListTable(
+      taktById,
+      alternativeCountByTaktId,
+      collapsedAlternativeTaktIds,
+      toggleAlternativeGroup,
+    ),
+    [taktById, alternativeCountByTaktId, collapsedAlternativeTaktIds, toggleAlternativeGroup],
   );
 
   const alternativeImpacts = useMemo(() => {
@@ -733,6 +780,7 @@ export default function ProjectDetail() {
 
     // Build map: taktId → alternative Task[]
     const altsByTaktId = new Map<string, Task[]>();
+    const alternativeParentByTaskId = new Map<string, string>();
     for (const detail of proposalDetails) {
       if (!detail.response?.alternatives?.length) continue;
       const taktId = detail.taktId;
@@ -752,6 +800,7 @@ export default function ProjectDetail() {
           backgroundSelectedColor: '#f9731460',
         },
       }));
+      for (const alt of alts) alternativeParentByTaskId.set(alt.id, taktId);
       altsByTaktId.set(taktId, alts);
     }
 
@@ -762,8 +811,11 @@ export default function ProjectDetail() {
       const alts = altsByTaktId.get(task.id);
       if (alts) combined.push(...alts);
     }
-    return combined;
-  }, [takte, depsBySuccessor, conflictTaktIdSet, impactedTaktIds, showAlternatives, proposalDetails]);
+    return combined.filter(task =>
+      !task.id.startsWith('alt-') ||
+      !collapsedAlternativeTaktIds.has(alternativeParentByTaskId.get(task.id) ?? ''),
+    );
+  }, [takte, depsBySuccessor, conflictTaktIdSet, impactedTaktIds, showAlternatives, proposalDetails, collapsedAlternativeTaktIds]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
