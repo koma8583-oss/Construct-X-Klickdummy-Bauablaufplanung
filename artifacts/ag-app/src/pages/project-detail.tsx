@@ -734,7 +734,13 @@ export default function ProjectDetail() {
   const activeTaktRequest = useMemo<TaktRequestListItem | undefined>(() => {
     if (!taktRequests || !selectedTaktId) return undefined;
     return taktRequests
-      .filter(r => r.taktId === selectedTaktId && r.status !== 'EXPIRED')
+      .filter(
+        r =>
+          r.taktId === selectedTaktId &&
+          r.status !== 'EXPIRED' &&
+          r.status !== 'CANCELLED' &&
+          r.status !== 'SUPERSEDED',
+      )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
   }, [taktRequests, selectedTaktId]);
 
@@ -1050,7 +1056,7 @@ export default function ProjectDetail() {
       data: { decisionType: 'CLOSE_WITHOUT_AGREEMENT' },
     }, {
       onSuccess: () => {
-        toast({ title: 'Anfrage ohne Einigung geschlossen' });
+         toast({ title: 'Anfrage zurückgezogen' });
         invalidateTakte();
         setConfirmCloseRequest(false);
       },
@@ -2192,7 +2198,7 @@ export default function ProjectDetail() {
                           disabled={closeRequest.isPending}
                         >
                           <XCircle className="w-4 h-4 mr-2" />
-                          {closeRequest.isPending ? 'Schließe…' : 'Ohne Einigung schließen'}
+                          {closeRequest.isPending ? 'Ziehe zurück…' : 'Anfrage zurückziehen'}
                         </Button>
                       )}
                     </div>
@@ -3380,15 +3386,15 @@ export default function ProjectDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Bestätigungsdialog: Ohne Einigung schließen ───────────────────── */}
+      {/* ── Bestätigungsdialog: Anfrage zurückziehen ──────────────────────── */}
       <AlertDialog open={confirmCloseRequest} onOpenChange={setConfirmCloseRequest}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Anfrage ohne Einigung schließen?</AlertDialogTitle>
+            <AlertDialogTitle>Anfrage zurückziehen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Die laufende Koordinationsanfrage wird beendet, ohne dass eine Einigung
-              erzielt wurde. Der Nachunternehmer wird nicht mehr antworten können.
-              Sie können danach eine neue Anfrage stellen.
+              Die laufende Anfrage wird zurückgezogen. Der Nachunternehmer kann darauf
+              nicht mehr antworten. Danach können Sie die Leistung erneut anfragen,
+              auch bei einem anderen Nachunternehmer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3398,7 +3404,7 @@ export default function ProjectDetail() {
               disabled={closeRequest.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {closeRequest.isPending ? 'Schließt…' : 'Ohne Einigung schließen'}
+              {closeRequest.isPending ? 'Ziehe zurück…' : 'Anfrage zurückziehen'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

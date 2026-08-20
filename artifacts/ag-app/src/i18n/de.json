@@ -211,13 +211,13 @@
         "confirmAccepted": "Bestätigung übernehmen",
         "acceptAlternative": "Alternative auswählen",
         "requestRevision": "Überarbeitung anfordern",
-        "closeWithoutAgreement": "Abstimmung schließen"
+        "closeWithoutAgreement": "Anfrage zurückziehen"
       },
       "decisionTypes": {
         "CONFIRM_ACCEPTED": "Bestätigung übernommen",
         "ACCEPT_ALTERNATIVE": "Alternative akzeptiert",
         "REQUEST_REVISION": "Überarbeitung angefordert",
-        "CLOSE_WITHOUT_AGREEMENT": "Abstimmung geschlossen"
+        "CLOSE_WITHOUT_AGREEMENT": "Anfrage zurückgezogen"
       },
       "error": {
         "title": "Entscheidung konnte nicht gespeichert werden",
@@ -266,12 +266,12 @@
         "createNewVersion": "Neue Taktversion erstellen"
       },
       "close": {
-        "title": "Abstimmung schließen",
-        "warning": "Nur die aktuelle Abstimmungsrunde wird geschlossen.",
+        "title": "Anfrage zurückziehen",
+        "warning": "Nur die aktuelle Anfrage wird zurückgezogen.",
         "taktWarning": "Der Takt selbst wird nicht automatisch storniert.",
         "comment": "Kommentar (optional)",
         "commentPlaceholder": "Begründung für den Abschluss …",
-        "submit": "Abstimmung schließen",
+        "submit": "Anfrage zurückziehen",
         "cancel": "Abbrechen"
       }
     },

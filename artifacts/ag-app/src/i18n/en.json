@@ -210,13 +210,13 @@
         "confirmAccepted": "Confirm acceptance",
         "acceptAlternative": "Select alternative",
         "requestRevision": "Request revision",
-        "closeWithoutAgreement": "Close without agreement"
+        "closeWithoutAgreement": "Withdraw request"
       },
       "decisionTypes": {
         "CONFIRM_ACCEPTED": "Acceptance confirmed",
         "ACCEPT_ALTERNATIVE": "Alternative accepted",
         "REQUEST_REVISION": "Revision requested",
-        "CLOSE_WITHOUT_AGREEMENT": "Closed without agreement"
+        "CLOSE_WITHOUT_AGREEMENT": "Request withdrawn"
       },
       "error": {
         "title": "Decision could not be saved",
@@ -265,12 +265,12 @@
         "createNewVersion": "Create new Takt version"
       },
       "close": {
-        "title": "Close coordination round",
-        "warning": "Only the current coordination round will be closed.",
+        "title": "Withdraw request",
+        "warning": "Only the current request will be withdrawn.",
         "taktWarning": "The Takt itself will not be automatically cancelled.",
         "comment": "Comment (optional)",
         "commentPlaceholder": "Reason for closing …",
-        "submit": "Close round",
+        "submit": "Withdraw request",
         "cancel": "Cancel"
       }
     },
