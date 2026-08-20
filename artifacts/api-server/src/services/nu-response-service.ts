@@ -228,8 +228,9 @@ export async function processNuResponse(
       throw new ResponseConflictError(existing.response.decision, decision, reason);
     }
     // REVISION_REQUIRED + different payload → the GU requested a revision and the NU is
-    // now submitting a revised response. Fall through to insert a new response row.
-    // The old response row is kept for audit history.
+    // now submitting a revised response. The schema intentionally keeps one current
+    // response per request, so the existing row is updated below. The original
+    // response remains represented by the immutable GU decision and audit events.
   } else {
     // First-time response: enforce answerable-status guard
     if (!answerableStatuses.has(currentRequestStatus)) {
@@ -237,31 +238,50 @@ export async function processNuResponse(
     }
   }
 
-  // ── Single DB transaction: save response + alternatives + update status ───
+  // ── Single DB transaction: replace response + alternatives + update status ─
   const nextStatus: TaktRequestStatus =
     decision === "ACCEPTED"              ? "ACCEPTED" :
     decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
                                            "REJECTED";
 
   const txResult = await db.transaction(async (tx) => {
-    // Insert response row
-    const [responseRow] = await tx
-      .insert(taktResponsesTable)
-      .values({
-        taktRequestId,
-        messageId,
-        decision,
-        reasonCode:          (reasonCode as TaktResponse["reasonCode"]) ?? null,
-        comment:             comment             ?? null,
-        acceptedStart:       acceptedTimeWindow  ? new Date(acceptedTimeWindow.start) : null,
-        acceptedEnd:         acceptedTimeWindow  ? new Date(acceptedTimeWindow.end)   : null,
-        nextAvailableDate:   nextAvailableDate   ?? null,
-        responsePayloadHash: payloadHash,
-        createdByUserId:     userId,
-      })
-      .returning();
+    const responseValues = {
+      messageId,
+      decision,
+      reasonCode:          (reasonCode as TaktResponse["reasonCode"]) ?? null,
+      comment:             comment             ?? null,
+      acceptedStart:       acceptedTimeWindow  ? new Date(acceptedTimeWindow.start) : null,
+      acceptedEnd:         acceptedTimeWindow  ? new Date(acceptedTimeWindow.end)   : null,
+      nextAvailableDate:   nextAvailableDate   ?? null,
+      responsePayloadHash: payloadHash,
+      createdByUserId:     userId,
+    };
+
+    // A revision replaces the current response in place. This preserves the
+    // response ID referenced by the GU's REQUEST_REVISION decision and avoids
+    // violating the one-response-per-request constraint.
+    const [responseRow] = existing
+      ? await tx
+          .update(taktResponsesTable)
+          .set(responseValues)
+          .where(eq(taktResponsesTable.id, existing.response.id))
+          .returning()
+      : await tx
+          .insert(taktResponsesTable)
+          .values({
+            taktRequestId,
+            ...responseValues,
+          })
+          .returning();
 
     if (!responseRow) throw new Error("Failed to insert TaktResponse");
+
+    // Replace alternatives when revising; normal first responses have none to delete.
+    if (existing) {
+      await tx
+        .delete(taktResponseAlternativesTable)
+        .where(eq(taktResponseAlternativesTable.responseId, responseRow.id));
+    }
 
     // Insert alternatives (if any)
     let alternativeRows: TaktResponseAlternativeRow[] = [];
