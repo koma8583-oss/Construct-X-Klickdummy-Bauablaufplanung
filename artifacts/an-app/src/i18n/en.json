@@ -19,35 +19,36 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "requests": "Requests",
+    "requests": "Performance Requests",
     "gantt": "Resources",
     "resources": "Management",
     "settings": "Settings",
     "logout": "Log out"
   },
   "dashboard": {
-    "pendingRequests": "Pending Requests",
+    "pendingRequests": "Pending Performance Requests",
     "confirmedWork": "Confirmed Work",
     "criticalProposals": "Critical Proposals",
     "upcomingDeadlines": "Upcoming Deadlines (14 days)",
     "resourceUtilization": "Resource Utilization (Month)",
-    "recentRequests": "Recent Requests"
+    "recentRequests": "Recent Performance Requests"
   },
   "requests": {
-    "title": "Requests",
-    "empty": "No requests found.",
+    "title": "Performance Requests",
+    "empty": "No performance requests found.",
     "filterStatus": "Filter Status",
     "all": "All",
     "withinBuffer": "Within Buffer",
     "outsideBuffer": "Outside Buffer - AG approval needed",
     "detail": {
-      "taktInfo": "Takt Information",
+      "leistungInfo": "Performance Information",
+      "taktInfo": "Performance Information",
       "timeline": "Timeline",
       "response": "Response",
       "project": "Project",
       "gewerk": "Trade",
       "zone": "Zone",
-      "taktNumber": "Takt Label",
+      "taktNumber": "Performance Label",
       "plannedDates": "Planned Dates",
       "ag": "Client",
       "requestedDates": "Requested Dates",

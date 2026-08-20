@@ -195,7 +195,7 @@ function ChainRow({
           </span>
           {entry.requestId && (
             <Link
-              href={`/takt-requests/${entry.requestId}`}
+              href={`/leistungsanfragen/${entry.requestId}`}
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
             >
               <ArrowRight className="w-3 h-3" />

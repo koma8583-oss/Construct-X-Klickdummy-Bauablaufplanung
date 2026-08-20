@@ -187,7 +187,7 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
   const handleNavigateToNew = () => {
     if (successResult?.newRequestId) {
       onClose();
-      navigate(`/takt-requests/${successResult.newRequestId}`);
+      navigate(`/leistungsanfragen/${successResult.newRequestId}`);
     }
   };
 

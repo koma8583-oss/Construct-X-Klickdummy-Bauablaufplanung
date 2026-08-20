@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect, useParams } from 'wouter';
 
 import '@/i18n'; // Initialize i18n
 import { AuthProvider } from '@/contexts/auth-context';
@@ -15,8 +15,8 @@ import Dashboard from '@/pages/dashboard';
 import Projects from '@/pages/projects';
 import ProjectDetail from '@/pages/project-detail';
 import ProjectProposals from '@/pages/project-proposals';
-import TaktRequests from '@/pages/takt-requests';
-import TaktRequestDetail from '@/pages/takt-request-detail';
+import Leistungsanfragen from '@/pages/leistungsanfragen';
+import LeistungsanfragenDetail from '@/pages/leistungsanfragen-detail';
 import Contractors from '@/pages/contractors';
 import Datenraum from '@/pages/datenraum';
 import Settings from '@/pages/settings';
@@ -31,6 +31,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function TaktRequestsLegacyRedirect() {
+  const { requestId } = useParams<{ requestId: string }>();
+  return <Redirect to={`/leistungsanfragen/${requestId}`} />;
+}
+
 function AuthenticatedApp() {
   return (
     <AuthGuard>
@@ -40,8 +45,12 @@ function AuthenticatedApp() {
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:projectId" component={ProjectDetail} />
           <Route path="/projects/:projectId/proposals" component={ProjectProposals} />
-          <Route path="/takt-requests" component={TaktRequests} />
-          <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
+          <Route path="/leistungsanfragen" component={Leistungsanfragen} />
+          <Route path="/leistungsanfragen/:requestId" component={LeistungsanfragenDetail} />
+          <Route path="/takt-requests">
+            <Redirect to="/leistungsanfragen" />
+          </Route>
+          <Route path="/takt-requests/:requestId" component={TaktRequestsLegacyRedirect} />
           <Route path="/contractors" component={Contractors} />
           <Route path="/datenraum" component={Datenraum} />
           <Route path="/settings" component={Settings} />

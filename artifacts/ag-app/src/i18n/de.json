@@ -20,7 +20,7 @@
   "nav": {
     "dashboard": "Übersicht",
     "projects": "Projekte",
-    "taktRequests": "Anfragen",
+    "taktRequests": "Leistungsanfragen",
     "proposals": "Vorschläge",
     "contractors": "Nachunternehmer",
     "datenraum": "Datenraum",
@@ -100,14 +100,14 @@
   },
   "taktRequestDetail": {
     "back": "Zurück zur Übersicht",
-    "title": "Taktanfrage",
-    "notFound": "Taktanfrage nicht gefunden.",
-    "error": "Taktanfrage konnte nicht geladen werden.",
+    "title": "Leistungsanfrage",
+    "notFound": "Leistungsanfrage nicht gefunden.",
+    "error": "Leistungsanfrage konnte nicht geladen werden.",
     "retry": "Erneut laden",
     "header": {
       "requestNumber": "Anfragenummer",
       "project": "Projekt",
-      "takt": "Takt",
+      "takt": "Leistung",
       "version": "Version",
       "contractor": "Nachunternehmer",
       "deadline": "Antwortfrist",
@@ -121,9 +121,9 @@
       "messageSent": "Nachricht versendet",
       "messageDelivered": "Nachricht zugestellt",
       "messageRead": "Nachricht gelesen",
-      "detailsRetrieved": "Taktdetails abgerufen",
+      "detailsRetrieved": "Leistungsdetails abgerufen",
       "reviewStarted": "Prüfung gestartet",
-      "responseReceived": "Antwort eingegangen",
+      "responseReceived": "Leistungsantwort eingegangen",
       "decisionMade": "Entscheidung getroffen",
       "pending": "Ausstehend",
       "notTracked": "Nicht erfasst"
@@ -132,7 +132,7 @@
       "title": "Snapshot-Vorschau",
       "immutableHint": "Dieser Snapshot ist unveränderlich und entspricht dem Stand beim Erstellen der Anfrage.",
       "schemaVersion": "Schema-Version",
-      "taktVersion": "Taktversion",
+      "taktVersion": "Leistungsversion",
       "timeWindow": "Zeitraum",
       "trade": "Gewerk",
       "workPackage": "Arbeitspaket",
@@ -148,7 +148,7 @@
       "message": "Nachricht",
       "detailsRef": "Detailreferenz",
       "projectRef": "Projektreferenz",
-      "taktRef": "Taktreferenz",
+      "taktRef": "Leistungsreferenz",
       "responseRequiredBy": "Antwortfrist",
       "noNotification": "Noch keine Notification versendet."
     },
@@ -161,14 +161,14 @@
       "noError": "Kein Fehler."
     },
     "response": {
-      "title": "Antwort des Nachunternehmers",
+      "title": "Leistungsantwort des Nachunternehmers",
       "decision": "Entscheidung",
       "reasonCode": "Begründung",
       "comment": "Kommentar",
       "acceptedWindow": "Bestätigtes Zeitfenster",
       "nextAvailableDate": "Nächstmöglicher Termin",
       "alternatives": "Vorgeschlagene Alternativen",
-      "noResponse": "Noch keine Antwort eingegangen.",
+      "noResponse": "Noch keine Leistungsantwort eingegangen.",
       "decisions": {
         "ACCEPTED": "Bestätigt",
         "ALTERNATIVES_PROPOSED": "Alternativen vorgeschlagen",
@@ -188,17 +188,17 @@
       "send": "Senden",
       "resend": "Erneut zustellen",
       "cancel": "Stornieren",
-      "viewResponse": "Antwort anzeigen",
+      "viewResponse": "Leistungsantwort anzeigen",
       "newVersion": "Neue Version erstellen",
       "newVersionHint": "Noch nicht verfügbar — Backend-Prozess in Vorbereitung.",
-      "cancelConfirm": "Möchten Sie diese Anfrage wirklich stornieren?",
+      "cancelConfirm": "Möchten Sie diese Leistungsanfrage wirklich stornieren?",
       "cancelConfirmYes": "Ja, stornieren",
       "cancelConfirmNo": "Abbrechen"
     },
     "guDecision": {
       "title": "GU-Entscheidung",
       "alreadyDecided": "Entscheidung bereits getroffen",
-      "taktConfirmed": "Takt wurde bestätigt (CONFIRMED)",
+      "taktConfirmed": "Leistung wurde bestätigt (CONFIRMED)",
       "decisionType": "Entscheidungstyp",
       "decidedAt": "Entschieden am",
       "transportStatus": {
@@ -228,11 +228,11 @@
         "notifyHint": "Nach der Entscheidung wird der NU automatisch benachrichtigt.",
         "action": "Aktion",
         "timeWindow": "Wirksames Zeitfenster",
-        "takt": "Takt",
-        "currentVersion": "Aktuelle Taktversion",
-        "newVersion": "Neue Taktversion",
+        "takt": "Leistung",
+        "currentVersion": "Aktuelle Leistungsversion",
+        "newVersion": "Neue Leistungsversion",
         "requestStatus": "Anfragestatus danach",
-        "taktStatus": "Taktstatus danach",
+        "taktStatus": "Leistungsstatus danach",
         "statusHint": "Neuer Anfragestatus: {{status}}",
         "comment": "Kommentar (optional)",
         "commentPlaceholder": "Begründung oder Hinweis an den NU …",
@@ -257,18 +257,18 @@
       "revision": {
         "title": "Überarbeitung anfordern",
         "description": "Der NU wird gebeten, einen überarbeiteten Vorschlag einzureichen.",
-        "noTaktChange": "Taktdaten werden in diesem Schritt nicht geändert. Die neue Version wird im nächsten Schritt erstellt.",
+        "noTaktChange": "Leistungsdaten werden in diesem Schritt nicht geändert. Die neue Version wird im nächsten Schritt erstellt.",
         "comment": "Begründung / Hinweis an den NU (optional)",
         "commentPlaceholder": "Was soll der NU überarbeiten? …",
         "submit": "Überarbeitung anfordern",
         "afterTitle": "Überarbeitung angefordert",
         "afterHint": "Der Anfragestatus wurde auf \"Überarbeitung erforderlich\" gesetzt.",
-        "createNewVersion": "Neue Taktversion erstellen"
+        "createNewVersion": "Neue Leistungsversion erstellen"
       },
       "close": {
         "title": "Anfrage zurückziehen",
         "warning": "Nur die aktuelle Anfrage wird zurückgezogen.",
-        "taktWarning": "Der Takt selbst wird nicht automatisch storniert.",
+        "taktWarning": "Die Leistung selbst wird nicht automatisch storniert.",
         "comment": "Kommentar (optional)",
         "commentPlaceholder": "Begründung für den Abschluss …",
         "submit": "Anfrage zurückziehen",
@@ -276,8 +276,8 @@
       }
     },
     "revisionDialog": {
-      "title": "Neue Taktversion erstellen",
-      "description": "Erstellen Sie eine neue Abstimmungsrunde mit aktualisierten Taktdaten.",
+      "title": "Neue Leistungsversion erstellen",
+      "description": "Erstellen Sie eine neue Abstimmungsrunde mit aktualisierten Leistungsdaten.",
       "context": "Ausgangssituation",
       "nuComment": "NU-Kommentar",
       "guComment": "GU-Kommentar zur Überarbeitung",
@@ -297,7 +297,7 @@
       "dataSharing": {
         "title": "Was wird übertragen?",
         "notification": "Neue Benachrichtigung (Betreff, Nachricht, Antwortfrist)",
-        "snapshot": "Neuer abrufbarer Snapshot (Taktdaten)",
+        "snapshot": "Neuer abrufbarer Snapshot (Leistungsdaten)",
         "internal": "Interne GU-Informationen werden nicht übertragen"
       },
       "submit": "Als Entwurf speichern",
@@ -306,17 +306,17 @@
       "success": {
         "title": "Neue Version erstellt",
         "newRequest": "Neue Anfragenummer",
-        "newVersion": "Neue Taktversion",
+        "newVersion": "Neue Leistungsversion",
         "sent": "Versandstatus",
         "sentYes": "Versendet",
         "sentNo": "Entwurf",
-        "openNew": "Neue Anfrage öffnen"
+        "openNew": "Neue Leistungsanfrage öffnen"
       }
     },
     "coordinationHistory": {
       "title": "Abstimmungshistorie",
-      "request": "Anfrage",
-      "response": "NU-Antwort",
+      "request": "Leistungsanfrage",
+      "response": "NU-Leistungsantwort",
       "decision": "GU-Entscheidung",
       "showPrevious": "Vorherige Abstimmungsrunden anzeigen",
       "previousRound": "Runde {{number}}",
@@ -327,17 +327,17 @@
     "noDeadline": "Keine Frist"
   },
   "taktRequests": {
-    "title": "Taktanfragen",
-    "description": "Übersicht aller Taktanfragen Ihrer Organisation",
-    "empty": "Keine Taktanfragen vorhanden.",
+    "title": "Leistungsanfragen",
+    "description": "Übersicht aller Leistungsanfragen Ihrer Organisation",
+    "empty": "Keine Leistungsanfragen vorhanden.",
     "emptyFiltered": "Keine Anfragen für die gewählten Filter.",
-    "emptyHint": "Erstellen Sie eine neue Taktanfrage über die Taktplanansicht.",
-    "error": "Taktanfragen konnten nicht geladen werden.",
+    "emptyHint": "Erstellen Sie eine neue Leistungsanfrage über die Leistungsplanansicht.",
+    "error": "Leistungsanfragen konnten nicht geladen werden.",
     "retry": "Erneut laden",
     "columns": {
       "requestNumber": "Anfragenummer",
       "project": "Projekt",
-      "takt": "Takt",
+      "takt": "Leistung",
       "version": "Version",
       "contractor": "Nachunternehmer",
       "deadline": "Antwortfrist",
@@ -354,7 +354,7 @@
       "status": "Anfragestatus",
       "project": "Projekt",
       "contractor": "Nachunternehmer",
-      "takt": "Takt",
+      "takt": "Leistung",
       "deadline": "Antwortfrist",
       "allStatuses": "Alle Status",
       "allProjects": "Alle Projekte",
@@ -366,7 +366,7 @@
       "send": "Senden",
       "resend": "Erneut zustellen",
       "cancel": "Stornieren",
-      "viewResponse": "Antwort anzeigen"
+      "viewResponse": "Leistungsantwort anzeigen"
     },
     "requestStatus": {
       "DRAFT": "Entwurf",

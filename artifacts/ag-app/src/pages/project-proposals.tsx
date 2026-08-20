@@ -168,7 +168,7 @@ function ProposalCard({ item }: { item: TaktRequestListItem }) {
         </div>
 
         {/* Action */}
-        <Link href={`/takt-requests/${item.id}`}>
+        <Link href={`/leistungsanfragen/${item.id}`}>
           <Button className="shrink-0 w-full sm:w-auto">
             <ChevronRight className="w-4 h-4 mr-2" />
             Entscheidung treffen

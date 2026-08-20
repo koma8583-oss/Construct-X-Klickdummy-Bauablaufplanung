@@ -75,7 +75,7 @@ export default function Proposals() {
               req.guDecisionRequiredBy != null && new Date(req.guDecisionRequiredBy) < now;
 
             return (
-              <Link key={req.id} href={`/takt-requests/${req.id}`}>
+              <Link key={req.id} href={`/leistungsanfragen/${req.id}`}>
                 <Card className="hover:border-primary/50 transition-colors cursor-pointer group bg-card overflow-hidden">
                   <div className="flex flex-col sm:flex-row">
                     {/* Status indicator strip */}

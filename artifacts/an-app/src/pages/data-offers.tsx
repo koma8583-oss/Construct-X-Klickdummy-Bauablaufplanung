@@ -225,7 +225,7 @@ function AccessNotice({ recipientStatus }: { recipientStatus: string }) {
       <div className="text-xs text-blue-700 dark:text-blue-300 space-y-0.5">
         <div className="font-semibold">Leistungsdetails erst nach Akzeptanz sichtbar</div>
         <div className="leading-relaxed text-blue-600/90 dark:text-blue-400/90">
-          Die vollständigen Leistungsdetails (Takt-Daten, Zeitfenster, Ressourcenanforderungen)
+          Die vollständigen Leistungsdetails (Leistungsdaten, Zeitfenster, Ressourcenanforderungen)
           sind erst nach Akzeptanz der Nutzungsrichtlinie abrufbar. Leistungszuordnungen
           durch den Auftraggeber werden oben angezeigt, soweit sie bereits vergeben sind.
         </div>
@@ -234,9 +234,9 @@ function AccessNotice({ recipientStatus }: { recipientStatus: string }) {
   );
 }
 
-// ── Fachliche Takt-Content-View ────────────────────────────────────────────────
+// ── Fachliche Leistungs-Content-View ──────────────────────────────────────────
 
-function TaktInformationPackageView({ payload }: { payload: Record<string, unknown> }) {
+function LeistungInformationPackageView({ payload }: { payload: Record<string, unknown> }) {
   const [showJson, setShowJson] = useState(false);
   const tw = payload.plannedTimeWindow as Record<string, unknown> | undefined;
   const loc = payload.location as Record<string, unknown> | undefined;
@@ -257,7 +257,7 @@ function TaktInformationPackageView({ payload }: { payload: Record<string, unkno
       {/* Fachliche Ansicht */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          Taktdaten (fachliche Ansicht)
+          Leistungsdaten (fachliche Ansicht)
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           {workPackage && (
@@ -465,7 +465,7 @@ function OfferDetailPanel({
       {linkedTaktRequestId && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-center justify-between gap-2">
           <div>
-            <div className="text-xs font-semibold text-primary">Zugehörige TaktAnfrage</div>
+            <div className="text-xs font-semibold text-primary">Zugehörige Leistungsanfrage</div>
             <div className="text-xs text-muted-foreground">Zu dieser Veröffentlichung gehört eine offene Koordinationsanfrage.</div>
           </div>
           <Button
@@ -473,7 +473,7 @@ function OfferDetailPanel({
             variant="outline"
             onClick={() => {
               onClose();
-              setLocation(`/takt-requests/${linkedTaktRequestId}`);
+              setLocation(`/leistungsanfragen/${linkedTaktRequestId}`);
             }}
             className="gap-1 shrink-0"
           >
@@ -630,7 +630,7 @@ function OfferDetailPanel({
 
               {/* Fachliche or generic view */}
               {offer.dataProductType === 'TAKT_INFORMATION_PACKAGE' && content.content ? (
-                <TaktInformationPackageView payload={content.content as Record<string, unknown>} />
+                <LeistungInformationPackageView payload={content.content as Record<string, unknown>} />
               ) : (
                 <GenericContentView content={content.content as Record<string, unknown>} />
               )}
@@ -770,7 +770,7 @@ export default function DataOffersPage() {
                     </div>
                   </div>
                   {p.taktRequestId && (
-                    <a href={`/an/takt-requests/${p.taktRequestId}`}>
+                    <a href={`/an/leistungsanfragen/${p.taktRequestId}`}>
                       <button
                         className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted/50 shrink-0"
                         title="Zur Anfrage"

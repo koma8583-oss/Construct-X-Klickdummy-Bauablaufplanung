@@ -14,8 +14,8 @@ import Register from '@/pages/register';
 import Dashboard from '@/pages/dashboard';
 import Requests from '@/pages/requests';
 import RequestDetail from '@/pages/request-detail';
-import TaktRequestsInbox from '@/pages/takt-requests-inbox';
-import TaktRequestDetail from '@/pages/takt-request-detail';
+import LeistungsanfragenInboxPage from '@/pages/leistungsanfragen-inbox';
+import LeistungsanfrageDetailPage from '@/pages/leistungsanfrage-detail';
 import GanttPage from '@/pages/gantt';
 import Resources from '@/pages/resources';
 import Settings from '@/pages/settings';
@@ -57,14 +57,27 @@ function AuthRoutedApp() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
+
+        {/* ── Canonical Leistungsanfragen routes ────────────────────────── */}
+        <Route path="/leistungsanfragen" component={LeistungsanfragenInboxPage} />
+        <Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} />
+
+        {/* ── Legacy /takt-requests → canonical redirects ───────────────── */}
+        <Route path="/takt-requests/:requestId">
+          {(params) => <Redirect to={`/leistungsanfragen/${params.requestId}`} />}
+        </Route>
+        <Route path="/takt-requests">
+          <Redirect to="/leistungsanfragen" />
+        </Route>
+
+        {/* ── Legacy /requests → canonical redirects ────────────────────── */}
         <Route path="/requests/:delegationId">
-          <Redirect to="/takt-requests" />
+          <Redirect to="/leistungsanfragen" />
         </Route>
         <Route path="/requests">
-          <Redirect to="/takt-requests" />
+          <Redirect to="/leistungsanfragen" />
         </Route>
-        <Route path="/takt-requests" component={TaktRequestsInbox} />
-        <Route path="/takt-requests/:requestId" component={TaktRequestDetail} />
+
         <Route path="/local-projects" component={LocalProjects} />
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />

@@ -38,7 +38,7 @@ function fmtDateTime(s?: string | Date | null): string {
 const ACTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   OVERDUE:           { label: "Überfällig",              color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30",      icon: <AlertTriangle className="w-4 h-4 text-red-500" /> },
   POLICY_PENDING:    { label: "Policy akzeptieren",      color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30", icon: <Shield className="w-4 h-4 text-amber-500" /> },
-  RETRIEVE_DATA:     { label: "Taktdaten abrufen",       color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30",    icon: <BookOpen className="w-4 h-4 text-blue-500" /> },
+  RETRIEVE_DATA:     { label: "Leistungsdaten abrufen",   color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30",    icon: <BookOpen className="w-4 h-4 text-blue-500" /> },
   ADD_REQUIREMENTS:  { label: "Ressourcenbedarf erfassen", color: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30", icon: <ClipboardList className="w-4 h-4 text-violet-500" /> },
   SUBMIT_RESPONSE:   { label: "Antwort einreichen",      color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30", icon: <CalendarCheck className="w-4 h-4 text-emerald-500" /> },
 };
@@ -124,7 +124,7 @@ export default function Dashboard() {
                   : `${policyPending} Datenraum-Policies müssen noch akzeptiert werden`}
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
-                Ohne Akzeptanz können die verknüpften Taktdaten nicht abgerufen werden. Zum Datenraum →
+                Ohne Akzeptanz können die verknüpften Leistungsdaten nicht abgerufen werden. Zum Datenraum →
               </p>
             </div>
             <Globe className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
@@ -180,7 +180,7 @@ export default function Dashboard() {
                 const isOverdue = deadline ? isPast(deadline) : false;
 
                 return (
-                  <Link key={action.id} href={`/takt-requests/${action.id}`}>
+                  <Link key={action.id} href={`/leistungsanfragen/${action.id}`}>
                     <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors hover:bg-muted/40 ${meta.color}`}>
                       <span className="shrink-0">{meta.icon}</span>
                       <div className="flex-1 min-w-0">
@@ -242,7 +242,7 @@ export default function Dashboard() {
                 const isOverdue = deadline ? isPast(deadline) : false;
                 const takt = req.takt as any;
                 return (
-                  <Link key={req.id} href={`/takt-requests/${req.id}`}>
+                  <Link key={req.id} href={`/leistungsanfragen/${req.id}`}>
                     <div className="flex items-start gap-3 p-2.5 border border-border rounded-lg hover:bg-muted/30 transition-colors">
                       {deadline ? (
                         <div className="flex flex-col items-center justify-center bg-sidebar-accent px-2 py-1.5 rounded min-w-[2.5rem]">

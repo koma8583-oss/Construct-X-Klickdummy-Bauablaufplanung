@@ -32,6 +32,10 @@ tags:
     description: TaktRequest — coordination requests from GU to NU (Task 2)
   - name: dashboard
     description: Dashboard summary endpoints
+  - name: leistungen
+    description: Kanonische Leistung-Endpunkte (Alias für /takte und /takt-dependencies)
+  - name: leistungsanfragen
+    description: Kanonische Leistungsanfrage-Endpunkte (Alias für /takt-requests)
 
 paths:
   /healthz:
@@ -1987,6 +1991,729 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  # ──────────── Canonical German Leistung endpoints (Task #196) ────────────
+  # These paths expose the same business logic as the corresponding /takte,
+  # /takt-dependencies and /takt-requests routes under canonical German URIs.
+  # Responses include both legacy (taktBezeichnung / taktId / taktVersion /
+  # taktRequestId) and canonical (leistungBezeichnung / leistungId /
+  # leistungVersion / leistungsanfrageId) field names.
+  # Request bodies accept both forms; canonical takes precedence.
+
+  /projects/{projectId}/leistungen:
+    get:
+      operationId: listLeistungen
+      tags: [leistungen]
+      summary: Leistungen eines Projekts auflisten (Alias für /takte)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste der Leistungen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Leistung"
+        "403":
+          description: Nur AG-Organisationen dürfen auf Leistungsdaten zugreifen
+        "404":
+          description: Projekt nicht gefunden
+    post:
+      operationId: createLeistung
+      tags: [leistungen]
+      summary: Neue Leistung anlegen (Alias für POST /takte)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeistungRequest"
+      responses:
+        "201":
+          description: Leistung erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leistung"
+        "400":
+          description: Validierungsfehler
+        "403":
+          description: Nur AG-Organisationen dürfen Leistungen anlegen
+        "404":
+          description: Projekt nicht gefunden
+
+  /projects/{projectId}/leistungen/{leistungId}:
+    get:
+      operationId: getLeistung
+      tags: [leistungen]
+      summary: Einzelne Leistung abrufen (Alias für GET /takte/:taktId)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leistungId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leistungsdetails
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leistung"
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+    patch:
+      operationId: updateLeistung
+      tags: [leistungen]
+      summary: Leistung aktualisieren (Alias für PATCH /takte/:taktId)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leistungId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLeistungRequest"
+      responses:
+        "200":
+          description: Aktualisierte Leistung mit Verschiebungsergebnis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeistungUpdateResult"
+        "400":
+          description: Validierungsfehler
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+        "409":
+          description: Status lässt keine Bearbeitung zu
+    delete:
+      operationId: deleteLeistung
+      tags: [leistungen]
+      summary: Leistung löschen (Alias für DELETE /takte/:taktId)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leistungId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Gelöscht
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+        "409":
+          description: Status lässt keine Löschung zu
+
+  /projects/{projectId}/leistungsabhaengigkeiten:
+    get:
+      operationId: listLeistungsabhaengigkeiten
+      tags: [leistungen]
+      summary: Leistungsabhängigkeiten auflisten (Alias für /takt-dependencies)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste der Leistungsabhängigkeiten
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaktDependency"
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Projekt nicht gefunden
+    post:
+      operationId: createLeistungsabhaengigkeit
+      tags: [leistungen]
+      summary: Leistungsabhängigkeit anlegen (Alias für POST /takt-dependencies)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skipReschedule
+          in: query
+          schema:
+            type: boolean
+          description: Terminverschiebung überspringen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaktDependencyRequest"
+      responses:
+        "201":
+          description: Abhängigkeit erstellt mit Verschiebungsergebnis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktDependencyCreateResult"
+        "400":
+          description: Validierungsfehler
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+        "409":
+          description: Zirkuläre Abhängigkeit
+
+  /projects/{projectId}/leistungsabhaengigkeiten/{depId}:
+    delete:
+      operationId: deleteLeistungsabhaengigkeit
+      tags: [leistungen]
+      summary: Leistungsabhängigkeit löschen (Alias für DELETE /takt-dependencies/:depId)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: depId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verschiebungsergebnis nach Entfernen der Abhängigkeit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktDependencyDeleteResult"
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Abhängigkeit nicht gefunden
+
+  /leistungsanfragen:
+    get:
+      operationId: listLeistungsanfragen
+      tags: [leistungsanfragen]
+      summary: Leistungsanfragen auflisten (Alias für GET /takt-requests)
+      description: >
+        GU sieht eigene Anfragen, NU sieht eingehende Anfragen.
+        Kanonische Felder (leistungId, leistungsanfrageId) werden zusammen mit
+        den Legacy-Feldern (taktId, id) zurückgegeben.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaktRequestStatus"
+        - name: leistungId
+          in: query
+          schema:
+            type: string
+          description: Filter nach Leistungs-ID (kanonisch; überschreibt taktId)
+        - name: taktId
+          in: query
+          schema:
+            type: string
+          description: Filter nach Takt-ID (Legacy-Alias für leistungId)
+        - name: nuOrgId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste der Leistungsanfragen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeistungsanfrageListItem"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+    post:
+      operationId: createLeistungsanfrage
+      tags: [leistungsanfragen]
+      summary: Leistungsanfrage erstellen (Alias für POST /takt-requests)
+      description: >
+        GU erstellt eine Leistungsanfrage im DRAFT-Status mit unveränderlichem
+        Snapshot. Keine Nachricht wird versendet; /leistungsanfragen/{id}/send
+        auslösen, um die Benachrichtigung zuzustellen.
+        Akzeptiert sowohl leistungId als auch taktId (kanonisch hat Vorrang).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeistungsanfrageBody"
+      responses:
+        "201":
+          description: Leistungsanfrage im DRAFT-Status mit Snapshot erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeistungsanfrageDraftResponse"
+        "400":
+          description: Ungültiger Anfragekörper
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+        "422":
+          description: Leistung hat ungültiges Zeitfenster oder Version
+
+  /projects/{projectId}/leistungsanfragen:
+    post:
+      operationId: createProjectLeistungsanfrage
+      tags: [leistungsanfragen]
+      summary: Leistungsanfrage im Projektkontext erstellen (Alias für POST /projects/:id/takt-requests)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeistungsanfrageBody"
+      responses:
+        "201":
+          description: Leistungsanfrage erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeistungsanfrageDraftResponse"
+        "400":
+          description: Ungültiger Anfragekörper
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistung nicht gefunden
+        "422":
+          description: Leistung hat ungültige Daten
+
+  /leistungsanfragen/{leistungsanfrageId}:
+    get:
+      operationId: getLeistungsanfrageDetail
+      tags: [leistungsanfragen]
+      summary: GU-Detailansicht einer Leistungsanfrage (Alias für GET /takt-requests/:id)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Vollständiger Datensatz der Leistungsanfrage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestDetail"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Hub-Admin oder fremde Organisation
+        "404":
+          description: Leistungsanfrage nicht gefunden
+
+  /leistungsanfragen/{leistungsanfrageId}/send:
+    post:
+      operationId: sendLeistungsanfrage
+      tags: [leistungsanfragen]
+      summary: Leistungsanfrage versenden (Alias für POST /takt-requests/:id/send)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leistungsanfrage versendet und zugestellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestSendResult"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistungsanfrage nicht gefunden
+        "409":
+          description: Ungültiger Statusübergang
+        "422":
+          description: Kein Snapshot vorhanden
+        "502":
+          description: Transportfehler
+
+  /leistungsanfragen/{leistungsanfrageId}/details:
+    get:
+      operationId: getLeistungsanfrageDetails
+      tags: [leistungsanfragen]
+      summary: Unveränderlichen Leistungssnapshot abrufen (Alias für GET /takt-requests/:id/details)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Unveränderlicher Leistungssnapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestDetailsResponse"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistungsanfrage oder Snapshot nicht gefunden
+        "409":
+          description: Status lässt keinen Abruf zu
+
+  /leistungsanfragen/{leistungsanfrageId}/availability-checks:
+    post:
+      operationId: runLeistungsanfrageAvailabilityCheck
+      tags: [leistungsanfragen]
+      summary: Verfügbarkeitsprüfung ausführen (Alias für POST /takt-requests/:id/availability-checks)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Verfügbarkeitsprüfung abgeschlossen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityCheckResponse"
+        "400":
+          description: Prüfung nicht möglich
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Nur AN-Organisationen dürfen Verfügbarkeitsprüfungen ausführen
+        "404":
+          description: Leistungsanfrage nicht gefunden
+        "409":
+          description: Status lässt keine Prüfung zu
+
+  /leistungsanfragen/{leistungsanfrageId}/availability-checks/latest:
+    get:
+      operationId: getLeistungsanfrageLatestAvailabilityCheck
+      tags: [leistungsanfragen]
+      summary: Neueste Verfügbarkeitsprüfung abrufen (Alias für GET /takt-requests/:id/availability-checks/latest)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Neueste Verfügbarkeitsprüfung
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityCheckResponse"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Nur AN-Organisationen dürfen Verfügbarkeitsprüfungen abrufen
+        "404":
+          description: Leistungsanfrage nicht gefunden oder keine Prüfung vorhanden
+
+  /leistungsanfragen/{leistungsanfrageId}/responses:
+    post:
+      operationId: submitLeistungsanfrageResponse
+      tags: [leistungsanfragen]
+      summary: AN-Antwort einreichen (Alias für POST /takt-requests/:id/responses)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NuResponseCreate"
+      responses:
+        "201":
+          description: Antwort erstellt und in GU-Posteingang zugestellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResponseResult"
+        "200":
+          description: Identische Antwort vorhanden (Idempotenz)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NuResponseResult"
+        "400":
+          description: Verbotenes Feld oder Validierungsfehler
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Nur AN-Organisationen dürfen antworten
+        "404":
+          description: Leistungsanfrage nicht gefunden
+        "409":
+          description: Abweichende Antwort bereits eingereicht
+
+  /leistungsanfragen/{leistungsanfrageId}/gu-decisions:
+    post:
+      operationId: createLeistungsanfrageGuDecision
+      tags: [leistungsanfragen]
+      summary: GU-Entscheidung zur AN-Antwort erstellen (Alias für POST /takt-requests/:id/gu-decisions)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuDecisionCreate"
+      responses:
+        "201":
+          description: GU-Entscheidung erstellt und Status aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionResponse"
+        "200":
+          description: Idempotente Wiederholung — bestehende Entscheidung unverändert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionResponse"
+        "400":
+          description: Ungültige Anfrage
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Kein GU oder falsches Unternehmen
+        "404":
+          description: Leistungsanfrage nicht gefunden
+        "409":
+          description: Entscheidung bereits vorhanden
+
+  /leistungsanfragen/{leistungsanfrageId}/revisions:
+    post:
+      operationId: createLeistungsanfrageRevision
+      tags: [leistungsanfragen]
+      summary: Neue Koordinationsrunde starten (Alias für POST /takt-requests/:id/revisions)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevisionCreate"
+      responses:
+        "201":
+          description: Neue Revisionsrunde erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionResponse"
+        "400":
+          description: Ungültige Anfrage
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Kein GU oder falsches Unternehmen
+        "404":
+          description: Leistungsanfrage nicht gefunden
+        "409":
+          description: Falscher Status oder Nachfolger bereits vorhanden
+
+  /leistungsanfragen/{leistungsanfrageId}/audit-trail:
+    get:
+      operationId: getLeistungsanfrageAuditTrail
+      tags: [leistungsanfragen]
+      summary: Koordinations-Auditpfad abrufen (Alias für GET /takt-requests/:id/audit-trail)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Auditpfad der Leistungsanfrage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestAuditTrailResponse"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistungsanfrage nicht gefunden
+
+  /leistungsanfragen/{leistungsanfrageId}/resource-requirements:
+    get:
+      operationId: listLeistungsanfrageResourceRequirements
+      tags: [leistungsanfragen]
+      summary: Ressourceanforderungen auflisten (Alias für GET /takt-requests/:id/resource-requirements)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Liste der Ressourceanforderungen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceRequirement"
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistungsanfrage nicht gefunden
+    post:
+      operationId: createLeistungsanfrageResourceRequirement
+      tags: [leistungsanfragen]
+      summary: Ressourceanforderung hinzufügen (Alias für POST /takt-requests/:id/resource-requirements)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResourceRequirementRequest"
+      responses:
+        "201":
+          description: Ressourceanforderung erstellt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceRequirement"
+        "400":
+          description: Validierungsfehler
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Leistungsanfrage nicht gefunden
+
+  /leistungsanfragen/{leistungsanfrageId}/resource-requirements/{reqId}:
+    delete:
+      operationId: deleteLeistungsanfrageResourceRequirement
+      tags: [leistungsanfragen]
+      summary: Ressourceanforderung entfernen (Alias für DELETE /takt-requests/:id/resource-requirements/:reqId)
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: reqId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Gelöscht
+        "401":
+          description: Nicht authentifiziert
+        "403":
+          description: Zugriff verweigert
+        "404":
+          description: Ressourceanforderung nicht gefunden
 
   # ── NU-internal: local projects ─────────────────────────────────────────────
 
@@ -5410,3 +6137,502 @@ components:
       required:
         - taktRequestId
         - closedAt
+
+    # ── Canonical German Leistung schemas (Task #196) ──────────────────────────
+    # These schemas mirror the Takt/TaktRequest schemas and add canonical German
+    # field names alongside the legacy English names.
+
+    Leistung:
+      type: object
+      description: >
+        Kanonische Leistung (Alias für Takt).
+        Enthält sowohl die kanonischen deutschen Felder (leistungId,
+        leistungBezeichnung, leistungVersion) als auch die Legacy-Felder
+        (id, taktBezeichnung, version) für rückwärtskompatible Clients.
+      properties:
+        id:
+          type: string
+          description: Interne ID (Legacy-Feld; identisch mit leistungId)
+        leistungId:
+          type: string
+          description: Kanonische ID der Leistung
+        projectId:
+          type: string
+        taktBezeichnung:
+          type: string
+          description: "Legacy: Takt-Bezeichnung"
+        leistungBezeichnung:
+          type: string
+          description: "Kanonisch: Leistungs-Bezeichnung"
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+          nullable: true
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        earliestStart:
+          type: string
+          format: date
+          nullable: true
+        latestEnd:
+          type: string
+          format: date
+          nullable: true
+        lvReference:
+          type: string
+          nullable: true
+        bimReference:
+          type: string
+          nullable: true
+        requiredResources:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TaktStatus"
+        version:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Monoton steigende Version; identisch mit leistungVersion
+        leistungVersion:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: "Kanonisch: Leistungsversion"
+        lifecycleStatus:
+          $ref: "#/components/schemas/TaktLifecycleStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - leistungId
+        - projectId
+        - taktBezeichnung
+        - leistungBezeichnung
+        - zone
+        - gewerk
+        - plannedStart
+        - plannedEnd
+        - status
+        - createdAt
+
+    CreateLeistungRequest:
+      type: object
+      description: >
+        Anfragekörper für POST /projects/:projectId/leistungen.
+        Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung;
+        leistungBezeichnung hat Vorrang.
+      properties:
+        leistungBezeichnung:
+          type: string
+          description: "Kanonisch (Vorrang): Leistungs-Bezeichnung"
+        taktBezeichnung:
+          type: string
+          description: "Legacy-Alias für leistungBezeichnung"
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        durationDays:
+          type: number
+          minimum: 0.5
+        earliestStart:
+          type: string
+          format: date
+        latestEnd:
+          type: string
+          format: date
+        lvReference:
+          type: string
+        bimReference:
+          type: string
+        requiredResources:
+          type: string
+      required: [zone, gewerk, plannedStart]
+
+    UpdateLeistungRequest:
+      type: object
+      description: >
+        Anfragekörper für PATCH /projects/:projectId/leistungen/:leistungId.
+        Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung.
+      properties:
+        leistungBezeichnung:
+          type: string
+          description: "Kanonisch (Vorrang)"
+        taktBezeichnung:
+          type: string
+          description: "Legacy-Alias"
+        zone:
+          type: string
+        gewerk:
+          type: string
+        description:
+          type: string
+          nullable: true
+        plannedStart:
+          type: string
+          format: date
+        plannedEnd:
+          type: string
+          format: date
+        durationDays:
+          type: number
+          minimum: 0.5
+          nullable: true
+        earliestStart:
+          type: string
+          format: date
+          nullable: true
+        latestEnd:
+          type: string
+          format: date
+          nullable: true
+        lvReference:
+          type: string
+          nullable: true
+        bimReference:
+          type: string
+          nullable: true
+        requiredResources:
+          type: string
+          nullable: true
+
+    LeistungUpdateResult:
+      type: object
+      description: Ergebnis einer Leistungsaktualisierung mit Terminverschiebungen
+      properties:
+        takt:
+          $ref: "#/components/schemas/Leistung"
+        moved:
+          type: array
+          items:
+            $ref: "#/components/schemas/Leistung"
+        conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              takt:
+                $ref: "#/components/schemas/Leistung"
+              requiredStart:
+                type: string
+                format: date
+              requiredEnd:
+                type: string
+                format: date
+      required: [takt, moved, conflicts]
+
+    CreateLeistungsanfrageBody:
+      type: object
+      description: >
+        Anfragekörper für POST /leistungsanfragen.
+        Akzeptiert sowohl leistungId als auch taktId; leistungId hat Vorrang.
+      properties:
+        leistungId:
+          type: string
+          minLength: 1
+          description: "Kanonisch (Vorrang): ID der Leistung"
+        taktId:
+          type: string
+          minLength: 1
+          description: "Legacy-Alias für leistungId"
+        nuOrgId:
+          type: string
+          minLength: 1
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        subject:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+          maxLength: 2000
+        dataPublicationId:
+          type: string
+          minLength: 1
+      required:
+        - nuOrgId
+
+    LeistungsanfrageDraftResponse:
+      type: object
+      description: >
+        Antwort auf POST /leistungsanfragen — neu erstellte DRAFT-Anfrage.
+        Enthält sowohl kanonische (leistungsanfrageId, leistungId,
+        leistungVersion) als auch Legacy-Felder (id, taktId, taktVersion).
+      properties:
+        id:
+          type: string
+          description: "Legacy: TaktRequest-ID"
+        leistungsanfrageId:
+          type: string
+          description: "Kanonisch: Leistungsanfrage-ID"
+        taktId:
+          type: string
+          description: "Legacy: Takt-ID"
+        leistungId:
+          type: string
+          description: "Kanonisch: Leistungs-ID"
+        taktVersion:
+          type: integer
+          minimum: 1
+          description: "Legacy: Takt-Version zum Erstellungszeitpunkt"
+        leistungVersion:
+          type: integer
+          minimum: 1
+          description: "Kanonisch: Leistungsversion"
+        guOrgId:
+          type: string
+        nuOrgId:
+          type: string
+        requestNumber:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        snapshotId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - leistungsanfrageId
+        - taktId
+        - leistungId
+        - taktVersion
+        - leistungVersion
+        - guOrgId
+        - nuOrgId
+        - requestNumber
+        - status
+        - snapshotId
+        - createdAt
+
+    LeistungsanfrageListItem:
+      type: object
+      description: >
+        Angereicherter Leistungsanfrage-Datensatz für die GU-Übersichtsliste.
+        Enthält sowohl kanonische als auch Legacy-Felder.
+      properties:
+        id:
+          type: string
+        leistungsanfrageId:
+          type: string
+        requestNumber:
+          type: string
+        taktId:
+          type: string
+        leistungId:
+          type: string
+        taktBezeichnung:
+          type: string
+        leistungBezeichnung:
+          type: string
+        taktVersion:
+          type: integer
+          minimum: 1
+        leistungVersion:
+          type: integer
+          minimum: 1
+        projectId:
+          type: string
+        projectName:
+          type: string
+        guOrgId:
+          type: string
+        nuOrgId:
+          type: string
+        nuOrgName:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaktRequestStatus"
+        responseRequiredBy:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - leistungsanfrageId
+        - requestNumber
+        - taktId
+        - leistungId
+        - taktBezeichnung
+        - leistungBezeichnung
+        - taktVersion
+        - leistungVersion
+        - projectId
+        - projectName
+        - guOrgId
+        - nuOrgId
+        - nuOrgName
+        - status
+        - createdAt
+        - updatedAt
+
+    ResourceRequirement:
+      type: object
+      description: AN-Ressourceanforderung für eine Leistungsanfrage
+      properties:
+        id:
+          type: string
+        taktRequestId:
+          type: string
+          description: "Legacy: TaktRequest-ID"
+        leistungsanfrageId:
+          type: string
+          description: "Kanonisch: Leistungsanfrage-ID"
+        anOrgId:
+          type: string
+        resourceTypeId:
+          type: string
+          nullable: true
+        resourceTypeName:
+          type: string
+          nullable: true
+        resourceTypeCategory:
+          type: string
+          nullable: true
+        requiredCapacity:
+          type: string
+          nullable: true
+        utilizationPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+        requiredQualification:
+          type: string
+          nullable: true
+        periodStart:
+          type: string
+          format: date
+          nullable: true
+        periodEnd:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - taktRequestId
+        - leistungsanfrageId
+        - anOrgId
+        - utilizationPercent
+        - createdAt
+
+    CreateResourceRequirementRequest:
+      type: object
+      description: Anfragekörper für das Anlegen einer Ressourceanforderung
+      properties:
+        resourceTypeId:
+          type: string
+          nullable: true
+        requiredCapacity:
+          type: number
+          nullable: true
+        utilizationPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+        requiredQualification:
+          type: string
+          maxLength: 500
+          nullable: true
+        periodStart:
+          type: string
+          format: date
+          nullable: true
+        periodEnd:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    TaktRequestAuditTrailResponse:
+      type: object
+      description: Koordinations-Auditpfad für eine Leistungsanfrage
+      properties:
+        requestId:
+          type: string
+          description: "Legacy: TaktRequest-ID"
+        leistungsanfrageId:
+          type: string
+          description: "Kanonisch: Leistungsanfrage-ID"
+        callerRole:
+          type: string
+          enum: [GU, NU, HUB_ADMIN]
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              eventType:
+                type: string
+              actorOrgId:
+                type: string
+                nullable: true
+              actorUserId:
+                type: string
+                nullable: true
+              actorRole:
+                type: string
+              metadata:
+                type: object
+                additionalProperties: true
+              occurredAt:
+                type: string
+                format: date-time
+      required:
+        - requestId
+        - leistungsanfrageId
+        - callerRole
+        - events

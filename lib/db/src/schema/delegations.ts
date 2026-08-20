@@ -10,7 +10,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { organizationsTable } from "./organizations";
 import { projectsTable } from "./projects";
-import { takteTable } from "./takte";
+import { leistungenTable as takteTable } from "./leistungen";
 
 export const delegationStatusEnum = pgEnum("delegation_status_enum", [
   "PENDING",

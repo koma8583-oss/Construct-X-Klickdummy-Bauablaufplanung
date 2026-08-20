@@ -20,7 +20,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
-    "taktRequests": "Takt Requests",
+    "taktRequests": "Performance Requests",
     "proposals": "Proposals",
     "contractors": "Contractors",
     "settings": "Settings",
@@ -32,7 +32,7 @@
     "pending": "Pending",
     "critical": "Critical",
     "confirmed": "Confirmed",
-    "upcoming": "Upcoming Tasks (7 Days)",
+    "upcoming": "Upcoming Performance Items (7 Days)",
     "recentActivity": "Recent Activity"
   },
   "projects": {
@@ -40,7 +40,7 @@
     "create": "New Project",
     "search": "Search projects...",
     "status": "Status",
-    "takte": "Tasks",
+    "takte": "Performance Items",
     "noProjects": "No projects found.",
     "newProject": "Create Project",
     "name": "Project Name",
@@ -99,14 +99,14 @@
   },
   "taktRequestDetail": {
     "back": "Back to overview",
-    "title": "Takt Request",
-    "notFound": "Takt request not found.",
-    "error": "Could not load takt request.",
+    "title": "Performance Request",
+    "notFound": "Performance request not found.",
+    "error": "Could not load performance request.",
     "retry": "Retry",
     "header": {
       "requestNumber": "Request No.",
       "project": "Project",
-      "takt": "Takt",
+      "takt": "Performance",
       "version": "Version",
       "contractor": "Contractor",
       "deadline": "Response Deadline",
@@ -120,9 +120,9 @@
       "messageSent": "Message sent",
       "messageDelivered": "Message delivered",
       "messageRead": "Message read",
-      "detailsRetrieved": "Takt details retrieved",
+      "detailsRetrieved": "Performance details retrieved",
       "reviewStarted": "Review started",
-      "responseReceived": "Response received",
+      "responseReceived": "Performance response received",
       "decisionMade": "Decision made",
       "pending": "Pending",
       "notTracked": "Not tracked"
@@ -131,7 +131,7 @@
       "title": "Snapshot Preview",
       "immutableHint": "This snapshot is immutable and reflects the state at the time the request was created.",
       "schemaVersion": "Schema Version",
-      "taktVersion": "Takt Version",
+      "taktVersion": "Performance Version",
       "timeWindow": "Time Window",
       "trade": "Trade",
       "workPackage": "Work Package",
@@ -147,7 +147,7 @@
       "message": "Message",
       "detailsRef": "Details Reference",
       "projectRef": "Project Reference",
-      "taktRef": "Takt Reference",
+      "taktRef": "Performance Reference",
       "responseRequiredBy": "Response Required By",
       "noNotification": "No notification sent yet."
     },
@@ -160,14 +160,14 @@
       "noError": "No error."
     },
     "response": {
-      "title": "Contractor Response",
+      "title": "Contractor Performance Response",
       "decision": "Decision",
       "reasonCode": "Reason",
       "comment": "Comment",
       "acceptedWindow": "Accepted Time Window",
       "nextAvailableDate": "Next Available Date",
       "alternatives": "Proposed Alternatives",
-      "noResponse": "No response received yet.",
+      "noResponse": "No performance response received yet.",
       "decisions": {
         "ACCEPTED": "Accepted",
         "ALTERNATIVES_PROPOSED": "Alternatives Proposed",
@@ -187,17 +187,17 @@
       "send": "Send",
       "resend": "Redeliver",
       "cancel": "Cancel",
-      "viewResponse": "View Response",
+      "viewResponse": "View Performance Response",
       "newVersion": "Create New Version",
       "newVersionHint": "Not yet available — backend process in preparation.",
-      "cancelConfirm": "Are you sure you want to cancel this request?",
+      "cancelConfirm": "Are you sure you want to cancel this performance request?",
       "cancelConfirmYes": "Yes, cancel",
       "cancelConfirmNo": "Keep request"
     },
     "guDecision": {
       "title": "GU Decision",
       "alreadyDecided": "Decision already recorded",
-      "taktConfirmed": "Takt has been confirmed (CONFIRMED)",
+      "taktConfirmed": "Performance has been confirmed (CONFIRMED)",
       "decisionType": "Decision type",
       "decidedAt": "Decided at",
       "transportStatus": {
@@ -227,11 +227,11 @@
         "notifyHint": "After submitting, the contractor will be notified automatically.",
         "action": "Action",
         "timeWindow": "Effective time window",
-        "takt": "Takt",
-        "currentVersion": "Current Takt version",
-        "newVersion": "New Takt version",
+        "takt": "Performance",
+        "currentVersion": "Current Performance version",
+        "newVersion": "New Performance version",
         "requestStatus": "Request status after",
-        "taktStatus": "Takt status after",
+        "taktStatus": "Performance status after",
         "statusHint": "New request status: {{status}}",
         "comment": "Comment (optional)",
         "commentPlaceholder": "Reason or note for the contractor …",
@@ -256,18 +256,18 @@
       "revision": {
         "title": "Request revision",
         "description": "The contractor will be asked to submit a revised proposal.",
-        "noTaktChange": "Takt data will not be changed in this step. The new version will be created in the next step.",
+        "noTaktChange": "Performance data will not be changed in this step. The new version will be created in the next step.",
         "comment": "Reason / note for the contractor (optional)",
         "commentPlaceholder": "What should the contractor revise? …",
         "submit": "Request revision",
         "afterTitle": "Revision requested",
         "afterHint": "Request status has been set to \"Revision required\".",
-        "createNewVersion": "Create new Takt version"
+        "createNewVersion": "Create new Performance version"
       },
       "close": {
         "title": "Withdraw request",
         "warning": "Only the current request will be withdrawn.",
-        "taktWarning": "The Takt itself will not be automatically cancelled.",
+        "taktWarning": "The Performance item itself will not be automatically cancelled.",
         "comment": "Comment (optional)",
         "commentPlaceholder": "Reason for closing …",
         "submit": "Withdraw request",
@@ -275,8 +275,8 @@
       }
     },
     "revisionDialog": {
-      "title": "Create new Takt version",
-      "description": "Start a new coordination round with updated Takt data.",
+      "title": "Create new Performance version",
+      "description": "Start a new coordination round with updated Performance data.",
       "context": "Context",
       "nuComment": "Contractor comment",
       "guComment": "GU revision comment",
@@ -296,7 +296,7 @@
       "dataSharing": {
         "title": "What gets transferred?",
         "notification": "New notification (subject, message, deadline)",
-        "snapshot": "New retrievable snapshot (Takt data)",
+        "snapshot": "New retrievable snapshot (Performance data)",
         "internal": "Internal GU information is not transferred"
       },
       "submit": "Save as draft",
@@ -305,17 +305,17 @@
       "success": {
         "title": "New version created",
         "newRequest": "New request number",
-        "newVersion": "New Takt version",
+        "newVersion": "New Performance version",
         "sent": "Delivery status",
         "sentYes": "Sent",
         "sentNo": "Draft",
-        "openNew": "Open new request"
+        "openNew": "Open new performance request"
       }
     },
     "coordinationHistory": {
       "title": "Coordination history",
-      "request": "Request",
-      "response": "Contractor response",
+      "request": "Performance Request",
+      "response": "Contractor Performance Response",
       "decision": "GU decision",
       "showPrevious": "Show previous coordination rounds",
       "previousRound": "Round {{number}}",
@@ -326,17 +326,17 @@
     "noDeadline": "No deadline"
   },
   "taktRequests": {
-    "title": "Takt Requests",
-    "description": "Overview of all Takt requests for your organisation",
-    "empty": "No Takt requests yet.",
+    "title": "Performance Requests",
+    "description": "Overview of all performance requests for your organisation",
+    "empty": "No performance requests yet.",
     "emptyFiltered": "No requests match the selected filters.",
-    "emptyHint": "Create a new Takt request from the schedule view.",
-    "error": "Could not load Takt requests.",
+    "emptyHint": "Create a new performance request from the schedule view.",
+    "error": "Could not load performance requests.",
     "retry": "Retry",
     "columns": {
       "requestNumber": "Request No.",
       "project": "Project",
-      "takt": "Takt",
+      "takt": "Performance",
       "version": "Version",
       "contractor": "Contractor",
       "deadline": "Response Deadline",
@@ -353,7 +353,7 @@
       "status": "Request Status",
       "project": "Project",
       "contractor": "Contractor",
-      "takt": "Takt",
+      "takt": "Performance",
       "deadline": "Deadline",
       "allStatuses": "All statuses",
       "allProjects": "All projects",
@@ -365,7 +365,7 @@
       "send": "Send",
       "resend": "Redeliver",
       "cancel": "Cancel",
-      "viewResponse": "View Response"
+      "viewResponse": "View Performance Response"
     },
     "requestStatus": {
       "DRAFT": "Draft",

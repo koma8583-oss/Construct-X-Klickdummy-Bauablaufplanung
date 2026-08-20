@@ -439,13 +439,13 @@ export default function AvailabilityChecksPage() {
       <div>
         <h1 className="text-2xl font-bold">Verfügbarkeitsprüfungen</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Prüfung und Datenschutz-Vorschau für TaktAnfragen
+          Prüfung und Datenschutz-Vorschau für Leistungsanfragen
         </p>
       </div>
 
       {/* TaktRequest selector */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">TaktAnfrage auswählen</label>
+        <label className="text-sm font-medium">Leistungsanfrage auswählen</label>
         <div className="flex gap-3 items-center flex-wrap">
           <Select
             value={selectedRequestId}
@@ -486,7 +486,7 @@ export default function AvailabilityChecksPage() {
                 </>
               )}
               {(allRequests ?? []).length === 0 && (
-                <div className="px-2 py-2 text-xs text-muted-foreground">Keine TaktAnfragen vorhanden</div>
+                <div className="px-2 py-2 text-xs text-muted-foreground">Keine Leistungsanfragen vorhanden</div>
               )}
             </SelectContent>
           </Select>
@@ -504,7 +504,7 @@ export default function AvailabilityChecksPage() {
       {!selectedRequestId ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3 border border-dashed rounded-xl">
           <ShieldCheck className="w-12 h-12 text-muted-foreground opacity-40" />
-          <p className="font-medium text-muted-foreground">Bitte eine TaktAnfrage auswählen</p>
+          <p className="font-medium text-muted-foreground">Bitte eine Leistungsanfrage auswählen</p>
           <p className="text-xs text-muted-foreground max-w-xs text-center">
             Wählen Sie oben eine Anfrage, um die Verfügbarkeitsprüfung zu starten oder das letzte Ergebnis anzuzeigen.
           </p>

@@ -904,7 +904,7 @@ export default function ProjectDetail() {
       // Pattern: alt-{uuid-5parts}-{uuid-5parts} → split on 'alt-' prefix, then take first UUID
       const parts = taskId.slice(4); // remove "alt-"
       const requestUuid = parts.slice(0, 36); // first UUID is 36 chars
-      setLocation(`/takt-requests/${requestUuid}`);
+      setLocation(`/leistungsanfragen/${requestUuid}`);
       return;
     }
     setSelectedTaktId(taskId);
@@ -1960,7 +1960,7 @@ export default function ProjectDetail() {
                                       </td>
                                       <td className="px-3 py-2 text-right">
                                         <button
-                                          onClick={() => setLocation(`/takt-requests/${r.id}`)}
+                                          onClick={() => setLocation(`/leistungsanfragen/${r.id}`)}
                                           className="text-primary hover:underline text-xs font-medium"
                                         >
                                           Öffnen →
@@ -2313,7 +2313,7 @@ export default function ProjectDetail() {
                           </div>
                         )}
                         {['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(activeTaktRequest.status) && (
-                          <Link href={`/takt-requests/${activeTaktRequest.id}`}>
+                          <Link href={`/leistungsanfragen/${activeTaktRequest.id}`}>
                             <Button variant="outline" size="sm" className="w-full mt-3">
                               Details / Entscheidung treffen
                             </Button>

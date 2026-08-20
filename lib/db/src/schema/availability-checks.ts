@@ -28,7 +28,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations";
-import { taktRequestsTable } from "./takt-requests";
+import { leistungsanfragenTable as taktRequestsTable } from "./leistungsanfragen";
 import { usersTable } from "./users";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────

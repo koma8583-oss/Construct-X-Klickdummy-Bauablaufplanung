@@ -19,8 +19,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "requests": "Anfragen",
-    "taktRequests": "Anfragen",
+    "requests": "Leistungsanfragen",
+    "taktRequests": "Leistungsanfragen",
     "dataOffers": "Datenraum",
     "resources": "Ressourcen",
     "resourceBookings": "Ressourcenbelegung",
@@ -31,28 +31,29 @@
     "logout": "Abmelden"
   },
   "dashboard": {
-    "pendingRequests": "Offene Anfragen",
+    "pendingRequests": "Offene Leistungsanfragen",
     "confirmedWork": "Bestätigte Arbeiten",
     "criticalProposals": "Kritische Vorschläge",
     "upcomingDeadlines": "Kommende Termine (14 Tage)",
     "resourceUtilization": "Ressourcenauslastung (Monat)",
-    "recentRequests": "Aktuelle Anfragen"
+    "recentRequests": "Aktuelle Leistungsanfragen"
   },
   "requests": {
-    "title": "Anfragen",
-    "empty": "Keine Anfragen gefunden.",
+    "title": "Leistungsanfragen",
+    "empty": "Keine Leistungsanfragen gefunden.",
     "filterStatus": "Status filtern",
     "all": "Alle",
     "withinBuffer": "Innerhalb Puffer",
     "outsideBuffer": "Außerhalb Puffer - AG Freigabe nötig",
     "detail": {
-      "taktInfo": "Takt Informationen",
+      "leistungInfo": "Leistungsinformationen",
+      "taktInfo": "Leistungsinformationen",
       "timeline": "Zeitplan",
       "response": "Rückmeldung",
       "project": "Projekt",
       "gewerk": "Gewerk",
       "zone": "Zone",
-      "taktNumber": "Takt-Bezeichnung",
+      "taktNumber": "Leistungsbezeichnung",
       "plannedDates": "Geplanter Zeitraum",
       "ag": "Auftraggeber",
       "requestedDates": "Angefragter Zeitraum",
