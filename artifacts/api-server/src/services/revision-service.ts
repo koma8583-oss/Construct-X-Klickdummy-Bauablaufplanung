@@ -250,6 +250,28 @@ export async function createRevision(
     );
   }
 
+  // A revision must start a genuinely new coordination window. Do not allow
+  // callers that bypass the UI to create a successor with the old dates.
+  const [oldSnapshot] = await db
+    .select()
+    .from(taktRequestSnapshotsTable)
+    .where(eq(taktRequestSnapshotsTable.taktRequestId, oldRequestId))
+    .limit(1);
+  const oldPayload = oldSnapshot?.snapshotPayload as Record<string, unknown> | undefined;
+  const oldWindow = (
+    oldPayload?.taktWindow ??
+    oldPayload?.plannedTimeWindow
+  ) as Record<string, unknown> | undefined;
+  const oldStart = oldWindow?.start ?? oldPayload?.plannedStart ?? takt.plannedStart;
+  const oldEnd = oldWindow?.end ?? oldPayload?.plannedEnd ?? takt.plannedEnd;
+
+  if (oldStart && oldEnd && newStart === toDateString(String(oldStart)) && newEnd === toDateString(String(oldEnd))) {
+    throw new RevisionError(
+      "A revision must define a new time window different from the previous request.",
+      400,
+    );
+  }
+
   if (responseRequiredBy && responseRequiredBy < new Date()) {
     throw new RevisionError("responseRequiredBy must not be in the past", 400);
   }

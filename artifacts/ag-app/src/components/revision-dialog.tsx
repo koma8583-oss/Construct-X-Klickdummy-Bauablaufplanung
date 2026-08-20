@@ -129,10 +129,28 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
 
   const startChanged = plannedStart !== toLocalDatetimeString(snapStart);
   const endChanged = plannedEnd !== toLocalDatetimeString(snapEnd);
+  const timeWindowChanged =
+    plannedStart.slice(0, 10) !== snapStart.slice(0, 10) ||
+    plannedEnd.slice(0, 10) !== snapEnd.slice(0, 10);
+  const timeWindowValid =
+    !!plannedStart &&
+    !!plannedEnd &&
+    plannedEnd > plannedStart &&
+    timeWindowChanged;
   const subjectChanged = subject !== (snapSubject ?? '');
   const messageChanged = message !== (snapMessage ?? '');
 
   const handleSubmit = async (sendImmediately: boolean) => {
+    if (!timeWindowValid) {
+      setError(
+        !plannedStart || !plannedEnd
+          ? 'Bitte definieren Sie ein neues Zeitfenster.'
+          : plannedEnd <= plannedStart
+            ? 'Das Ende des Zeitfensters muss nach dem Start liegen.'
+            : 'Bitte ändern Sie das Zeitfenster gegenüber der bisherigen Anfrage.',
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -291,6 +309,13 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
               />
             </div>
           </div>
+          {!timeWindowValid && plannedStart && plannedEnd && (
+            <p className="text-sm text-destructive">
+              {plannedEnd <= plannedStart
+                ? 'Das Ende des Zeitfensters muss nach dem Start liegen.'
+                : 'Für die Überarbeitung muss ein neues Zeitfenster definiert werden.'}
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="rev-deadline">
               {t('taktRequestDetail.revisionDialog.fields.responseRequiredBy')}
@@ -413,7 +438,7 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
           <Button
             variant="outline"
             onClick={() => handleSubmit(false)}
-            disabled={submitting || !plannedStart || !plannedEnd}
+            disabled={submitting || !timeWindowValid}
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -424,7 +449,7 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
           </Button>
           <Button
             onClick={() => handleSubmit(true)}
-            disabled={submitting || !plannedStart || !plannedEnd}
+            disabled={submitting || !timeWindowValid}
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
