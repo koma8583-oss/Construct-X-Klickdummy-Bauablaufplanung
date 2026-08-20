@@ -108,13 +108,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.execute(sql`DELETE FROM availability_checks WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE an_org_id = ${ORG_NU}`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE an_org_id = ${ORG_NU}`).catch(() => {});
   await db.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id LIKE 'dtc-req-%'`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = ${ORG_AG}`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 'dtc-req-%'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ${ORG_AG}`).catch(() => {});
   await db.execute(sql`DELETE FROM resources WHERE an_org_id = ${ORG_NU}`).catch(() => {});
   await db.execute(sql`DELETE FROM resource_types WHERE an_org_id = ${ORG_NU}`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE project_id = ${PROJECT}`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE project_id = ${PROJECT}`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = ${PROJECT}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${USER_ID}`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id IN (${ORG_NU}, ${ORG_AG})`).catch(() => {});
@@ -276,7 +276,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.internalResultPayload?.conflicts.length).toBeGreaterThan(0);
 
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${reqId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
   // Test 6: Required 6, available 4 → conflict
@@ -304,7 +304,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
 
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${reqId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
   // Test 7: Required 4, available 6 → feasible
@@ -324,7 +324,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.publicResultPayload?.recommendedDecision).toBe("ACCEPTED");
     expect(check.internalResultPayload?.conflicts).toHaveLength(0);
 
-    await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${reqId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
   // Test 8: Bookings for other resource types don't affect this check
@@ -352,7 +352,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).toBe("FEASIBLE");
 
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, otherBooking.id));
-    await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${reqId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
   // Test 9: Internal resource info not in public result
@@ -379,6 +379,6 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
       expect(altKeys).not.toContain("_outsideBuffer");
     }
 
-    await db.execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${reqId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 });

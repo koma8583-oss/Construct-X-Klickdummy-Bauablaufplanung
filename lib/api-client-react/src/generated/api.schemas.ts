@@ -251,8 +251,6 @@ export interface Takt {
      */
   version?: number;
   lifecycleStatus?: TaktLifecycleStatus;
-  /** Duration in working days (0.5 steps). When set, plannedEnd is derived from this. */
-  durationDays?: string | null;
 }
 
 export interface CreateTaktRequest {
@@ -261,9 +259,7 @@ export interface CreateTaktRequest {
   gewerk: string;
   description?: string;
   plannedStart: string;
-  plannedEnd?: string;
-  /** Duration in working days (0.5 steps). If provided, plannedEnd is computed from plannedStart. */
-  durationDays?: number;
+  plannedEnd: string;
   earliestStart?: string;
   latestEnd?: string;
   lvReference?: string;
@@ -278,35 +274,11 @@ export interface UpdateTaktRequest {
   description?: string;
   plannedStart?: string;
   plannedEnd?: string;
-  /** Duration in working days (0.5 steps). If provided, plannedEnd is recomputed. */
-  durationDays?: number | null;
   earliestStart?: string;
   latestEnd?: string;
   lvReference?: string;
   bimReference?: string;
   requiredResources?: string;
-}
-
-/** Working-hours calendar config for a project (Mon–Sun, 0 = non-working). */
-export interface ProjectCalendar {
-  projectId: string;
-  monHours: string;
-  tueHours: string;
-  wedHours: string;
-  thuHours: string;
-  friHours: string;
-  satHours: string;
-  sunHours: string;
-}
-
-export interface UpdateProjectCalendarRequest {
-  monHours: number;
-  tueHours: number;
-  wedHours: number;
-  thuHours: number;
-  friHours: number;
-  satHours: number;
-  sunHours: number;
 }
 
 /**
@@ -489,10 +461,6 @@ export interface AgProjectSummary {
   projectId: string;
   projectName: string;
   projectStatus: AgProjectSummaryProjectStatus;
-  /** Physical location or address of the construction site */
-  location?: string | null;
-  /** Short description of the project scope */
-  description?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   /** Number of distinct ACTIVE AN organisations on this project */
@@ -507,6 +475,10 @@ export interface AgProjectSummary {
   rejectedTaktRequests: number;
   revisionRequiredRequests: number;
   expiredTaktRequests: number;
+  /** Physical location or address of the construction site */
+  location?: string | null;
+  /** Short description of the project scope */
+  description?: string | null;
   lastActivityAt?: string | null;
 }
 
@@ -1988,6 +1960,266 @@ export interface TaktRequestCancelledPayload {
   closedAt: string;
 }
 
+/**
+ * Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.
+ */
+export interface Leistung {
+  /** Interne ID (Legacy-Feld; identisch mit leistungId) */
+  id: string;
+  /** Kanonische ID der Leistung */
+  leistungId: string;
+  projectId: string;
+  /** Legacy: Takt-Bezeichnung */
+  taktBezeichnung: string;
+  /** Kanonisch: Leistungs-Bezeichnung */
+  leistungBezeichnung: string;
+  zone: string;
+  gewerk: string;
+  description?: string | null;
+  plannedStart: string;
+  plannedEnd: string;
+  earliestStart?: string | null;
+  latestEnd?: string | null;
+  lvReference?: string | null;
+  bimReference?: string | null;
+  requiredResources?: string | null;
+  status: TaktStatus;
+  /**
+     * Monoton steigende Version; identisch mit leistungVersion
+     * @minimum 1
+     */
+  version?: number | null;
+  /**
+     * Kanonisch: Leistungsversion
+     * @minimum 1
+     */
+  leistungVersion?: number | null;
+  lifecycleStatus?: TaktLifecycleStatus;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+/**
+ * Anfragekörper für POST /projects/:projectId/leistungen. Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung; leistungBezeichnung hat Vorrang.
+ */
+export interface CreateLeistungRequest {
+  /** Kanonisch (Vorrang): Leistungs-Bezeichnung */
+  leistungBezeichnung?: string;
+  /** Legacy-Alias für leistungBezeichnung */
+  taktBezeichnung?: string;
+  zone: string;
+  gewerk: string;
+  description?: string;
+  plannedStart: string;
+  plannedEnd?: string;
+  /** @minimum 0.5 */
+  durationDays?: number;
+  earliestStart?: string;
+  latestEnd?: string;
+  lvReference?: string;
+  bimReference?: string;
+  requiredResources?: string;
+}
+
+/**
+ * Anfragekörper für PATCH /projects/:projectId/leistungen/:leistungId. Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung.
+ */
+export interface UpdateLeistungRequest {
+  /** Kanonisch (Vorrang) */
+  leistungBezeichnung?: string;
+  /** Legacy-Alias */
+  taktBezeichnung?: string;
+  zone?: string;
+  gewerk?: string;
+  description?: string | null;
+  plannedStart?: string;
+  plannedEnd?: string;
+  /** @minimum 0.5 */
+  durationDays?: number | null;
+  earliestStart?: string | null;
+  latestEnd?: string | null;
+  lvReference?: string | null;
+  bimReference?: string | null;
+  requiredResources?: string | null;
+}
+
+export type LeistungUpdateResultConflictsItem = {
+  takt?: Leistung;
+  requiredStart?: string;
+  requiredEnd?: string;
+};
+
+/**
+ * Ergebnis einer Leistungsaktualisierung mit Terminverschiebungen
+ */
+export interface LeistungUpdateResult {
+  takt: Leistung;
+  moved: Leistung[];
+  conflicts: LeistungUpdateResultConflictsItem[];
+}
+
+/**
+ * Anfragekörper für POST /leistungsanfragen. Akzeptiert sowohl leistungId als auch taktId; leistungId hat Vorrang.
+ */
+export interface CreateLeistungsanfrageBody {
+  /**
+     * Kanonisch (Vorrang): ID der Leistung
+     * @minLength 1
+     */
+  leistungId?: string;
+  /**
+     * Legacy-Alias für leistungId
+     * @minLength 1
+     */
+  taktId?: string;
+  /** @minLength 1 */
+  nuOrgId: string;
+  responseRequiredBy?: string | null;
+  /** @maxLength 255 */
+  subject?: string;
+  /** @maxLength 2000 */
+  message?: string;
+  /** @minLength 1 */
+  dataPublicationId?: string;
+}
+
+/**
+ * Antwort auf POST /leistungsanfragen — neu erstellte DRAFT-Anfrage. Enthält sowohl kanonische (leistungsanfrageId, leistungId, leistungVersion) als auch Legacy-Felder (id, taktId, taktVersion).
+ */
+export interface LeistungsanfrageDraftResponse {
+  /** Legacy: TaktRequest-ID */
+  id: string;
+  /** Kanonisch: Leistungsanfrage-ID */
+  leistungsanfrageId: string;
+  /** Legacy: Takt-ID */
+  taktId: string;
+  /** Kanonisch: Leistungs-ID */
+  leistungId: string;
+  /**
+     * Legacy: Takt-Version zum Erstellungszeitpunkt
+     * @minimum 1
+     */
+  taktVersion: number;
+  /**
+     * Kanonisch: Leistungsversion
+     * @minimum 1
+     */
+  leistungVersion: number;
+  guOrgId: string;
+  nuOrgId: string;
+  requestNumber: string;
+  status: TaktRequestStatus;
+  responseRequiredBy?: string | null;
+  snapshotId: string;
+  createdAt: string;
+}
+
+/**
+ * Angereicherter Leistungsanfrage-Datensatz für die GU-Übersichtsliste. Enthält sowohl kanonische als auch Legacy-Felder.
+ */
+export interface LeistungsanfrageListItem {
+  id: string;
+  leistungsanfrageId: string;
+  requestNumber: string;
+  taktId: string;
+  leistungId: string;
+  taktBezeichnung: string;
+  leistungBezeichnung: string;
+  /** @minimum 1 */
+  taktVersion: number;
+  /** @minimum 1 */
+  leistungVersion: number;
+  projectId: string;
+  projectName: string;
+  guOrgId: string;
+  nuOrgId: string;
+  nuOrgName: string;
+  status: TaktRequestStatus;
+  responseRequiredBy?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * AN-Ressourceanforderung für eine Leistungsanfrage
+ */
+export interface ResourceRequirement {
+  id: string;
+  /** Legacy: TaktRequest-ID */
+  taktRequestId: string;
+  /** Kanonisch: Leistungsanfrage-ID */
+  leistungsanfrageId: string;
+  anOrgId: string;
+  resourceTypeId?: string | null;
+  resourceTypeName?: string | null;
+  resourceTypeCategory?: string | null;
+  requiredCapacity?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  utilizationPercent: number;
+  requiredQualification?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+/**
+ * Anfragekörper für das Anlegen einer Ressourceanforderung
+ */
+export interface CreateResourceRequirementRequest {
+  resourceTypeId?: string | null;
+  requiredCapacity?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  utilizationPercent?: number;
+  /** @maxLength 500 */
+  requiredQualification?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  /** @maxLength 1000 */
+  notes?: string | null;
+}
+
+export type TaktRequestAuditTrailResponseCallerRole = typeof TaktRequestAuditTrailResponseCallerRole[keyof typeof TaktRequestAuditTrailResponseCallerRole];
+
+
+export const TaktRequestAuditTrailResponseCallerRole = {
+  GU: 'GU',
+  NU: 'NU',
+  HUB_ADMIN: 'HUB_ADMIN',
+} as const;
+
+export type TaktRequestAuditTrailResponseEventsItemMetadata = { [key: string]: unknown };
+
+export type TaktRequestAuditTrailResponseEventsItem = {
+  id?: string;
+  eventType?: string;
+  actorOrgId?: string | null;
+  actorUserId?: string | null;
+  actorRole?: string;
+  metadata?: TaktRequestAuditTrailResponseEventsItemMetadata;
+  occurredAt?: string;
+};
+
+/**
+ * Koordinations-Auditpfad für eine Leistungsanfrage
+ */
+export interface TaktRequestAuditTrailResponse {
+  /** Legacy: TaktRequest-ID */
+  requestId: string;
+  /** Kanonisch: Leistungsanfrage-ID */
+  leistungsanfrageId: string;
+  callerRole: TaktRequestAuditTrailResponseCallerRole;
+  events: TaktRequestAuditTrailResponseEventsItem[];
+}
+
 export type ListOrganizationsParams = {
 type?: ListOrganizationsType;
 search?: string;
@@ -2098,6 +2330,26 @@ taktId?: string;
 /**
  * Filter by NU organisation ID
  */
+nuOrgId?: string;
+};
+
+export type CreateLeistungsabhaengigkeitParams = {
+/**
+ * Terminverschiebung überspringen
+ */
+skipReschedule?: boolean;
+};
+
+export type ListLeistungsanfragenParams = {
+status?: TaktRequestStatus;
+/**
+ * Filter nach Leistungs-ID (kanonisch; überschreibt taktId)
+ */
+leistungId?: string;
+/**
+ * Filter nach Takt-ID (Legacy-Alias für leistungId)
+ */
+taktId?: string;
 nuOrgId?: string;
 };
 

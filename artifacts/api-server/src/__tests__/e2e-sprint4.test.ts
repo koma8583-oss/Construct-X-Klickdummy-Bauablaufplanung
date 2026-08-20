@@ -172,27 +172,27 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.execute(sql`
-    DELETE FROM takt_responses WHERE takt_request_id IN (
-      SELECT id FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}'
+    DELETE FROM leistungsantworten WHERE leistungsanfrage_id IN (
+      SELECT id FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}'
     );
-    DELETE FROM takt_response_alternatives WHERE response_id IN (
-      SELECT r.id FROM takt_responses r
-      JOIN takt_requests tr ON tr.id = r.takt_request_id
+    DELETE FROM leistungsantwort_alternativen WHERE response_id IN (
+      SELECT r.id FROM leistungsantworten r
+      JOIN leistungsanfragen tr ON tr.id = r.leistungsanfrage_id
       WHERE tr.gu_org_id = '${sql.raw(GU_ORG)}'
     );
     DELETE FROM availability_checks     WHERE nu_org_id = '${sql.raw(NU_ORG)}';
     DELETE FROM resource_bookings       WHERE nu_org_id = '${sql.raw(NU_ORG)}';
     DELETE FROM message_inbox           WHERE recipient_org_id IN ('${sql.raw(GU_ORG)}', '${sql.raw(NU_ORG)}');
     DELETE FROM message_outbox          WHERE sender_org_id    IN ('${sql.raw(GU_ORG)}', '${sql.raw(NU_ORG)}');
-    DELETE FROM takt_request_snapshots WHERE takt_request_id IN (
-      SELECT id FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}'
+    DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
+      SELECT id FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'
     );
-    DELETE FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}';
+    DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}';
     DELETE FROM data_publication_recipients WHERE publication_id = '${sql.raw("t49-test-publication")}';
     DELETE FROM data_publications       WHERE ag_org_id = '${sql.raw(GU_ORG)}';
     DELETE FROM resources               WHERE an_org_id = '${sql.raw(NU_ORG)}';
     DELETE FROM project_contractors     WHERE project_id = '${sql.raw(PROJECT)}';
-    DELETE FROM takte                   WHERE project_id = '${sql.raw(PROJECT)}';
+    DELETE FROM leistungen               WHERE project_id = '${sql.raw(PROJECT)}';
     DELETE FROM projects                WHERE id = '${sql.raw(PROJECT)}';
     DELETE FROM users                   WHERE id IN (${sql.raw(`'${GU_USER}', '${NU_USER}'`)});
     DELETE FROM organizations           WHERE id IN (${sql.raw(`'${GU_ORG}', '${NU_ORG}'`)});

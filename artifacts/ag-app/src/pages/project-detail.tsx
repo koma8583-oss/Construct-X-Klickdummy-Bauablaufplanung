@@ -1467,7 +1467,7 @@ export default function ProjectDetail() {
               const productLabels: Record<string, string> = {
                 PROJECT_OVERVIEW: 'Projektübersicht',
                 PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
-                TAKT_INFORMATION_PACKAGE: 'Taktinformationspaket',
+                TAKT_INFORMATION_PACKAGE: 'Leistungsinformationspaket',
               };
               const accepted = (pub.recipients ?? []).filter(r => r.status === 'ACCEPTED').length;
               const total = (pub.recipients ?? []).length;
@@ -2360,7 +2360,7 @@ export default function ProjectDetail() {
                             >
                               <span className="flex items-center gap-2">
                                 <Send className="w-3.5 h-3.5" />
-                                Takt vergeben
+                                Leistung vergeben
                               </span>
                               {isVergabeOpen
                                 ? <ChevronUp className="w-4 h-4" />
@@ -2402,12 +2402,12 @@ export default function ProjectDetail() {
                               {/* Publication selector — required for the Dataspace policy gate */}
                               <div className="space-y-1.5">
                                 <Label className="text-xs">
-                                  Veröffentlichte Taktinformationen{' '}
+                                  Veröffentlichte Leistungsinformationen{' '}
                                   <span className="text-destructive">*</span>
                                 </Label>
                                 {vergabeAnOrgId && vergabePubs.length === 0 ? (
                                   <p className="text-xs text-muted-foreground rounded border border-border/60 bg-muted/20 p-2">
-                                    Keine gültige Veröffentlichung für diesen Takt und AN vorhanden.{' '}
+                                    Keine gültige Veröffentlichung für diese Leistung und diesen AN vorhanden.{' '}
                                     <button
                                       type="button"
                                       className="underline text-primary"
@@ -2542,7 +2542,7 @@ export default function ProjectDetail() {
                 <form id="edit-takt-form" onSubmit={handleEditTakt} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Takt-Bezeichnung</Label>
+                      <Label>Bezeichnung</Label>
                       <Input name="taktBezeichnung" required value={editTaktBezeichnung} onChange={e => setEditTaktBezeichnung(e.target.value)} placeholder="z.B. T1, Rohbau-A" />
                     </div>
                     <div className="space-y-2">
@@ -2677,7 +2677,7 @@ export default function ProjectDetail() {
                 {deps && deps.some(d => d.predecessorId === editTakt.id || d.successorId === editTakt.id) && (
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600">
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <span>Dieser Takt ist in Anordnungsbeziehungen eingebunden. Beim Speichern werden abhängige Takte automatisch verschoben.</span>
+                    <span>Diese Leistung ist in Anordnungsbeziehungen eingebunden. Beim Speichern werden abhängige Leistungen automatisch verschoben.</span>
                   </div>
                 )}
 
@@ -2748,7 +2748,7 @@ export default function ProjectDetail() {
                     <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Neuer Vorgänger</p>
                     <Select value={newDepPredecessorId} onValueChange={setNewDepPredecessorId} required>
                       <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Vorgänger-Takt…" />
+                        <SelectValue placeholder="Vorgänger-Leistung…" />
                       </SelectTrigger>
                       <SelectContent>
                         {availableEditPredecessors.map(t => (
@@ -2794,7 +2794,7 @@ export default function ProjectDetail() {
                     </Button>
                   </form>
                 ) : editTaktPredecessors.length > 0 ? null : (
-                  <p className="text-sm text-muted-foreground italic">Keine weiteren Takte als Vorgänger verfügbar.</p>
+                  <p className="text-sm text-muted-foreground italic">Keine weiteren Leistungen als Vorgänger verfügbar.</p>
                 )}
 
                 <DialogFooter className="flex-row justify-end pt-2">
@@ -2821,7 +2821,7 @@ export default function ProjectDetail() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Takt-Bezeichnung</Label>
+                    <Label>Bezeichnung</Label>
                     <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
                   </div>
                   <div className="space-y-2">
@@ -3338,7 +3338,7 @@ export default function ProjectDetail() {
           <AlertDialogHeader>
             <AlertDialogTitle>Plantermine automatisch anpassen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Soll das System die Plan-Start- und -Endtermine der Nachfolger-Takte aufgrund dieser neuen Abhängigkeit automatisch neu berechnen?
+              Soll das System die Plan-Start- und -Endtermine der Nachfolge-Leistungen aufgrund dieser neuen Abhängigkeit automatisch neu berechnen?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

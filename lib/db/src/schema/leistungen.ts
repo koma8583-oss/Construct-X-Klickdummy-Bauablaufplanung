@@ -4,21 +4,21 @@ import { z } from "zod/v4";
 import { projectsTable } from "./projects";
 
 /** Vergabe-Priorität — GU-internal, never released to NU */
-export const leistungProcurementPriorityEnum = pgEnum("takt_procurement_priority", [
+export const leistungProcurementPriorityEnum = pgEnum("leistung_procurement_priority", [
   "HIGH",
   "MEDIUM",
   "LOW",
 ]);
 
 /** Risikoklasse — GU-internal, never released to NU */
-export const leistungRiskClassificationEnum = pgEnum("takt_risk_classification", [
+export const leistungRiskClassificationEnum = pgEnum("leistung_risk_classification", [
   "A",
   "B",
   "C",
 ]);
 
 /** Dedicated lifecycle status for the Leistung itself — separate from LeistungStatus */
-export const leistungLifecycleStatusEnum = pgEnum("takt_lifecycle_status", [
+export const leistungLifecycleStatusEnum = pgEnum("leistung_lifecycle_status", [
   "DRAFT",
   "PLANNED",
   "IN_COORDINATION",
@@ -26,7 +26,7 @@ export const leistungLifecycleStatusEnum = pgEnum("takt_lifecycle_status", [
   "CANCELLED",
 ]);
 
-export const leistungStatusEnum = pgEnum("takt_status", [
+export const leistungStatusEnum = pgEnum("leistung_status", [
   "GEPLANT",
   "VERGEBEN",
   "ALTERNATIV",

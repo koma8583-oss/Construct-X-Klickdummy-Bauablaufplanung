@@ -27,7 +27,9 @@
 --     script is fully idempotent (safe to re-run after a partial failure).
 --   - No data is copied or dropped.
 --   - All operations run inside a single transaction.
---   - Enum types and their labels are preserved unchanged.
+--   - Enum type names are brought into the Leistung vocabulary; their labels
+--     are preserved unchanged so persisted business and transport statuses stay
+--     backward-compatible.
 --   - Indexes and constraints are renamed in place (no recreation).
 -- =============================================================================
 
@@ -546,6 +548,160 @@ DO $$ BEGIN
   THEN
     ALTER INDEX uq_reminder_dedup RENAME TO uq_leistungsanfrage_reminder_dedup;
   END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- 5. RENAME ENUM TYPES (labels deliberately remain unchanged)
+-- ---------------------------------------------------------------------------
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_procurement_priority' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_procurement_priority RENAME TO leistung_procurement_priority; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_risk_classification' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_risk_classification RENAME TO leistung_risk_classification; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_lifecycle_status' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_lifecycle_status RENAME TO leistung_lifecycle_status; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_status' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_status RENAME TO leistung_status; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_dependency_type' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_dependency_type RENAME TO leistungsabhaengigkeit_type; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_request_status' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_request_status RENAME TO leistungsanfrage_status; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_audit_event_type' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_audit_event_type RENAME TO leistungsanfrage_audit_event_type; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_audit_actor_role' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_audit_actor_role RENAME TO leistungsanfrage_audit_actor_role; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_decision' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_decision RENAME TO leistungsantwort_decision; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_response_reason_code' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_response_reason_code RENAME TO leistungsantwort_reason_code; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_coordination_decision_type' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_coordination_decision_type RENAME TO leistungsantwort_entscheidung_type; END IF;
+END $$;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE t.typname = 'takt_version_source_type' AND n.nspname = current_schema())
+  THEN ALTER TYPE takt_version_source_type RENAME TO leistungs_version_source_type; END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- 6. RENAME AUTO-GENERATED CONSTRAINT AND INDEX NAMES
+-- ---------------------------------------------------------------------------
+-- PostgreSQL keeps generated primary-key and foreign-key names when a table is
+-- renamed. This final pass removes the legacy term without changing the
+-- underlying definitions. A short hash keeps names under PostgreSQL's 63-byte
+-- identifier limit while remaining deterministic and re-runnable.
+
+DO $$
+DECLARE
+  item record;
+  target_name text;
+BEGIN
+  FOR item IN
+    SELECT n.nspname AS schema_name, tbl.relname AS table_name, con.conname
+    FROM pg_constraint con
+    JOIN pg_class tbl ON tbl.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = tbl.relnamespace
+    WHERE n.nspname = current_schema()
+      AND con.conname ILIKE '%takt%'
+  LOOP
+    target_name := replace(
+      replace(
+        replace(
+          replace(
+            replace(
+              replace(item.conname, 'takt_requests', 'leistungsanfragen'),
+              'takt_request', 'leistungsanfrage'),
+            'takt_responses', 'leistungsantworten'),
+          'takt_response', 'leistungsantwort'),
+        'takt_versions', 'leistungs_versionen'),
+      'takt', 'leistung');
+    IF length(target_name) > 63 THEN
+      target_name := left(target_name, 54) || '_' || left(md5(item.conname), 8);
+    END IF;
+    IF target_name <> item.conname
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_constraint existing
+         JOIN pg_class existing_tbl ON existing_tbl.oid = existing.conrelid
+         JOIN pg_namespace existing_ns ON existing_ns.oid = existing_tbl.relnamespace
+         WHERE existing_ns.nspname = item.schema_name
+           AND existing.conname = target_name
+       )
+    THEN
+      EXECUTE format(
+        'ALTER TABLE %I.%I RENAME CONSTRAINT %I TO %I',
+        item.schema_name, item.table_name, item.conname, target_name
+      );
+    END IF;
+  END LOOP;
+
+  FOR item IN
+    SELECT n.nspname AS schema_name, idx.relname AS index_name
+    FROM pg_class idx
+    JOIN pg_namespace n ON n.oid = idx.relnamespace
+    WHERE n.nspname = current_schema()
+      AND idx.relkind = 'i'
+      AND idx.relname ILIKE '%takt%'
+  LOOP
+    target_name := replace(
+      replace(
+        replace(
+          replace(
+            replace(
+              replace(item.index_name, 'takt_requests', 'leistungsanfragen'),
+              'takt_request', 'leistungsanfrage'),
+            'takt_responses', 'leistungsantworten'),
+          'takt_response', 'leistungsantwort'),
+        'takt_versions', 'leistungs_versionen'),
+      'takt', 'leistung');
+    IF length(target_name) > 63 THEN
+      target_name := left(target_name, 54) || '_' || left(md5(item.index_name), 8);
+    END IF;
+    IF target_name <> item.index_name
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_class existing
+         JOIN pg_namespace existing_ns ON existing_ns.oid = existing.relnamespace
+         WHERE existing_ns.nspname = item.schema_name
+           AND existing.relname = target_name
+       )
+    THEN
+      EXECUTE format(
+        'ALTER INDEX %I.%I RENAME TO %I',
+        item.schema_name, item.index_name, target_name
+      );
+    END IF;
+  END LOOP;
 END $$;
 
 COMMIT;

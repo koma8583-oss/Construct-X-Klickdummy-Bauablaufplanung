@@ -130,11 +130,11 @@ afterAll(async () => {
 
   await db.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id IN (
-    SELECT id FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
+  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
+    SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`).catch(() => {});

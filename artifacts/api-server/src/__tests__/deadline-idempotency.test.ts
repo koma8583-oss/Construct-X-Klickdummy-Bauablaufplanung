@@ -114,13 +114,13 @@ afterAll(async () => {
     sql`DELETE FROM message_inbox WHERE recipient_org_id = ${nuOrgId} OR recipient_org_id = ${guOrgId}`
   );
   await db.delete(taktRequestRemindersTable).where(
-    sql`takt_request_id IN (SELECT id FROM takt_requests WHERE request_number LIKE ${P + '%'})`
+    sql`leistungsanfrage_id IN (SELECT id FROM leistungsanfragen WHERE request_number LIKE ${P + '%'})`
   );
   await db.delete(taktRequestsTable).where(
     sql`request_number LIKE ${P + '%'}`
   );
   await db.delete(takteTable).where(
-    sql`takt_bezeichnung LIKE ${P + '%'}`
+    sql`leistungs_bezeichnung LIKE ${P + '%'}`
   );
   await db.delete(projectsTable).where(eq(projectsTable.agOrgId, guOrgId));
   await db.delete(usersTable).where(eq(usersTable.email, `${P}user@test.local`));

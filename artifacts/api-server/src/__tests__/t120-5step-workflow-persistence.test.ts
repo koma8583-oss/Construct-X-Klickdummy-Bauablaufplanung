@@ -218,15 +218,15 @@ afterAll(async () => {
   await db
     .execute(sql`DELETE FROM availability_checks WHERE takt_request_id = ${requestId}`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takt_request_resource_requirements WHERE takt_request_id = ${requestId}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${requestId}`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takt_responses WHERE takt_request_id = ${requestId}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungsantworten WHERE leistungsanfrage_id = ${requestId}`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takt_request_audit_events WHERE takt_request_id = ${requestId}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungsanfrage_audit_events WHERE request_id = ${requestId}`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id = ${requestId}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id = ${requestId}`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takt_requests WHERE id = ${requestId}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungsanfragen WHERE id = ${requestId}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM data_publication_recipients WHERE publication_id = ${pubId}`).catch(() => {});
   await db
@@ -236,7 +236,7 @@ afterAll(async () => {
   await db
     .execute(sql`DELETE FROM message_inbox WHERE recipient_org_id IN (${sql.raw(`'${AG_ORG}', '${AN_ORG}'`)})`).catch(() => {});
   await db
-    .execute(sql`DELETE FROM takte WHERE id = ${TAKT}`).catch(() => {});
+    .execute(sql`DELETE FROM leistungen WHERE id = ${TAKT}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM project_contractors WHERE project_id = ${PROJECT}`).catch(() => {});
   await db

@@ -102,7 +102,7 @@ afterAll(async () => {
     await db.execute(sql`DELETE FROM delegations WHERE id = '${sql.raw(delegationId)}'`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM resources WHERE id IN ('${sql.raw(RESOURCE_A)}','${sql.raw(RESOURCE_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}','${sql.raw(GU_ORG)}')`).catch(() => {});

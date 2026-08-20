@@ -100,7 +100,7 @@ const PUB_STATUS_BADGE: Record<string, string> = {
 const PRODUCT_LABEL: Record<string, string> = {
   PROJECT_OVERVIEW:             'Projektübersicht',
   PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
-  TAKT_INFORMATION_PACKAGE:     'Taktinformationspaket',
+  TAKT_INFORMATION_PACKAGE:     'Leistungsinformationspaket',
 };
 
 const PROJECT_STATUS_LABEL: Record<string, string> = {

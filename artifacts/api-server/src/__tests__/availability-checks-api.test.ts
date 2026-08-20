@@ -159,10 +159,10 @@ afterAll(async () => {
   await db.execute(sql`
     DELETE FROM availability_checks WHERE nu_org_id IN (${sql.raw(`'${NU_ORG_A}', '${NU_ORG_B}'`)});
     DELETE FROM resource_bookings    WHERE nu_org_id = '${sql.raw(NU_ORG_A)}';
-    DELETE FROM takt_request_snapshots WHERE takt_request_id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
-    DELETE FROM takt_requests        WHERE id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
+    DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
+    DELETE FROM leistungsanfragen        WHERE id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
     DELETE FROM resources            WHERE an_org_id = '${sql.raw(NU_ORG_A)}';
-    DELETE FROM takte                WHERE id IN (${sql.raw(`'${TAKT_A}', '${TAKT_B}'`)});
+    DELETE FROM leistungen                WHERE id IN (${sql.raw(`'${TAKT_A}', '${TAKT_B}'`)});
     DELETE FROM projects             WHERE id = '${sql.raw(PROJECT)}';
     DELETE FROM users                WHERE id IN (${sql.raw(`'${GU_USER}', '${NU_USER}'`)});
     DELETE FROM organizations        WHERE id IN (${sql.raw(`'${GU_ORG}', '${NU_ORG_A}', '${NU_ORG_B}'`)});

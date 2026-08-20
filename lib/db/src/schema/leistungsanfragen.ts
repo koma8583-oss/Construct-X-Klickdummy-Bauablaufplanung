@@ -29,7 +29,7 @@ import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 import { dataPublicationsTable } from "./data-publications";
 
-export const leistungsanfrageStatusEnum = pgEnum("takt_request_status", [
+export const leistungsanfrageStatusEnum = pgEnum("leistungsanfrage_status", [
   "DRAFT",
   "SENT",
   "DELIVERED",

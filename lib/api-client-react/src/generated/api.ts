@@ -29,11 +29,15 @@ import type {
   AvailabilityCheckResponse,
   CreateDelegationRequest,
   CreateDelegationResponseRequest,
+  CreateLeistungRequest,
+  CreateLeistungsabhaengigkeitParams,
+  CreateLeistungsanfrageBody,
   CreateOrganizationRequest,
   CreateProjectRequest,
   CreateProjectSubcontractorRequest,
   CreateResourceAssignmentRequest,
   CreateResourceRequest,
+  CreateResourceRequirementRequest,
   CreateTaktDependencyRequest,
   CreateTaktRequest,
   CreateTaktRequestBody,
@@ -47,8 +51,13 @@ import type {
   HealthStatus,
   InboxMarkReadResponse,
   InboxMessageItem,
+  Leistung,
+  LeistungUpdateResult,
+  LeistungsanfrageDraftResponse,
+  LeistungsanfrageListItem,
   ListDelegationsParams,
   ListInboxMessagesParams,
+  ListLeistungsanfragenParams,
   ListNuLocalProjectsParams,
   ListNuResourceBookingsParams,
   ListOrganizationsParams,
@@ -72,16 +81,17 @@ import type {
   OrganizationMembership,
   PatchProjectSubcontractorRequest,
   Project,
-  ProjectCalendar,
   ProjectSubcontractorAssignment,
   Resource,
   ResourceAssignment,
+  ResourceRequirement,
   RevisionCreate,
   RevisionResponse,
   Takt,
   TaktDependency,
   TaktDependencyCreateResult,
   TaktDependencyDeleteResult,
+  TaktRequestAuditTrailResponse,
   TaktRequestDetail,
   TaktRequestDetailsResponse,
   TaktRequestDraftResponse,
@@ -90,9 +100,9 @@ import type {
   TaktUpdateResult,
   UpdateDelegationRequest,
   UpdateDelegationResponseDecisionRequest,
+  UpdateLeistungRequest,
   UpdateOrganizationRequest,
   UpdateProfileRequest,
-  UpdateProjectCalendarRequest,
   UpdateProjectRequest,
   UpdateResourceAssignmentRequest,
   UpdateResourceRequest,
@@ -5362,6 +5372,1732 @@ export const useSubmitNuResponse = <TError = ErrorType<ErrorResponse>,
       return useMutation(getSubmitNuResponseMutationOptions(options));
     }
 
+export const getListLeistungenUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungen`
+}
+
+/**
+ * @summary Leistungen eines Projekts auflisten (Alias für /takte)
+ */
+export const listLeistungen = async (projectId: string, options?: RequestInit): Promise<Leistung[]> => {
+
+  return customFetch<Leistung[]>(getListLeistungenUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeistungenQueryKey = (projectId: string,) => {
+    return [
+    `/api/projects/${projectId}/leistungen`
+    ] as const;
+    }
+
+
+export const getListLeistungenQueryOptions = <TData = Awaited<ReturnType<typeof listLeistungen>>, TError = ErrorType<void>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeistungenQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeistungen>>> = ({ signal }) => listLeistungen(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeistungen>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeistungenQueryResult = NonNullable<Awaited<ReturnType<typeof listLeistungen>>>
+export type ListLeistungenQueryError = ErrorType<void>
+
+
+/**
+ * @summary Leistungen eines Projekts auflisten (Alias für /takte)
+ */
+
+export function useListLeistungen<TData = Awaited<ReturnType<typeof listLeistungen>>, TError = ErrorType<void>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeistungenQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateLeistungUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungen`
+}
+
+/**
+ * @summary Neue Leistung anlegen (Alias für POST /takte)
+ */
+export const createLeistung = async (projectId: string,
+    createLeistungRequest: CreateLeistungRequest, options?: RequestInit): Promise<Leistung> => {
+
+  return customFetch<Leistung>(getCreateLeistungUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createLeistungRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistung>>, TError,{projectId: string;data: BodyType<CreateLeistungRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistung>>, TError,{projectId: string;data: BodyType<CreateLeistungRequest>}, TContext> => {
+
+const mutationKey = ['createLeistung'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistung>>, {projectId: string;data: BodyType<CreateLeistungRequest>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  createLeistung(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistung>>>
+    export type CreateLeistungMutationBody = BodyType<CreateLeistungRequest>
+    export type CreateLeistungMutationError = ErrorType<void>
+
+    /**
+ * @summary Neue Leistung anlegen (Alias für POST /takte)
+ */
+export const useCreateLeistung = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistung>>, TError,{projectId: string;data: BodyType<CreateLeistungRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistung>>,
+        TError,
+        {projectId: string;data: BodyType<CreateLeistungRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungMutationOptions(options));
+    }
+
+export const getGetLeistungUrl = (projectId: string,
+    leistungId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungen/${leistungId}`
+}
+
+/**
+ * @summary Einzelne Leistung abrufen (Alias für GET /takte/:taktId)
+ */
+export const getLeistung = async (projectId: string,
+    leistungId: string, options?: RequestInit): Promise<Leistung> => {
+
+  return customFetch<Leistung>(getGetLeistungUrl(projectId,leistungId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeistungQueryKey = (projectId: string,
+    leistungId: string,) => {
+    return [
+    `/api/projects/${projectId}/leistungen/${leistungId}`
+    ] as const;
+    }
+
+
+export const getGetLeistungQueryOptions = <TData = Awaited<ReturnType<typeof getLeistung>>, TError = ErrorType<void>>(projectId: string,
+    leistungId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistung>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeistungQueryKey(projectId,leistungId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeistung>>> = ({ signal }) => getLeistung(projectId,leistungId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined && leistungId !== null && leistungId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeistung>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeistungQueryResult = NonNullable<Awaited<ReturnType<typeof getLeistung>>>
+export type GetLeistungQueryError = ErrorType<void>
+
+
+/**
+ * @summary Einzelne Leistung abrufen (Alias für GET /takte/:taktId)
+ */
+
+export function useGetLeistung<TData = Awaited<ReturnType<typeof getLeistung>>, TError = ErrorType<void>>(
+ projectId: string,
+    leistungId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistung>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeistungQueryOptions(projectId,leistungId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateLeistungUrl = (projectId: string,
+    leistungId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungen/${leistungId}`
+}
+
+/**
+ * @summary Leistung aktualisieren (Alias für PATCH /takte/:taktId)
+ */
+export const updateLeistung = async (projectId: string,
+    leistungId: string,
+    updateLeistungRequest: UpdateLeistungRequest, options?: RequestInit): Promise<LeistungUpdateResult> => {
+
+  return customFetch<LeistungUpdateResult>(getUpdateLeistungUrl(projectId,leistungId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateLeistungRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateLeistungMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLeistung>>, TError,{projectId: string;leistungId: string;data: BodyType<UpdateLeistungRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateLeistung>>, TError,{projectId: string;leistungId: string;data: BodyType<UpdateLeistungRequest>}, TContext> => {
+
+const mutationKey = ['updateLeistung'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLeistung>>, {projectId: string;leistungId: string;data: BodyType<UpdateLeistungRequest>}> = (props) => {
+          const {projectId,leistungId,data} = props ?? {};
+
+          return  updateLeistung(projectId,leistungId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateLeistungMutationResult = NonNullable<Awaited<ReturnType<typeof updateLeistung>>>
+    export type UpdateLeistungMutationBody = BodyType<UpdateLeistungRequest>
+    export type UpdateLeistungMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistung aktualisieren (Alias für PATCH /takte/:taktId)
+ */
+export const useUpdateLeistung = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLeistung>>, TError,{projectId: string;leistungId: string;data: BodyType<UpdateLeistungRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateLeistung>>,
+        TError,
+        {projectId: string;leistungId: string;data: BodyType<UpdateLeistungRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateLeistungMutationOptions(options));
+    }
+
+export const getDeleteLeistungUrl = (projectId: string,
+    leistungId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungen/${leistungId}`
+}
+
+/**
+ * @summary Leistung löschen (Alias für DELETE /takte/:taktId)
+ */
+export const deleteLeistung = async (projectId: string,
+    leistungId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteLeistungUrl(projectId,leistungId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteLeistungMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistung>>, TError,{projectId: string;leistungId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLeistung>>, TError,{projectId: string;leistungId: string}, TContext> => {
+
+const mutationKey = ['deleteLeistung'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLeistung>>, {projectId: string;leistungId: string}> = (props) => {
+          const {projectId,leistungId} = props ?? {};
+
+          return  deleteLeistung(projectId,leistungId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLeistungMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLeistung>>>
+
+    export type DeleteLeistungMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistung löschen (Alias für DELETE /takte/:taktId)
+ */
+export const useDeleteLeistung = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistung>>, TError,{projectId: string;leistungId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLeistung>>,
+        TError,
+        {projectId: string;leistungId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteLeistungMutationOptions(options));
+    }
+
+export const getListLeistungsabhaengigkeitenUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungsabhaengigkeiten`
+}
+
+/**
+ * @summary Leistungsabhängigkeiten auflisten (Alias für /takt-dependencies)
+ */
+export const listLeistungsabhaengigkeiten = async (projectId: string, options?: RequestInit): Promise<TaktDependency[]> => {
+
+  return customFetch<TaktDependency[]>(getListLeistungsabhaengigkeitenUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeistungsabhaengigkeitenQueryKey = (projectId: string,) => {
+    return [
+    `/api/projects/${projectId}/leistungsabhaengigkeiten`
+    ] as const;
+    }
+
+
+export const getListLeistungsabhaengigkeitenQueryOptions = <TData = Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>, TError = ErrorType<void>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeistungsabhaengigkeitenQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>> = ({ signal }) => listLeistungsabhaengigkeiten(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeistungsabhaengigkeitenQueryResult = NonNullable<Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>>
+export type ListLeistungsabhaengigkeitenQueryError = ErrorType<void>
+
+
+/**
+ * @summary Leistungsabhängigkeiten auflisten (Alias für /takt-dependencies)
+ */
+
+export function useListLeistungsabhaengigkeiten<TData = Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>, TError = ErrorType<void>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsabhaengigkeiten>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeistungsabhaengigkeitenQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateLeistungsabhaengigkeitUrl = (projectId: string,
+    params?: CreateLeistungsabhaengigkeitParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/projects/${projectId}/leistungsabhaengigkeiten?${stringifiedParams}` : `/api/projects/${projectId}/leistungsabhaengigkeiten`
+}
+
+/**
+ * @summary Leistungsabhängigkeit anlegen (Alias für POST /takt-dependencies)
+ */
+export const createLeistungsabhaengigkeit = async (projectId: string,
+    createTaktDependencyRequest: CreateTaktDependencyRequest,
+    params?: CreateLeistungsabhaengigkeitParams, options?: RequestInit): Promise<TaktDependencyCreateResult> => {
+
+  return customFetch<TaktDependencyCreateResult>(getCreateLeistungsabhaengigkeitUrl(projectId,params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTaktDependencyRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungsabhaengigkeitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>, TError,{projectId: string;data: BodyType<CreateTaktDependencyRequest>;params?: CreateLeistungsabhaengigkeitParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>, TError,{projectId: string;data: BodyType<CreateTaktDependencyRequest>;params?: CreateLeistungsabhaengigkeitParams}, TContext> => {
+
+const mutationKey = ['createLeistungsabhaengigkeit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>, {projectId: string;data: BodyType<CreateTaktDependencyRequest>;params?: CreateLeistungsabhaengigkeitParams}> = (props) => {
+          const {projectId,data,params} = props ?? {};
+
+          return  createLeistungsabhaengigkeit(projectId,data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungsabhaengigkeitMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>>
+    export type CreateLeistungsabhaengigkeitMutationBody = BodyType<CreateTaktDependencyRequest>
+    export type CreateLeistungsabhaengigkeitMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistungsabhängigkeit anlegen (Alias für POST /takt-dependencies)
+ */
+export const useCreateLeistungsabhaengigkeit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>, TError,{projectId: string;data: BodyType<CreateTaktDependencyRequest>;params?: CreateLeistungsabhaengigkeitParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistungsabhaengigkeit>>,
+        TError,
+        {projectId: string;data: BodyType<CreateTaktDependencyRequest>;params?: CreateLeistungsabhaengigkeitParams},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungsabhaengigkeitMutationOptions(options));
+    }
+
+export const getDeleteLeistungsabhaengigkeitUrl = (projectId: string,
+    depId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungsabhaengigkeiten/${depId}`
+}
+
+/**
+ * @summary Leistungsabhängigkeit löschen (Alias für DELETE /takt-dependencies/:depId)
+ */
+export const deleteLeistungsabhaengigkeit = async (projectId: string,
+    depId: string, options?: RequestInit): Promise<TaktDependencyDeleteResult> => {
+
+  return customFetch<TaktDependencyDeleteResult>(getDeleteLeistungsabhaengigkeitUrl(projectId,depId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteLeistungsabhaengigkeitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>, TError,{projectId: string;depId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>, TError,{projectId: string;depId: string}, TContext> => {
+
+const mutationKey = ['deleteLeistungsabhaengigkeit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>, {projectId: string;depId: string}> = (props) => {
+          const {projectId,depId} = props ?? {};
+
+          return  deleteLeistungsabhaengigkeit(projectId,depId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLeistungsabhaengigkeitMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>>
+
+    export type DeleteLeistungsabhaengigkeitMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistungsabhängigkeit löschen (Alias für DELETE /takt-dependencies/:depId)
+ */
+export const useDeleteLeistungsabhaengigkeit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>, TError,{projectId: string;depId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLeistungsabhaengigkeit>>,
+        TError,
+        {projectId: string;depId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteLeistungsabhaengigkeitMutationOptions(options));
+    }
+
+export const getListLeistungsanfragenUrl = (params?: ListLeistungsanfragenParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/leistungsanfragen?${stringifiedParams}` : `/api/leistungsanfragen`
+}
+
+/**
+ * GU sieht eigene Anfragen, NU sieht eingehende Anfragen. Kanonische Felder (leistungId, leistungsanfrageId) werden zusammen mit den Legacy-Feldern (taktId, id) zurückgegeben.
+ * @summary Leistungsanfragen auflisten (Alias für GET /takt-requests)
+ */
+export const listLeistungsanfragen = async (params?: ListLeistungsanfragenParams, options?: RequestInit): Promise<LeistungsanfrageListItem[]> => {
+
+  return customFetch<LeistungsanfrageListItem[]>(getListLeistungsanfragenUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeistungsanfragenQueryKey = (params?: ListLeistungsanfragenParams,) => {
+    return [
+    `/api/leistungsanfragen`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListLeistungsanfragenQueryOptions = <TData = Awaited<ReturnType<typeof listLeistungsanfragen>>, TError = ErrorType<void>>(params?: ListLeistungsanfragenParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfragen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeistungsanfragenQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeistungsanfragen>>> = ({ signal }) => listLeistungsanfragen(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfragen>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeistungsanfragenQueryResult = NonNullable<Awaited<ReturnType<typeof listLeistungsanfragen>>>
+export type ListLeistungsanfragenQueryError = ErrorType<void>
+
+
+/**
+ * @summary Leistungsanfragen auflisten (Alias für GET /takt-requests)
+ */
+
+export function useListLeistungsanfragen<TData = Awaited<ReturnType<typeof listLeistungsanfragen>>, TError = ErrorType<void>>(
+ params?: ListLeistungsanfragenParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfragen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeistungsanfragenQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateLeistungsanfrageUrl = () => {
+
+
+
+
+  return `/api/leistungsanfragen`
+}
+
+/**
+ * GU erstellt eine Leistungsanfrage im DRAFT-Status mit unveränderlichem Snapshot. Keine Nachricht wird versendet; /leistungsanfragen/{id}/send auslösen, um die Benachrichtigung zuzustellen. Akzeptiert sowohl leistungId als auch taktId (kanonisch hat Vorrang).
+ * @summary Leistungsanfrage erstellen (Alias für POST /takt-requests)
+ */
+export const createLeistungsanfrage = async (createLeistungsanfrageBody: CreateLeistungsanfrageBody, options?: RequestInit): Promise<LeistungsanfrageDraftResponse> => {
+
+  return customFetch<LeistungsanfrageDraftResponse>(getCreateLeistungsanfrageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createLeistungsanfrageBody)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungsanfrageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrage>>, TError,{data: BodyType<CreateLeistungsanfrageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrage>>, TError,{data: BodyType<CreateLeistungsanfrageBody>}, TContext> => {
+
+const mutationKey = ['createLeistungsanfrage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistungsanfrage>>, {data: BodyType<CreateLeistungsanfrageBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createLeistungsanfrage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungsanfrageMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistungsanfrage>>>
+    export type CreateLeistungsanfrageMutationBody = BodyType<CreateLeistungsanfrageBody>
+    export type CreateLeistungsanfrageMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistungsanfrage erstellen (Alias für POST /takt-requests)
+ */
+export const useCreateLeistungsanfrage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrage>>, TError,{data: BodyType<CreateLeistungsanfrageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistungsanfrage>>,
+        TError,
+        {data: BodyType<CreateLeistungsanfrageBody>},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungsanfrageMutationOptions(options));
+    }
+
+export const getCreateProjectLeistungsanfrageUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/leistungsanfragen`
+}
+
+/**
+ * @summary Leistungsanfrage im Projektkontext erstellen (Alias für POST /projects/:id/takt-requests)
+ */
+export const createProjectLeistungsanfrage = async (projectId: string,
+    createLeistungsanfrageBody: CreateLeistungsanfrageBody, options?: RequestInit): Promise<LeistungsanfrageDraftResponse> => {
+
+  return customFetch<LeistungsanfrageDraftResponse>(getCreateProjectLeistungsanfrageUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createLeistungsanfrageBody)
+  }
+);}
+
+
+
+
+
+export const getCreateProjectLeistungsanfrageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectLeistungsanfrage>>, TError,{projectId: string;data: BodyType<CreateLeistungsanfrageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProjectLeistungsanfrage>>, TError,{projectId: string;data: BodyType<CreateLeistungsanfrageBody>}, TContext> => {
+
+const mutationKey = ['createProjectLeistungsanfrage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProjectLeistungsanfrage>>, {projectId: string;data: BodyType<CreateLeistungsanfrageBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  createProjectLeistungsanfrage(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateProjectLeistungsanfrageMutationResult = NonNullable<Awaited<ReturnType<typeof createProjectLeistungsanfrage>>>
+    export type CreateProjectLeistungsanfrageMutationBody = BodyType<CreateLeistungsanfrageBody>
+    export type CreateProjectLeistungsanfrageMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistungsanfrage im Projektkontext erstellen (Alias für POST /projects/:id/takt-requests)
+ */
+export const useCreateProjectLeistungsanfrage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectLeistungsanfrage>>, TError,{projectId: string;data: BodyType<CreateLeistungsanfrageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProjectLeistungsanfrage>>,
+        TError,
+        {projectId: string;data: BodyType<CreateLeistungsanfrageBody>},
+        TContext
+      > => {
+      return useMutation(getCreateProjectLeistungsanfrageMutationOptions(options));
+    }
+
+export const getGetLeistungsanfrageDetailUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}`
+}
+
+/**
+ * @summary GU-Detailansicht einer Leistungsanfrage (Alias für GET /takt-requests/:id)
+ */
+export const getLeistungsanfrageDetail = async (leistungsanfrageId: string, options?: RequestInit): Promise<TaktRequestDetail> => {
+
+  return customFetch<TaktRequestDetail>(getGetLeistungsanfrageDetailUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeistungsanfrageDetailQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/leistungsanfragen/${leistungsanfrageId}`
+    ] as const;
+    }
+
+
+export const getGetLeistungsanfrageDetailQueryOptions = <TData = Awaited<ReturnType<typeof getLeistungsanfrageDetail>>, TError = ErrorType<void>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeistungsanfrageDetailQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeistungsanfrageDetail>>> = ({ signal }) => getLeistungsanfrageDetail(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeistungsanfrageDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getLeistungsanfrageDetail>>>
+export type GetLeistungsanfrageDetailQueryError = ErrorType<void>
+
+
+/**
+ * @summary GU-Detailansicht einer Leistungsanfrage (Alias für GET /takt-requests/:id)
+ */
+
+export function useGetLeistungsanfrageDetail<TData = Awaited<ReturnType<typeof getLeistungsanfrageDetail>>, TError = ErrorType<void>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeistungsanfrageDetailQueryOptions(leistungsanfrageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendLeistungsanfrageUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/send`
+}
+
+/**
+ * @summary Leistungsanfrage versenden (Alias für POST /takt-requests/:id/send)
+ */
+export const sendLeistungsanfrage = async (leistungsanfrageId: string, options?: RequestInit): Promise<TaktRequestSendResult> => {
+
+  return customFetch<TaktRequestSendResult>(getSendLeistungsanfrageUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendLeistungsanfrageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendLeistungsanfrage>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendLeistungsanfrage>>, TError,{leistungsanfrageId: string}, TContext> => {
+
+const mutationKey = ['sendLeistungsanfrage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendLeistungsanfrage>>, {leistungsanfrageId: string}> = (props) => {
+          const {leistungsanfrageId} = props ?? {};
+
+          return  sendLeistungsanfrage(leistungsanfrageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendLeistungsanfrageMutationResult = NonNullable<Awaited<ReturnType<typeof sendLeistungsanfrage>>>
+
+    export type SendLeistungsanfrageMutationError = ErrorType<void>
+
+    /**
+ * @summary Leistungsanfrage versenden (Alias für POST /takt-requests/:id/send)
+ */
+export const useSendLeistungsanfrage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendLeistungsanfrage>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendLeistungsanfrage>>,
+        TError,
+        {leistungsanfrageId: string},
+        TContext
+      > => {
+      return useMutation(getSendLeistungsanfrageMutationOptions(options));
+    }
+
+export const getGetLeistungsanfrageDetailsUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/details`
+}
+
+/**
+ * @summary Unveränderlichen Leistungssnapshot abrufen (Alias für GET /takt-requests/:id/details)
+ */
+export const getLeistungsanfrageDetails = async (leistungsanfrageId: string, options?: RequestInit): Promise<TaktRequestDetailsResponse> => {
+
+  return customFetch<TaktRequestDetailsResponse>(getGetLeistungsanfrageDetailsUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeistungsanfrageDetailsQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/leistungsanfragen/${leistungsanfrageId}/details`
+    ] as const;
+    }
+
+
+export const getGetLeistungsanfrageDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getLeistungsanfrageDetails>>, TError = ErrorType<void>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeistungsanfrageDetailsQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeistungsanfrageDetails>>> = ({ signal }) => getLeistungsanfrageDetails(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeistungsanfrageDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getLeistungsanfrageDetails>>>
+export type GetLeistungsanfrageDetailsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Unveränderlichen Leistungssnapshot abrufen (Alias für GET /takt-requests/:id/details)
+ */
+
+export function useGetLeistungsanfrageDetails<TData = Awaited<ReturnType<typeof getLeistungsanfrageDetails>>, TError = ErrorType<void>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeistungsanfrageDetailsQueryOptions(leistungsanfrageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRunLeistungsanfrageAvailabilityCheckUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/availability-checks`
+}
+
+/**
+ * @summary Verfügbarkeitsprüfung ausführen (Alias für POST /takt-requests/:id/availability-checks)
+ */
+export const runLeistungsanfrageAvailabilityCheck = async (leistungsanfrageId: string, options?: RequestInit): Promise<AvailabilityCheckResponse> => {
+
+  return customFetch<AvailabilityCheckResponse>(getRunLeistungsanfrageAvailabilityCheckUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRunLeistungsanfrageAvailabilityCheckMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>, TError,{leistungsanfrageId: string}, TContext> => {
+
+const mutationKey = ['runLeistungsanfrageAvailabilityCheck'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>, {leistungsanfrageId: string}> = (props) => {
+          const {leistungsanfrageId} = props ?? {};
+
+          return  runLeistungsanfrageAvailabilityCheck(leistungsanfrageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunLeistungsanfrageAvailabilityCheckMutationResult = NonNullable<Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>>
+
+    export type RunLeistungsanfrageAvailabilityCheckMutationError = ErrorType<void>
+
+    /**
+ * @summary Verfügbarkeitsprüfung ausführen (Alias für POST /takt-requests/:id/availability-checks)
+ */
+export const useRunLeistungsanfrageAvailabilityCheck = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runLeistungsanfrageAvailabilityCheck>>,
+        TError,
+        {leistungsanfrageId: string},
+        TContext
+      > => {
+      return useMutation(getRunLeistungsanfrageAvailabilityCheckMutationOptions(options));
+    }
+
+export const getGetLeistungsanfrageLatestAvailabilityCheckUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/availability-checks/latest`
+}
+
+/**
+ * @summary Neueste Verfügbarkeitsprüfung abrufen (Alias für GET /takt-requests/:id/availability-checks/latest)
+ */
+export const getLeistungsanfrageLatestAvailabilityCheck = async (leistungsanfrageId: string, options?: RequestInit): Promise<AvailabilityCheckResponse> => {
+
+  return customFetch<AvailabilityCheckResponse>(getGetLeistungsanfrageLatestAvailabilityCheckUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeistungsanfrageLatestAvailabilityCheckQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/leistungsanfragen/${leistungsanfrageId}/availability-checks/latest`
+    ] as const;
+    }
+
+
+export const getGetLeistungsanfrageLatestAvailabilityCheckQueryOptions = <TData = Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>, TError = ErrorType<void>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeistungsanfrageLatestAvailabilityCheckQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>> = ({ signal }) => getLeistungsanfrageLatestAvailabilityCheck(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeistungsanfrageLatestAvailabilityCheckQueryResult = NonNullable<Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>>
+export type GetLeistungsanfrageLatestAvailabilityCheckQueryError = ErrorType<void>
+
+
+/**
+ * @summary Neueste Verfügbarkeitsprüfung abrufen (Alias für GET /takt-requests/:id/availability-checks/latest)
+ */
+
+export function useGetLeistungsanfrageLatestAvailabilityCheck<TData = Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>, TError = ErrorType<void>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeistungsanfrageLatestAvailabilityCheckQueryOptions(leistungsanfrageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubmitLeistungsanfrageResponseUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/responses`
+}
+
+/**
+ * @summary AN-Antwort einreichen (Alias für POST /takt-requests/:id/responses)
+ */
+export const submitLeistungsanfrageResponse = async (leistungsanfrageId: string,
+    nuResponseCreate: NuResponseCreate, options?: RequestInit): Promise<NuResponseResult> => {
+
+  return customFetch<NuResponseResult>(getSubmitLeistungsanfrageResponseUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(nuResponseCreate)
+  }
+);}
+
+
+
+
+
+export const getSubmitLeistungsanfrageResponseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>, TError,{leistungsanfrageId: string;data: BodyType<NuResponseCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>, TError,{leistungsanfrageId: string;data: BodyType<NuResponseCreate>}, TContext> => {
+
+const mutationKey = ['submitLeistungsanfrageResponse'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>, {leistungsanfrageId: string;data: BodyType<NuResponseCreate>}> = (props) => {
+          const {leistungsanfrageId,data} = props ?? {};
+
+          return  submitLeistungsanfrageResponse(leistungsanfrageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitLeistungsanfrageResponseMutationResult = NonNullable<Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>>
+    export type SubmitLeistungsanfrageResponseMutationBody = BodyType<NuResponseCreate>
+    export type SubmitLeistungsanfrageResponseMutationError = ErrorType<void>
+
+    /**
+ * @summary AN-Antwort einreichen (Alias für POST /takt-requests/:id/responses)
+ */
+export const useSubmitLeistungsanfrageResponse = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>, TError,{leistungsanfrageId: string;data: BodyType<NuResponseCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitLeistungsanfrageResponse>>,
+        TError,
+        {leistungsanfrageId: string;data: BodyType<NuResponseCreate>},
+        TContext
+      > => {
+      return useMutation(getSubmitLeistungsanfrageResponseMutationOptions(options));
+    }
+
+export const getCreateLeistungsanfrageGuDecisionUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/gu-decisions`
+}
+
+/**
+ * @summary GU-Entscheidung zur AN-Antwort erstellen (Alias für POST /takt-requests/:id/gu-decisions)
+ */
+export const createLeistungsanfrageGuDecision = async (leistungsanfrageId: string,
+    guDecisionCreate: GuDecisionCreate, options?: RequestInit): Promise<GuDecisionResponse> => {
+
+  return customFetch<GuDecisionResponse>(getCreateLeistungsanfrageGuDecisionUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(guDecisionCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungsanfrageGuDecisionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>, TError,{leistungsanfrageId: string;data: BodyType<GuDecisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>, TError,{leistungsanfrageId: string;data: BodyType<GuDecisionCreate>}, TContext> => {
+
+const mutationKey = ['createLeistungsanfrageGuDecision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>, {leistungsanfrageId: string;data: BodyType<GuDecisionCreate>}> = (props) => {
+          const {leistungsanfrageId,data} = props ?? {};
+
+          return  createLeistungsanfrageGuDecision(leistungsanfrageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungsanfrageGuDecisionMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>>
+    export type CreateLeistungsanfrageGuDecisionMutationBody = BodyType<GuDecisionCreate>
+    export type CreateLeistungsanfrageGuDecisionMutationError = ErrorType<void>
+
+    /**
+ * @summary GU-Entscheidung zur AN-Antwort erstellen (Alias für POST /takt-requests/:id/gu-decisions)
+ */
+export const useCreateLeistungsanfrageGuDecision = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>, TError,{leistungsanfrageId: string;data: BodyType<GuDecisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistungsanfrageGuDecision>>,
+        TError,
+        {leistungsanfrageId: string;data: BodyType<GuDecisionCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungsanfrageGuDecisionMutationOptions(options));
+    }
+
+export const getCreateLeistungsanfrageRevisionUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/revisions`
+}
+
+/**
+ * @summary Neue Koordinationsrunde starten (Alias für POST /takt-requests/:id/revisions)
+ */
+export const createLeistungsanfrageRevision = async (leistungsanfrageId: string,
+    revisionCreate: RevisionCreate, options?: RequestInit): Promise<RevisionResponse> => {
+
+  return customFetch<RevisionResponse>(getCreateLeistungsanfrageRevisionUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(revisionCreate)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungsanfrageRevisionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageRevision>>, TError,{leistungsanfrageId: string;data: BodyType<RevisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageRevision>>, TError,{leistungsanfrageId: string;data: BodyType<RevisionCreate>}, TContext> => {
+
+const mutationKey = ['createLeistungsanfrageRevision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistungsanfrageRevision>>, {leistungsanfrageId: string;data: BodyType<RevisionCreate>}> = (props) => {
+          const {leistungsanfrageId,data} = props ?? {};
+
+          return  createLeistungsanfrageRevision(leistungsanfrageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungsanfrageRevisionMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistungsanfrageRevision>>>
+    export type CreateLeistungsanfrageRevisionMutationBody = BodyType<RevisionCreate>
+    export type CreateLeistungsanfrageRevisionMutationError = ErrorType<void>
+
+    /**
+ * @summary Neue Koordinationsrunde starten (Alias für POST /takt-requests/:id/revisions)
+ */
+export const useCreateLeistungsanfrageRevision = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageRevision>>, TError,{leistungsanfrageId: string;data: BodyType<RevisionCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistungsanfrageRevision>>,
+        TError,
+        {leistungsanfrageId: string;data: BodyType<RevisionCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungsanfrageRevisionMutationOptions(options));
+    }
+
+export const getGetLeistungsanfrageAuditTrailUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/audit-trail`
+}
+
+/**
+ * @summary Koordinations-Auditpfad abrufen (Alias für GET /takt-requests/:id/audit-trail)
+ */
+export const getLeistungsanfrageAuditTrail = async (leistungsanfrageId: string, options?: RequestInit): Promise<TaktRequestAuditTrailResponse> => {
+
+  return customFetch<TaktRequestAuditTrailResponse>(getGetLeistungsanfrageAuditTrailUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeistungsanfrageAuditTrailQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/leistungsanfragen/${leistungsanfrageId}/audit-trail`
+    ] as const;
+    }
+
+
+export const getGetLeistungsanfrageAuditTrailQueryOptions = <TData = Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>, TError = ErrorType<void>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeistungsanfrageAuditTrailQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>> = ({ signal }) => getLeistungsanfrageAuditTrail(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeistungsanfrageAuditTrailQueryResult = NonNullable<Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>>
+export type GetLeistungsanfrageAuditTrailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Koordinations-Auditpfad abrufen (Alias für GET /takt-requests/:id/audit-trail)
+ */
+
+export function useGetLeistungsanfrageAuditTrail<TData = Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>, TError = ErrorType<void>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeistungsanfrageAuditTrail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeistungsanfrageAuditTrailQueryOptions(leistungsanfrageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListLeistungsanfrageResourceRequirementsUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/resource-requirements`
+}
+
+/**
+ * @summary Ressourceanforderungen auflisten (Alias für GET /takt-requests/:id/resource-requirements)
+ */
+export const listLeistungsanfrageResourceRequirements = async (leistungsanfrageId: string, options?: RequestInit): Promise<ResourceRequirement[]> => {
+
+  return customFetch<ResourceRequirement[]>(getListLeistungsanfrageResourceRequirementsUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeistungsanfrageResourceRequirementsQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/leistungsanfragen/${leistungsanfrageId}/resource-requirements`
+    ] as const;
+    }
+
+
+export const getListLeistungsanfrageResourceRequirementsQueryOptions = <TData = Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>, TError = ErrorType<void>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeistungsanfrageResourceRequirementsQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>> = ({ signal }) => listLeistungsanfrageResourceRequirements(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeistungsanfrageResourceRequirementsQueryResult = NonNullable<Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>>
+export type ListLeistungsanfrageResourceRequirementsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Ressourceanforderungen auflisten (Alias für GET /takt-requests/:id/resource-requirements)
+ */
+
+export function useListLeistungsanfrageResourceRequirements<TData = Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>, TError = ErrorType<void>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeistungsanfrageResourceRequirements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeistungsanfrageResourceRequirementsQueryOptions(leistungsanfrageId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateLeistungsanfrageResourceRequirementUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/resource-requirements`
+}
+
+/**
+ * @summary Ressourceanforderung hinzufügen (Alias für POST /takt-requests/:id/resource-requirements)
+ */
+export const createLeistungsanfrageResourceRequirement = async (leistungsanfrageId: string,
+    createResourceRequirementRequest: CreateResourceRequirementRequest, options?: RequestInit): Promise<ResourceRequirement> => {
+
+  return customFetch<ResourceRequirement>(getCreateLeistungsanfrageResourceRequirementUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createResourceRequirementRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateLeistungsanfrageResourceRequirementMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;data: BodyType<CreateResourceRequirementRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;data: BodyType<CreateResourceRequirementRequest>}, TContext> => {
+
+const mutationKey = ['createLeistungsanfrageResourceRequirement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>, {leistungsanfrageId: string;data: BodyType<CreateResourceRequirementRequest>}> = (props) => {
+          const {leistungsanfrageId,data} = props ?? {};
+
+          return  createLeistungsanfrageResourceRequirement(leistungsanfrageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeistungsanfrageResourceRequirementMutationResult = NonNullable<Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>>
+    export type CreateLeistungsanfrageResourceRequirementMutationBody = BodyType<CreateResourceRequirementRequest>
+    export type CreateLeistungsanfrageResourceRequirementMutationError = ErrorType<void>
+
+    /**
+ * @summary Ressourceanforderung hinzufügen (Alias für POST /takt-requests/:id/resource-requirements)
+ */
+export const useCreateLeistungsanfrageResourceRequirement = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;data: BodyType<CreateResourceRequirementRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeistungsanfrageResourceRequirement>>,
+        TError,
+        {leistungsanfrageId: string;data: BodyType<CreateResourceRequirementRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateLeistungsanfrageResourceRequirementMutationOptions(options));
+    }
+
+export const getDeleteLeistungsanfrageResourceRequirementUrl = (leistungsanfrageId: string,
+    reqId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/resource-requirements/${reqId}`
+}
+
+/**
+ * @summary Ressourceanforderung entfernen (Alias für DELETE /takt-requests/:id/resource-requirements/:reqId)
+ */
+export const deleteLeistungsanfrageResourceRequirement = async (leistungsanfrageId: string,
+    reqId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteLeistungsanfrageResourceRequirementUrl(leistungsanfrageId,reqId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteLeistungsanfrageResourceRequirementMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;reqId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;reqId: string}, TContext> => {
+
+const mutationKey = ['deleteLeistungsanfrageResourceRequirement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>, {leistungsanfrageId: string;reqId: string}> = (props) => {
+          const {leistungsanfrageId,reqId} = props ?? {};
+
+          return  deleteLeistungsanfrageResourceRequirement(leistungsanfrageId,reqId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLeistungsanfrageResourceRequirementMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>>
+
+    export type DeleteLeistungsanfrageResourceRequirementMutationError = ErrorType<void>
+
+    /**
+ * @summary Ressourceanforderung entfernen (Alias für DELETE /takt-requests/:id/resource-requirements/:reqId)
+ */
+export const useDeleteLeistungsanfrageResourceRequirement = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>, TError,{leistungsanfrageId: string;reqId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLeistungsanfrageResourceRequirement>>,
+        TError,
+        {leistungsanfrageId: string;reqId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteLeistungsanfrageResourceRequirementMutationOptions(options));
+    }
+
 export const getListNuLocalProjectsUrl = (params?: ListNuLocalProjectsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6120,106 +7856,3 @@ export const useCancelNuResourceBooking = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCancelNuResourceBookingMutationOptions(options));
     }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Project Calendar — manually appended (not auto-generated)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const getProjectCalendarUrl = (projectId: string) => `/api/projects/${projectId}/calendar`;
-
-export const getProjectCalendar = (
-  projectId: string,
-  options?: SecondParameter<typeof customFetch>,
-): Promise<ProjectCalendar> =>
-  customFetch<ProjectCalendar>(getProjectCalendarUrl(projectId), options);
-
-export const getGetProjectCalendarQueryKey = (projectId: string) =>
-  [`/api/projects/${projectId}/calendar`] as const;
-
-export const getGetProjectCalendarQueryOptions = <
-  TData = Awaited<ReturnType<typeof getProjectCalendar>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-  const queryKey = queryOptions?.queryKey ?? getGetProjectCalendarQueryKey(projectId);
-  return {
-    queryKey,
-    queryFn: () => getProjectCalendar(projectId, requestOptions),
-    ...queryOptions,
-  } as UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData> & { queryKey: QueryKey };
-};
-
-export function useGetProjectCalendar<
-  TData = Awaited<ReturnType<typeof getProjectCalendar>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getProjectCalendar>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
-) {
-  const queryOptions = getGetProjectCalendarQueryOptions(projectId, options);
-  return useQuery(queryOptions);
-}
-
-export const updateProjectCalendar = (
-  projectId: string,
-  updateProjectCalendarRequest: UpdateProjectCalendarRequest,
-  options?: SecondParameter<typeof customFetch>,
-): Promise<ProjectCalendar> =>
-  customFetch<ProjectCalendar>(getProjectCalendarUrl(projectId), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updateProjectCalendarRequest),
-    ...options,
-  } as any);
-
-export const getUpdateProjectCalendarMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext> => {
-  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
-  return {
-    mutationFn: ({ projectId, data }) => updateProjectCalendar(projectId, data, requestOptions),
-    ...mutationOptions,
-  };
-};
-
-export const useUpdateProjectCalendar = <TError = ErrorType<unknown>, TContext = unknown>(
-  options?: {
-    mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProjectCalendar>>, TError, { projectId: string; data: UpdateProjectCalendarRequest }, TContext>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => useMutation(getUpdateProjectCalendarMutationOptions(options));
-
-// ── Takt Dependency — variant that skips cascade-reschedule ──────────────────
-export const createTaktDependencySkipReschedule = (
-  projectId: string,
-  createTaktDependencyRequest: CreateTaktDependencyRequest,
-  options?: SecondParameter<typeof customFetch>,
-): Promise<TaktDependencyCreateResult> =>
-  customFetch<TaktDependencyCreateResult>(
-    `/api/projects/${projectId}/takt-dependencies?skipReschedule=true`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(createTaktDependencyRequest),
-      ...options,
-    } as any,
-  );
-
-export const useCreateTaktDependencySkipReschedule = <TError = ErrorType<unknown>, TContext = unknown>(
-  options?: {
-    mutation?: UseMutationOptions<Awaited<ReturnType<typeof createTaktDependencySkipReschedule>>, TError, { projectId: string; data: CreateTaktDependencyRequest }, TContext>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) =>
-  useMutation({
-    mutationFn: ({ projectId, data }: { projectId: string; data: CreateTaktDependencyRequest }) =>
-      createTaktDependencySkipReschedule(projectId, data),
-    ...options?.mutation,
-  });

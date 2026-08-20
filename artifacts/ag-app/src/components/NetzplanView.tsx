@@ -388,7 +388,7 @@ export default function NetzplanView({ takte, deps, alternativeImpacts = [] }: N
   if (takte.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-16">
-        <p className="text-sm">Noch keine Takte vorhanden.</p>
+        <p className="text-sm">Noch keine Leistungen vorhanden.</p>
       </div>
     );
   }

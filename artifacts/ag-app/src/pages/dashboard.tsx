@@ -63,7 +63,7 @@ export default function Dashboard() {
       color: 'text-destructive',
     },
     {
-      title: 'Bestätigte Takte',
+      title: 'Bestätigte Leistungen',
       value: summary?.confirmedTakts ?? 0,
       description: 'Bereit zur Ausführung',
       icon: CheckCircle,
@@ -126,7 +126,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                Keine anstehenden Takte in den nächsten 7 Tagen.
+                Keine anstehenden Leistungen in den nächsten 7 Tagen.
               </div>
             )}
           </CardContent>

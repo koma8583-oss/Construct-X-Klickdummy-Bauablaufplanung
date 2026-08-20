@@ -128,7 +128,7 @@ export default function RequestDetail() {
           <CardContent className="space-y-4">
             {delegation.takt?.status && (
               <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">Takt-Status</div>
+                <div className="text-sm font-medium text-muted-foreground mb-1">Leistungs-Status</div>
                 <TaktStatusBadge status={delegation.takt.status} />
               </div>
             )}

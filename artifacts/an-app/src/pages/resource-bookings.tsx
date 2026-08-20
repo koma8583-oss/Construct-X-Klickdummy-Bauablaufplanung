@@ -69,7 +69,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const SOURCE_LABELS: Record<string, string> = {
   LOCAL_PROJECT: "Lokales Projekt",
-  TAKT_REQUEST: "TaktAnfrage",
+  TAKT_REQUEST: "Leistungsanfrage",
   MANUAL_BLOCK: "Manueller Block",
   ABSENCE: "Abwesenheit",
   MAINTENANCE: "Wartung",
@@ -460,7 +460,7 @@ export default function ResourceBookingsPage() {
         <div>
           <h1 className="text-2xl font-bold">Ressourcenbelegungen</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Alle Belegungen Ihrer Ressourcen — intern und aus TaktAnfragen
+            Alle Belegungen Ihrer Ressourcen — intern und aus Leistungsanfragen
           </p>
         </div>
         <Button
@@ -618,7 +618,7 @@ export default function ResourceBookingsPage() {
                                 className="h-7 w-7 text-red-500 hover:bg-red-500/10"
                                 title={
                                   b.sourceType === "TAKT_REQUEST"
-                                    ? "Ressourcenreservierung stornieren (automatisch aus TaktAnfrage erstellt — die TaktAnfrage selbst bleibt unberührt)"
+                                    ? "Ressourcenreservierung stornieren (automatisch aus Leistungsanfrage erstellt — die Leistungsanfrage selbst bleibt unberührt)"
                                     : "Stornieren"
                                 }
                                 onClick={() => void handleCancel(b)}

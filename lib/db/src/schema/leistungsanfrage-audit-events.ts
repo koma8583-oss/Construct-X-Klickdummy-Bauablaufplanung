@@ -18,7 +18,7 @@ import { leistungsanfragenTable } from "./leistungsanfragen";
 import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 
-export const leistungsanfrageAuditEventTypeEnum = pgEnum("takt_audit_event_type", [
+export const leistungsanfrageAuditEventTypeEnum = pgEnum("leistungsanfrage_audit_event_type", [
   "NOTIFICATION_SENT",
   "NOTIFICATION_DELIVERED",
   "DETAILS_RETRIEVED",
@@ -45,7 +45,7 @@ export const leistungsanfrageAuditEventTypeEnum = pgEnum("takt_audit_event_type"
   "DATA_PUBLICATION_EXPIRED",
 ]);
 
-export const leistungsanfrageAuditActorRoleEnum = pgEnum("takt_audit_actor_role", [
+export const leistungsanfrageAuditActorRoleEnum = pgEnum("leistungsanfrage_audit_actor_role", [
   "GU",
   "NU",
   "HUB",

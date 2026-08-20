@@ -73,7 +73,7 @@ const RECIPIENT_STATUS_CONFIG: Record<
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   PROJECT_OVERVIEW: "Projektübersicht",
   PROJECT_COORDINATION_PACKAGE: "Koordinationspaket",
-  TAKT_INFORMATION_PACKAGE: "Taktinformationspaket",
+  TAKT_INFORMATION_PACKAGE: "Leistungsinformationspaket",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -137,10 +137,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.execute(sql`DELETE FROM availability_checks WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
   await db.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id LIKE 't45-%'`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 't45-%'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM resources WHERE an_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE project_id = '${sql.raw(PROJECT)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE project_id = '${sql.raw(PROJECT)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}','${sql.raw(GU_ORG)}')`).catch(() => {});

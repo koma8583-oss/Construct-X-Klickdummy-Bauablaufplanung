@@ -1,5 +1,5 @@
 /**
- * Task 2.4 — DB integration tests for takt_requests and takt_request_snapshots.
+ * Task 2.4 — DB integration tests for leistungsanfragen and leistungsanfrage_snapshots.
  *
  * These tests exercise the actual database to verify:
  *   - FK constraints (taktId, orgId)
@@ -93,7 +93,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Snapshots cascade from takt_requests (ON DELETE CASCADE)
+  // Snapshots cascade from leistungsanfragen (ON DELETE CASCADE)
   // Delete requests first, then the fixtures — FK-safe order
   if (createdRequestIds.length > 0) {
     for (const id of createdRequestIds) {

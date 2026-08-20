@@ -13,7 +13,8 @@ import { customFetch } from "./custom-fetch";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface ResourceRequirement {
+/** @deprecated Use the generated ResourceRequirement for canonical Leistung APIs. */
+export interface TaktResourceRequirement {
   id: string;
   taktRequestId: string;
   anOrgId: string;
@@ -52,13 +53,13 @@ export const getResourceRequirementsQueryKey = (requestId: string) =>
 export function useListResourceRequirements(
   requestId: string,
   options?: {
-    query?: UseQueryOptions<ResourceRequirement[], Error>;
+    query?: UseQueryOptions<TaktResourceRequirement[], Error>;
   },
 ) {
-  return useQuery<ResourceRequirement[], Error>({
+  return useQuery<TaktResourceRequirement[], Error>({
     queryKey: getResourceRequirementsQueryKey(requestId),
     queryFn: async ({ signal }) =>
-      customFetch<ResourceRequirement[]>(
+      customFetch<TaktResourceRequirement[]>(
         `/api/takt-requests/${requestId}/resource-requirements`,
         { signal },
       ),
@@ -70,7 +71,7 @@ export function useListResourceRequirements(
 export function useAddResourceRequirement(
   options?: {
     mutation?: UseMutationOptions<
-      ResourceRequirement,
+      TaktResourceRequirement,
       Error,
       { requestId: string; data: ResourceRequirementCreate }
     >;
@@ -78,12 +79,12 @@ export function useAddResourceRequirement(
 ) {
   const queryClient = useQueryClient();
   return useMutation<
-    ResourceRequirement,
+    TaktResourceRequirement,
     Error,
     { requestId: string; data: ResourceRequirementCreate }
   >({
     mutationFn: ({ requestId, data }) =>
-      customFetch<ResourceRequirement>(
+      customFetch<TaktResourceRequirement>(
         `/api/takt-requests/${requestId}/resource-requirements`,
         {
           method: "POST",

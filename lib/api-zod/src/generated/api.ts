@@ -369,6 +369,8 @@ export const GetAgProjectsOverviewResponseItem = zod.object({
   "rejectedTaktRequests": zod.number(),
   "revisionRequiredRequests": zod.number(),
   "expiredTaktRequests": zod.number(),
+  "location": zod.string().nullish().describe('Physical location or address of the construction site'),
+  "description": zod.string().nullish().describe('Short description of the project scope'),
   "lastActivityAt": zod.coerce.date().nullish()
 }).describe('Coordination KPI summary for one project, as seen by the AG. Only coordination-relevant data — no NU-internal fields.\n')
 export const GetAgProjectsOverviewResponse = zod.array(GetAgProjectsOverviewResponseItem)
@@ -2735,6 +2737,1138 @@ export const SubmitNuResponseResponse = zod.object({
   "requestStatus": zod.string(),
   "createdAt": zod.coerce.date()
 }).describe('Result returned by POST \/takt-requests\/{requestId}\/responses')
+
+
+/**
+ * @summary Leistungen eines Projekts auflisten (Alias für /takte)
+ */
+export const ListLeistungenParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+
+
+
+
+export const ListLeistungenResponseItem = zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n')
+export const ListLeistungenResponse = zod.array(ListLeistungenResponseItem)
+
+
+/**
+ * @summary Neue Leistung anlegen (Alias für POST /takte)
+ */
+export const CreateLeistungParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const createLeistungBodyDurationDaysMin = 0.5;
+
+
+
+export const CreateLeistungBody = zod.object({
+  "leistungBezeichnung": zod.string().optional().describe('Kanonisch (Vorrang): Leistungs-Bezeichnung'),
+  "taktBezeichnung": zod.string().optional().describe('Legacy-Alias für leistungBezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().optional(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date().optional(),
+  "durationDays": zod.number().min(createLeistungBodyDurationDaysMin).optional(),
+  "earliestStart": zod.coerce.date().optional(),
+  "latestEnd": zod.coerce.date().optional(),
+  "lvReference": zod.string().optional(),
+  "bimReference": zod.string().optional(),
+  "requiredResources": zod.string().optional()
+}).describe('Anfragekörper für POST \/projects\/:projectId\/leistungen. Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung; leistungBezeichnung hat Vorrang.\n')
+
+
+
+
+
+export const CreateLeistungResponse = zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n')
+
+
+/**
+ * @summary Einzelne Leistung abrufen (Alias für GET /takte/:taktId)
+ */
+export const GetLeistungParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "leistungId": zod.coerce.string()
+})
+
+
+
+
+
+export const GetLeistungResponse = zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n')
+
+
+/**
+ * @summary Leistung aktualisieren (Alias für PATCH /takte/:taktId)
+ */
+export const UpdateLeistungParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "leistungId": zod.coerce.string()
+})
+
+export const updateLeistungBodyDurationDaysMin = 0.5;
+
+
+
+export const UpdateLeistungBody = zod.object({
+  "leistungBezeichnung": zod.string().optional().describe('Kanonisch (Vorrang)'),
+  "taktBezeichnung": zod.string().optional().describe('Legacy-Alias'),
+  "zone": zod.string().optional(),
+  "gewerk": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date().optional(),
+  "plannedEnd": zod.coerce.date().optional(),
+  "durationDays": zod.number().min(updateLeistungBodyDurationDaysMin).nullish(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish()
+}).describe('Anfragekörper für PATCH \/projects\/:projectId\/leistungen\/:leistungId. Akzeptiert sowohl leistungBezeichnung als auch taktBezeichnung.\n')
+
+
+
+
+
+
+
+
+
+export const UpdateLeistungResponse = zod.object({
+  "takt": zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n'),
+  "moved": zod.array(zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n')),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string().describe('Interne ID (Legacy-Feld; identisch mit leistungId)'),
+  "leistungId": zod.string().describe('Kanonische ID der Leistung'),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Legacy: Takt-Bezeichnung'),
+  "leistungBezeichnung": zod.string().describe('Kanonisch: Leistungs-Bezeichnung'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish(),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "version": zod.number().min(1).nullish().describe('Monoton steigende Version; identisch mit leistungVersion'),
+  "leistungVersion": zod.number().min(1).nullish().describe('Kanonisch: Leistungsversion'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).optional().describe('Kanonische Leistung (Alias für Takt). Enthält sowohl die kanonischen deutschen Felder (leistungId, leistungBezeichnung, leistungVersion) als auch die Legacy-Felder (id, taktBezeichnung, version) für rückwärtskompatible Clients.\n'),
+  "requiredStart": zod.coerce.date().optional(),
+  "requiredEnd": zod.coerce.date().optional()
+}))
+}).describe('Ergebnis einer Leistungsaktualisierung mit Terminverschiebungen')
+
+
+/**
+ * @summary Leistung löschen (Alias für DELETE /takte/:taktId)
+ */
+export const DeleteLeistungParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "leistungId": zod.coerce.string()
+})
+
+export const DeleteLeistungResponse = zod.void()
+
+
+/**
+ * @summary Leistungsabhängigkeiten auflisten (Alias für /takt-dependencies)
+ */
+export const ListLeistungsabhaengigkeitenParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const listLeistungsabhaengigkeitenResponseLagDaysMin = 0;
+
+
+
+
+
+export const ListLeistungsabhaengigkeitenResponseItem = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(listLeistungsabhaengigkeitenResponseLagDaysMin).describe('Number of calendar days of lag between the trigger date and the constraint'),
+  "predecessor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}).optional(),
+  "successor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}).optional()
+}).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects')
+export const ListLeistungsabhaengigkeitenResponse = zod.array(ListLeistungsabhaengigkeitenResponseItem)
+
+
+/**
+ * @summary Leistungsabhängigkeit anlegen (Alias für POST /takt-dependencies)
+ */
+export const CreateLeistungsabhaengigkeitParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const CreateLeistungsabhaengigkeitQueryParams = zod.object({
+  "skipReschedule": zod.coerce.boolean().optional().describe('Terminverschiebung überspringen')
+})
+
+export const createLeistungsabhaengigkeitBodyLagDaysMin = 0;
+
+
+
+export const CreateLeistungsabhaengigkeitBody = zod.object({
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).optional().describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(createLeistungsabhaengigkeitBodyLagDaysMin).optional()
+})
+
+export const createLeistungsabhaengigkeitResponseDependencyLagDaysMin = 0;
+
+
+
+
+
+
+
+export const CreateLeistungsabhaengigkeitResponse = zod.object({
+  "dependency": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "predecessorId": zod.string(),
+  "successorId": zod.string(),
+  "type": zod.enum(['EA', 'AA', 'EE']).describe('Anordnungsbeziehungs-Typ: EA=Ende-Anfang, AA=Anfang-Anfang, EE=Ende-Ende'),
+  "lagDays": zod.number().min(createLeistungsabhaengigkeitResponseDependencyLagDaysMin).describe('Number of calendar days of lag between the trigger date and the constraint'),
+  "predecessor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}).optional(),
+  "successor": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}).optional()
+}).describe('A dependency between two Takte within the same project, enriched with predecessor and successor Takt objects'),
+  "moved": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+})),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}),
+  "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
+  "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
+}).describe('A Takt that could not be automatically moved due to its status, along with its required dates'))
+}).describe('Result of creating a dependency including the new dependency and cascade-reschedule result')
+
+
+/**
+ * @summary Leistungsabhängigkeit löschen (Alias für DELETE /takt-dependencies/:depId)
+ */
+export const DeleteLeistungsabhaengigkeitParams = zod.object({
+  "projectId": zod.coerce.string(),
+  "depId": zod.coerce.string()
+})
+
+
+
+
+
+export const DeleteLeistungsabhaengigkeitResponse = zod.object({
+  "moved": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+})),
+  "conflicts": zod.array(zod.object({
+  "takt": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "zone": zod.string(),
+  "gewerk": zod.string(),
+  "description": zod.string().nullish(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "earliestStart": zod.coerce.date().nullish(),
+  "latestEnd": zod.coerce.date().nullish(),
+  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
+  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
+  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
+  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
+  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
+  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+}),
+  "requiredStart": zod.coerce.date().describe('The start date the dependency chain requires'),
+  "requiredEnd": zod.coerce.date().describe('The end date the dependency chain requires')
+}).describe('A Takt that could not be automatically moved due to its status, along with its required dates'))
+}).describe('Result of deleting a dependency including the cascade-reschedule result')
+
+
+/**
+ * GU sieht eigene Anfragen, NU sieht eingehende Anfragen. Kanonische Felder (leistungId, leistungsanfrageId) werden zusammen mit den Legacy-Feldern (taktId, id) zurückgegeben.
+ * @summary Leistungsanfragen auflisten (Alias für GET /takt-requests)
+ */
+export const ListLeistungsanfragenQueryParams = zod.object({
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).optional(),
+  "leistungId": zod.coerce.string().optional().describe('Filter nach Leistungs-ID (kanonisch; überschreibt taktId)'),
+  "taktId": zod.coerce.string().optional().describe('Filter nach Takt-ID (Legacy-Alias für leistungId)'),
+  "nuOrgId": zod.coerce.string().optional()
+})
+
+
+
+
+
+export const ListLeistungsanfragenResponseItem = zod.object({
+  "id": zod.string(),
+  "leistungsanfrageId": zod.string(),
+  "requestNumber": zod.string(),
+  "taktId": zod.string(),
+  "leistungId": zod.string(),
+  "taktBezeichnung": zod.string(),
+  "leistungBezeichnung": zod.string(),
+  "taktVersion": zod.number().min(1),
+  "leistungVersion": zod.number().min(1),
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "nuOrgName": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Angereicherter Leistungsanfrage-Datensatz für die GU-Übersichtsliste. Enthält sowohl kanonische als auch Legacy-Felder.\n')
+export const ListLeistungsanfragenResponse = zod.array(ListLeistungsanfragenResponseItem)
+
+
+/**
+ * GU erstellt eine Leistungsanfrage im DRAFT-Status mit unveränderlichem Snapshot. Keine Nachricht wird versendet; /leistungsanfragen/{id}/send auslösen, um die Benachrichtigung zuzustellen. Akzeptiert sowohl leistungId als auch taktId (kanonisch hat Vorrang).
+ * @summary Leistungsanfrage erstellen (Alias für POST /takt-requests)
+ */
+
+
+
+export const createLeistungsanfrageBodySubjectMax = 255;
+
+export const createLeistungsanfrageBodyMessageMax = 2000;
+
+
+
+
+export const CreateLeistungsanfrageBody = zod.object({
+  "leistungId": zod.string().min(1).optional().describe('Kanonisch (Vorrang): ID der Leistung'),
+  "taktId": zod.string().min(1).optional().describe('Legacy-Alias für leistungId'),
+  "nuOrgId": zod.string().min(1),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "subject": zod.string().max(createLeistungsanfrageBodySubjectMax).optional(),
+  "message": zod.string().max(createLeistungsanfrageBodyMessageMax).optional(),
+  "dataPublicationId": zod.string().min(1).optional()
+}).describe('Anfragekörper für POST \/leistungsanfragen. Akzeptiert sowohl leistungId als auch taktId; leistungId hat Vorrang.\n')
+
+
+
+
+
+export const CreateLeistungsanfrageResponse = zod.object({
+  "id": zod.string().describe('Legacy: TaktRequest-ID'),
+  "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
+  "taktId": zod.string().describe('Legacy: Takt-ID'),
+  "leistungId": zod.string().describe('Kanonisch: Leistungs-ID'),
+  "taktVersion": zod.number().min(1).describe('Legacy: Takt-Version zum Erstellungszeitpunkt'),
+  "leistungVersion": zod.number().min(1).describe('Kanonisch: Leistungsversion'),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "snapshotId": zod.string(),
+  "createdAt": zod.coerce.date()
+}).describe('Antwort auf POST \/leistungsanfragen — neu erstellte DRAFT-Anfrage. Enthält sowohl kanonische (leistungsanfrageId, leistungId, leistungVersion) als auch Legacy-Felder (id, taktId, taktVersion).\n')
+
+
+/**
+ * @summary Leistungsanfrage im Projektkontext erstellen (Alias für POST /projects/:id/takt-requests)
+ */
+export const CreateProjectLeistungsanfrageParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+
+
+
+export const createProjectLeistungsanfrageBodySubjectMax = 255;
+
+export const createProjectLeistungsanfrageBodyMessageMax = 2000;
+
+
+
+
+export const CreateProjectLeistungsanfrageBody = zod.object({
+  "leistungId": zod.string().min(1).optional().describe('Kanonisch (Vorrang): ID der Leistung'),
+  "taktId": zod.string().min(1).optional().describe('Legacy-Alias für leistungId'),
+  "nuOrgId": zod.string().min(1),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "subject": zod.string().max(createProjectLeistungsanfrageBodySubjectMax).optional(),
+  "message": zod.string().max(createProjectLeistungsanfrageBodyMessageMax).optional(),
+  "dataPublicationId": zod.string().min(1).optional()
+}).describe('Anfragekörper für POST \/leistungsanfragen. Akzeptiert sowohl leistungId als auch taktId; leistungId hat Vorrang.\n')
+
+
+
+
+
+export const CreateProjectLeistungsanfrageResponse = zod.object({
+  "id": zod.string().describe('Legacy: TaktRequest-ID'),
+  "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
+  "taktId": zod.string().describe('Legacy: Takt-ID'),
+  "leistungId": zod.string().describe('Kanonisch: Leistungs-ID'),
+  "taktVersion": zod.number().min(1).describe('Legacy: Takt-Version zum Erstellungszeitpunkt'),
+  "leistungVersion": zod.number().min(1).describe('Kanonisch: Leistungsversion'),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "snapshotId": zod.string(),
+  "createdAt": zod.coerce.date()
+}).describe('Antwort auf POST \/leistungsanfragen — neu erstellte DRAFT-Anfrage. Enthält sowohl kanonische (leistungsanfrageId, leistungId, leistungVersion) als auch Legacy-Felder (id, taktId, taktVersion).\n')
+
+
+/**
+ * @summary GU-Detailansicht einer Leistungsanfrage (Alias für GET /takt-requests/:id)
+ */
+export const GetLeistungsanfrageDetailParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const GetLeistungsanfrageDetailResponse = zod.object({
+  "id": zod.string(),
+  "requestNumber": zod.string(),
+  "taktId": zod.string(),
+  "taktBezeichnung": zod.string(),
+  "taktVersion": zod.number(),
+  "projectId": zod.string(),
+  "projectName": zod.string(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "nuOrgName": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "supersedesRequestId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "transport": zod.object({
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message').nullish().describe('Outbox delivery status; null if not yet queued'),
+  "notificationPayload": zod.record(zod.string(), zod.unknown()).nullish().describe('Payload that was actually delivered to the NU'),
+  "attemptCount": zod.number().nullish(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "inboxReadAt": zod.coerce.date().nullish().describe('When the NU\'s inbox row was marked as read')
+}).describe('Transport\/outbox information for the notification sent to the NU'),
+  "snapshot": zod.object({
+  "id": zod.string(),
+  "schemaVersion": zod.string(),
+  "snapshotPayload": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "response": zod.object({
+  "id": zod.string(),
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "acceptedStart": zod.coerce.date().nullish(),
+  "acceptedEnd": zod.coerce.date().nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "alternatives": zod.array(zod.object({
+  "id": zod.string().describe('Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision.'),
+  "alternativeId": zod.string().describe('NU-assigned business identifier (e.g. \"ALT-001\"). For display only — do not submit this as acceptedAlternativeId.'),
+  "rank": zod.number(),
+  "proposedStart": zod.coerce.date(),
+  "proposedEnd": zod.coerce.date(),
+  "crewSize": zod.number().nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}))
+}).nullish(),
+  "timeline": zod.object({
+  "requestCreatedAt": zod.coerce.date(),
+  "snapshotCreatedAt": zod.coerce.date().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "inboxReadAt": zod.coerce.date().nullish(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "checkedAt": zod.coerce.date().nullish().describe('Not tracked from the GU side — always null'),
+  "responseCreatedAt": zod.coerce.date().nullish()
+}).describe('All process timestamps in one flat object. Null = not yet occurred or not tracked.'),
+  "taktLifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).nullable().describe('Current lifecycle status of the referenced Takt. Null only for legacy rows.'),
+  "guDecision": zod.object({
+  "decisionId": zod.string().describe('Primary key of the takt_response_decisions row'),
+  "taktRequestId": zod.string(),
+  "responseId": zod.string().describe('FK to the takt_responses row this decision refers to'),
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']),
+  "acceptedAlternativeId": zod.string().nullish().describe('Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row.\n'),
+  "comment": zod.string().nullish(),
+  "decidedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+}).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
+}).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
+
+
+/**
+ * @summary Leistungsanfrage versenden (Alias für POST /takt-requests/:id/send)
+ */
+export const SendLeistungsanfrageParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const SendLeistungsanfrageResponse = zod.object({
+  "requestId": zod.string(),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "messageId": zod.string().describe('Outbox message ID — deterministic; use for traceability and retry'),
+  "taktLifecycleStatus": zod.string().optional().describe('Updated Takt lifecycle status after delivery (IN_COORDINATION on success)')
+}).describe('Response from POST \/takt-requests\/{requestId}\/send.')
+
+
+/**
+ * @summary Unveränderlichen Leistungssnapshot abrufen (Alias für GET /takt-requests/:id/details)
+ */
+export const GetLeistungsanfrageDetailsParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const GetLeistungsanfrageDetailsResponse = zod.object({
+  "taktRequestId": zod.string().describe('ID of the TaktRequest this snapshot belongs to'),
+  "requestNumber": zod.string().describe('Human-readable request reference (e.g. TKR-2026-0042)'),
+  "schemaVersion": zod.string().describe('Snapshot payload schema version (e.g. \"1.0\")'),
+  "taktVersion": zod.number().describe('Takt version at the time the snapshot was created'),
+  "status": zod.string().describe('Current TaktRequest status'),
+  "guOrgId": zod.string().describe('GU organisation that created this request'),
+  "nuOrgId": zod.string().describe('NU organisation addressed by this request'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond'),
+  "detailsRetrievedAt": zod.coerce.date().nullish().describe('When the NU first retrieved these details; null until first access'),
+  "snapshotPayload": zod.record(zod.string(), zod.unknown()).describe('The released Takt data. Shape defined in docs\/json-contracts.md. Does NOT contain full project plan, current live Takt values, other NU data, or internal GU data.\n'),
+  "createdAt": zod.coerce.date().describe('When the snapshot was created (same as request send time)')
+}).describe('Immutable snapshot payload returned by GET \/takt-requests\/{requestId}\/details. Contains only the data the GU released at the time of sending — never the live Takt row or any NU-private data.\n')
+
+
+/**
+ * @summary Verfügbarkeitsprüfung ausführen (Alias für POST /takt-requests/:id/availability-checks)
+ */
+export const RunLeistungsanfrageAvailabilityCheckParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+
+
+
+
+export const RunLeistungsanfrageAvailabilityCheckResponse = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string(),
+  "nuOrgId": zod.string(),
+  "status": zod.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).optional().describe('Overall result of an availability check'),
+  "internalResult": zod.record(zod.string(), zod.unknown()).nullish().describe('NU-only internal result payload (not forwarded to GU)'),
+  "publicResult": zod.object({
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).describe('Overall result of an availability check'),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().describe('Unique ID for this alternative within the check result'),
+  "rank": zod.number().min(1).describe('Preference rank — 1 is most preferred'),
+  "timeWindow": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}).describe('Proposed alternative window (date-only strings YYYY-MM-DD)'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A public alternative time window generated by the availability check')).describe('Empty when result is FEASIBLE'),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).optional().describe('Public-facing check result — no NU-internal resource IDs, employee names, or internal conflict details.\n'),
+  "checkedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Availability check row returned by the API (Task 4.7)')
+
+
+/**
+ * @summary Neueste Verfügbarkeitsprüfung abrufen (Alias für GET /takt-requests/:id/availability-checks/latest)
+ */
+export const GetLeistungsanfrageLatestAvailabilityCheckParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+
+
+
+
+export const GetLeistungsanfrageLatestAvailabilityCheckResponse = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string(),
+  "nuOrgId": zod.string(),
+  "status": zod.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).optional().describe('Overall result of an availability check'),
+  "internalResult": zod.record(zod.string(), zod.unknown()).nullish().describe('NU-only internal result payload (not forwarded to GU)'),
+  "publicResult": zod.object({
+  "result": zod.enum(['FEASIBLE', 'FEASIBLE_WITH_ALTERNATIVES', 'NOT_FEASIBLE']).describe('Overall result of an availability check'),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().describe('Unique ID for this alternative within the check result'),
+  "rank": zod.number().min(1).describe('Preference rank — 1 is most preferred'),
+  "timeWindow": zod.object({
+  "start": zod.string(),
+  "end": zod.string()
+}).describe('Proposed alternative window (date-only strings YYYY-MM-DD)'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A public alternative time window generated by the availability check')).describe('Empty when result is FEASIBLE'),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).optional().describe('Public-facing check result — no NU-internal resource IDs, employee names, or internal conflict details.\n'),
+  "checkedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Availability check row returned by the API (Task 4.7)')
+
+
+/**
+ * @summary AN-Antwort einreichen (Alias für POST /takt-requests/:id/responses)
+ */
+export const SubmitLeistungsanfrageResponseParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+
+
+export const submitLeistungsanfrageResponseBodyCommentMax = 2000;
+
+
+
+
+
+
+export const submitLeistungsanfrageResponseBodyAlternativesMax = 3;
+
+
+
+export const SubmitLeistungsanfrageResponseBody = zod.object({
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']).describe('Business decision made by the NU in response to a TaktRequest'),
+  "acceptedTimeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).optional().describe('Required when decision is ACCEPTED'),
+  "reasonCode": zod.enum(['RESOURCE_CONFLICT', 'NO_CAPACITY', 'EQUIPMENT_UNAVAILABLE', 'QUALIFICATION_MISSING', 'TIME_WINDOW_TOO_SHORT', 'OUTSIDE_PLANNING_HORIZON', 'OTHER']).optional().describe('Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.\n'),
+  "comment": zod.string().max(submitLeistungsanfrageResponseBodyCommentMax).nullish(),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().min(1),
+  "rank": zod.number().min(1),
+  "timeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).describe('Start and end accept ISO date (YYYY-MM-DD) or datetime strings'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A ranked alternative time window submitted by the NU')).max(submitLeistungsanfrageResponseBodyAlternativesMax).nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish()
+}).describe('Body for POST \/takt-requests\/{requestId}\/responses. Only generic, public fields are permitted — forbidden fields (resourceId, localProjectId, internalResultPayload, etc.) return 400.\n')
+
+
+
+
+
+
+
+
+export const SubmitLeistungsanfrageResponseResponse = zod.object({
+  "responseId": zod.string(),
+  "taktRequestId": zod.string(),
+  "decision": zod.enum(['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED']).describe('Business decision made by the NU in response to a TaktRequest'),
+  "reasonCode": zod.enum(['RESOURCE_CONFLICT', 'NO_CAPACITY', 'EQUIPMENT_UNAVAILABLE', 'QUALIFICATION_MISSING', 'TIME_WINDOW_TOO_SHORT', 'OUTSIDE_PLANNING_HORIZON', 'OTHER']).describe('Generic reason code for a non-acceptance. Only generic codes may be transmitted — internal conflict details must not leave the NU.\n').nullish(),
+  "comment": zod.string().nullish(),
+  "acceptedTimeWindow": zod.object({
+  "start": zod.string().optional(),
+  "end": zod.string().optional()
+}).nullish(),
+  "alternatives": zod.array(zod.object({
+  "alternativeId": zod.string().min(1),
+  "rank": zod.number().min(1),
+  "timeWindow": zod.object({
+  "start": zod.string().min(1),
+  "end": zod.string().min(1)
+}).describe('Start and end accept ISO date (YYYY-MM-DD) or datetime strings'),
+  "crewSize": zod.number().min(1).nullish(),
+  "conditions": zod.array(zod.string()).nullish()
+}).describe('A ranked alternative time window submitted by the NU')).nullish(),
+  "nextAvailableDate": zod.coerce.date().nullish(),
+  "transportStatus": zod.string().optional(),
+  "transportMessageId": zod.string().optional(),
+  "requestStatus": zod.string(),
+  "createdAt": zod.coerce.date()
+}).describe('Result returned by POST \/takt-requests\/{requestId}\/responses')
+
+
+/**
+ * @summary GU-Entscheidung zur AN-Antwort erstellen (Alias für POST /takt-requests/:id/gu-decisions)
+ */
+export const CreateLeistungsanfrageGuDecisionParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const createLeistungsanfrageGuDecisionHeaderIdempotencyKeyMax = 255;
+
+
+
+export const CreateLeistungsanfrageGuDecisionHeader = zod.object({
+  "Idempotency-Key": zod.string().max(createLeistungsanfrageGuDecisionHeaderIdempotencyKeyMax).optional()
+})
+
+
+export const createLeistungsanfrageGuDecisionBodyCommentMax = 2000;
+
+export const createLeistungsanfrageGuDecisionBodyIdempotencyKeyMax = 255;
+
+
+
+export const CreateLeistungsanfrageGuDecisionBody = zod.object({
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']).describe('CONFIRM_ACCEPTED: confirm the NU\'s accepted time window. ACCEPT_ALTERNATIVE: select one of the NU\'s proposed alternatives. REQUEST_REVISION: request a revised coordination round. CLOSE_WITHOUT_AGREEMENT: close this round without agreement.\n'),
+  "acceptedAlternativeId": zod.string().min(1).optional().describe('Required and only valid for ACCEPT_ALTERNATIVE. Must be the DB id of an alternative belonging to the NU response for this TaktRequest.\n'),
+  "comment": zod.string().max(createLeistungsanfrageGuDecisionBodyCommentMax).optional().describe('Optional free-text comment from the GU planner.'),
+  "idempotencyKey": zod.string().min(1).max(createLeistungsanfrageGuDecisionBodyIdempotencyKeyMax).optional().describe('Optional client-supplied idempotency key. Alternatively supply the Idempotency-Key HTTP header. Body field takes precedence.\n')
+}).describe('Request body for POST \/takt-requests\/{requestId}\/gu-decisions. The decisionType must be valid for the current NU response decision.\n')
+
+export const CreateLeistungsanfrageGuDecisionResponse = zod.object({
+  "decisionId": zod.string().describe('Primary key of the takt_response_decisions row'),
+  "taktRequestId": zod.string(),
+  "responseId": zod.string().describe('FK to the takt_responses row this decision refers to'),
+  "decisionType": zod.enum(['CONFIRM_ACCEPTED', 'ACCEPT_ALTERNATIVE', 'REQUEST_REVISION', 'CLOSE_WITHOUT_AGREEMENT']),
+  "acceptedAlternativeId": zod.string().nullish().describe('Set only for ACCEPT_ALTERNATIVE. References the takt_response_alternatives row.\n'),
+  "comment": zod.string().nullish(),
+  "decidedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+}).describe('Created or existing GU decision with updated TaktRequest status.')
+
+
+/**
+ * @summary Neue Koordinationsrunde starten (Alias für POST /takt-requests/:id/revisions)
+ */
+export const CreateLeistungsanfrageRevisionParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const createLeistungsanfrageRevisionHeaderIdempotencyKeyMax = 255;
+
+
+
+export const CreateLeistungsanfrageRevisionHeader = zod.object({
+  "Idempotency-Key": zod.string().max(createLeistungsanfrageRevisionHeaderIdempotencyKeyMax).optional()
+})
+
+export const createLeistungsanfrageRevisionBodySubjectMax = 500;
+
+export const createLeistungsanfrageRevisionBodyMessageMax = 4000;
+
+export const createLeistungsanfrageRevisionBodySendImmediatelyDefault = false;
+export const createLeistungsanfrageRevisionBodyIdempotencyKeyMax = 255;
+
+
+
+export const CreateLeistungsanfrageRevisionBody = zod.object({
+  "plannedTimeWindow": zod.object({
+  "start": zod.string().describe('ISO date or datetime string (YYYY-MM-DD or ISO 8601)'),
+  "end": zod.string().describe('ISO date or datetime string (YYYY-MM-DD or ISO 8601)')
+}).describe('New planned time window for the Takt'),
+  "responseRequiredBy": zod.coerce.date().nullish().describe('Deadline by which the NU must respond. Must be in the future.'),
+  "subject": zod.string().max(createLeistungsanfrageRevisionBodySubjectMax).nullish().describe('Human-readable subject for the coordination notification'),
+  "message": zod.string().max(createLeistungsanfrageRevisionBodyMessageMax).nullish().describe('Free-text message from GU to NU'),
+  "sendImmediately": zod.boolean().default(createLeistungsanfrageRevisionBodySendImmediatelyDefault).describe('If true, sends a TAKT_REQUEST_REVISED notification immediately after the transaction commits. New request transitions to DELIVERED. If the send fails, new request stays DRAFT.\n'),
+  "idempotencyKey": zod.string().max(createLeistungsanfrageRevisionBodyIdempotencyKeyMax).nullish().describe('Optional client-supplied idempotency key'),
+  "taktUpdates": zod.object({
+  "taktBezeichnung": zod.string().optional(),
+  "zone": zod.string().optional(),
+  "gewerk": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "earliestStart": zod.string().nullish(),
+  "latestEnd": zod.string().nullish(),
+  "lvReference": zod.string().nullish(),
+  "bimReference": zod.string().nullish(),
+  "requiredResources": zod.string().nullish()
+}).optional().describe('Optional Takt field updates to include in the new version')
+}).describe('Request body for POST \/takt-requests\/{requestId}\/revisions. Creates a new Takt version and a new TaktRequest for a revised coordination round after a REQUEST_REVISION decision.\n')
+
+export const createLeistungsanfrageRevisionResponseNewTaktVersionMin = 2;
+
+
+
+export const CreateLeistungsanfrageRevisionResponse = zod.object({
+  "oldRequestId": zod.string().describe('The original TaktRequest that was superseded'),
+  "oldRequestStatus": zod.enum(['SUPERSEDED']),
+  "newRequestId": zod.string().describe('The new TaktRequest (DRAFT or DELIVERED)'),
+  "newRequestNumber": zod.string().describe('Human-readable reference for the new request'),
+  "newRequestStatus": zod.enum(['DRAFT', 'DELIVERED']).describe('DRAFT if sendImmediately=false, DELIVERED if send succeeded'),
+  "newTaktVersion": zod.number().min(createLeistungsanfrageRevisionResponseNewTaktVersionMin).describe('The new Takt version number (old version + 1)'),
+  "newTaktVersionId": zod.string().describe('PK of the new takt_versions row'),
+  "snapshotId": zod.string().describe('PK of the new TaktRequestSnapshot'),
+  "sent": zod.boolean().describe('true if TAKT_REQUEST_REVISED was delivered to the NU'),
+  "createdAt": zod.coerce.date()
+}).describe('Result of a successful POST \/takt-requests\/{requestId}\/revisions call. Describes the predecessor chain: old request → new request → new Takt version.\n')
+
+
+/**
+ * @summary Koordinations-Auditpfad abrufen (Alias für GET /takt-requests/:id/audit-trail)
+ */
+export const GetLeistungsanfrageAuditTrailParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const GetLeistungsanfrageAuditTrailResponse = zod.object({
+  "requestId": zod.string().describe('Legacy: TaktRequest-ID'),
+  "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
+  "callerRole": zod.enum(['GU', 'NU', 'HUB_ADMIN']),
+  "events": zod.array(zod.object({
+  "id": zod.string().optional(),
+  "eventType": zod.string().optional(),
+  "actorOrgId": zod.string().nullish(),
+  "actorUserId": zod.string().nullish(),
+  "actorRole": zod.string().optional(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "occurredAt": zod.coerce.date().optional()
+}))
+}).describe('Koordinations-Auditpfad für eine Leistungsanfrage')
+
+
+/**
+ * @summary Ressourceanforderungen auflisten (Alias für GET /takt-requests/:id/resource-requirements)
+ */
+export const ListLeistungsanfrageResourceRequirementsParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const listLeistungsanfrageResourceRequirementsResponseUtilizationPercentMax = 100;
+
+
+
+export const ListLeistungsanfrageResourceRequirementsResponseItem = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string().describe('Legacy: TaktRequest-ID'),
+  "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
+  "anOrgId": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "resourceTypeName": zod.string().nullish(),
+  "resourceTypeCategory": zod.string().nullish(),
+  "requiredCapacity": zod.string().nullish(),
+  "utilizationPercent": zod.number().min(1).max(listLeistungsanfrageResourceRequirementsResponseUtilizationPercentMax),
+  "requiredQualification": zod.string().nullish(),
+  "periodStart": zod.coerce.date().nullish(),
+  "periodEnd": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('AN-Ressourceanforderung für eine Leistungsanfrage')
+export const ListLeistungsanfrageResourceRequirementsResponse = zod.array(ListLeistungsanfrageResourceRequirementsResponseItem)
+
+
+/**
+ * @summary Ressourceanforderung hinzufügen (Alias für POST /takt-requests/:id/resource-requirements)
+ */
+export const CreateLeistungsanfrageResourceRequirementParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const createLeistungsanfrageResourceRequirementBodyUtilizationPercentDefault = 100;
+export const createLeistungsanfrageResourceRequirementBodyUtilizationPercentMax = 100;
+
+export const createLeistungsanfrageResourceRequirementBodyRequiredQualificationMax = 500;
+
+export const createLeistungsanfrageResourceRequirementBodyNotesMax = 1000;
+
+
+
+export const CreateLeistungsanfrageResourceRequirementBody = zod.object({
+  "resourceTypeId": zod.string().nullish(),
+  "requiredCapacity": zod.number().nullish(),
+  "utilizationPercent": zod.number().min(1).max(createLeistungsanfrageResourceRequirementBodyUtilizationPercentMax).default(createLeistungsanfrageResourceRequirementBodyUtilizationPercentDefault),
+  "requiredQualification": zod.string().max(createLeistungsanfrageResourceRequirementBodyRequiredQualificationMax).nullish(),
+  "periodStart": zod.coerce.date().nullish(),
+  "periodEnd": zod.coerce.date().nullish(),
+  "notes": zod.string().max(createLeistungsanfrageResourceRequirementBodyNotesMax).nullish()
+}).describe('Anfragekörper für das Anlegen einer Ressourceanforderung')
+
+export const createLeistungsanfrageResourceRequirementResponseUtilizationPercentMax = 100;
+
+
+
+export const CreateLeistungsanfrageResourceRequirementResponse = zod.object({
+  "id": zod.string(),
+  "taktRequestId": zod.string().describe('Legacy: TaktRequest-ID'),
+  "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
+  "anOrgId": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "resourceTypeName": zod.string().nullish(),
+  "resourceTypeCategory": zod.string().nullish(),
+  "requiredCapacity": zod.string().nullish(),
+  "utilizationPercent": zod.number().min(1).max(createLeistungsanfrageResourceRequirementResponseUtilizationPercentMax),
+  "requiredQualification": zod.string().nullish(),
+  "periodStart": zod.coerce.date().nullish(),
+  "periodEnd": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('AN-Ressourceanforderung für eine Leistungsanfrage')
+
+
+/**
+ * @summary Ressourceanforderung entfernen (Alias für DELETE /takt-requests/:id/resource-requirements/:reqId)
+ */
+export const DeleteLeistungsanfrageResourceRequirementParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string(),
+  "reqId": zod.coerce.string()
+})
+
+export const DeleteLeistungsanfrageResourceRequirementResponse = zod.void()
 
 
 /**

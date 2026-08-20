@@ -395,7 +395,7 @@ export default function Projects() {
           </h3>
           <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
             {projects?.length === 0
-              ? 'Legen Sie Ihr erstes Projekt an, um mit der Taktplanung zu beginnen.'
+              ? 'Legen Sie Ihr erstes Projekt an, um mit der Leistungsplanung zu beginnen.'
               : 'Passen Sie die Filter an oder setzen Sie sie zurück.'}
           </p>
           {projects?.length === 0 && (

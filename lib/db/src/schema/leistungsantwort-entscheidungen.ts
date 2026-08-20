@@ -26,7 +26,7 @@ import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 
 export const leistungsantwortEntscheidungTypeEnum = pgEnum(
-  "takt_coordination_decision_type",
+  "leistungsantwort_entscheidung_type",
   [
     "CONFIRM_ACCEPTED",
     "ACCEPT_ALTERNATIVE",

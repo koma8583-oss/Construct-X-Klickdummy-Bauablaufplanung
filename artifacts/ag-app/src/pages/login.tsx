@@ -131,8 +131,8 @@ export default function Login() {
         <div className="absolute inset-0 h-full w-full object-cover bg-[url('https://images.unsplash.com/photo-1541888086925-eb2c1f4e1987?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent"></div>
         <div className="absolute bottom-12 left-12 right-12 text-foreground">
-          <h3 className="text-2xl font-bold mb-2">Taktplanung für Auftraggeber</h3>
-          <p className="text-muted-foreground max-w-lg">Erstellen Sie Projekte, vergeben Sie Takte und koordinieren Sie Ihre Nachunternehmer an einem Ort.</p>
+          <h3 className="text-2xl font-bold mb-2">Leistungsplanung für Auftraggeber</h3>
+          <p className="text-muted-foreground max-w-lg">Erstellen Sie Projekte, vergeben Sie Leistungen und koordinieren Sie Ihre Nachunternehmer an einem Ort.</p>
         </div>
       </div>
     </div>

@@ -26,14 +26,14 @@ import {
 import { leistungsanfragenTable } from "./leistungsanfragen";
 import { usersTable } from "./users";
 
-export const leistungsantwortDecisionEnum = pgEnum("takt_decision", [
+export const leistungsantwortDecisionEnum = pgEnum("leistungsantwort_decision", [
   "ACCEPTED",
   "ALTERNATIVES_PROPOSED",
   "REJECTED",
 ]);
 
 export const leistungsantwortReasonCodeEnum = pgEnum(
-  "takt_response_reason_code",
+  "leistungsantwort_reason_code",
   [
     "RESOURCE_CONFLICT",
     "NO_CAPACITY",

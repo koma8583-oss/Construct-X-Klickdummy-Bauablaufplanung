@@ -11,8 +11,8 @@
  *   - Only coordination data visible to GU is returned (status, request counts, dates)
  *   - No NU-internal resource data, no employee names, no other-GU data
  *
- * Note: takt_requests has no projectId column — project association is via
- *       takt_requests.taktId → takte.projectId.
+ * Note: leistungsanfragen has no projectId column — project association is via
+ *       leistungsanfragen.leistungId → leistungen.projectId.
  */
 
 import { Router } from "express";
@@ -21,8 +21,8 @@ import {
   projectsTable,
   projectContractorsTable,
   organizationsTable,
-  taktRequestsTable,
-  takteTable,
+  leistungsanfragenTable,
+  leistungenTable,
 } from "@workspace/db";
 import { eq, and, count, sql, inArray, max } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
@@ -62,29 +62,29 @@ router.get("/ag/projects/overview", async (req, res): Promise<void> => {
 
   const projectIds = projects.map((p) => p.id);
 
-  // Aggregate takt request counts per project (join through takte to get projectId)
+  // Aggregate leistungsanfragen counts per project (join through leistungen to get projectId)
   const requestCounts = await db
     .select({
-      projectId: takteTable.projectId,
+      projectId: leistungenTable.projectId,
       total: count().as("total"),
-      open: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED','REVISION_REQUIRED'))`.as("open"),
-      overdue: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.responseRequiredBy} < now() AND ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("overdue"),
-      accepted: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'ACCEPTED')`.as("accepted"),
-      alternatives: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'ALTERNATIVES_PROPOSED')`.as("alternatives"),
-      rejected: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'REJECTED')`.as("rejected"),
-      revisionRequired: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'REVISION_REQUIRED')`.as("revision_required"),
-      expired: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'EXPIRED')`.as("expired"),
-      lastActivityAt: max(taktRequestsTable.updatedAt).as("last_activity_at"),
+      open: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED','REVISION_REQUIRED'))`.as("open"),
+      overdue: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.responseRequiredBy} < now() AND ${leistungsanfragenTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("overdue"),
+      accepted: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'ACCEPTED')`.as("accepted"),
+      alternatives: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'ALTERNATIVES_PROPOSED')`.as("alternatives"),
+      rejected: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'REJECTED')`.as("rejected"),
+      revisionRequired: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'REVISION_REQUIRED')`.as("revision_required"),
+      expired: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'EXPIRED')`.as("expired"),
+      lastActivityAt: max(leistungsanfragenTable.updatedAt).as("last_activity_at"),
     })
-    .from(taktRequestsTable)
-    .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+    .from(leistungsanfragenTable)
+    .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
     .where(
       and(
-        eq(taktRequestsTable.guOrgId, agOrgId),
-        inArray(takteTable.projectId, projectIds as [string, ...string[]]),
+        eq(leistungsanfragenTable.guOrgId, agOrgId),
+        inArray(leistungenTable.projectId, projectIds as [string, ...string[]]),
       ),
     )
-    .groupBy(takteTable.projectId);
+    .groupBy(leistungenTable.projectId);
 
   // Contractor counts + unique trades per project
   const contractorStats = await db
@@ -175,23 +175,23 @@ router.get("/ag/projects/:projectId/overview", async (req, res): Promise<void> =
   if (nuOrgIds.length > 0) {
     nuAggs = (await db
       .select({
-        nuOrgId:        taktRequestsTable.nuOrgId,
+        nuOrgId:        leistungsanfragenTable.nuOrgId,
         total:          count().as("total"),
-        open: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED','REVISION_REQUIRED'))`.as("open"),
-        accepted: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'ACCEPTED')`.as("accepted"),
-        alternatives: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'ALTERNATIVES_PROPOSED')`.as("alternatives"),
-        rejected: sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} = 'REJECTED')`.as("rejected"),
-        lastResponseAt: sql<Date | null>`MAX(${taktRequestsTable.updatedAt})`.as("last_response_at"),
+        open: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED','REVISION_REQUIRED'))`.as("open"),
+        accepted: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'ACCEPTED')`.as("accepted"),
+        alternatives: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'ALTERNATIVES_PROPOSED')`.as("alternatives"),
+        rejected: sql<number>`COUNT(*) FILTER (WHERE ${leistungsanfragenTable.status} = 'REJECTED')`.as("rejected"),
+        lastResponseAt: sql<Date | null>`MAX(${leistungsanfragenTable.updatedAt})`.as("last_response_at"),
       })
-      .from(taktRequestsTable)
-      .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
+      .from(leistungsanfragenTable)
+      .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
       .where(
         and(
-          eq(takteTable.projectId, projectId),
-          inArray(taktRequestsTable.nuOrgId, nuOrgIds as [string, ...string[]]),
+          eq(leistungenTable.projectId, projectId),
+          inArray(leistungsanfragenTable.nuOrgId, nuOrgIds as [string, ...string[]]),
         ),
       )
-      .groupBy(taktRequestsTable.nuOrgId)) as NuAgg[];
+      .groupBy(leistungsanfragenTable.nuOrgId)) as NuAgg[];
   }
   const nuMap = new Map<string, NuAgg>(nuAggs.map((n) => [n.nuOrgId, n]));
 
@@ -215,48 +215,48 @@ router.get("/ag/projects/:projectId/overview", async (req, res): Promise<void> =
     };
   });
 
-  // --- Takt coordination summary ---
+  // --- Leistung coordination summary ---
   const [coordRow] = await db
     .select({
       numberOfTakts:       sql<number>`COUNT(DISTINCT t.id)`.as("number_of_takts"),
       confirmedTakts:      sql<number>`COUNT(DISTINCT t.id) FILTER (WHERE t.lifecycle_status = 'CONFIRMED')`.as("confirmed_takts"),
-      taktsInCoordination: sql<number>`COUNT(DISTINCT tr.takt_id) FILTER (WHERE tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED'))`.as("takts_in_coordination"),
+      taktsInCoordination: sql<number>`COUNT(DISTINCT tr.leistung_id) FILTER (WHERE tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW','ALTERNATIVES_PROPOSED'))`.as("takts_in_coordination"),
       openRequests:        sql<number>`COUNT(tr.id) FILTER (WHERE tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("open_requests"),
       pendingProposals:    sql<number>`COUNT(tr.id) FILTER (WHERE tr.status = 'ALTERNATIVES_PROPOSED')`.as("pending_proposals"),
       overdueRequests:     sql<number>`COUNT(tr.id) FILTER (WHERE tr.response_required_by < now() AND tr.status IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`.as("overdue_requests"),
       expiredRequests:     sql<number>`COUNT(tr.id) FILTER (WHERE tr.status = 'EXPIRED')`.as("expired_requests"),
       revisionRounds:      sql<number>`COUNT(tr.id) FILTER (WHERE tr.supersedes_request_id IS NOT NULL)`.as("revision_rounds"),
     })
-    .from(sql`takte t`)
+    .from(sql`leistungen t`)
     .leftJoin(
-      sql`takt_requests tr`,
-      sql`tr.takt_id = t.id AND tr.gu_org_id = ${agOrgId}`,
+      sql`leistungsanfragen tr`,
+      sql`tr.leistung_id = t.id AND tr.gu_org_id = ${agOrgId}`,
     )
     .where(sql`t.project_id = ${projectId}`);
 
-  // --- Recent takt requests (open or recently updated) ---
+  // --- Recent leistungsanfragen (open or recently updated) ---
   const recentRequests = await db
     .select({
-      taktRequestId:      taktRequestsTable.id,
-      requestNumber:      taktRequestsTable.requestNumber,
-      taktReference:      taktRequestsTable.taktId,
-      taktVersion:        taktRequestsTable.taktVersion,
-      anOrgId:            taktRequestsTable.nuOrgId,
+      taktRequestId:      leistungsanfragenTable.id,
+      requestNumber:      leistungsanfragenTable.requestNumber,
+      taktReference:      leistungsanfragenTable.leistungId,
+      taktVersion:        leistungsanfragenTable.leistungVersion,
+      anOrgId:            leistungsanfragenTable.nuOrgId,
       anName:             organizationsTable.name,
-      requestStatus:      taktRequestsTable.status,
-      responseRequiredBy: taktRequestsTable.responseRequiredBy,
-      lastActivityAt:     taktRequestsTable.updatedAt,
+      requestStatus:      leistungsanfragenTable.status,
+      responseRequiredBy: leistungsanfragenTable.responseRequiredBy,
+      lastActivityAt:     leistungsanfragenTable.updatedAt,
     })
-    .from(taktRequestsTable)
-    .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
-    .innerJoin(organizationsTable, eq(taktRequestsTable.nuOrgId, organizationsTable.id))
+    .from(leistungsanfragenTable)
+    .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
+    .innerJoin(organizationsTable, eq(leistungsanfragenTable.nuOrgId, organizationsTable.id))
     .where(
       and(
-        eq(takteTable.projectId, projectId),
-        eq(taktRequestsTable.guOrgId, agOrgId),
+        eq(leistungenTable.projectId, projectId),
+        eq(leistungsanfragenTable.guOrgId, agOrgId),
       ),
     )
-    .orderBy(sql`${taktRequestsTable.updatedAt} DESC`)
+    .orderBy(sql`${leistungsanfragenTable.updatedAt} DESC`)
     .limit(20);
 
   res.json({

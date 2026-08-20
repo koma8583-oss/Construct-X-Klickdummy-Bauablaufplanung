@@ -28,5 +28,9 @@ export interface AgProjectSummary {
   rejectedTaktRequests: number;
   revisionRequiredRequests: number;
   expiredTaktRequests: number;
+  /** Physical location or address of the construction site */
+  location?: string | null;
+  /** Short description of the project scope */
+  description?: string | null;
   lastActivityAt?: Date | null;
 }

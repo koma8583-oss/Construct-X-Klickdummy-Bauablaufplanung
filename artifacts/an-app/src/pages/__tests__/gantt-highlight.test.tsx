@@ -1,11 +1,11 @@
 /**
  * Gantt cross-highlighting test
  *
- * Verifies that clicking a Takt bar highlights booking bars whose
- * sourceReferenceId matches the TaktRequest ID, and that a second click
+ * Verifies that clicking a Leistungsanfragen bar highlights booking bars whose
+ * sourceReferenceId matches the Leistungsanfrage ID, and that a second click
  * removes the highlight.
  *
- * Each bar carries a `data-item-id` attribute equal to the booking/takt ID,
+ * Each bar carries a `data-item-id` attribute equal to the booking/leistung ID,
  * so assertions target the exact IDs — not just a count of highlighted bars.
  */
 
@@ -17,12 +17,12 @@ import { UnifiedGantt } from "../gantt";
 
 // ─── Fixture data ────────────────────────────────────────────────────────────
 
-const TAKT_ID = "takt-req-1";
+const LEISTUNG_ID = "takt-req-1";
 
-const TAKT_ITEM = {
+const LEISTUNG_ITEM = {
   kind: "takt" as const,
   data: {
-    id: TAKT_ID,
+    id: LEISTUNG_ID,
     label: "Beton A1",
     startAt: "2026-09-01T00:00:00.000Z",
     endAt: "2026-09-10T23:59:59.000Z",
@@ -44,7 +44,7 @@ function makeBooking(id: string, sourceReferenceId: string) {
       resourceId: "res-1",
       resourceName: "Bagger 01",
       groupName: "Hochhaus Nord",
-      // sourceType "TAKT_REQUEST" → bar title "Taktauftrag" (from SOURCE_LABEL)
+      // sourceType "TAKT_REQUEST" → bar title "Externer Auftrag" (from SOURCE_LABEL)
       sourceType: "TAKT_REQUEST" as const,
       sourceReferenceId,
       localProjectId: null,
@@ -61,20 +61,20 @@ function makeBooking(id: string, sourceReferenceId: string) {
   };
 }
 
-/** Two bookings linked to TAKT_ID, one unrelated booking. */
-const BOOKING_LINKED_1 = makeBooking("booking-linked-1", TAKT_ID);
-const BOOKING_LINKED_2 = makeBooking("booking-linked-2", TAKT_ID);
-const BOOKING_OTHER    = makeBooking("booking-other",    "other-takt-999");
+/** Two bookings linked to LEISTUNG_ID, one unrelated booking. */
+const BOOKING_LINKED_1 = makeBooking("booking-linked-1", LEISTUNG_ID);
+const BOOKING_LINKED_2 = makeBooking("booking-linked-2", LEISTUNG_ID);
+const BOOKING_OTHER    = makeBooking("booking-other",    "other-leistung-999");
 
 const SECTIONS = [
   {
-    id: "takts",
-    label: "Takttermine",
+    id: "leistungen",
+    label: "Leistungstermine",
     Icon: () => null,
     accentColor: "#6366f1",
     bgColor: "rgba(99,102,241,0.06)",
     groups: [
-      { id: "proj-1", name: "Hochhaus Nord", items: [TAKT_ITEM] },
+      { id: "proj-1", name: "Hochhaus Nord", items: [LEISTUNG_ITEM] },
     ],
   },
   {
@@ -112,7 +112,7 @@ function getBarById(id: string): HTMLElement {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("UnifiedGantt cross-highlighting", () => {
-  it("highlights bars linked by sourceReferenceId when a Takt bar is clicked", async () => {
+  it("highlights bars linked by sourceReferenceId when a Leistung bar is clicked", async () => {
     const user = userEvent.setup();
 
     render(
@@ -125,7 +125,7 @@ describe("UnifiedGantt cross-highlighting", () => {
 
     // Wait for the useEffect that expands groups to flush so booking item rows
     // appear in the DOM.
-    const taktBar = await screen.findByTitle("Beton A1");
+    const leistungBar = await screen.findByTitle("Beton A1");
 
     // Wait until all three booking bars exist in the DOM.
     await waitFor(() => {
@@ -139,19 +139,19 @@ describe("UnifiedGantt cross-highlighting", () => {
     expect(getBarById("booking-linked-2").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
     expect(getBarById("booking-other").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
 
-    // Click the Takt bar to select it.
-    await user.click(taktBar);
+    // Click the Leistung bar to select it.
+    await user.click(leistungBar);
 
     // Both linked bookings must now carry the glow outline.
     expect(getBarById("booking-linked-1").style.outline).toBe(HIGHLIGHT_OUTLINE);
     expect(getBarById("booking-linked-2").style.outline).toBe(HIGHLIGHT_OUTLINE);
 
     // The unrelated booking must NOT be highlighted — its sourceReferenceId
-    // points to a different TaktRequest.
+    // points to a different Leistungsanfrage.
     expect(getBarById("booking-other").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
   });
 
-  it("removes highlights when the same Takt bar is clicked a second time", async () => {
+  it("removes highlights when the same Leistung bar is clicked a second time", async () => {
     const user = userEvent.setup();
 
     render(
@@ -162,14 +162,14 @@ describe("UnifiedGantt cross-highlighting", () => {
       />,
     );
 
-    const taktBar = await screen.findByTitle("Beton A1");
+    const leistungBar = await screen.findByTitle("Beton A1");
 
     await waitFor(() => {
       expect(document.querySelector('[data-item-id="booking-linked-1"]')).toBeTruthy();
     });
 
     // First click → select.
-    await user.click(taktBar);
+    await user.click(leistungBar);
 
     // Verify highlights are applied to both linked bookings.
     await waitFor(() => {
@@ -178,7 +178,7 @@ describe("UnifiedGantt cross-highlighting", () => {
     });
 
     // Second click on the same bar → deselect (toggle off).
-    await user.click(taktBar);
+    await user.click(leistungBar);
 
     // All booking bars must lose their highlight outline.
     await waitFor(() => {

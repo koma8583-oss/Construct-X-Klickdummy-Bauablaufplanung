@@ -27,7 +27,7 @@ import { leistungsantwortenTable } from "./leistungsantworten";
 import { leistungsantwortEntscheidungenTable } from "./leistungsantwort-entscheidungen";
 import { usersTable } from "./users";
 
-export const leistungsVersionSourceTypeEnum = pgEnum("takt_version_source_type", [
+export const leistungsVersionSourceTypeEnum = pgEnum("leistungs_version_source_type", [
   "INITIAL",
   "MANUAL_EDIT",
   "ACCEPTED_ALTERNATIVE",

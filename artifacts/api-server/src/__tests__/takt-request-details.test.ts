@@ -176,14 +176,14 @@ afterAll(async () => {
 
   await db.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id IN (
-    SELECT id FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
+  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
+    SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  // Clean up publication (after takt_requests due to FK)
+  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  // Clean up publication (after leistungsanfragen due to FK)
   await db.execute(sql`DELETE FROM data_publication_recipients WHERE publication_id = 't38-publication-001'`).catch(() => {});
   await db.execute(sql`DELETE FROM data_publications WHERE id = 't38-publication-001'`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}'])`).catch(() => {});
@@ -365,8 +365,8 @@ describe("GET /takt-requests/:id/details — status transition", () => {
     expect(res.body.error).toMatch(/DRAFT/);
 
     // Cleanup
-    await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id = '${sql.raw(draftId)}'`).catch(() => {});
-    await db.execute(sql`DELETE FROM takt_requests WHERE id = '${sql.raw(draftId)}'`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id = '${sql.raw(draftId)}'`).catch(() => {});
+    await db.execute(sql`DELETE FROM leistungsanfragen WHERE id = '${sql.raw(draftId)}'`).catch(() => {});
   });
 });
 

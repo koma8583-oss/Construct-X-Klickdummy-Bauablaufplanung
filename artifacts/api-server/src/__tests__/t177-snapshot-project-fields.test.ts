@@ -109,9 +109,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id IN (SELECT id FROM takt_requests WHERE gu_org_id = ANY(ARRAY['${sql.raw(GU_ORG)}']))`).catch(() => {});
-  await db.execute(sql`DELETE FROM takt_requests WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
-  await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY['${sql.raw(GU_ORG)}']))`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
@@ -274,9 +274,9 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       expect(snapshot.snapshotPayload.projectDescription).toBeNull();
     } finally {
       // Clean up extra fixtures
-      await db.execute(sql`DELETE FROM takt_request_snapshots WHERE takt_request_id IN (SELECT id FROM takt_requests WHERE takt_id = '${sql.raw(BARE_TAKT_ID)}')`).catch(() => {});
-      await db.execute(sql`DELETE FROM takt_requests WHERE takt_id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
-      await db.execute(sql`DELETE FROM takte WHERE id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
+      await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (SELECT id FROM leistungsanfragen WHERE leistung_id = '${sql.raw(BARE_TAKT_ID)}')`).catch(() => {});
+      await db.execute(sql`DELETE FROM leistungsanfragen WHERE leistung_id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
+      await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
     }

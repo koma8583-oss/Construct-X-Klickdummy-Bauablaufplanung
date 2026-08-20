@@ -99,7 +99,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`DELETE FROM takte         WHERE id        = 't77-takt-001'`).catch(() => {});
+  await db.execute(sql`DELETE FROM leistungen     WHERE id        = 't77-takt-001'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects      WHERE id IN ('t77-project-001','t77-project-002')`).catch(() => {});
   await db.execute(sql`DELETE FROM users         WHERE id IN ('t77-user-gu','t77-user-other-gu','t77-user-nu')`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id IN ('t77-org-gu','t77-org-other-gu','t77-org-nu')`).catch(() => {});

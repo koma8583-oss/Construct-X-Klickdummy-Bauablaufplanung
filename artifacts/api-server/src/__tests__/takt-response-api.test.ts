@@ -130,12 +130,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.execute(sql`
-    DELETE FROM takt_responses         WHERE takt_request_id LIKE 't48-req-%';
-    DELETE FROM message_inbox          WHERE correlation_id  LIKE 't48-req-%';
-    DELETE FROM message_outbox         WHERE correlation_id  LIKE 't48-req-%';
-    DELETE FROM takt_request_snapshots WHERE takt_request_id LIKE 't48-req-%';
-    DELETE FROM takt_requests          WHERE id              LIKE 't48-req-%';
-    DELETE FROM takte                  WHERE id              LIKE 't48-takt-%';
+    DELETE FROM leistungsantworten         WHERE leistungsanfrage_id LIKE 't48-req-%';
+    DELETE FROM message_inbox              WHERE correlation_id      LIKE 't48-req-%';
+    DELETE FROM message_outbox             WHERE correlation_id      LIKE 't48-req-%';
+    DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 't48-req-%';
+    DELETE FROM leistungsanfragen          WHERE id                  LIKE 't48-req-%';
+    DELETE FROM leistungen                 WHERE id                  LIKE 't48-takt-%';
     DELETE FROM projects               WHERE id = '${sql.raw(PROJECT)}';
     DELETE FROM users                  WHERE id IN (${sql.raw(`'${GU_USER}', '${NU_USER}'`)});
     DELETE FROM organizations          WHERE id IN (${sql.raw(`'${GU_ORG}', '${NU_ORG_A}', '${NU_ORG_B}'`)});

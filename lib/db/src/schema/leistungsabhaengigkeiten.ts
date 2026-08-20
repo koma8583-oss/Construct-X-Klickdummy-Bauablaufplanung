@@ -7,7 +7,7 @@ import { pgTable, text, integer, pgEnum, unique } from "drizzle-orm/pg-core";
 import { leistungenTable } from "./leistungen";
 import { projectsTable } from "./projects";
 
-export const leistungsabhaengigkeitTypeEnum = pgEnum("takt_dependency_type", [
+export const leistungsabhaengigkeitTypeEnum = pgEnum("leistungsabhaengigkeit_type", [
   "EA", // Ende-Anfang  (Finish-Start):  successor.start ≥ predecessor.end + lag
   "AA", // Anfang-Anfang (Start-Start):   successor.start ≥ predecessor.start + lag
   "EE", // Ende-Ende    (Finish-Finish):  successor.end   ≥ predecessor.end + lag
