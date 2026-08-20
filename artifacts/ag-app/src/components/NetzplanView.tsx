@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import type { Takt, TaktDependency, TaktDependencyType, TaktStatus } from '@workspace/api-client-react';
 import { format } from 'date-fns';
+import type { AlternativeImpact } from '@/lib/alternative-impact';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ const DEP_TYPE_LABEL: Record<TaktDependencyType, string> = {
 
 const CRITICAL_COLOR = '#ef4444';
 const CRITICAL_NODE_RING = '#ef4444';
+const PREDECESSOR_IMPACT_COLOR = '#f97316';
+const SUCCESSOR_IMPACT_COLOR = '#e11d48';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -319,9 +322,10 @@ interface TooltipState {
 interface NetzplanViewProps {
   takte: Takt[];
   deps: TaktDependency[];
+  alternativeImpacts?: AlternativeImpact[];
 }
 
-export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
+export default function NetzplanView({ takte, deps, alternativeImpacts = [] }: NetzplanViewProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [zoom, setZoom] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -341,6 +345,22 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
   const validDeps = useMemo(
     () => deps.filter(d => ids.has(d.predecessorId) && ids.has(d.successorId)),
     [deps, ids],
+  );
+  const impactedTaktIds = useMemo(
+    () => new Set(alternativeImpacts.map(impact => impact.relatedTaktId)),
+    [alternativeImpacts],
+  );
+  const impactedDependencyIds = useMemo(
+    () => new Set(alternativeImpacts.map(impact => impact.dependencyId)),
+    [alternativeImpacts],
+  );
+  const predecessorImpactIds = useMemo(
+    () => new Set(alternativeImpacts.filter(impact => impact.direction === 'PREDECESSOR').map(impact => impact.relatedTaktId)),
+    [alternativeImpacts],
+  );
+  const successorImpactIds = useMemo(
+    () => new Set(alternativeImpacts.filter(impact => impact.direction === 'SUCCESSOR').map(impact => impact.relatedTaktId)),
+    [alternativeImpacts],
   );
 
   const hoveredTakt = tooltip ? taktById.get(tooltip.taktId) : null;
@@ -401,6 +421,18 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
             <span className="inline-block w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: CRITICAL_COLOR, background: 'transparent' }} />
             Kritischer Pfad
           </span>
+          {alternativeImpacts.length > 0 && (
+            <>
+              <span className="flex items-center gap-1.5 border-l border-border/50 pl-4">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: PREDECESSOR_IMPACT_COLOR, background: PREDECESSOR_IMPACT_COLOR + '22' }} />
+                Vorgänger betroffen
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: SUCCESSOR_IMPACT_COLOR, background: SUCCESSOR_IMPACT_COLOR + '22' }} />
+                Nachfolger betroffen
+              </span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -462,7 +494,11 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
 
             const isCritical = criticalEdges.has(dep.id);
             const type = dep.type as TaktDependencyType;
-            const color = isCritical ? CRITICAL_COLOR : DEP_TYPE_COLOR[type];
+            const isImpact = impactedDependencyIds.has(dep.id);
+            const impactColor = alternativeImpacts.find(impact => impact.dependencyId === dep.id)?.direction === 'PREDECESSOR'
+              ? PREDECESSOR_IMPACT_COLOR
+              : SUCCESSOR_IMPACT_COLOR;
+            const color = isCritical ? CRITICAL_COLOR : isImpact ? impactColor : DEP_TYPE_COLOR[type];
             const path = edgePath(srcPos, dstPos, type);
             const mid = edgeMidpoint(srcPos, dstPos, type);
             const label = isCritical
@@ -475,9 +511,9 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
                   d={path}
                   fill="none"
                   stroke={color}
-                  strokeWidth={isCritical ? 2.5 : 1.5}
-                  strokeDasharray={isCritical ? undefined : type === 'AA' ? '5,3' : type === 'EE' ? '2,3' : undefined}
-                  opacity={isCritical ? 1 : 0.7}
+                   strokeWidth={isCritical || isImpact ? 2.5 : 1.5}
+                   strokeDasharray={isCritical ? undefined : isImpact ? '7,3' : type === 'AA' ? '5,3' : type === 'EE' ? '2,3' : undefined}
+                   opacity={isCritical || isImpact ? 1 : 0.7}
                   markerEnd={`url(#arrow-${isCritical ? 'critical' : type})`}
                 />
                 {/* Edge label */}
@@ -512,7 +548,11 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
             if (!pos) return null;
 
             const isCritical = criticalNodes.has(takt.id);
+            const isPredecessorImpact = predecessorImpactIds.has(takt.id);
+            const isSuccessorImpact = successorImpactIds.has(takt.id);
+            const isImpact = isPredecessorImpact || isSuccessorImpact;
             const color = STATUS_COLOR[takt.status as TaktStatus] ?? '#64748b';
+            const impactColor = isPredecessorImpact ? PREDECESSOR_IMPACT_COLOR : SUCCESSOR_IMPACT_COLOR;
             const rx = 8;
 
             return (
@@ -540,8 +580,8 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
                   height={NODE_H}
                   rx={rx}
                   fill={color + '18'}
-                  stroke={isCritical ? CRITICAL_NODE_RING : color}
-                  strokeWidth={isCritical ? 2.5 : 1.5}
+                  stroke={isCritical ? CRITICAL_NODE_RING : isImpact ? impactColor : color}
+                  strokeWidth={isCritical || isImpact ? 2.5 : 1.5}
                 />
                 {/* Colored header strip */}
                 <rect
@@ -620,6 +660,29 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
                     strokeWidth={1}
                   />
                 )}
+                {isImpact && (
+                  <>
+                    <circle
+                      cx={pos.x + NODE_W - 28}
+                      cy={pos.y + NODE_H - 9}
+                      r={5}
+                      fill={impactColor + '30'}
+                      stroke={impactColor}
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={pos.x + NODE_W - 28}
+                      y={pos.y + NODE_H - 6}
+                      fontSize={8}
+                      fontWeight={700}
+                      fill={impactColor}
+                      textAnchor="middle"
+                      fontFamily="inherit"
+                    >
+                      !
+                    </text>
+                  </>
+                )}
                 {isCritical && (
                   <text
                     x={pos.x + NODE_W - 13}
@@ -642,7 +705,8 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
         {tooltip && hoveredTakt && (() => {
           const color = STATUS_COLOR[hoveredTakt.status as TaktStatus] ?? '#64748b';
           const preds = deps.filter(d => d.successorId === hoveredTakt.id && ids.has(d.predecessorId));
-          const succs = deps.filter(d => d.predecessorId === hoveredTakt.id && ids.has(d.successorId));
+           const succs = deps.filter(d => d.predecessorId === hoveredTakt.id && ids.has(d.successorId));
+           const nodeImpacts = alternativeImpacts.filter(impact => impact.relatedTaktId === hoveredTakt.id);
           // Position tooltip: prefer right of cursor, flip if too close to right edge
           const containerW = containerRef.current?.clientWidth ?? 600;
           const tipW = 240;
@@ -743,6 +807,16 @@ export default function NetzplanView({ takte, deps }: NetzplanViewProps) {
                   })}
                 </div>
               )}
+            {nodeImpacts.length > 0 && (
+              <div className="mt-2 border-t border-border/50 pt-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">Alternativtermin-Auswirkung</div>
+                {nodeImpacts.map((impact, index) => (
+                  <div key={`${impact.dependencyId}-${index}`} className="text-xs text-amber-700">
+                    {impact.direction === 'PREDECESSOR' ? 'Vorgänger' : 'Nachfolger'} betroffen · {impact.type} · Puffer +{impact.lagDays}d
+                  </div>
+                ))}
+              </div>
+            )}
             </div>
           );
         })()}

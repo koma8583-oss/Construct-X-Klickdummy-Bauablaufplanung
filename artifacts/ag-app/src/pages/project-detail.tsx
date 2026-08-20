@@ -117,6 +117,8 @@ import {
   type ProjectCalendar,
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
+import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
+import { findAlternativeImpacts, type AlternativeImpact } from '@/lib/alternative-impact';
 
 // ── Working-days client utility ────────────────────────────────────────────────
 
@@ -659,6 +661,33 @@ export default function ProjectDetail() {
     [proposalDetailResults.map(r => r.dataUpdatedAt).join(',')],
   );
 
+  const alternativeImpacts = useMemo(() => {
+    const byAlternative = new Map<string, AlternativeImpact[]>();
+    for (const detail of proposalDetails) {
+      for (const alternative of detail.response?.alternatives ?? []) {
+        byAlternative.set(
+          `${detail.id}:${alternative.id}`,
+          findAlternativeImpacts(
+            detail.taktId,
+            { proposedStart: alternative.proposedStart, proposedEnd: alternative.proposedEnd },
+            takte ?? [],
+            deps ?? [],
+          ),
+        );
+      }
+    }
+    return byAlternative;
+  }, [proposalDetails, takte, deps]);
+
+  const allAlternativeImpacts = useMemo(
+    () => [...alternativeImpacts.values()].flat(),
+    [alternativeImpacts],
+  );
+  const impactedTaktIds = useMemo(
+    () => new Set(allAlternativeImpacts.map(impact => impact.relatedTaktId)),
+    [allAlternativeImpacts],
+  );
+
   // Gantt tasks with dependency arrows + interleaved alternative bars
   const ganttTasks: Task[] = useMemo(() => {
     if (!takte || takte.length === 0) return [];
@@ -666,7 +695,8 @@ export default function ProjectDetail() {
     const baseTasks = takte.map(takt => {
       const color = getTaktColor(takt.status);
       const predecessorIds = (depsBySuccessor.get(takt.id) ?? []).map(d => d.predecessorId);
-      const isConflict = conflictTaktIdSet.has(takt.id);
+        const isConflict = conflictTaktIdSet.has(takt.id);
+        const isAlternativeImpact = impactedTaktIds.has(takt.id);
       return {
         id: takt.id,
         name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
@@ -683,7 +713,14 @@ export default function ProjectDetail() {
               backgroundColor: '#ef444430',
               backgroundSelectedColor: '#ef444450',
             }
-          : {
+          : isAlternativeImpact
+            ? {
+                progressColor: '#d97706',
+                progressSelectedColor: '#b45309',
+                backgroundColor: '#f59e0b55',
+                backgroundSelectedColor: '#f59e0b88',
+              }
+            : {
               progressColor: color,
               progressSelectedColor: color,
               backgroundColor: color + '80',
@@ -726,7 +763,7 @@ export default function ProjectDetail() {
       if (alts) combined.push(...alts);
     }
     return combined;
-  }, [takte, depsBySuccessor, conflictTaktIdSet, showAlternatives, proposalDetails]);
+  }, [takte, depsBySuccessor, conflictTaktIdSet, impactedTaktIds, showAlternatives, proposalDetails]);
 
   const selectedTakt = useMemo(() => takte?.find(t => t.id === selectedTaktId), [takte, selectedTaktId]);
   const editTakt = useMemo(() => takte?.find(t => t.id === editTargetId), [takte, editTargetId]);
@@ -744,6 +781,11 @@ export default function ProjectDetail() {
       )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
   }, [taktRequests, selectedTaktId]);
+
+  const selectedProposalDetail = useMemo(
+    () => proposalDetails.find(detail => detail.id === activeTaktRequest?.id),
+    [proposalDetails, activeTaktRequest?.id],
+  );
 
   // Group takt requests by nuOrgId, filtered to this project
   const projectRequestsByAnOrg = useMemo(() => {
@@ -1597,6 +1639,27 @@ export default function ProjectDetail() {
                 </button>
               </div>
             )}
+            {allAlternativeImpacts.length > 0 && (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-orange-500/35 bg-orange-500/8 text-sm shrink-0">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-orange-500" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-orange-700 dark:text-orange-300 mb-1">
+                    Gegenvorschläge beeinflussen die Abhängigkeitskette
+                  </p>
+                  <p className="text-xs text-orange-700/90 dark:text-orange-200/90">
+                    {allAlternativeImpacts.filter(impact => impact.direction === 'PREDECESSOR').length > 0
+                      ? `${allAlternativeImpacts.filter(impact => impact.direction === 'PREDECESSOR').length} Vorgänger`
+                      : ''}
+                    {allAlternativeImpacts.some(impact => impact.direction === 'PREDECESSOR') &&
+                      allAlternativeImpacts.some(impact => impact.direction === 'SUCCESSOR') ? ' und ' : ''}
+                    {allAlternativeImpacts.filter(impact => impact.direction === 'SUCCESSOR').length > 0
+                      ? `${allAlternativeImpacts.filter(impact => impact.direction === 'SUCCESSOR').length} Nachfolger`
+                      : ''}{' '}
+                    haben keinen ausreichenden Puffer. Betroffene Balken sind orange markiert.
+                  </p>
+                </div>
+              </div>
+            )}
             {takteLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
             ) : ganttTasks.length > 0 ? (
@@ -1653,7 +1716,11 @@ export default function ProjectDetail() {
             {takteLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
             ) : (
-              <NetzplanView takte={takte ?? []} deps={deps ?? []} />
+              <NetzplanView
+                takte={takte ?? []}
+                deps={deps ?? []}
+                alternativeImpacts={allAlternativeImpacts}
+              />
             )}
           </div>
         )}
@@ -2177,6 +2244,17 @@ export default function ProjectDetail() {
                             Gegenvorschlag eingegangen
                           </div>
                         )}
+                        {activeTaktRequest.status === 'ALTERNATIVES_PROPOSED' && selectedProposalDetail?.response?.alternatives?.map(alternative => (
+                          <div key={alternative.id} className="space-y-1.5 rounded-lg border border-orange-500/25 bg-orange-500/5 p-3">
+                            <div className="text-xs font-semibold text-orange-700 dark:text-orange-300">
+                              Alternative #{alternative.rank}: {format(new Date(alternative.proposedStart), 'dd.MM.yyyy')}–{format(new Date(alternative.proposedEnd), 'dd.MM.yyyy')}
+                            </div>
+                            <AlternativeImpactInfo
+                              impacts={alternativeImpacts.get(`${selectedProposalDetail.id}:${alternative.id}`) ?? []}
+                              taktNameById={taktNameById}
+                            />
+                          </div>
+                        ))}
                         {activeTaktRequest.status === 'REJECTED' && (
                           <div className="flex items-center justify-center p-3 rounded bg-red-500/10 text-red-500 text-sm font-medium">
                             <XCircle className="w-4 h-4 mr-2" /> Abgelehnt

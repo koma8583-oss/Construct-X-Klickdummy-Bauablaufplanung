@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'wouter';
 import { format, isPast, isAfter, addDays } from 'date-fns';
@@ -8,6 +8,10 @@ import {
   type TaktRequestDetail,
   type TaktRequestStatus,
   type MessageOutboxStatus,
+  useListTakte,
+  useListTaktDependencies,
+  getListTakteQueryKey,
+  getListTaktDependenciesQueryKey,
 } from '@workspace/api-client-react';
 import {
   ArrowLeft,
@@ -36,6 +40,8 @@ import { GUDecisionPanel } from '@/components/gu-decision-panel';
 import { RevisionTrigger } from '@/components/revision-dialog';
 import { CoordinationHistory } from '@/components/coordination-history';
 import { DeadlineCard } from '@/components/deadline-card';
+import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
+import { findAlternativeImpacts } from '@/lib/alternative-impact';
 
 // ── Status badge helpers ───────────────────────────────────────────────────────
 
@@ -463,6 +469,35 @@ export default function TaktRequestDetailPage() {
     },
   });
 
+  const { data: requestTakte } = useListTakte(detail?.projectId ?? '', {
+    query: {
+      enabled: !!detail?.projectId,
+      queryKey: getListTakteQueryKey(detail?.projectId ?? ''),
+    },
+  });
+  const { data: requestDeps } = useListTaktDependencies(detail?.projectId ?? '', {
+    query: {
+      enabled: !!detail?.projectId,
+      queryKey: getListTaktDependenciesQueryKey(detail?.projectId ?? ''),
+    },
+  });
+  const requestTaktNames = useMemo(
+    () => new Map((requestTakte ?? []).map(takt => [takt.id, `${takt.taktBezeichnung} · ${takt.gewerk}`])),
+    [requestTakte],
+  );
+  const requestAlternativeImpacts = useMemo(
+    () => new Map((detail?.response?.alternatives ?? []).map(alternative => [
+      alternative.id,
+      findAlternativeImpacts(
+        detail?.taktId ?? '',
+        { proposedStart: alternative.proposedStart, proposedEnd: alternative.proposedEnd },
+        requestTakte ?? [],
+        requestDeps ?? [],
+      ),
+    ])),
+    [detail, requestTakte, requestDeps],
+  );
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -634,6 +669,22 @@ export default function TaktRequestDetailPage() {
           {/* Response + GU Decision panel */}
           <Section icon={<FileText className="w-4 h-4" />} title={t('taktRequestDetail.response.title')}>
             <ResponsePanel detail={detail} />
+            {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Auswirkungen auf Abhängigkeiten</h3>
+                {detail.response.alternatives.map(alternative => (
+                  <div key={alternative.id} className="rounded-lg border border-orange-500/25 bg-orange-500/5 p-3">
+                    <div className="mb-2 text-xs font-semibold text-orange-700 dark:text-orange-300">
+                      Alternative #{alternative.rank}: {format(new Date(alternative.proposedStart), 'dd.MM.yyyy')}–{format(new Date(alternative.proposedEnd), 'dd.MM.yyyy')}
+                    </div>
+                    <AlternativeImpactInfo
+                      impacts={requestAlternativeImpacts.get(alternative.id) ?? []}
+                      taktNameById={requestTaktNames}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
         </div>
       </div>
