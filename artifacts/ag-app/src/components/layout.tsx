@@ -38,16 +38,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     (sum, p) => sum + (p.alternativeTaktRequests ?? 0),
     0,
   );
-  const openTaktRequestsTotal = (projectsOverview ?? []).reduce(
-    (sum, p) => sum + (p.openTaktRequests ?? 0),
-    0,
-  );
 
   const navigation: NavItem[] = [
-    { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
-    { name: t('nav.projects'), href: '/projects', icon: Briefcase, badge: pendingProposalsTotal },
-    { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send, badge: openTaktRequestsTotal },
-    { name: t('nav.contractors'), href: '/contractors', icon: Users, badge: openTaktRequestsTotal },
+    { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard, badge: pendingProposalsTotal },
+    { name: t('nav.projects'), href: '/projects', icon: Briefcase },
+    { name: t('nav.taktRequests'), href: '/takt-requests', icon: Send, badge: pendingProposalsTotal },
+    { name: t('nav.contractors'), href: '/contractors', icon: Users },
     { name: t('nav.datenraum'), href: '/datenraum', icon: Database },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];

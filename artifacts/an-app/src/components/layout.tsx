@@ -2,7 +2,6 @@ import { useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
-import { useGetAnDataOffers, useGetAnDashboard } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
   Inbox,
@@ -21,6 +20,13 @@ import {
   Globe,
 } from "lucide-react";
 
+interface NavItem {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  badge?: number;
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
@@ -28,25 +34,15 @@ export function Layout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Count OFFERED (= policy-pending) data offers for the Datenraum badge
-  const { data: dataOffers } = useGetAnDataOffers();
-  const pendingPolicyCount = (dataOffers ?? []).filter(
-    (o) => o.recipientStatus === "OFFERED",
-  ).length;
-
-  // Count pending TaktRequests for the Anfragen badge
-  const { data: dashboard } = useGetAnDashboard();
-  const pendingRequestsCount = (dashboard as any)?.pendingRequests ?? 0;
-
-  const navItems = [
-    { href: "/", icon: LayoutDashboard, label: t("nav.dashboard"), badge: 0 },
-    { href: "/takt-requests", icon: Inbox, label: "Anfragen", badge: pendingRequestsCount },
-    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht", badge: 0 },
-    { href: "/resources", icon: HardHat, label: "Ressourcen", badge: 0 },
-    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung", badge: 0 },
-    { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte", badge: 0 },
-    { href: "/data-offers", icon: Globe, label: "Datenraum", badge: pendingPolicyCount },
-    { href: "/settings", icon: Settings, label: t("nav.settings"), badge: 0 },
+  const navItems: NavItem[] = [
+    { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
+    { href: "/takt-requests", icon: Inbox, label: "Anfragen" },
+    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
+    { href: "/resources", icon: HardHat, label: "Ressourcen" },
+    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
+    { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
+    { href: "/data-offers", icon: Globe, label: "Datenraum" },
+    { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];
 
   const closeMobile = () => setMobileOpen(false);
@@ -130,16 +126,16 @@ export function Layout({ children }: { children: ReactNode }) {
                 {/* Icon — dot overlay in collapsed mode */}
                 <span className="relative flex-shrink-0">
                   <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : ""}`} />
-                  {item.badge > 0 && collapsed && (
+                  {(item.badge ?? 0) > 0 && collapsed && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary" />
                   )}
                 </span>
                 {/* Label */}
                 <span className={`truncate flex-1 ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
                 {/* Badge — number to the right when expanded */}
-                {item.badge > 0 && !collapsed && (
+                {(item.badge ?? 0) > 0 && !collapsed && (
                   <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 leading-none">
-                    {item.badge > 9 ? "9+" : item.badge}
+                    {(item.badge ?? 0) > 9 ? "9+" : item.badge}
                   </span>
                 )}
               </Link>
