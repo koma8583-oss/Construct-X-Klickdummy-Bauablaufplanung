@@ -567,7 +567,17 @@ export default function TaktRequestDetailPage() {
       <div className="rounded-xl border border-border bg-card p-5">
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
           {[
-            { label: t('taktRequestDetail.header.project'), value: detail.projectName },
+            {
+              label: t('taktRequestDetail.header.project'),
+              value: (
+                <Link
+                  href={`/projects/${detail.projectId}`}
+                  className="text-primary hover:underline underline-offset-2"
+                >
+                  {detail.projectName}
+                </Link>
+              ),
+            },
             { label: t('taktRequestDetail.header.takt'), value: detail.taktBezeichnung },
             { label: t('taktRequestDetail.header.version'), value: `v${detail.taktVersion}` },
             { label: t('taktRequestDetail.header.contractor'), value: detail.nuOrgName },
