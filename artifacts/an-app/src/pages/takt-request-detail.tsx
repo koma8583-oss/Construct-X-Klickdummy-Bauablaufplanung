@@ -535,6 +535,7 @@ export default function TaktRequestDetailPage() {
         rank: i + 1,
         timeWindow: { start: a.start, end: a.end },
       }));
+      if (comment) payload.comment = comment;
     } else if (decision === TaktDecision.REJECTED) {
       if (reasonCode) payload.reasonCode = reasonCode;
       if (comment)    payload.comment    = comment;
@@ -1118,6 +1119,16 @@ export default function TaktRequestDetailPage() {
                       </div>
                     );
                   })}
+                  <div className="space-y-1.5 pt-2 border-t border-blue-500/20">
+                    <Label className="text-xs">Kommentar zum Gegenvorschlag (optional)</Label>
+                    <Textarea
+                      value={comment}
+                      onChange={e => setComment(e.target.value)}
+                      placeholder="Hinweis zum vorgeschlagenen Zeitraum"
+                      className="h-20 resize-none"
+                      maxLength={2000}
+                    />
+                  </div>
                 </div>
               )}
 
