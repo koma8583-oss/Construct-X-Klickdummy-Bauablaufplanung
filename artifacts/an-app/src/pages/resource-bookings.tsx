@@ -20,6 +20,7 @@ import {
   useDeleteNuResourceBooking,
   useListNuLocalProjects,
   useListResources,
+  useListResourceTypes,
   getListNuResourceBookingsQueryKey,
   type NuResourceBooking,
   type NuResourceBookingCreate,
@@ -157,6 +158,8 @@ function buildIso(date: string, time: string, isEnd: boolean): string {
 
 interface BookingFormData {
   resourceId: string;
+  resourceTypeId: string;
+  quantity: number;
   localProjectId: string;
   sourceType: string;
   startDate: string;
@@ -170,6 +173,8 @@ interface BookingFormData {
 
 const EMPTY_BOOKING: BookingFormData = {
   resourceId: "",
+  resourceTypeId: "",
+  quantity: 1,
   localProjectId: "",
   sourceType: "MANUAL_BLOCK",
   startDate: "",
@@ -195,13 +200,15 @@ function CreateBookingDialog({
   const [form, setForm] = useState<BookingFormData>(EMPTY_BOOKING);
 
   const { data: resources } = useListResources();
+  const { data: resourceTypes } = useListResourceTypes();
   const { data: localProjects } = useListNuLocalProjects();
 
   const set = (field: keyof BookingFormData, value: string | number) =>
     setForm((f) => ({ ...f, [field]: value }));
 
   const canSave =
-    form.resourceId !== "" &&
+    (form.resourceId !== "" || form.resourceTypeId !== "") &&
+    (form.resourceId !== "" || form.quantity > 0) &&
     form.startDate !== "" &&
     form.endDate !== "" &&
     form.utilizationPercent > 0;
@@ -229,6 +236,33 @@ function CreateBookingDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Oder Ressourcentyp</Label>
+              <Select value={form.resourceTypeId} onValueChange={(v) => {
+                setForm((f) => ({ ...f, resourceTypeId: v, resourceId: "" }));
+              }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Typ wählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(resourceTypes?.items ?? []).map((rt) => (
+                    <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {form.resourceTypeId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Menge *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(e) => set("quantity", Math.max(1, Number(e.target.value) || 1))}
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs">Art</Label>
@@ -397,12 +431,15 @@ export default function ResourceBookingsPage() {
 
   const { data, isLoading, isError, refetch } = useListNuResourceBookings(queryParams as Parameters<typeof useListNuResourceBookings>[0]);
   const { data: resources } = useListResources();
+  const { data: resourceTypes } = useListResourceTypes();
   const cancelMutation = useCancelNuResourceBooking();
   const deleteMutation = useDeleteNuResourceBooking();
   const createMutation = useCreateNuResourceBooking();
 
   const resourceNameById = (id?: string | null) =>
     id ? (resources?.find((r) => r.id === id)?.name ?? id.slice(0, 8) + "…") : "–";
+  const resourceTypeNameById = (id?: string | null) =>
+    id ? (resourceTypes?.items.find((rt) => rt.id === id)?.name ?? id.slice(0, 8) + "…") : "–";
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListNuResourceBookingsQueryKey() });
@@ -431,7 +468,8 @@ export default function ResourceBookingsPage() {
 
   const handleCreate = async (form: BookingFormData) => {
     const body: NuResourceBookingCreate = {
-      resourceId: form.resourceId,
+      ...(form.resourceId ? { resourceId: form.resourceId } : {}),
+      ...(form.resourceTypeId ? { resourceTypeId: form.resourceTypeId, quantity: form.quantity } : {}),
       sourceType: form.sourceType as NuResourceBookingCreate["sourceType"],
       startAt: buildIso(form.startDate, form.startTime, false),
       endAt:   buildIso(form.endDate, form.endTime, true),
@@ -581,7 +619,9 @@ export default function ResourceBookingsPage() {
                         className={`border-border hover:bg-muted/30 transition-colors ${isCancelled ? "opacity-50" : ""}`}
                       >
                         <TableCell className="font-medium text-sm">
-                          {resourceNameById(b.resourceId)}
+                          {b.resourceId
+                            ? resourceNameById(b.resourceId)
+                            : `${resourceTypeNameById(b.resourceTypeId)} (${b.quantity ?? 0} Einheiten)`}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
                           <SourceBadge type={b.sourceType} />

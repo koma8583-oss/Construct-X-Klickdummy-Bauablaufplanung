@@ -5,12 +5,20 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateResourceRequestCapacityUnit } from './createResourceRequestCapacityUnit';
 import type { CreateResourceRequestType } from './createResourceRequestType';
 
 export interface CreateResourceRequest {
-  type: CreateResourceRequestType;
+  type?: CreateResourceRequestType;
   name: string;
   qualification?: string;
   dailyCapacityHours?: number;
   color?: string;
+  skills?: string[];
+  qualifications?: string[];
+  /** @exclusiveMinimum 0 */
+  capacity?: number;
+  capacityUnit?: CreateResourceRequestCapacityUnit;
+  active?: boolean;
+  resourceTypeId: string;
 }

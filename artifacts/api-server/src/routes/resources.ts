@@ -13,6 +13,23 @@ import { z } from "zod";
 
 const router = Router();
 
+function requireAnWrite(req: { user?: { orgType?: string | null; orgId?: string | null } }, res: { status: (code: number) => { json: (body: unknown) => unknown } }): boolean {
+  if (req.user?.orgType !== "AN" || !req.user.orgId) {
+    res.status(403).json({ error: "Resource write access is restricted to NU organisations" });
+    return false;
+  }
+  return true;
+}
+
+async function loadOwnResourceType(resourceTypeId: string, orgId: string) {
+  const [resourceType] = await db
+    .select()
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, resourceTypeId), eq(resourceTypesTable.anOrgId, orgId)))
+    .limit(1);
+  return resourceType ?? null;
+}
+
 // ── Helper: assert the resource belongs to the caller's org ──────────────────
 
 async function loadOwnResource(
@@ -61,6 +78,8 @@ router.get("/resources", requireJwt, async (req, res): Promise<void> => {
 // ── POST /resources ───────────────────────────────────────────────────────────
 
 router.post("/resources", requireJwt, async (req, res): Promise<void> => {
+  if (!requireAnWrite(req, res)) return;
+  const orgId = req.user!.orgId!;
   const schema = z.object({
     type: z.enum(["EMPLOYEE", "CREW", "EQUIPMENT", "MACHINE", "OTHER"]).optional(),
     name: z.string().min(1),
@@ -74,7 +93,7 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
     capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
     calendarId:        z.string().optional(),
     active:            z.boolean().optional(),
-    resourceTypeId:    z.string().nullable().optional(),
+    resourceTypeId:    z.string().min(1),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -83,15 +102,23 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
-  // Derive `type` from linked ResourceType category when not explicitly supplied
+  const resourceType = await loadOwnResourceType(parsed.data.resourceTypeId, orgId);
+  if (!resourceType) {
+    res.status(403).json({ error: "Resource type does not belong to your organisation" });
+    return;
+  }
+  if (
+    parsed.data.capacityUnit &&
+    resourceType.capacityUnit &&
+    parsed.data.capacityUnit !== resourceType.capacityUnit
+  ) {
+    res.status(422).json({ error: "capacityUnit must match the ResourceType" });
+    return;
+  }
+
+  // Derive `type` from the linked ResourceType category when not explicitly supplied
   let resolvedType = parsed.data.type;
-  if (!resolvedType && parsed.data.resourceTypeId) {
-    const [rt] = await db
-      .select({ category: resourceTypesTable.category })
-      .from(resourceTypesTable)
-      .where(eq(resourceTypesTable.id, parsed.data.resourceTypeId))
-      .limit(1);
-    if (rt) {
+  if (!resolvedType) {
       const CAT_TO_TYPE: Record<string, "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER"> = {
         PERSONNEL: "EMPLOYEE",
         CREW: "CREW",
@@ -99,14 +126,18 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
         MACHINE: "MACHINE",
         OTHER: "OTHER",
       };
-      resolvedType = CAT_TO_TYPE[rt.category] ?? "EMPLOYEE";
-    }
+      resolvedType = CAT_TO_TYPE[resourceType.category] ?? "EMPLOYEE";
   }
   resolvedType ??= "EMPLOYEE";
 
   const [resource] = await db
     .insert(resourcesTable)
-    .values({ ...parsed.data, type: resolvedType, anOrgId: req.user!.orgId! })
+    .values({
+      ...parsed.data,
+      type: resolvedType,
+      capacityUnit: resourceType.capacityUnit,
+      anOrgId: orgId,
+    })
     .returning();
 
   res.status(201).json(resource);
@@ -118,6 +149,7 @@ router.patch(
   "/resources/:resourceId",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnWrite(req, res)) return;
     const orgId = req.user!.orgId!;
     const resourceId = req.params.resourceId as string;
 
@@ -150,6 +182,23 @@ router.patch(
       return;
     }
 
+    const nextResourceTypeId = parsed.data.resourceTypeId ?? existing.resourceTypeId;
+    const resourceType = nextResourceTypeId
+      ? await loadOwnResourceType(nextResourceTypeId, orgId)
+      : null;
+    if (nextResourceTypeId && !resourceType) {
+      res.status(403).json({ error: "Resource type does not belong to your organisation" });
+      return;
+    }
+    if (
+      parsed.data.capacityUnit &&
+      resourceType?.capacityUnit &&
+      parsed.data.capacityUnit !== resourceType.capacityUnit
+    ) {
+      res.status(422).json({ error: "capacityUnit must match the ResourceType" });
+      return;
+    }
+
     const [updated] = await db
       .update(resourcesTable)
       .set(parsed.data)
@@ -176,6 +225,7 @@ router.delete(
   "/resources/:resourceId",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnWrite(req, res)) return;
     const orgId = req.user!.orgId!;
     const resourceId = req.params.resourceId as string;
 

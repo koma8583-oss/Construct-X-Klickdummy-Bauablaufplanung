@@ -272,7 +272,11 @@ export async function createGuDecision(
   // and Terminübersicht without any manual step by the NU.
   let bookingStart: Date | null = null;
   let bookingEnd:   Date | null = null;
-  let autoBookResourceIds: string[] = [];
+  let autoBookResources: Array<{
+    resourceId: string | null;
+    resourceTypeId?: string;
+    quantity?: number;
+  }> = [];
 
   const isAcceptance =
     decisionType === "CONFIRM_ACCEPTED" || decisionType === "ACCEPT_ALTERNATIVE";
@@ -303,9 +307,11 @@ export async function createGuDecision(
         .limit(1);
 
       const available = latestCheck?.internalResultPayload?.availableResources ?? [];
-      autoBookResourceIds = available
-        .map((r) => r.resourceId)
-        .filter((id): id is string => Boolean(id));
+      autoBookResources = available.map((r) => ({
+        resourceId: r.resourceId ?? null,
+        ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
+        ...(r.quantity != null ? { quantity: r.quantity } : {}),
+      }));
     }
   }
 
@@ -411,12 +417,14 @@ export async function createGuDecision(
       isAcceptance &&
       bookingStart &&
       bookingEnd &&
-      autoBookResourceIds.length > 0 &&
+      autoBookResources.length > 0 &&
       request.nuOrgId
     ) {
-      const bookingValues = autoBookResourceIds.map((resourceId) => ({
+      const bookingValues = autoBookResources.map((resource) => ({
         nuOrgId:           request.nuOrgId as string,
-        resourceId,
+        resourceId:        resource.resourceId,
+        resourceTypeId:    resource.resourceTypeId ?? null,
+        quantity:          resource.quantity ?? null,
         sourceType:        "TAKT_REQUEST" as const,
         sourceReferenceId: taktRequestId,
         startAt:           bookingStart!,

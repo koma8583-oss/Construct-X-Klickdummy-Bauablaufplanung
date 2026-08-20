@@ -41,12 +41,11 @@ export const DTC_TO_CATEGORY: Record<DtcClassKey, ResourceTypeCategory> = {
 };
 
 /** Reverse mapping: legacy category → best-fit DTC key. */
-export const CATEGORY_TO_DTC: Record<ResourceTypeCategory, DtcClassKey> = {
+export const CATEGORY_TO_DTC: Partial<Record<ResourceTypeCategory, DtcClassKey>> = {
   PERSONNEL: "WORKER",
   CREW: "WORKER_CREW",
   EQUIPMENT: "EQUIPMENT",
-  MACHINE: "TEMPORARY_EQUIPMENT",
-  OTHER: "WORKER", // best-effort fallback
+  MACHINE: "EQUIPMENT",
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -134,7 +134,7 @@ function ActiveBadge({ active }: { active: boolean }) {
 interface RtFormData {
   name: string;
   /** DTC class key (maps to the full URI) */
-  dtcClassKey: DtcClassKey;
+  dtcClassKey: DtcClassKey | "";
   /** Short internal code e.g. "LAB-DRYWALL" */
   code: string;
   capacityUnit: ResourceCapacityUnit | "";
@@ -197,13 +197,14 @@ function ResourceTypeDialog({
               DTC-Klasse (Ressourcenart) *
             </Label>
             <Select
-              value={form.dtcClassKey}
-              onValueChange={(v) => set("dtcClassKey", v as DtcClassKey)}
+              value={form.dtcClassKey || "__NONE__"}
+              onValueChange={(v) => set("dtcClassKey", v === "__NONE__" ? "" : v as DtcClassKey)}
             >
               <SelectTrigger id="rt-dtc" className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__NONE__">Keine automatische DTC-Zuordnung</SelectItem>
                 {DTC_CLASS_KEYS.map((k) => (
                   <SelectItem key={k} value={k}>
                     {DTC_CLASS_LABELS[k]}
@@ -235,14 +236,14 @@ function ResourceTypeDialog({
                 Kapazitätseinheit
               </Label>
               <Select
-                value={form.capacityUnit}
-                onValueChange={(v) => set("capacityUnit", v as ResourceCapacityUnit | "")}
+                value={form.capacityUnit || "__NONE__"}
+                onValueChange={(v) => set("capacityUnit", v === "__NONE__" ? "" : v as ResourceCapacityUnit)}
               >
                 <SelectTrigger id="rt-unit" className="h-9">
                   <SelectValue placeholder="– keine –" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">– keine –</SelectItem>
+                  <SelectItem value="__NONE__">– keine –</SelectItem>
                   {(Object.keys(CAPACITY_UNIT_LABELS) as ResourceCapacityUnit[]).map((k) => (
                     <SelectItem key={k} value={k}>
                       {CAPACITY_UNIT_LABELS[k]}
@@ -258,10 +259,10 @@ function ResourceTypeDialog({
               <X className="w-4 h-4 mr-1.5" />
               Abbrechen
             </Button>
-            <Button
+           <Button
               size="sm"
               onClick={() => onSave(form)}
-              disabled={isSaving || !form.name.trim()}
+                disabled={isSaving || !form.name.trim() || !form.dtcClassKey}
               className="bg-emerald-500 hover:bg-emerald-600 text-white"
             >
               {isSaving ? (
@@ -297,10 +298,11 @@ function ResourceTypesTab() {
 
   const handleCreate = async (form: RtFormData) => {
     try {
+      const dtcClassKey = form.dtcClassKey || null;
       await createMut.mutateAsync({
         name: form.name.trim(),
-        category: DTC_TO_CATEGORY[form.dtcClassKey],
-        dtcClass: DTC_CLASSES[form.dtcClassKey],
+        category: dtcClassKey ? DTC_TO_CATEGORY[dtcClassKey] : "OTHER",
+        ...(dtcClassKey && { dtcClass: DTC_CLASSES[dtcClassKey] }),
         ...(form.code.trim() && { code: form.code.trim() }),
         ...(form.capacityUnit && { capacityUnit: form.capacityUnit }),
       });
@@ -319,12 +321,13 @@ function ResourceTypesTab() {
   const handleEdit = async (form: RtFormData) => {
     if (!editItem) return;
     try {
+      const dtcClassKey = form.dtcClassKey || null;
       await updateMut.mutateAsync({
         id: editItem.id,
         data: {
           name: form.name.trim() || undefined,
-          category: DTC_TO_CATEGORY[form.dtcClassKey],
-          dtcClass: DTC_CLASSES[form.dtcClassKey],
+          category: dtcClassKey ? DTC_TO_CATEGORY[dtcClassKey] : "OTHER",
+          dtcClass: dtcClassKey ? DTC_CLASSES[dtcClassKey] : null,
           code: form.code.trim() || null,
           capacityUnit: (form.capacityUnit as ResourceCapacityUnit) || null,
         },
@@ -482,7 +485,7 @@ function ResourceTypesTab() {
             name: editItem.name,
             dtcClassKey: editItem.dtcClass
               ? (Object.entries(DTC_CLASSES).find(([, uri]) => uri === editItem.dtcClass)?.[0] as DtcClassKey ?? CATEGORY_TO_DTC[editItem.category])
-              : CATEGORY_TO_DTC[editItem.category],
+              : CATEGORY_TO_DTC[editItem.category] ?? "",
             code: editItem.code ?? "",
             capacityUnit: editItem.capacityUnit ?? "",
           }}
@@ -632,7 +635,13 @@ function ResourceDialog({
             <Button
               size="sm"
               onClick={() => onSave(form)}
-              disabled={isSaving || !form.name.trim()}
+              disabled={
+                isSaving ||
+                !form.name.trim() ||
+                !form.resourceTypeId ||
+                !form.capacity ||
+                Number(form.capacity) <= 0
+              }
               className="bg-emerald-500 hover:bg-emerald-600 text-white"
             >
               {isSaving ? (
@@ -688,7 +697,7 @@ function ResourcesTab() {
           type: deriveType(form.resourceTypeId) as any,
           name: form.name.trim(),
           ...(form.color && { color: form.color }),
-          ...(form.resourceTypeId && { resourceTypeId: form.resourceTypeId }),
+          resourceTypeId: form.resourceTypeId,
           ...(form.capacity && { capacity: parseFloat(form.capacity) }),
         },
       });

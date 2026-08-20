@@ -2923,6 +2923,10 @@ paths:
           schema:
             type: string
         - in: query
+          name: resourceTypeId
+          schema:
+            type: string
+        - in: query
           name: localProjectId
           schema:
             type: string
@@ -4157,7 +4161,7 @@ components:
           type: string
         type:
           type: string
-          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+          enum: [EMPLOYEE, CREW, EQUIPMENT, MACHINE, OTHER]
         name:
           type: string
         qualification:
@@ -4180,7 +4184,7 @@ components:
       properties:
         type:
           type: string
-          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+          enum: [EMPLOYEE, CREW, EQUIPMENT, MACHINE, OTHER]
         name:
           type: string
         qualification:
@@ -4189,14 +4193,30 @@ components:
           type: number
         color:
           type: string
-      required: [type, name]
+        skills:
+          type: array
+          items: { type: string }
+        qualifications:
+          type: array
+          items: { type: string }
+        capacity:
+          type: number
+          exclusiveMinimum: 0
+        capacityUnit:
+          type: string
+          enum: [PERSONS, UNITS, HOURS_PER_DAY, PERCENT]
+        active:
+          type: boolean
+        resourceTypeId:
+          type: string
+      required: [name, resourceTypeId]
 
     UpdateResourceRequest:
       type: object
       properties:
         type:
           type: string
-          enum: [EMPLOYEE, EQUIPMENT, MACHINE, OTHER]
+          enum: [EMPLOYEE, CREW, EQUIPMENT, MACHINE, OTHER]
         name:
           type: string
         qualification:
@@ -4209,6 +4229,20 @@ components:
           type: string
           nullable: true
           description: Optional link to a named resource type. Pass null to clear.
+        skills:
+          type: array
+          items: { type: string }
+        qualifications:
+          type: array
+          items: { type: string }
+        capacity:
+          type: number
+          exclusiveMinimum: 0
+        capacityUnit:
+          type: string
+          enum: [PERSONS, UNITS, HOURS_PER_DAY, PERCENT]
+        active:
+          type: boolean
 
     # ── Resource Assignment ──
     ResourceAssignment:
@@ -5874,6 +5908,16 @@ components:
       type: object
       description: Body for PATCH /nu/resource-bookings/{bookingId}. All fields optional.
       properties:
+        resourceId:
+          type: string
+          nullable: true
+        resourceTypeId:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          minimum: 1
+          nullable: true
         localProjectId:
           type: string
           nullable: true

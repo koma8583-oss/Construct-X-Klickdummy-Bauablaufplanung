@@ -629,6 +629,7 @@ export type ResourceType = typeof ResourceType[keyof typeof ResourceType];
 
 export const ResourceType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',
@@ -651,17 +652,35 @@ export type CreateResourceRequestType = typeof CreateResourceRequestType[keyof t
 
 export const CreateResourceRequestType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',
 } as const;
 
+export type CreateResourceRequestCapacityUnit = typeof CreateResourceRequestCapacityUnit[keyof typeof CreateResourceRequestCapacityUnit];
+
+
+export const CreateResourceRequestCapacityUnit = {
+  PERSONS: 'PERSONS',
+  UNITS: 'UNITS',
+  HOURS_PER_DAY: 'HOURS_PER_DAY',
+  PERCENT: 'PERCENT',
+} as const;
+
 export interface CreateResourceRequest {
-  type: CreateResourceRequestType;
+  type?: CreateResourceRequestType;
   name: string;
   qualification?: string;
   dailyCapacityHours?: number;
   color?: string;
+  skills?: string[];
+  qualifications?: string[];
+  /** @exclusiveMinimum 0 */
+  capacity?: number;
+  capacityUnit?: CreateResourceRequestCapacityUnit;
+  active?: boolean;
+  resourceTypeId: string;
 }
 
 export type UpdateResourceRequestType = typeof UpdateResourceRequestType[keyof typeof UpdateResourceRequestType];
@@ -669,9 +688,20 @@ export type UpdateResourceRequestType = typeof UpdateResourceRequestType[keyof t
 
 export const UpdateResourceRequestType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',
+} as const;
+
+export type UpdateResourceRequestCapacityUnit = typeof UpdateResourceRequestCapacityUnit[keyof typeof UpdateResourceRequestCapacityUnit];
+
+
+export const UpdateResourceRequestCapacityUnit = {
+  PERSONS: 'PERSONS',
+  UNITS: 'UNITS',
+  HOURS_PER_DAY: 'HOURS_PER_DAY',
+  PERCENT: 'PERCENT',
 } as const;
 
 export interface UpdateResourceRequest {
@@ -682,6 +712,12 @@ export interface UpdateResourceRequest {
   color?: string;
   /** Optional link to a named resource type. Pass null to clear. */
   resourceTypeId?: string | null;
+  skills?: string[];
+  qualifications?: string[];
+  /** @exclusiveMinimum 0 */
+  capacity?: number;
+  capacityUnit?: UpdateResourceRequestCapacityUnit;
+  active?: boolean;
 }
 
 export interface ResourceAssignment {
@@ -1771,6 +1807,10 @@ export const NuResourceBookingUpdateStatus = {
  * Body for PATCH /nu/resource-bookings/{bookingId}. All fields optional.
  */
 export interface NuResourceBookingUpdate {
+  resourceId?: string | null;
+  resourceTypeId?: string | null;
+  /** @minimum 1 */
+  quantity?: number | null;
   localProjectId?: string | null;
   sourceReferenceId?: string;
   startAt?: string;
@@ -2378,6 +2418,7 @@ export const ListNuLocalProjectsStatus = {
 
 export type ListNuResourceBookingsParams = {
 resourceId?: string;
+resourceTypeId?: string;
 localProjectId?: string;
 sourceType?: ListNuResourceBookingsSourceType;
 status?: ListNuResourceBookingsStatus;

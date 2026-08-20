@@ -63,7 +63,12 @@ export interface InternalResultPayload {
     overlapUtilizationSum?: number;
     missingQualification?: string;
   }>;
-  availableResources: Array<{ resourceId: string; resourceType: string }>;
+  availableResources: Array<{
+    resourceId: string | null;
+    resourceType: string;
+    resourceTypeId?: string;
+    quantity?: number;
+  }>;
   missingQualifications: string[];
   unavailableEquipment: string[];
   /** TENTATIVE bookings treated as warnings per task spec */

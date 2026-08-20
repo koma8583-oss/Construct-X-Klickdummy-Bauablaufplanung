@@ -11,6 +11,7 @@ export type ResourceType = typeof ResourceType[keyof typeof ResourceType];
 
 export const ResourceType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',

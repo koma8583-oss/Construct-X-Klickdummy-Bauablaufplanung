@@ -11,6 +11,10 @@ import type { NuResourceBookingUpdateStatus } from './nuResourceBookingUpdateSta
  * Body for PATCH /nu/resource-bookings/{bookingId}. All fields optional.
  */
 export interface NuResourceBookingUpdate {
+  resourceId?: string | null;
+  resourceTypeId?: string | null;
+  /** @minimum 1 */
+  quantity?: number | null;
   localProjectId?: string | null;
   sourceReferenceId?: string;
   startAt?: Date;

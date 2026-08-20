@@ -10,6 +10,7 @@ import type { ListNuResourceBookingsStatus } from './listNuResourceBookingsStatu
 
 export type ListNuResourceBookingsParams = {
 resourceId?: string;
+resourceTypeId?: string;
 localProjectId?: string;
 sourceType?: ListNuResourceBookingsSourceType;
 status?: ListNuResourceBookingsStatus;

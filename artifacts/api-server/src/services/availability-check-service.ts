@@ -39,6 +39,7 @@ import {
   generateAlternatives,
   toPublicAlternative,
   type AlternativeResource,
+  ALTERNATIVE_GENERATOR_CONFIG,
 } from "./alternative-generator";
 
 const logger = pino({ name: "availability-check-service" });
@@ -116,6 +117,16 @@ function parseDate(d: string): Date {
   return new Date(`${d}T00:00:00Z`);
 }
 
+function parseInclusiveEnd(d: string): Date {
+  const end = parseDate(d);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return end;
+}
+
+function overlaps(startAt: Date, endAt: Date, windowStart: Date, windowEnd: Date): boolean {
+  return startAt < windowEnd && endAt > windowStart;
+}
+
 // ── Main service function ─────────────────────────────────────────────────────
 
 /**
@@ -190,7 +201,7 @@ export async function runAvailabilityCheck(
   }
 
   const windowStart = parseDate(snapshot.plannedTimeWindow.start);
-  const windowEnd   = parseDate(snapshot.plannedTimeWindow.end);
+  const windowEnd   = parseInclusiveEnd(snapshot.plannedTimeWindow.end);
 
   if (windowEnd <= windowStart) {
     throw new AvailabilityCheckError(
@@ -359,9 +370,40 @@ async function executeCheckRules(
     .from(resourcesTable)
     .where(and(eq(resourcesTable.anOrgId, nuOrgId), eq(resourcesTable.active, true)));
 
-  // Load all existing bookings for this NU in the check window
-  // Overlap: booking.startAt < windowEnd AND booking.endAt > windowStart
-  // Exclude CANCELLED bookings
+  // Load requirements before bookings so requirement-specific periods and the
+  // complete alternative search horizon are included in the query.
+  const dtcRequirements = await db
+    .select()
+    .from(taktRequestResourceRequirementsTable)
+    .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId));
+
+  const requirementStarts = dtcRequirements
+    .map((r) => r.periodStart ? parseDate(r.periodStart) : windowStart);
+  const requirementEnds = dtcRequirements
+    .map((r) => r.periodEnd ? parseInclusiveEnd(r.periodEnd) : windowEnd);
+  const plannedDurationDays = Math.max(
+    Math.ceil((windowEnd.getTime() - windowStart.getTime()) / 86_400_000),
+    1,
+  );
+  const alternativeSearchEnd = new Date(windowStart.getTime());
+  alternativeSearchEnd.setUTCDate(
+    alternativeSearchEnd.getUTCDate() +
+      ALTERNATIVE_GENERATOR_CONFIG.searchHorizonDays +
+      plannedDurationDays +
+      1,
+  );
+  const bookingWindowStart = new Date(Math.min(
+    windowStart.getTime(),
+    ...requirementStarts.map((d) => d.getTime()),
+  ));
+  const bookingWindowEnd = new Date(Math.max(
+    windowEnd.getTime(),
+    alternativeSearchEnd.getTime(),
+    ...requirementEnds.map((d) => d.getTime()),
+  ));
+
+  // Overlap: booking.startAt < bookingWindowEnd AND
+  // booking.endAt > bookingWindowStart. Exclude CANCELLED bookings.
   const overlappingBookings = await db
     .select({
       id: resourceBookingsTable.id,
@@ -379,16 +421,10 @@ async function executeCheckRules(
       and(
         eq(resourceBookingsTable.nuOrgId, nuOrgId),
         ne(resourceBookingsTable.status, "CANCELLED"),
-        lt(resourceBookingsTable.startAt, windowEnd),
-        gt(resourceBookingsTable.endAt, windowStart),
+        lt(resourceBookingsTable.startAt, bookingWindowEnd),
+        gt(resourceBookingsTable.endAt, bookingWindowStart),
       ),
     );
-
-  // ── Load DTC-based resource requirements (if any) ────────────────────────────
-  const dtcRequirements = await db
-    .select()
-    .from(taktRequestResourceRequirementsTable)
-    .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId));
 
   const hasDtcRequirements = dtcRequirements.some(r => r.resourceTypeId);
 
@@ -398,11 +434,18 @@ async function executeCheckRules(
       nuResources,
       overlappingBookings,
       snapshot,
+      windowStart,
+      windowEnd,
     );
   }
 
   // ── Legacy path: snapshot-based type classification ──────────────────────────
-  return executeLegacyCheck(snapshot, nuResources, overlappingBookings);
+  return executeLegacyCheck(
+    snapshot,
+    nuResources,
+    overlappingBookings.filter((b) => overlaps(b.startAt, b.endAt, windowStart, windowEnd)),
+    overlappingBookings,
+  );
 }
 
 // ── DTC-based check (takt_request_resource_requirements) ──────────────────────
@@ -436,6 +479,9 @@ type DtcRequirement = {
   resourceTypeId: string | null;
   requiredCapacity: string | null;
   utilizationPercent: number;
+  requiredQualification: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
   notes: string | null;
 };
 
@@ -444,47 +490,78 @@ async function executeDtcCheck(
   nuResources: NuResource[],
   overlappingBookings: OverlapBooking[],
   snapshot: TaktRequestSnapshotPayload,
+  windowStart: Date,
+  windowEnd: Date,
 ): Promise<CheckRulesResult> {
   const conflicts: InternalResultPayload["conflicts"] = [];
   const tentativeWarnings: InternalResultPayload["tentativeWarnings"] = [];
   const missingQualifications: string[] = [];
   const unavailableEquipment: string[] = [];
-  const availableResources: Array<{ resourceId: string; resourceType: string }> = [];
+  const availableResources: Array<{
+    resourceId: string | null;
+    resourceType: string;
+    resourceTypeId?: string;
+    quantity?: number;
+  }> = [];
 
   for (const req of requirements) {
     if (!req.resourceTypeId) continue;
 
     const rtId = req.resourceTypeId;
-    // Treat 0 or missing quantity as "at least 1 unit" — existence check
-    const requiredQty = Math.max(parseFloat(req.requiredCapacity ?? "0"), 1);
+    const declaredCapacity = parseFloat(req.requiredCapacity ?? "0");
+    const requiredQty =
+      (Math.max(Number.isFinite(declaredCapacity) ? declaredCapacity : 0, 1) *
+        req.utilizationPercent) /
+      100;
+    const effectiveStart = req.periodStart ? parseDate(req.periodStart) : windowStart;
+    const effectiveEnd = req.periodEnd ? parseInclusiveEnd(req.periodEnd) : windowEnd;
+    const requirementBookings = overlappingBookings.filter((b) =>
+      overlaps(b.startAt, b.endAt, effectiveStart, effectiveEnd),
+    );
 
     // Active resources of this type registered for the NU
     const typeResources = nuResources.filter(r => r.resourceTypeId === rtId);
+    const normalizedQualification = req.requiredQualification?.trim().toLocaleLowerCase();
+    const eligibleResources = normalizedQualification
+      ? typeResources.filter((r) =>
+          Array.isArray(r.qualifications) &&
+          (r.qualifications as string[]).some(
+            (qualification) =>
+              qualification.trim().toLocaleLowerCase() === normalizedQualification,
+          ),
+        )
+      : typeResources;
 
     // No resources of this type at all → hard conflict immediately
-    if (typeResources.length === 0) {
+    if (eligibleResources.length === 0) {
       conflicts.push({
         resourceId: rtId,
         resourceName: req.notes ?? `ResourceType ${rtId}`,
         conflictType: "MISSING_EQUIPMENT",
-        missingQualification: "Keine Ressource dieses Typs vorhanden",
+        missingQualification: normalizedQualification
+          ? req.requiredQualification!.trim()
+          : "Keine Ressource dieses Typs vorhanden",
         isTentative: false,
         overlapUtilizationSum: 0,
       });
+      if (normalizedQualification) {
+        missingQualifications.push(req.requiredQualification!.trim());
+        conflicts[conflicts.length - 1].conflictType = "MISSING_QUALIFICATION";
+      }
       continue;
     }
 
     // Capacity: resources without a set capacity count as 1 unit each
-    const totalCapacity = typeResources.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
+    const totalCapacity = eligibleResources.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
 
-    const confirmedBookings = overlappingBookings.filter(b => b.status === "CONFIRMED");
-    const tentativeBookings = overlappingBookings.filter(b => b.status === "TENTATIVE");
+    const confirmedBookings = requirementBookings.filter(b => b.status === "CONFIRMED");
+    const tentativeBookings = requirementBookings.filter(b => b.status === "TENTATIVE");
 
     // Helper: does this booking consume capacity from a resource of type rtId?
     const isTypeBooking = (b: OverlapBooking) => {
       if (b.resourceId !== null) {
         // Resource-level booking — check whether the resource belongs to this type
-        return typeResources.some(r => r.id === b.resourceId);
+        return eligibleResources.some(r => r.id === b.resourceId);
       }
       // Type-level booking (quantity on the resourceTypeId column)
       return b.resourceTypeId === rtId && b.quantity != null;
@@ -493,13 +570,13 @@ async function executeDtcCheck(
     // Capacity consumed by CONFIRMED type-level bookings (quantity column)
     const usedByTypeBookings = confirmedBookings
       .filter(b => b.resourceId === null && b.resourceTypeId === rtId && b.quantity != null)
-      .reduce((sum, b) => sum + (b.quantity ?? 0), 0);
+      .reduce((sum, b) => sum + ((b.quantity ?? 0) * b.utilizationPercent) / 100, 0);
 
     // Capacity consumed by CONFIRMED resource-level bookings (utilization × capacity)
     const usedByResourceBookings = confirmedBookings
-      .filter(b => b.resourceId !== null && typeResources.some(r => r.id === b.resourceId))
+      .filter(b => b.resourceId !== null && eligibleResources.some(r => r.id === b.resourceId))
       .reduce((sum, b) => {
-        const resource = typeResources.find(r => r.id === b.resourceId);
+        const resource = eligibleResources.find(r => r.id === b.resourceId);
         const cap = resource?.capacity ?? 1;   // treat null capacity as 1 unit
         return sum + (cap * b.utilizationPercent) / 100;
       }, 0);
@@ -516,14 +593,21 @@ async function executeDtcCheck(
         overlapUtilizationSum: Math.round(usedCapacity),
       });
     } else {
-      availableResources.push({ resourceId: rtId, resourceType: "DTC_TYPE" });
+      availableResources.push({
+        resourceId: null,
+        resourceTypeId: rtId,
+        resourceType: "DTC_TYPE",
+        quantity: Math.ceil(requiredQty),
+      });
 
       // Tentative warnings: would there be a conflict if tentative bookings are confirmed?
       const tentativeUsed = tentativeBookings
         .filter(b => isTypeBooking(b))
         .reduce((sum, b) => {
-          if (b.resourceId === null && b.quantity != null) return sum + (b.quantity ?? 0);
-          const resource = typeResources.find(r => r.id === b.resourceId);
+          if (b.resourceId === null && b.quantity != null) {
+            return sum + ((b.quantity ?? 0) * b.utilizationPercent) / 100;
+          }
+          const resource = eligibleResources.find(r => r.id === b.resourceId);
           return sum + ((resource?.capacity ?? 1) * b.utilizationPercent) / 100;
         }, 0);
 
@@ -589,6 +673,7 @@ async function executeLegacyCheck(
   snapshot: TaktRequestSnapshotPayload,
   nuResources: NuResource[],
   overlappingBookings: OverlapBooking[],
+  alternativeBookings: OverlapBooking[],
 ): Promise<CheckRulesResult> {
   // Classify NU resources by type
   const crewResources  = nuResources.filter(r => r.type === "CREW" || r.type === "EMPLOYEE");
@@ -715,7 +800,7 @@ async function executeLegacyCheck(
       active: r.active,
     }));
 
-    const alternatives = generateAlternatives(snapshot, altResources, overlappingBookings);
+    const alternatives = generateAlternatives(snapshot, altResources, alternativeBookings);
     publicAlternatives = alternatives.map(toPublicAlternative);
     if (alternatives.length > 0) nextAvailableDate = alternatives[0].timeWindow.start;
   }

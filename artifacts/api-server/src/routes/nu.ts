@@ -59,6 +59,24 @@ const DTC_CLASS_TO_CATEGORY: Record<string, ResourceTypeCategory> = {
 };
 const VALID_DTC_CLASSES = Object.keys(DTC_CLASS_TO_CATEGORY);
 
+async function loadOwnResourceType(resourceTypeId: string, nuOrgId: string) {
+  const [resourceType] = await db
+    .select()
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, resourceTypeId), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .limit(1);
+  return resourceType ?? null;
+}
+
+async function loadOwnLocalProject(localProjectId: string, nuOrgId: string) {
+  const [project] = await db
+    .select({ id: nuLocalProjectsTable.id })
+    .from(nuLocalProjectsTable)
+    .where(and(eq(nuLocalProjectsTable.id, localProjectId), eq(nuLocalProjectsTable.nuOrgId, nuOrgId)))
+    .limit(1);
+  return project ?? null;
+}
+
 // GET /api/nu/resource-types
 router.get("/nu/resource-types", requireJwt, async (req, res): Promise<void> => {
   if (!requireNU(req, res)) return;
@@ -111,10 +129,16 @@ router.post("/nu/resource-types", requireJwt, async (req, res): Promise<void> =>
   }
 
   // Derive category from dtcClass if not explicitly provided
-  let category: ResourceTypeCategory = rest.category ?? "PERSONNEL";
+  let category: ResourceTypeCategory;
   if (dtcClass && DTC_CLASS_TO_CATEGORY[dtcClass]) {
     category = DTC_CLASS_TO_CATEGORY[dtcClass];
-  } else if (!rest.category) {
+    if (rest.category && rest.category !== category) {
+      res.status(422).json({ error: "category does not match dtcClass" });
+      return;
+    }
+  } else if (rest.category) {
+    category = rest.category;
+  } else {
     res.status(400).json({ error: "Either 'category' or a valid 'dtcClass' must be provided" });
     return;
   }
@@ -194,10 +218,35 @@ router.patch("/nu/resource-types/:id", requireJwt, async (req, res): Promise<voi
   }
 
   const { dtcClass, ...patchRest } = parsed.data;
+  if (dtcClass && !VALID_DTC_CLASSES.includes(dtcClass)) {
+    res.status(400).json({ error: `Invalid dtcClass. Must be one of: ${VALID_DTC_CLASSES.join(", ")}` });
+    return;
+  }
 
-  // If dtcClass is being updated, keep category in sync
+  const [current] = await db
+    .select({ category: resourceTypesTable.category, dtcClass: resourceTypesTable.dtcClass })
+    .from(resourceTypesTable)
+    .where(and(eq(resourceTypesTable.id, id), eq(resourceTypesTable.anOrgId, nuOrgId)))
+    .limit(1);
+  if (!current) {
+    res.status(404).json({ error: "Resource type not found" });
+    return;
+  }
+
+  const effectiveDtcClass = dtcClass === undefined ? current.dtcClass : dtcClass;
+  const effectiveCategory = patchRest.category ?? current.category;
+  if (
+    effectiveDtcClass &&
+    DTC_CLASS_TO_CATEGORY[effectiveDtcClass] &&
+    DTC_CLASS_TO_CATEGORY[effectiveDtcClass] !== effectiveCategory
+  ) {
+    res.status(422).json({ error: "category does not match dtcClass" });
+    return;
+  }
   const categoryOverride =
-    dtcClass && DTC_CLASS_TO_CATEGORY[dtcClass] ? { category: DTC_CLASS_TO_CATEGORY[dtcClass] } : {};
+    dtcClass && DTC_CLASS_TO_CATEGORY[dtcClass]
+      ? { category: DTC_CLASS_TO_CATEGORY[dtcClass] }
+      : {};
 
   const [updated] = await db
     .update(resourceTypesTable)
@@ -412,6 +461,9 @@ router.get("/nu/resource-bookings", requireJwt, async (req, res): Promise<void> 
   if (q.resourceId) {
     filters.push(eq(resourceBookingsTable.resourceId, q.resourceId));
   }
+  if (q.resourceTypeId) {
+    filters.push(eq(resourceBookingsTable.resourceTypeId, q.resourceTypeId));
+  }
   if (q.localProjectId) {
     filters.push(eq(resourceBookingsTable.localProjectId, q.localProjectId));
   }
@@ -451,6 +503,8 @@ router.get("/nu/resource-bookings", requireJwt, async (req, res): Promise<void> 
       resourceId:         resourceBookingsTable.resourceId,
       resourceName:       resourcesTable.name,
       resourceColor:      resourcesTable.color,
+      resourceTypeId:     resourceBookingsTable.resourceTypeId,
+      quantity:            resourceBookingsTable.quantity,
       localProjectId:     resourceBookingsTable.localProjectId,
       sourceType:         resourceBookingsTable.sourceType,
       sourceReferenceId:  resourceBookingsTable.sourceReferenceId,
@@ -506,6 +560,10 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     res.status(400).json({ error: "At least one of 'resourceId' or 'resourceTypeId' must be provided" });
     return;
   }
+  if (!data.resourceId && data.resourceTypeId && data.quantity == null) {
+    res.status(422).json({ error: "quantity is required for type-level bookings" });
+    return;
+  }
 
   const startAt = new Date(data.startAt);
   const endAt   = new Date(data.endAt);
@@ -532,10 +590,27 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
       return;
     }
 
+    if (data.resourceTypeId && resource.resourceTypeId !== data.resourceTypeId) {
+      res.status(422).json({ error: "RESOURCE_TYPE_MISMATCH" });
+      return;
+    }
+
     // Auto-fill resourceTypeId from the resource if not explicitly provided
     if (!data.resourceTypeId && resource.resourceTypeId) {
       data.resourceTypeId = resource.resourceTypeId;
     }
+  }
+
+  if (data.resourceTypeId) {
+    const resourceType = await loadOwnResourceType(data.resourceTypeId, nuOrgId);
+    if (!resourceType) {
+      res.status(403).json({ error: "Resource type does not belong to your organisation" });
+      return;
+    }
+  }
+  if (data.localProjectId && !(await loadOwnLocalProject(data.localProjectId, nuOrgId))) {
+    res.status(403).json({ error: "Local project does not belong to your organisation" });
+    return;
   }
 
   const [booking] = await db
@@ -573,6 +648,9 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   const bookingId = req.params.bookingId as string;
 
   const schema = z.object({
+    resourceId: z.string().min(1).nullable().optional(),
+    resourceTypeId: z.string().min(1).nullable().optional(),
+    quantity: z.number().int().positive().nullable().optional(),
     localProjectId: z.string().nullable().optional(),
     sourceReferenceId: z.string().optional(),
     startAt: z.string().datetime({ offset: true }).optional(),
@@ -610,6 +688,45 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   }
 
   const patchData = parsed.data;
+  const nextResourceId = patchData.resourceId !== undefined ? patchData.resourceId : existing.resourceId;
+  const nextResourceTypeId =
+    patchData.resourceTypeId !== undefined ? patchData.resourceTypeId : existing.resourceTypeId;
+  const nextQuantity = patchData.quantity !== undefined ? patchData.quantity : existing.quantity;
+  if (!nextResourceId && !nextResourceTypeId) {
+    res.status(422).json({ error: "At least one of 'resourceId' or 'resourceTypeId' must be provided" });
+    return;
+  }
+  if (!nextResourceId && nextResourceTypeId && (nextQuantity == null || nextQuantity <= 0)) {
+    res.status(422).json({ error: "quantity is required for type-level bookings" });
+    return;
+  }
+  if (nextResourceId) {
+    const [resource] = await db
+      .select({ anOrgId: resourcesTable.anOrgId, resourceTypeId: resourcesTable.resourceTypeId })
+      .from(resourcesTable)
+      .where(eq(resourcesTable.id, nextResourceId))
+      .limit(1);
+    if (!resource) {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+    if (resource.anOrgId !== nuOrgId) {
+      res.status(403).json({ error: "Resource does not belong to your organisation" });
+      return;
+    }
+    if (nextResourceTypeId && resource.resourceTypeId !== nextResourceTypeId) {
+      res.status(422).json({ error: "RESOURCE_TYPE_MISMATCH" });
+      return;
+    }
+  }
+  if (nextResourceTypeId && !(await loadOwnResourceType(nextResourceTypeId, nuOrgId))) {
+    res.status(403).json({ error: "Resource type does not belong to your organisation" });
+    return;
+  }
+  if (patchData.localProjectId && !(await loadOwnLocalProject(patchData.localProjectId, nuOrgId))) {
+    res.status(403).json({ error: "Local project does not belong to your organisation" });
+    return;
+  }
   const newStart = patchData.startAt ? new Date(patchData.startAt) : existing.startAt;
   const newEnd   = patchData.endAt   ? new Date(patchData.endAt)   : existing.endAt;
 
@@ -621,6 +738,9 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   const [updated] = await db
     .update(resourceBookingsTable)
     .set({
+      ...(patchData.resourceId !== undefined ? { resourceId: patchData.resourceId } : {}),
+      ...(patchData.resourceTypeId !== undefined ? { resourceTypeId: patchData.resourceTypeId } : {}),
+      ...(patchData.quantity !== undefined ? { quantity: patchData.quantity } : {}),
       ...(patchData.localProjectId !== undefined ? { localProjectId: patchData.localProjectId } : {}),
       ...(patchData.sourceReferenceId !== undefined ? { sourceReferenceId: patchData.sourceReferenceId } : {}),
       ...(patchData.startAt !== undefined ? { startAt: new Date(patchData.startAt) } : {}),

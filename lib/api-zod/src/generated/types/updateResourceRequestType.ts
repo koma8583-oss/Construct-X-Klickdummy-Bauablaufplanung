@@ -11,6 +11,7 @@ export type UpdateResourceRequestType = typeof UpdateResourceRequestType[keyof t
 
 export const UpdateResourceRequestType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',

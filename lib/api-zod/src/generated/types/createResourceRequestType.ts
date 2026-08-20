@@ -11,6 +11,7 @@ export type CreateResourceRequestType = typeof CreateResourceRequestType[keyof t
 
 export const CreateResourceRequestType = {
   EMPLOYEE: 'EMPLOYEE',
+  CREW: 'CREW',
   EQUIPMENT: 'EQUIPMENT',
   MACHINE: 'MACHINE',
   OTHER: 'OTHER',
