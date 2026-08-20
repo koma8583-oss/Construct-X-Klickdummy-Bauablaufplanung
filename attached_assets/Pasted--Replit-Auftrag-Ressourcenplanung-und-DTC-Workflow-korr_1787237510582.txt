@@ -1,0 +1,977 @@
+# Replit-Auftrag – Ressourcenplanung und DTC-Workflow korrigieren
+
+Arbeite im Repository:
+
+`koma8583-oss/Construct-X-Klickdummy-Bauablaufplanung`
+
+Ziel ist ausschließlich die Korrektur der identifizierten Fehler und Inkonsistenzen im Bereich:
+
+* Ressourcen
+* Ressourcentypen
+* Ressourcenbuchungen
+* DTC Resource Requirements
+* Availability Check
+* Alternativtermine
+* Auto-Booking nach Annahme
+
+Keine größere Refaktorierung durchführen.
+
+## Wichtig
+
+Folgende bestehende Felder und deren grundsätzliche Semantik **nicht ändern oder umbenennen**:
+
+```text
+capacity
+capacityUnit
+requiredCapacity
+quantity
+utilizationPercent
+```
+
+Keine neue Ontologie-Infrastruktur, keinen Triple Store, kein RDF und kein neues Ressourcenmodell einführen.
+
+---
+
+# 1. Kritisch: Auto-Booking für DTC-Anforderungen korrigieren
+
+Prüfe:
+
+```text
+artifacts/api-server/src/services/availability-check-service.ts
+artifacts/api-server/src/services/gu-decision-service.ts
+```
+
+Aktuelles Problem:
+
+Bei DTC-basierten Anforderungen wird teilweise eine `resourceTypeId` als `resourceId` in `availableResources` abgelegt.
+
+Später behandelt `gu-decision-service.ts` diese ID als konkrete Resource-ID und versucht eine konkrete Buchung zu erzeugen.
+
+Das ist falsch.
+
+## Zielverhalten
+
+Bei einer typbasierten Ressourcenanforderung:
+
+```text
+resourceTypeId = Facharbeiter Trockenbau
+requiredCapacity = 6
+```
+
+muss bei einer angenommenen Anfrage eine typbasierte Buchung entstehen:
+
+```text
+resourceId = null
+resourceTypeId = <resourceTypeId>
+quantity = 6
+utilizationPercent = <Requirement-Auslastung>
+sourceType = TAKT_REQUEST
+sourceReferenceId = <taktRequestId>
+```
+
+Keine künstliche konkrete `resourceId` erzeugen.
+
+## Umsetzung
+
+Interne Availability-Ergebnisse so erweitern, dass eindeutig unterschieden werden kann zwischen:
+
+```text
+konkreter Resource
+und
+ResourceType-Kapazität
+```
+
+Zum Beispiel vorhandene Datenstruktur minimal ergänzen:
+
+```text
+resourceId optional
+resourceTypeId optional
+quantity optional
+```
+
+Keine neue Tabelle notwendig.
+
+`gu-decision-service.ts` muss anhand dieser Felder korrekt entscheiden:
+
+```text
+resourceId vorhanden
+→ konkrete ResourceBooking
+
+nur resourceTypeId vorhanden
+→ typbasierte ResourceBooking
+```
+
+---
+
+# 2. Zeitsemantik vereinheitlichen
+
+Prüfe insbesondere:
+
+```text
+working-days.ts
+takt-request-snapshot-service.ts
+availability-check-service.ts
+alternative-generator.ts
+```
+
+Fachliche Regel:
+
+```text
+plannedStart = inklusiver Kalendertag
+plannedEnd   = inklusiver Kalendertag
+```
+
+Damit ist zulässig:
+
+```text
+Start = 21.08.2026
+Ende  = 21.08.2026
+```
+
+für eine eintägige Leistung.
+
+## Korrekturen
+
+Eine Prüfung wie:
+
+```text
+plannedEnd <= plannedStart
+```
+
+darf eintägige Leistungen nicht ablehnen.
+
+Stattdessen nur ablehnen:
+
+```text
+plannedEnd < plannedStart
+```
+
+Für interne Timestamp-Überlappungsberechnungen den inklusiven Endtag sauber in ein exklusives Intervall umwandeln:
+
+```text
+[startOf(startDate), startOf(dayAfter(endDate)))
+```
+
+Beispiel:
+
+```text
+01.09.–05.09.
+```
+
+intern:
+
+```text
+01.09. 00:00
+bis
+06.09. 00:00 exklusiv
+```
+
+Diese Logik möglichst in einem gemeinsamen Helper kapseln und überall wiederverwenden.
+
+---
+
+# 3. Alternative Zeiträume gegen echte Buchungen prüfen
+
+Aktuell werden vor der Alternativsuche nur Buchungen geladen, die das ursprüngliche Taktfenster überlappen.
+
+Das ist nicht ausreichend.
+
+Beispiel:
+
+```text
+ursprünglich 01.–05.09.
+Alternative 15.–19.09.
+```
+
+Eine Buchung am 15.–19.09. muss ebenfalls berücksichtigt werden.
+
+## Korrektur
+
+Wenn der Alternative Generator bis beispielsweise 60 Tage in die Zukunft sucht:
+
+Lade ResourceBookings für den vollständigen Suchhorizont:
+
+```text
+ursprünglicher Start
+bis
+maximales Ende der Alternativsuche
+```
+
+oder validiere jeden erzeugten Kandidaten mit derselben Availability-Logik.
+
+Bevorzugt keine zweite unabhängige Kapazitätsberechnung implementieren.
+
+Eine Alternative darf nur zurückgegeben werden, wenn alle ResourceRequirements im Kandidatenzeitraum tatsächlich verfügbar sind.
+
+---
+
+# 4. Requirement-spezifischen Zeitraum berücksichtigen
+
+Prüfe:
+
+```text
+takt_request_resource_requirements
+availability-check-service.ts
+```
+
+Die vorhandenen Felder:
+
+```text
+periodStart
+periodEnd
+```
+
+müssen tatsächlich verwendet werden.
+
+Für jeden Ressourcenbedarf gilt:
+
+```text
+effectiveStart =
+  periodStart ?? TaktStart
+
+effectiveEnd =
+  periodEnd ?? TaktEnd
+```
+
+Beispiel:
+
+```text
+Takt:
+01.–20.09.
+
+Mobilkran:
+10.–12.09.
+```
+
+Dann darf eine Kranbelegung am 03.09. diesen Requirement nicht blockieren.
+
+Jeden ResourceRequirement nur gegen Buchungen innerhalb seines tatsächlichen Zeitraums prüfen.
+
+---
+
+# 5. requiredQualification berücksichtigen
+
+Das Feld:
+
+```text
+requiredQualification
+```
+
+existiert bereits und soll nicht entfernt werden.
+
+Falls es bei einem ResourceRequirement gesetzt ist, dürfen nur Ressourcen berücksichtigt werden, deren:
+
+```text
+qualifications[]
+```
+
+die Anforderung erfüllen.
+
+Für den MVP genügt:
+
+```text
+case-insensitive exact match
+```
+
+nach Trim/Normalisierung.
+
+Keine neue Qualifikationsontologie implementieren.
+
+Wenn nicht genügend entsprechend qualifizierte Ressourcen vorhanden sind:
+
+* Availability nicht als `FEASIBLE` melden
+* `missingQualifications` sinnvoll befüllen
+* interne Details dürfen Ressourcendaten enthalten
+* öffentliche Antwort darf keine Mitarbeiter- oder Ressourcenidentitäten enthalten
+
+---
+
+# 6. utilizationPercent konsistent berücksichtigen
+
+`utilizationPercent` existiert sowohl bei Requirements als auch Bookings.
+
+Keine Felder ändern.
+
+Aber Berechnung konsistent machen.
+
+## ResourceRequirement
+
+Benötigte effektive Kapazität:
+
+```text
+effectiveRequiredCapacity =
+requiredCapacity * utilizationPercent / 100
+```
+
+Beispiel:
+
+```text
+requiredCapacity = 6
+utilizationPercent = 50
+→ effektiver Bedarf = 3
+```
+
+## ResourceBooking
+
+Konkrete Resource:
+
+```text
+consumedCapacity =
+resource.capacity * booking.utilizationPercent / 100
+```
+
+Typbuchung:
+
+```text
+consumedCapacity =
+quantity * booking.utilizationPercent / 100
+```
+
+Aktuell darf eine Typbuchung mit:
+
+```text
+quantity = 4
+utilizationPercent = 50
+```
+
+nicht mehr 4 volle Einheiten blockieren.
+
+Sie muss 2 Einheiten verbrauchen.
+
+---
+
+# 7. Typbuchung ohne quantity verhindern
+
+Bei:
+
+```text
+resourceId = null
+resourceTypeId != null
+```
+
+muss gelten:
+
+```text
+quantity > 0
+```
+
+POST und PATCH entsprechend validieren.
+
+Erlaubte Fälle:
+
+### Konkrete Resource
+
+```text
+resourceId != null
+resourceTypeId != null
+quantity optional
+```
+
+### Typbasierte Kapazitätsbuchung
+
+```text
+resourceId = null
+resourceTypeId != null
+quantity > 0
+```
+
+Nicht zulässig:
+
+```text
+resourceId = null
+resourceTypeId != null
+quantity = null
+```
+
+Eine solche Buchung würde sonst keine Kapazität reduzieren.
+
+---
+
+# 8. ResourceType und Resource organisationssicher verknüpfen
+
+Bei allen Schreiboperationen mit:
+
+```text
+resourceTypeId
+```
+
+muss serverseitig geprüft werden:
+
+```text
+resourceType.anOrgId === req.user.orgId
+```
+
+Prüfe mindestens:
+
+```text
+POST /resources
+PATCH /resources/:id
+
+POST /nu/resource-bookings
+PATCH /nu/resource-bookings/:id
+
+Resource Requirements für TaktRequests / Leistungsanfragen
+```
+
+Eine Organisation darf niemals ResourceTypes einer anderen Organisation referenzieren.
+
+Keine Information über fremde ResourceTypes zurückgeben.
+
+---
+
+# 9. localProjectId ebenfalls organisationssicher prüfen
+
+Bei ResourceBookings mit:
+
+```text
+localProjectId
+```
+
+serverseitig sicherstellen:
+
+```text
+localProject.nuOrgId === req.user.orgId
+```
+
+Dies sowohl bei:
+
+```text
+POST
+PATCH
+```
+
+prüfen.
+
+Ein AN darf nur eigene interne Projekte verwenden.
+
+---
+
+# 10. Resource und ResourceType müssen zusammenpassen
+
+Falls eine Booking sowohl:
+
+```text
+resourceId
+resourceTypeId
+```
+
+enthält:
+
+Lade die Resource und prüfe:
+
+```text
+resource.resourceTypeId === resourceTypeId
+```
+
+Wenn nicht:
+
+```text
+422 RESOURCE_TYPE_MISMATCH
+```
+
+zurückgeben.
+
+Damit dürfen beispielsweise nicht entstehen:
+
+```text
+Resource = Mobilkran K-01
+ResourceType = Facharbeiter Trockenbau
+```
+
+---
+
+# 11. capacityUnit konsistent validieren
+
+Keine Felder entfernen oder umbenennen.
+
+Fachliche Regel:
+
+```text
+ResourceType.capacityUnit
+```
+
+ist die verbindliche Planungseinheit des Ressourcentyps.
+
+Bei einer Resource:
+
+```text
+capacity
+```
+
+wird in genau dieser Einheit interpretiert.
+
+Falls:
+
+```text
+Resource.capacityUnit
+```
+
+noch aus Legacy-Gründen gespeichert wird:
+
+* bei neuen Resources automatisch aus ResourceType ableiten
+* beim Update nicht widersprüchlich setzen lassen
+* Availability Check verwendet die Einheit des ResourceType
+
+Keine automatische Umrechnung zwischen:
+
+```text
+PERSONS
+UNITS
+HOURS_PER_DAY
+PERCENT
+```
+
+implementieren.
+
+Wenn unterschiedliche Einheiten auftreten, Fehler melden statt Werte zu addieren.
+
+---
+
+# 12. ResourceBooking-Listen-API korrigieren
+
+Prüfe:
+
+```text
+GET /nu/resource-bookings
+```
+
+Die Response muss auch enthalten:
+
+```text
+resourceTypeId
+quantity
+```
+
+Optional zusätzlich den Namen des Ressourcentyps, wenn dies bereits ohne zusätzlichen Architekturaufwand möglich ist.
+
+Typbasierte Buchungen müssen in der AN-Oberfläche verständlich dargestellt werden können.
+
+Beispiel:
+
+```text
+Facharbeiter Trockenbau
+4 Personen
+Projekt B
+14.–18.09.
+Bestätigt
+```
+
+---
+
+# 13. DTC-Mapping konsistent machen
+
+Prüfe alle Mappings in:
+
+```text
+api-client
+API server
+UI
+Tests
+```
+
+Es muss genau eine zentrale Definition geben.
+
+Empfohlen:
+
+```text
+PERSONNEL
+→ AsPlannedWorker
+
+CREW
+→ AsPlannedWorkerCrew
+
+EQUIPMENT
+→ AsPlannedEquipment
+
+MACHINE
+→ AsPlannedEquipment
+```
+
+`MACHINE` nicht automatisch auf `AsPlannedTemporaryEquipment` mappen.
+
+`AsPlannedTemporaryEquipment` nur verwenden, wenn der Nutzer fachlich explizit:
+
+```text
+Temporäres Bauhilfsmittel
+```
+
+auswählt.
+
+Wichtig:
+
+```text
+OTHER
+```
+
+niemals automatisch auf:
+
+```text
+WORKER
+```
+
+mappen.
+
+Bei Legacy `OTHER`:
+
+```text
+dtcClass = null
+```
+
+beibehalten, bis eine bewusste Zuordnung erfolgt.
+
+Keine automatische fachliche Umklassifizierung beim einfachen Bearbeiten.
+
+---
+
+# 14. ResourceType PATCH konsistent validieren
+
+Beim PATCH eines ResourceTypes dürfen:
+
+```text
+category
+dtcClass
+```
+
+nicht widersprüchlich gespeichert werden.
+
+Nutze dieselbe zentrale Mapping-Funktion wie beim POST.
+
+Beispiel unzulässig:
+
+```text
+category = CREW
+dtcClass = AsPlannedEquipment
+```
+
+Bevorzugt:
+
+Der Client sendet eine DTC-Ressourcenart und der Server leitet daraus die interne Kategorie ab.
+
+Alternativ beide validieren.
+
+`dtcClass` nur aus der bekannten Liste akzeptieren.
+
+Keinen beliebigen URI/String erlauben.
+
+---
+
+# 15. Ressourcen-UI validieren
+
+Prüfe:
+
+```text
+an-app/src/pages/resources.tsx
+```
+
+## ResourceType
+
+Keine leeren `SelectItem value=""` verwenden.
+
+Für „keine Auswahl“ beispielsweise einen Sentinel-Wert nutzen:
+
+```text
+__NONE__
+```
+
+und beim Speichern wieder auf `null` abbilden.
+
+## Resource
+
+Ressourcentyp ist für neue Ressourcen verpflichtend.
+
+Speichern deaktivieren bei:
+
+```text
+!name
+OR !resourceTypeId
+```
+
+Für `capacity`:
+
+Wenn Backend `> 0` verlangt, UI ebenfalls:
+
+```text
+min > 0
+```
+
+und passende Validierung verwenden.
+
+Einheit weiterhin automatisch vom Ressourcentyp anzeigen.
+
+Keine separate Einheitenauswahl an der Resource ergänzen.
+
+---
+
+# 16. ResourceRequirement-UI validieren
+
+Auf der TaktRequest-/Leistungsanfrage-Seite darf ein ResourceRequirement nur gespeichert werden, wenn mindestens vorhanden:
+
+```text
+resourceTypeId
+requiredCapacity > 0
+utilizationPercent > 0
+periodStart
+periodEnd
+```
+
+Falls Start/Ende automatisch vom Takt übernommen werden, ist das ausreichend.
+
+`step3Done` darf nicht nur prüfen:
+
+```text
+requirements.length > 0
+```
+
+sondern nur gültige Requirements berücksichtigen.
+
+Keine Availability-Prüfung mit leeren oder unvollständigen Requirements starten.
+
+---
+
+# 17. OpenAPI nur für betroffene Modelle aktualisieren
+
+Aktualisiere die OpenAPI-Spezifikation für:
+
+```text
+Resource
+ResourceType
+ResourceBooking
+TaktRequestResourceRequirement
+```
+
+Mindestens fehlende Felder und Enum-Werte ergänzen:
+
+```text
+CREW
+resourceTypeId
+capacity
+capacityUnit
+skills
+qualifications
+active
+quantity
+```
+
+Danach vorhandenen API-Client neu generieren.
+
+Nur dadurch überflüssig gewordene:
+
+```text
+as any
+```
+
+in den betroffenen Ressourcenkomponenten entfernen.
+
+Keine komplette API-Spezifikation refaktorieren.
+
+---
+
+# 18. Legacy TaktRequest / Leistungsanfrage nicht jetzt groß umbauen
+
+Es existieren derzeit alte und neue Bezeichnungen beziehungsweise APIs.
+
+Im Rahmen dieses Fehlerfixes:
+
+* keine vollständige API-Migration durchführen
+* keine großen Routen löschen
+* keine neue Architektur einführen
+
+Nur sicherstellen, dass beide vorhandenen Zugriffswege dieselbe korrigierte Resource-/Availability-Service-Logik nutzen.
+
+Doppelte Berechnungslogik vermeiden.
+
+---
+
+# 19. /resources Schreibzugriffe auf AN beschränken
+
+Bestehende Legacy-Route:
+
+```text
+/api/resources
+```
+
+prüfen.
+
+Mindestens:
+
+```text
+POST
+PATCH
+DELETE
+```
+
+dürfen nur für AN-/NU-Organisationen möglich sein.
+
+Bei AG:
+
+```text
+403
+```
+
+zurückgeben.
+
+GET kann aus Legacy-Gründen vorerst bestehen bleiben, sofern dies für bestehende Views nötig ist.
+
+Keine Ressourcen einer AN-Organisation an andere Organisationen ausliefern.
+
+---
+
+# 20. Tests bewusst klein halten
+
+Keine vollständige neue Test-Suite bauen.
+
+Nur gezielte Tests für die korrigierten Fehler ergänzen.
+
+## P0/P1 Tests
+
+### Auto-Booking
+
+1. Typbasierter Requirement:
+
+   * resourceTypeId gesetzt
+   * requiredCapacity = 6
+   * GU akzeptiert
+   * erzeugte Booking hat:
+
+```text
+resourceId = null
+resourceTypeId = Requirement.resourceTypeId
+quantity = 6
+```
+
+2. Keine FK-Verletzung durch Verwendung der ResourceType-ID als Resource-ID.
+
+### Zeit
+
+3. eintägige Leistung:
+
+```text
+start = end
+```
+
+ist gültig.
+
+4. Buchung am letzten geplanten Tag wird als Überlappung erkannt.
+
+### Alternative
+
+5. Buchung in einem alternativen Zeitfenster verhindert genau diese Alternative.
+
+### Kapazität
+
+6. Ressourcentyp:
+
+   * Gesamtkapazität 8
+   * bestätigte Typbuchung quantity 4 / 100 %
+   * verfügbar = 4
+
+7. Typbuchung:
+
+   * quantity 4
+   * utilizationPercent 50
+   * Verbrauch = 2
+
+8. Requirement:
+
+   * requiredCapacity 6
+   * utilizationPercent 50
+   * effektiver Bedarf = 3
+
+### Zeitraum
+
+9. Requirement 10.–12.09. wird nicht durch Buchung 01.–05.09. blockiert.
+
+### Qualifikation
+
+10. Requirement mit Qualifikation wird nur mit passenden Ressourcen als machbar bewertet.
+
+### Organisation
+
+11. fremde `resourceTypeId` bei Resource → 403/422.
+
+12. fremde `resourceTypeId` bei Booking → 403/422.
+
+13. fremde `localProjectId` bei Booking → 403/422.
+
+### Validation
+
+14. TypeBooking ohne `quantity` → 400/422.
+
+15. Resource + falscher ResourceType → 422.
+
+---
+
+# 21. Nur notwendige technische Checks
+
+Nach den Änderungen ausführen:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+Falls OpenAPI/API-Client geändert wurde zusätzlich den vorgesehenen Client-Generate-/Typecheck-Befehl verwenden.
+
+Nur die unmittelbar betroffenen Tests ausführen:
+
+```text
+availability
+resource bookings
+resource types
+resource requirements
+gu decision / auto booking
+```
+
+Nicht die vollständige Repository-Test-Suite starten, sofern kein konkreter Grund besteht.
+
+---
+
+# Priorisierung
+
+Arbeite in dieser Reihenfolge:
+
+```text
+P0
+1 Auto-Booking
+2 Zeitsemantik
+3 Alternativtermine
+
+P1
+4 Requirement-Zeitraum
+5 Qualifikationen
+6 utilizationPercent
+7 Booking quantity
+8 Organisationstrennung
+9 Resource/ResourceType-Konsistenz
+10 capacityUnit-Konsistenz
+
+P2
+11 Booking-API
+12 DTC-Mapping
+13 UI-Validierung
+14 OpenAPI
+15 Legacy-Schreibschutz
+```
+
+Nach jedem P0-Block zuerst die unmittelbar relevanten Tests ausführen.
+
+Keine zusätzliche Funktionalität implementieren.
+
+---
+
+# Abschlussbericht
+
+Berichte knapp:
+
+1. behobene P0-Fehler
+2. behobene P1/P2-Inkonsistenzen
+3. geänderte Dateien
+4. Änderungen an Availability-Berechnung
+5. Änderungen am Auto-Booking
+6. Änderungen an Mandantentrennung
+7. ausgeführte Tests
+8. Typecheck-/Build-Ergebnis
+9. verbleibende bekannte Legacy-Probleme
+
+Keine weiteren Optimierungen außerhalb dieses Auftrags durchführen.
