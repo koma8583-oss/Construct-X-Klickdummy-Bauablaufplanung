@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DatePicker } from '@/components/date-picker';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -455,11 +456,11 @@ export function DataPublicationWizard({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Gültig ab (optional)</Label>
-                  <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+                  <DatePicker value={validFrom} onChange={setValidFrom} />
                 </div>
                 <div className="space-y-2">
                   <Label>Gültig bis (optional)</Label>
-                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+                  <DatePicker value={validUntil} onChange={setValidUntil} />
                 </div>
               </div>
             </div>

@@ -37,6 +37,7 @@ import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestList
 import { useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
+import { DatePicker } from '@/components/date-picker';
 
 // gantt-task-react does not export prop types — define them inline
 interface TaskListHeaderProps {
@@ -2312,12 +2313,11 @@ export default function ProjectDetail() {
                                   Antwortfrist{' '}
                                   <span className="text-muted-foreground font-normal">(optional)</span>
                                 </Label>
-                                <Input
-                                  type="datetime-local"
+                                <DatePicker
+                                  includeTime
                                   value={vergabeResponseRequiredBy}
                                   min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
+                                  onChange={(val) => {
                                     setVergabeResponseRequiredBy(val);
                                     if (val) {
                                       const deadline = new Date(val);
@@ -2431,15 +2431,14 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
                       <Label>Plan-Start</Label>
-                      <Input
+                      <DatePicker
                         name="plannedStart"
-                        type="date"
                         required
                         value={editPlannedStart}
-                        onChange={e => {
-                          setEditPlannedStart(e.target.value);
+                        onChange={value => {
+                          setEditPlannedStart(value);
                           if (editDurationDays && projectCalendar) {
-                            setEditPlannedEnd(clientComputePlannedEnd(e.target.value, Number(editDurationDays), projectCalendar));
+                            setEditPlannedEnd(clientComputePlannedEnd(value, Number(editDurationDays), projectCalendar));
                           }
                         }}
                       />
@@ -2476,12 +2475,11 @@ export default function ProjectDetail() {
                         </span>
                       )}
                     </Label>
-                    <Input
+                    <DatePicker
                       name="plannedEnd"
-                      type="date"
                       value={editPlannedEnd || editTakt.plannedEnd}
-                      onChange={e => {
-                        setEditPlannedEnd(e.target.value);
+                      onChange={value => {
+                        setEditPlannedEnd(value);
                         setEditDurationDays('');
                       }}
                       required
@@ -2490,11 +2488,11 @@ export default function ProjectDetail() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground flex items-center gap-1">Frühester Start <span className="text-[10px]">(Puffer)</span></Label>
-                      <Input name="earliestStart" type="date" value={editEarliestStart} onChange={e => setEditEarliestStart(e.target.value)} />
+                      <DatePicker name="earliestStart" value={editEarliestStart} onChange={setEditEarliestStart} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-muted-foreground flex items-center gap-1">Spätestes Ende <span className="text-[10px]">(Puffer)</span></Label>
-                      <Input name="latestEnd" type="date" value={editLatestEnd} onChange={e => setEditLatestEnd(e.target.value)} />
+                      <DatePicker name="latestEnd" value={editLatestEnd} onChange={setEditLatestEnd} />
                     </div>
                   </div>
 
@@ -2712,15 +2710,14 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Plan-Start</Label>
-                    <Input
+                    <DatePicker
                       name="plannedStart"
-                      type="date"
                       required
                       value={createPlannedStart}
-                      onChange={e => {
-                        setCreatePlannedStart(e.target.value);
+                      onChange={value => {
+                        setCreatePlannedStart(value);
                         if (createDurationDays && projectCalendar) {
-                          setCreatePlannedEnd(clientComputePlannedEnd(e.target.value, Number(createDurationDays), projectCalendar));
+                          setCreatePlannedEnd(clientComputePlannedEnd(value, Number(createDurationDays), projectCalendar));
                         }
                       }}
                     />
@@ -2756,12 +2753,11 @@ export default function ProjectDetail() {
                       </span>
                     )}
                   </Label>
-                  <Input
+                  <DatePicker
                     name="plannedEnd"
-                    type="date"
                     value={createPlannedEnd}
-                    onChange={e => {
-                      setCreatePlannedEnd(e.target.value);
+                    onChange={value => {
+                      setCreatePlannedEnd(value);
                       setCreateDurationDays('');
                     }}
                     required={!createDurationDays}
@@ -2773,13 +2769,13 @@ export default function ProjectDetail() {
                     <Label className="text-muted-foreground flex items-center gap-1">
                       Frühester Start <span className="text-[10px]">(Puffer)</span>
                     </Label>
-                    <Input name="earliestStart" type="date" />
+                    <DatePicker name="earliestStart" onChange={() => undefined} />
                   </div>
                   <div className="space-y-2 pt-3">
                     <Label className="text-muted-foreground flex items-center gap-1">
                       Spätestes Ende <span className="text-[10px]">(Puffer)</span>
                     </Label>
-                    <Input name="latestEnd" type="date" />
+                    <DatePicker name="latestEnd" onChange={() => undefined} />
                   </div>
                 </div>
               </div>
@@ -3107,11 +3103,11 @@ export default function ProjectDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Gültig ab <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                <Input type="date" value={newValidFrom} onChange={(e) => setNewValidFrom(e.target.value)} />
+                <DatePicker value={newValidFrom} onChange={setNewValidFrom} />
               </div>
               <div className="space-y-2">
                 <Label>Gültig bis <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                <Input type="date" value={newValidTo} onChange={(e) => setNewValidTo(e.target.value)} />
+                <DatePicker value={newValidTo} onChange={setNewValidTo} />
               </div>
             </div>
             <div className="space-y-2">
@@ -3177,11 +3173,11 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Gültig ab (optional)</Label>
-                    <Input type="date" value={editValidFrom} onChange={(e) => setEditValidFrom(e.target.value)} />
+                    <DatePicker value={editValidFrom} onChange={setEditValidFrom} />
                   </div>
                   <div className="space-y-2">
                     <Label>Gültig bis (optional)</Label>
-                    <Input type="date" value={editValidTo} onChange={(e) => setEditValidTo(e.target.value)} />
+                    <DatePicker value={editValidTo} onChange={setEditValidTo} />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -3291,11 +3287,11 @@ export default function ProjectDetail() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="ep-start">Startdatum</Label>
-                <Input id="ep-start" name="startDate" type="date" value={epStartDate} onChange={(e) => setEpStartDate(e.target.value)} />
+                <DatePicker id="ep-start" name="startDate" value={epStartDate} onChange={setEpStartDate} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ep-end">Enddatum</Label>
-                <Input id="ep-end" name="endDate" type="date" value={epEndDate} onChange={(e) => setEpEndDate(e.target.value)} />
+                <DatePicker id="ep-end" name="endDate" value={epEndDate} onChange={setEpEndDate} />
               </div>
             </div>
             <div className="space-y-2">

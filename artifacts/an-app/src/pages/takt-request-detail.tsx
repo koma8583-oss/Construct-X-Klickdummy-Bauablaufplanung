@@ -48,6 +48,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/date-picker';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -893,15 +894,17 @@ export default function TaktRequestDetailPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Zeitraum Start</Label>
-                  <Input type="date"
+                  <DatePicker
                     value={newReqStart || (snapStart?.substring(0, 10) ?? '')}
-                    onChange={e => setNewReqStart(e.target.value)} />
+                    onChange={setNewReqStart}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Zeitraum Ende</Label>
-                  <Input type="date"
+                  <DatePicker
                     value={newReqEnd || (snapEnd?.substring(0, 10) ?? '')}
-                    onChange={e => setNewReqEnd(e.target.value)} />
+                    onChange={setNewReqEnd}
+                  />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs">Erforderliche Qualifikation (optional)</Label>
@@ -1061,13 +1064,13 @@ export default function TaktRequestDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Bestätigter Start</Label>
-                    <Input type="date" value={acceptStart}
-                      onChange={e => setAcceptStart(e.target.value)} required />
+                    <DatePicker value={acceptStart}
+                      onChange={setAcceptStart} required />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Bestätigtes Ende</Label>
-                    <Input type="date" value={acceptEnd}
-                      onChange={e => setAcceptEnd(e.target.value)} required />
+                    <DatePicker value={acceptEnd}
+                      onChange={setAcceptEnd} required />
                   </div>
                 </div>
               )}
@@ -1090,16 +1093,16 @@ export default function TaktRequestDetailPage() {
                         <div className="flex items-end gap-2">
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Alternative {idx + 1} — Start</Label>
-                            <Input type="date" value={alt.start}
+                            <DatePicker value={alt.start}
                               className={rowErr?.emptyStart ? 'border-destructive' : ''}
-                              onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, start: e.target.value } : a))}
+                              onChange={value => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, start: value } : a))}
                               required />
                           </div>
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Ende</Label>
-                            <Input type="date" value={alt.end}
+                            <DatePicker value={alt.end}
                               className={(rowErr?.emptyEnd || rowErr?.endBeforeStart) ? 'border-destructive' : ''}
-                              onChange={e => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, end: e.target.value } : a))}
+                              onChange={value => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, end: value } : a))}
                               required />
                           </div>
                           {alternatives.length > 1 && (

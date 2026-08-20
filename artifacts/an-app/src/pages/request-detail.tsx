@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { format, differenceInDays, isWithinInterval } from "date-fns";
 import { TaktStatusBadge } from "@/components/takt-status-badge";
+import { DatePicker } from "@/components/date-picker";
 
 export default function RequestDetail() {
   const { delegationId } = useParams<{ delegationId: string }>();
@@ -278,11 +279,11 @@ export default function RequestDetail() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Start</Label>
-                    <Input type="date" value={proposedStart} onChange={e => setProposedStart(e.target.value)} className="bg-background" />
+                    <DatePicker value={proposedStart} onChange={setProposedStart} className="bg-background" />
                   </div>
                   <div className="space-y-2">
                     <Label>Ende</Label>
-                    <Input type="date" value={proposedEnd} onChange={e => setProposedEnd(e.target.value)} className="bg-background" />
+                    <DatePicker value={proposedEnd} onChange={setProposedEnd} className="bg-background" />
                   </div>
                 </div>
                 

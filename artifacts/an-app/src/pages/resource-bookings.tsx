@@ -25,6 +25,7 @@ import {
   type NuResourceBookingCreate,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { DatePicker } from "@/components/date-picker";
 import {
   CalendarDays,
   Plus,
@@ -280,10 +281,9 @@ function CreateBookingDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Datum Von *</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.startDate}
-                  onChange={(e) => set("startDate", e.target.value)}
+                  onChange={(value) => set("startDate", value)}
                   className="h-9"
                 />
               </div>
@@ -307,10 +307,9 @@ function CreateBookingDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Datum Bis *</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.endDate}
-                  onChange={(e) => set("endDate", e.target.value)}
+                  onChange={(value) => set("endDate", value)}
                   className="h-9"
                 />
               </div>
@@ -507,19 +506,17 @@ export default function ResourceBookingsPage() {
 
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Von</Label>
-          <Input
-            type="date"
+          <DatePicker
             value={startFrom}
-            onChange={(e) => setStartFrom(e.target.value)}
+            onChange={setStartFrom}
             className="h-8 w-full sm:w-[140px] text-sm"
           />
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Bis</Label>
-          <Input
-            type="date"
+          <DatePicker
             value={endTo}
-            onChange={(e) => setEndTo(e.target.value)}
+            onChange={setEndTo}
             className="h-8 w-full sm:w-[140px] text-sm"
           />
         </div>

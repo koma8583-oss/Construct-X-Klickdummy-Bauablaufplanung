@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'wouter';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { DatePicker } from '@/components/date-picker';
 import {
   useGetAgProjectsOverview,
   getGetAgProjectsOverviewQueryKey,
@@ -277,11 +278,11 @@ export default function Projects() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="startDate">{t('projects.startDate')}</Label>
-                  <Input id="startDate" name="startDate" type="date" required />
+                    <DatePicker id="startDate" name="startDate" required onChange={() => undefined} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="endDate">{t('projects.endDate')}</Label>
-                  <Input id="endDate" name="endDate" type="date" required />
+                    <DatePicker id="endDate" name="endDate" required onChange={() => undefined} />
                 </div>
               </div>
               <DialogFooter className="mt-6">

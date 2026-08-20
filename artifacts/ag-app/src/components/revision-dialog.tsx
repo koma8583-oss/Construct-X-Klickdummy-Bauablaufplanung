@@ -42,6 +42,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { DatePicker } from '@/components/date-picker';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -287,11 +288,11 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
                 {t('taktRequestDetail.revisionDialog.fields.plannedStart')}
                 <span className="text-destructive ml-1">*</span>
               </Label>
-              <Input
+              <DatePicker
                 id="rev-start"
-                type="datetime-local"
+                includeTime
                 value={plannedStart}
-                onChange={(e) => setPlannedStart(e.target.value)}
+                onChange={setPlannedStart}
                 className={startChanged ? 'border-amber-400 bg-amber-50' : ''}
               />
             </div>
@@ -300,11 +301,11 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
                 {t('taktRequestDetail.revisionDialog.fields.plannedEnd')}
                 <span className="text-destructive ml-1">*</span>
               </Label>
-              <Input
+              <DatePicker
                 id="rev-end"
-                type="datetime-local"
+                includeTime
                 value={plannedEnd}
-                onChange={(e) => setPlannedEnd(e.target.value)}
+                onChange={setPlannedEnd}
                 className={endChanged ? 'border-amber-400 bg-amber-50' : ''}
               />
             </div>
@@ -320,11 +321,11 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
             <Label htmlFor="rev-deadline">
               {t('taktRequestDetail.revisionDialog.fields.responseRequiredBy')}
             </Label>
-            <Input
+            <DatePicker
               id="rev-deadline"
-              type="datetime-local"
+              includeTime
               value={responseRequiredBy}
-              onChange={(e) => setResponseRequiredBy(e.target.value)}
+              onChange={setResponseRequiredBy}
             />
           </div>
           <div className="space-y-1.5">

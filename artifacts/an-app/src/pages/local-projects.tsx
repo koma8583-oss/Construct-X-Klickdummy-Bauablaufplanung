@@ -57,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { DatePicker } from "@/components/date-picker";
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -197,21 +198,19 @@ function ProjectDialog({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="lp-start" className="text-xs">Startdatum</Label>
-              <Input
+              <DatePicker
                 id="lp-start"
-                type="date"
                 value={form.startDate}
-                onChange={(e) => set("startDate", e.target.value)}
+                onChange={(value) => set("startDate", value)}
                 className="h-9"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lp-end" className="text-xs">Enddatum</Label>
-              <Input
+              <DatePicker
                 id="lp-end"
-                type="date"
                 value={form.endDate}
-                onChange={(e) => set("endDate", e.target.value)}
+                onChange={(value) => set("endDate", value)}
                 className="h-9"
               />
             </div>
