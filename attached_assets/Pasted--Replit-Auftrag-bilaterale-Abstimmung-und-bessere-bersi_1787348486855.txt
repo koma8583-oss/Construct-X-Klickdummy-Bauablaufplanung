@@ -1,0 +1,1004 @@
+# Replit-Auftrag – bilaterale Abstimmung und bessere Übersicht umsetzen
+
+Arbeite im aktuellen Repository.
+
+Ziel: Die Kommunikation zwischen AG und AN fachlich erweitern, sodass **spätere Terminverschiebungen in beide Richtungen** sauber verhandelt werden können und bei vielen parallelen Leistungsanfragen eine klare Übersicht entsteht.
+
+Nur die folgenden sechs Schritte umsetzen.
+
+Wichtig:
+
+* bestehende Service-Request-/Service-Response-Logik weiterverwenden
+* bestehende Dataspace-/Exchange-Schicht nicht umbauen
+* keine neue Workflow-Engine
+* keine Event-Sourcing-Architektur
+* keine große UI-Neugestaltung
+* technische Bezeichner im Code Englisch
+* UI-Texte Deutsch
+* bestehende Legacy-`takt...`-Felder nicht unnötig migrieren
+
+---
+
+# 1. `Current Agreement` explizit vom offenen Vorschlag trennen
+
+## Ziel
+
+Ein bereits vereinbarter Zeitraum darf durch einen neuen Änderungsvorschlag **nicht überschrieben werden**, bevor die Gegenseite zustimmt.
+
+Für jeden Service Request müssen logisch zwei Zustände unterscheidbar sein:
+
+```text
+Current Agreement
+Open Proposal
+```
+
+Beispiel:
+
+```text
+Current Agreement:
+03.09.2026 – 07.09.2026
+
+Open Proposal:
+10.09.2026 – 14.09.2026
+initiated by AN
+```
+
+Bis zur Annahme bleibt:
+
+```text
+Current Agreement = 03.–07.09.
+```
+
+verbindlich.
+
+---
+
+## Datenmodell
+
+Falls noch nicht vorhanden, ergänze am bestehenden Service-Request-/Coordination-Modell:
+
+```ts
+agreedStart: date | null
+agreedEnd: date | null
+```
+
+Nicht bei jedem neuen Vorschlag aktualisieren.
+
+Diese Felder werden nur geändert, wenn:
+
+```text
+initial request accepted
+oder
+change proposal accepted
+```
+
+---
+
+## Regeln
+
+### Initiale Anfrage akzeptiert
+
+```text
+agreedStart = acceptedStart
+agreedEnd = acceptedEnd
+```
+
+### Neuer Änderungsvorschlag
+
+```text
+agreedStart/agreedEnd bleiben unverändert
+```
+
+### Änderung akzeptiert
+
+```text
+agreedStart = proposal.proposedStart
+agreedEnd = proposal.proposedEnd
+```
+
+### Änderung abgelehnt
+
+```text
+agreedStart/agreedEnd bleiben unverändert
+```
+
+---
+
+## API
+
+Bestehende Detail-API so erweitern, dass sie mindestens liefert:
+
+```ts
+currentAgreement: {
+  start: string | null;
+  end: string | null;
+}
+```
+
+und getrennt:
+
+```ts
+openProposal?: {
+  id: string;
+  proposedStart: string;
+  proposedEnd: string;
+  initiatedBy: "AG" | "AN";
+  status: string;
+}
+```
+
+Keine UI soll einen offenen Vorschlag als aktuelle Vereinbarung darstellen.
+
+---
+
+# 2. Bilaterales `ChangeProposal` einführen
+
+## Ziel
+
+Nach einer bestehenden Vereinbarung dürfen **AG und AN** eine Terminänderung vorschlagen.
+
+Erstelle dafür ein schlankes eigenes Modell:
+
+```text
+service_change_proposals
+```
+
+---
+
+## Felder
+
+Mindestens:
+
+```ts
+id
+serviceRequestId
+
+initiatedByOrgId
+initiatedByRole // AG | AN
+
+currentAgreedStart
+currentAgreedEnd
+
+proposedStart
+proposedEnd
+
+reasonCode
+comment
+
+status
+
+supersedesProposalId
+
+createdAt
+updatedAt
+resolvedAt
+```
+
+---
+
+## Status
+
+Nur:
+
+```text
+OPEN
+ACCEPTED
+REJECTED
+SUPERSEDED
+WITHDRAWN
+```
+
+Keine weiteren Statuswerte hinzufügen.
+
+---
+
+## `reasonCode`
+
+Enum:
+
+```text
+UPSTREAM_DELAY
+DOWNSTREAM_CONFLICT
+RESOURCE_CONFLICT
+SITE_NOT_READY
+MATERIAL_DELAY
+DESIGN_CHANGE
+CLIENT_CHANGE
+WEATHER
+OTHER
+```
+
+`comment` optional lassen.
+
+---
+
+## Validierung
+
+Beim Erstellen:
+
+```text
+Service Request muss existieren
+```
+
+und:
+
+```text
+agreedStart/agreedEnd müssen vorhanden sein
+```
+
+und:
+
+```text
+proposedStart <= proposedEnd
+```
+
+und:
+
+```text
+initiatedByOrgId muss AG oder AN dieses Service Requests sein
+```
+
+---
+
+## Nur ein offener Vorschlag
+
+Pro Service Request darf nur **ein aktueller OPEN-Vorschlag** existieren.
+
+Wenn ein Counter-Proposal erzeugt wird:
+
+```text
+alter Proposal:
+status = SUPERSEDED
+
+neuer Proposal:
+status = OPEN
+supersedesProposalId = alter Proposal.id
+```
+
+Keine parallelen offenen Proposal-Zweige zulassen.
+
+---
+
+# 3. Accept / Reject / Counter-Proposal für beide Seiten
+
+Ergänze für `ChangeProposal` drei fachliche Aktionen.
+
+## A. Accept
+
+Endpoint sinngemäß:
+
+```text
+POST /service-requests/:id/change-proposals/:proposalId/accept
+```
+
+Regel:
+
+Nur die **Gegenseite des Initiators** darf akzeptieren.
+
+Beispiel:
+
+```text
+initiatedByRole = AN
+→ nur AG darf ACCEPT
+```
+
+Bei Accept:
+
+```text
+proposal.status = ACCEPTED
+proposal.resolvedAt = now
+```
+
+und:
+
+```text
+serviceRequest.agreedStart = proposal.proposedStart
+serviceRequest.agreedEnd = proposal.proposedEnd
+```
+
+Danach gegebenenfalls bestehende ResourceBookings über die bereits vorhandene Änderungs-/Availability-Logik aktualisieren.
+
+Nicht blind verschieben, wenn der AN vor Annahme noch eine Ressourcenprüfung benötigt.
+
+---
+
+## B. Reject
+
+Endpoint:
+
+```text
+POST /service-requests/:id/change-proposals/:proposalId/reject
+```
+
+Nur Gegenseite darf ablehnen.
+
+Dann:
+
+```text
+proposal.status = REJECTED
+proposal.resolvedAt = now
+```
+
+`agreedStart/agreedEnd` bleiben unverändert.
+
+---
+
+## C. Counter-Proposal
+
+Endpoint:
+
+```text
+POST /service-requests/:id/change-proposals/:proposalId/counter
+```
+
+Payload:
+
+```ts
+{
+  proposedStart: string;
+  proposedEnd: string;
+  reasonCode: ChangeReasonCode;
+  comment?: string;
+}
+```
+
+Dann:
+
+```text
+alter Proposal → SUPERSEDED
+neuer Proposal → OPEN
+supersedesProposalId = alter Proposal.id
+initiatedBy = aktuelle Gegenseite
+```
+
+`agreedStart/agreedEnd` bleiben unverändert.
+
+---
+
+## Dataspace
+
+Für diese Aktionen noch keine große neue Exchange-Architektur bauen.
+
+Falls externe Kommunikation bereits über `DataspaceExchange` läuft, ergänze nur einen neutralen externen Nachrichtentyp:
+
+```text
+CHANGE_PROPOSAL
+CHANGE_RESPONSE
+```
+
+Nur wenn dafür bereits eine einfache Erweiterung des bestehenden Exchange-Modells möglich ist.
+
+Keine neuen EDC-spezifischen Funktionen.
+
+---
+
+# 4. Abstimmungs-Timeline in der Detailansicht
+
+## Ziel
+
+Auf der Detailseite einer Leistungsanfrage soll der komplette Abstimmungsverlauf chronologisch sichtbar sein.
+
+Keine komplizierte neue Timeline-Komponente entwickeln.
+
+Eine einfache vertikale Liste reicht.
+
+---
+
+## Timeline-Einträge
+
+Mindestens darstellen:
+
+```text
+Initial request
+Initial response
+Initial acceptance/rejection
+Change proposal
+Counter proposal
+Proposal accepted
+Proposal rejected
+Proposal withdrawn
+```
+
+---
+
+## Anzeige pro Eintrag
+
+Beispiel:
+
+```text
+18.08.2026 · AG
+Änderung vorgeschlagen
+
+Bisher vereinbart:
+03.–07.09.
+
+Neuer Vorschlag:
+08.–12.09.
+
+Verschiebung:
++5 Tage
+
+Grund:
+Verzögerung Vorleistung
+```
+
+---
+
+## Backend
+
+Falls Events bereits aus vorhandenen Tabellen ableitbar sind, keine neue Event-Tabelle anlegen.
+
+Timeline aus:
+
+```text
+initial Service Request
+Service Response
+Change Proposals
+Proposal Status
+```
+
+zusammensetzen.
+
+Backend-Helper z. B.:
+
+```ts
+buildCoordinationTimeline(serviceRequestId)
+```
+
+Rückgabe:
+
+```ts
+type CoordinationTimelineEntry = {
+  id: string;
+  type: string;
+  timestamp: string;
+  actorRole: "AG" | "AN";
+  actorOrgId: string;
+  previousStart?: string;
+  previousEnd?: string;
+  proposedStart?: string;
+  proposedEnd?: string;
+  reasonCode?: string;
+  comment?: string;
+  status?: string;
+};
+```
+
+---
+
+## UI
+
+Oben auf der Detailseite immer zuerst prominent:
+
+```text
+Aktuelle Vereinbarung
+03.–07.09.2026
+```
+
+Darunter, falls vorhanden:
+
+```text
+Offener Änderungsvorschlag
+10.–14.09.2026
+Vorgeschlagen durch AN
+```
+
+Dann Timeline.
+
+Nicht umgekehrt.
+
+---
+
+# 5. Coordination Inbox für viele parallele Vorgänge
+
+## Ziel
+
+Eine zentrale Übersicht schaffen, in der AG bzw. AN sofort sieht:
+
+```text
+Wo muss ich handeln?
+Wo warte ich auf die Gegenseite?
+Was wurde zuletzt geändert?
+Was ist stabil vereinbart?
+```
+
+Keine komplexe Dashboard-Architektur.
+
+Die bestehende Anfrage-/Inbox-Seite erweitern.
+
+---
+
+## Backend-Daten
+
+Pro Service Request berechnen:
+
+```ts
+nextActionOwner: "AG" | "AN" | "NONE";
+
+nextAction:
+  | "AG_DECISION_REQUIRED"
+  | "AN_RESPONSE_REQUIRED"
+  | "CHANGE_PROPOSAL_RESPONSE_REQUIRED"
+  | "NO_ACTION";
+
+responseRequiredBy: string | null;
+
+lastChangedAt: string;
+
+revisionCount: number;
+
+hasOpenProposal: boolean;
+
+currentAgreementStart: string | null;
+currentAgreementEnd: string | null;
+
+openProposalStart: string | null;
+openProposalEnd: string | null;
+
+openProposalInitiator: "AG" | "AN" | null;
+```
+
+---
+
+## `nextActionOwner` Regeln
+
+### Initiale Anfrage wartet auf AN
+
+```text
+nextActionOwner = AN
+nextAction = AN_RESPONSE_REQUIRED
+```
+
+### AN hat geantwortet, AG muss entscheiden
+
+```text
+nextActionOwner = AG
+nextAction = AG_DECISION_REQUIRED
+```
+
+### AG macht Change Proposal an AN
+
+```text
+nextActionOwner = AN
+nextAction = CHANGE_PROPOSAL_RESPONSE_REQUIRED
+```
+
+### AN macht Change Proposal an AG
+
+```text
+nextActionOwner = AG
+nextAction = CHANGE_PROPOSAL_RESPONSE_REQUIRED
+```
+
+### Vereinbart und kein offener Vorgang
+
+```text
+nextActionOwner = NONE
+nextAction = NO_ACTION
+```
+
+Diese Regeln zentral in einem Helper implementieren:
+
+```ts
+deriveCoordinationState(...)
+```
+
+Nicht mehrfach in UI und Backend duplizieren.
+
+---
+
+## Inbox-Spalten
+
+Mindestens:
+
+```text
+Leistung
+Partner
+Aktuelle Vereinbarung
+Offener Vorschlag
+Initiator
+Nächste Aktion
+Frist
+Letzte Änderung
+```
+
+Optional:
+
+```text
+Revisionen
+```
+
+---
+
+## Vier Filter/Tabs
+
+Nur folgende:
+
+```text
+Handlung erforderlich
+Warten auf Partner
+Kürzlich geändert
+Vereinbart
+```
+
+### Handlung erforderlich
+
+```text
+nextActionOwner == currentUserRole
+```
+
+### Warten auf Partner
+
+```text
+nextActionOwner != NONE
+AND nextActionOwner != currentUserRole
+```
+
+### Kürzlich geändert
+
+Sortiert nach:
+
+```text
+lastChangedAt DESC
+```
+
+z. B. letzte 7 Tage.
+
+### Vereinbart
+
+```text
+currentAgreement != null
+AND hasOpenProposal == false
+AND nextActionOwner == NONE
+```
+
+Keine weiteren Dashboard-Kategorien.
+
+---
+
+## Sortierung
+
+In `Handlung erforderlich`:
+
+1. überfällig
+2. heute fällig
+3. bald fällig
+4. Rest nach `lastChangedAt DESC`
+
+---
+
+# 6. Delta-Anzeige zwischen Vereinbarung und Vorschlag
+
+## Ziel
+
+Bei jeder Terminänderung sofort sichtbar machen, **was sich ändert**.
+
+Erstelle kleinen gemeinsamen UI-Helper:
+
+```ts
+calculateScheduleDelta(
+  agreedStart,
+  agreedEnd,
+  proposedStart,
+  proposedEnd
+)
+```
+
+Rückgabe mindestens:
+
+```ts
+{
+  startShiftDays: number;
+  endShiftDays: number;
+  durationDeltaDays: number;
+}
+```
+
+---
+
+## Anzeige
+
+Beispiel:
+
+```text
+Vereinbart
+03.–07.09.
+
+Vorschlag
+08.–12.09.
+
+Startverschiebung
++5 Tage
+
+Endverschiebung
++5 Tage
+```
+
+Bei früherem Termin:
+
+```text
+-2 Tage
+```
+
+Nicht nur absolute Datumswerte anzeigen.
+
+---
+
+## Verwendung
+
+Delta anzeigen:
+
+```text
+in Change-Proposal-Dialog
+in Detailansicht beim offenen Vorschlag
+in Timeline
+optional in Inbox als kompakter Wert
+```
+
+Für die Inbox reicht beispielsweise:
+
+```text
++5 Tage
+```
+
+Keine grafische Gantt-Ansicht implementieren.
+
+---
+
+# 7. Resource Availability bei AN-seitigen Änderungen nutzen
+
+Wenn der AN einen neuen Termin vorschlägt, vorhandene Availability-Logik wiederverwenden.
+
+Vor Absenden des Proposal:
+
+```text
+evaluateResourceRequirements(...)
+```
+
+für den vorgeschlagenen Zeitraum ausführen.
+
+UI beim AN:
+
+```text
+✓ Ressourcen verfügbar
+```
+
+oder:
+
+```text
+⚠ Ressourcenkonflikt
+```
+
+Nicht automatisch verbieten, falls ein Konflikt existiert, sofern der bestehende Workflow Alternativen zulässt.
+
+Aber Warnung anzeigen.
+
+Keine internen Ressourceninformationen an den AG übertragen.
+
+Extern höchstens:
+
+```text
+reasonCode = RESOURCE_CONFLICT
+```
+
+---
+
+# 8. AG-seitige Änderungen nicht automatisch auf Folgeanfragen übertragen
+
+Wenn der AG einen Service Request verschiebt:
+
+Keine automatische Änderung anderer Requests.
+
+Falls vorhandene Abhängigkeiten betroffen sind, höchstens anzeigen:
+
+```text
+2 nachgelagerte Leistungsanfragen möglicherweise betroffen
+```
+
+Keine automatischen neuen Change Proposals erzeugen.
+
+Der AG entscheidet ausdrücklich, welche Folgeanfragen angepasst werden.
+
+---
+
+# 9. Datenraum-/Audit-Grundsätze
+
+Jede organisationsübergreifende Änderung muss nachvollziehbar bleiben.
+
+Für Change Proposal bzw. Response mindestens:
+
+```text
+messageId
+correlationId
+serviceRequestId
+proposalId
+createdAt
+sender
+receiver
+```
+
+verwenden.
+
+Bestehende `dataspace_exchanges`-Audit-Struktur wiederverwenden.
+
+Keine internen ResourceBookings übertragen.
+
+---
+
+# 10. Minimale Tests
+
+Nur gezielte Tests ergänzen.
+
+## Test 1 – Agreement bleibt bei Proposal stabil
+
+```text
+Agreement = 03.–07.09.
+Proposal = 10.–14.09.
+```
+
+Erwartung:
+
+```text
+agreedStart/agreedEnd bleiben 03.–07.09.
+```
+
+---
+
+## Test 2 – Accept aktualisiert Agreement
+
+Nach Accept:
+
+```text
+agreedStart/agreedEnd = 10.–14.09.
+proposal.status = ACCEPTED
+```
+
+---
+
+## Test 3 – Reject lässt Agreement unverändert
+
+---
+
+## Test 4 – Counter Proposal
+
+```text
+P1 = SUPERSEDED
+P2 = OPEN
+P2.supersedesProposalId = P1.id
+```
+
+Nur P2 offen.
+
+---
+
+## Test 5 – AG und AN dürfen Änderungen initiieren
+
+Beide Richtungen testen.
+
+---
+
+## Test 6 – Next Action
+
+Prüfe mindestens:
+
+```text
+Request wartet auf AN → AN
+Response wartet auf AG → AG
+AG Proposal → AN
+AN Proposal → AG
+stabil vereinbart → NONE
+```
+
+---
+
+## Test 7 – Delta
+
+```text
+03.–07.09.
+→ 08.–12.09.
+```
+
+ergibt:
+
+```text
+startShiftDays = 5
+endShiftDays = 5
+```
+
+---
+
+# 11. Nicht umsetzen
+
+Nicht durchführen:
+
+```text
+keine Workflow Engine
+kein Event Sourcing
+keine automatische Terminfortschreibung
+keine Gantt-Komponente
+keine automatische Ressourcenoffenlegung
+keine neue EDC-Integration
+keine große Legacy-Migration
+keine neuen Dashboards außerhalb der beschriebenen Inbox
+```
+
+---
+
+# 12. Technische Prüfung
+
+Nur betroffene Bereiche:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+Nur gezielte Tests für:
+
+```text
+change proposals
+agreement update
+next action
+timeline
+schedule delta
+```
+
+Keine vollständige Test-Suite.
+
+---
+
+# Abschlussprüfung
+
+Am Ende muss folgender Fall funktionieren:
+
+```text
+AG und AN vereinbaren:
+03.–07.09.
+
+AN erkennt später Ressourcenproblem.
+
+AN proposes:
+10.–14.09.
+Reason: RESOURCE_CONFLICT
+
+System zeigt:
+Current Agreement = 03.–07.09.
+Open Proposal = 10.–14.09.
+Next Action Owner = AG
+Delta = +7 Tage
+
+AG counter-proposes:
+08.–12.09.
+
+Alter Proposal = SUPERSEDED
+Neuer Proposal = OPEN
+Next Action Owner = AN
+
+AN accepts.
+
+Current Agreement = 08.–12.09.
+Open Proposal = none
+Next Action Owner = NONE
+```
+
+Die vollständige Historie muss in der Timeline erhalten bleiben.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. neue/erweiterte Tabellen
+2. Change-Proposal-Endpunkte
+3. Agreement-Logik
+4. Counter-Proposal-Logik
+5. `nextActionOwner`-Logik
+6. Inbox-Änderungen
+7. Timeline-Änderungen
+8. Delta-Anzeige
+9. Tests
+10. Typecheck-/Build-Ergebnis
+
+Keine weiteren Funktionen außerhalb dieses Auftrags implementieren.
