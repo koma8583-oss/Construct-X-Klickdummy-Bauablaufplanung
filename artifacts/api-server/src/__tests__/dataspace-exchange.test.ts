@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { toExternalServiceRequest, toExternalServiceResponse } from "../services/dataspace/external-mappers";
+import {
+  toExternalResourceRequirements,
+  toExternalServiceRequest,
+  toExternalServiceResponse,
+} from "../services/dataspace/external-mappers";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
 
@@ -26,6 +30,49 @@ describe("dataspace exchange boundary", () => {
     expect(request.resourceRequirements[0]).not.toHaveProperty("resourceId");
     expect(request.resourceRequirements[0]).not.toHaveProperty("resourceName");
     expect(request).not.toHaveProperty("bookings");
+  });
+
+  it("builds the publish payload from real planning and requirement data", () => {
+    const payload = toExternalServiceRequest({
+      requestId: "service-request-1",
+      requestVersion: 3,
+      projectReference: "project-1",
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-10",
+      senderOrgId: "ag-1",
+      receiverOrgId: "an-1",
+      resourceRequirements: toExternalResourceRequirements([
+        {
+          resourceTypeCode: "DRYWALL_WORKER",
+          resourceTypeName: "Facharbeiter Trockenbau",
+          requiredCapacity: "6",
+          capacityUnit: "PERSONS",
+          utilizationPercent: 100,
+          periodStart: "2026-09-01",
+          periodEnd: "2026-09-10",
+          requiredQualification: "Trockenbau",
+        },
+        {
+          resourceTypeCode: "MOBILE_CRANE",
+          resourceTypeName: "Mobilkran",
+          requiredCapacity: 1,
+          capacityUnit: "UNITS",
+          utilizationPercent: 50,
+          periodStart: "2026-09-04",
+          periodEnd: "2026-09-06",
+          requiredQualification: null,
+        },
+      ]),
+    });
+    expect(payload).toMatchObject({
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-10",
+      resourceRequirements: [
+        { requiredCapacity: 6, capacityUnit: "PERSONS", utilizationPercent: 100, periodStart: "2026-09-01", periodEnd: "2026-09-10" },
+        { requiredCapacity: 1, capacityUnit: "UNITS", utilizationPercent: 50, periodStart: "2026-09-04", periodEnd: "2026-09-06" },
+      ],
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/resourceId|resourceBookings|concreteResources|employeeName|equipmentId|localProjectId|availableCapacity|internalNotes|costs/);
   });
 
   it("maps only external response decision data", () => {

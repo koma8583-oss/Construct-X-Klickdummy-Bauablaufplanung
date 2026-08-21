@@ -101,12 +101,15 @@ export function toExternalServiceResponse(input: {
 /** Legacy compatibility helper; productive request publishing uses direct snapshot data. */
 export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope): ExternalServiceRequest {
   const payload = envelope.payload as Record<string, unknown>;
+  if (typeof payload.plannedStart !== "string" || typeof payload.plannedEnd !== "string") {
+    throw new Error("Legacy service request envelope is missing plannedStart or plannedEnd");
+  }
   return toExternalServiceRequest({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
     projectReference: String(payload.projectReference ?? payload.taktReference ?? ""),
-    plannedStart: payload.plannedStart as string | undefined,
-    plannedEnd: payload.plannedEnd as string | undefined,
+    plannedStart: payload.plannedStart,
+    plannedEnd: payload.plannedEnd,
     senderOrgId: envelope.senderOrgId,
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,

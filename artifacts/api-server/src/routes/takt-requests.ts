@@ -67,8 +67,9 @@ import {
 import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import {
-  toExternalServiceRequestFromEnvelope,
   toExternalServiceResponseFromEnvelope,
+  toExternalServiceRequest,
+  toExternalResourceRequirements,
 } from "../services/dataspace/external-mappers";
 import { IdempotencyConflictError } from "../lib/transport/transport-errors";
 import {
@@ -113,9 +114,37 @@ async function safeSend(
   res: import("express").Response,
 ): Promise<TransportResult | null> {
   try {
-    const reference = envelope.messageType === DataspaceMessageType.TAKT_RESPONSE_SUBMITTED
-      ? await dataspaceExchange.publishServiceResponse(toExternalServiceResponseFromEnvelope(envelope))
-      : await dataspaceExchange.publishServiceRequest(toExternalServiceRequestFromEnvelope(envelope));
+    const reference = await dataspaceExchange.publishServiceResponse(toExternalServiceResponseFromEnvelope(envelope));
+    return {
+      messageId: reference.exchangeId,
+      status: reference.status ?? "DELIVERED",
+      sentAt: reference.sentAt ?? new Date(),
+      deliveredAt: reference.deliveredAt ?? new Date(),
+      attemptCount: reference.attemptCount ?? 1,
+    };
+  } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      res.status(409).json({ error: err.message, conflictingFields: err.conflictingFields });
+      return null;
+    }
+    if (err instanceof UnsupportedSchemaVersionError) {
+      res.status(422).json({ error: err.message });
+      return null;
+    }
+    if (err instanceof MalformedSchemaVersionError) {
+      res.status(400).json({ error: err.message });
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function safePublishServiceRequest(
+  payload: Parameters<typeof dataspaceExchange.publishServiceRequest>[0],
+  res: import("express").Response,
+): Promise<TransportResult | null> {
+  try {
+    const reference = await dataspaceExchange.publishServiceRequest(payload);
     return {
       messageId: reference.exchangeId,
       status: reference.status ?? "DELIVERED",
@@ -597,37 +626,44 @@ router.post(
     const snapPayload = (currentSnap?.snapshotPayload as Record<string, unknown> | null) ?? {};
     const coordCtx = (snapPayload.coordinationContext as Record<string, unknown> | undefined) ?? {};
 
-    const notificationPayload = {
-      taktRequestId: id,
-      projectReference: snapPayload.projectReference ?? existing.taktId,
-      taktReference: existing.taktId,
-      taktVersion: existing.taktVersion,
-      responseRequiredBy: existing.responseRequiredBy?.toISOString() ?? null,
-      detailsRef: `/takt-requests/${id}/details`,
-      subject: (coordCtx.subject as string | undefined) ?? null,
-      message: (coordCtx.message as string | undefined) ?? null,
-      // Dataspace policy gate fields (null when no publication is linked)
-      dataPublicationId: existing.dataPublicationId ?? null,
-      policyCode: pubPolicyCode,
-      dataOfferRef: existing.dataPublicationId
-        ? `/an/data-offers/${existing.dataPublicationId}`
-        : null,
-    };
-
-    // ── 6. Build MessageEnvelope and send via transport ────────────────────
-    const envelope = {
-      messageId: notificationMessageId(id),
-      schemaVersion: "1.0",
-      messageType: DataspaceMessageType.TAKT_REQUEST_NOTIFICATION,
-      senderOrgId: guOrgId,
-      recipientOrgId: existing.nuOrgId,
-      correlationId: id,
-      createdAt: new Date(),
-      causationId: null,
-      payload: notificationPayload,
-    };
-
-    const transportResult = await safeSend(envelope, res);
+    const plannedTimeWindow = snapPayload.plannedTimeWindow as
+      { start?: string; end?: string } | undefined;
+    if (!plannedTimeWindow?.start || !plannedTimeWindow.end) {
+      res.status(422).json({ error: "Cannot publish service request without plannedStart and plannedEnd." });
+      return;
+    }
+    const requirementRows = await db
+      .select({
+        resourceTypeCode: resourceTypesTable.code,
+        resourceTypeName: resourceTypesTable.name,
+        requiredCapacity: taktRequestResourceRequirementsTable.requiredCapacity,
+        capacityUnit: resourceTypesTable.capacityUnit,
+        utilizationPercent: taktRequestResourceRequirementsTable.utilizationPercent,
+        periodStart: taktRequestResourceRequirementsTable.periodStart,
+        periodEnd: taktRequestResourceRequirementsTable.periodEnd,
+        requiredQualification: taktRequestResourceRequirementsTable.requiredQualification,
+      })
+      .from(taktRequestResourceRequirementsTable)
+      .leftJoin(resourceTypesTable, eq(resourceTypesTable.id, taktRequestResourceRequirementsTable.resourceTypeId))
+      .where(eq(taktRequestResourceRequirementsTable.taktRequestId, id));
+    let externalRequest;
+    try {
+      externalRequest = toExternalServiceRequest({
+        requestId: id,
+        requestVersion: existing.taktVersion,
+        projectReference: String(snapPayload.projectReference ?? existing.taktId),
+        plannedStart: plannedTimeWindow.start,
+        plannedEnd: plannedTimeWindow.end,
+        senderOrgId: guOrgId,
+        receiverOrgId: existing.nuOrgId,
+        correlationId: id,
+        resourceRequirements: toExternalResourceRequirements(requirementRows),
+      });
+    } catch (error) {
+      res.status(422).json({ error: error instanceof Error ? error.message : "Invalid service request data." });
+      return;
+    }
+    const transportResult = await safePublishServiceRequest(externalRequest, res);
     if (!transportResult) return;
 
     // ── 7. Update TaktRequest status based on transport outcome ────────────
