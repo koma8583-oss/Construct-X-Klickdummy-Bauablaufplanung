@@ -1,0 +1,501 @@
+# Replit-Auftrag – drei Restfehler beheben + UI-Feinschliff
+
+Arbeite im aktuellen Repository.
+
+Ziel: Nur die drei verbleibenden fachlichen Fehler beheben und anschließend kleinen UI-Feinschliff durchführen.
+
+Keine größere Refaktorierung. Keine DB-Migration. Keine neuen Features.
+
+---
+
+# 1. Auto-Booking muss `requiredCapacity`, `utilizationPercent` und Requirement-Zeitraum erhalten
+
+Prüfe insbesondere:
+
+```text
+resource-availability-service.ts
+gu-decision-service.ts
+```
+
+Aktuelles Problem:
+
+Der Availability-Evaluator berechnet korrekt:
+
+```text
+effectiveRequired =
+requiredCapacity * utilizationPercent / 100
+```
+
+Für das spätere Auto-Booking gehen aber `utilizationPercent` sowie `periodStart`/`periodEnd` verloren.
+
+## Änderung
+
+Erweitere den DTC-Eintrag in `availableResources` minimal um:
+
+```ts
+resourceTypeId
+quantity
+utilizationPercent
+periodStart
+periodEnd
+```
+
+Dabei gilt:
+
+```text
+quantity = ursprüngliches requiredCapacity
+utilizationPercent = ursprüngliches Requirement.utilizationPercent
+```
+
+Nicht:
+
+```text
+quantity = effectiveRequired
+utilizationPercent = 100
+```
+
+Keine `Math.ceil()`-Transformation für das Booking.
+
+Beispiel:
+
+```text
+Requirement:
+6 Personen
+50 %
+10.–12.09.
+```
+
+muss später ergeben:
+
+```text
+Booking:
+resourceId = null
+resourceTypeId = ...
+quantity = 6
+utilizationPercent = 50
+startAt = 10.09.
+endAt = 12.09. inklusiv
+```
+
+Intern bei Timestamp-Ende weiterhin die bestehende inklusive-Ende-Logik verwenden.
+
+---
+
+# 2. `ACCEPT_ALTERNATIVE` muss Requirement-Teilzeiträume auf den Alternativtermin verschieben
+
+Aktuelles Problem:
+
+Der Alternative Generator verschiebt `periodStart` und `periodEnd` relativ korrekt auf den Alternativtermin.
+
+Bei `ACCEPT_ALTERNATIVE` werden anschließend aber wieder die ursprünglichen Requirement-Daten geladen.
+
+Dadurch kann z. B.:
+
+```text
+Original:
+Takt 01.–20.09.
+Kranbedarf 10.–12.09.
+```
+
+bei Alternative ab 15.09. fälschlich erneut gegen 10.–12.09. geprüft werden.
+
+## Änderung
+
+Extrahiere die bereits vorhandene Verschiebungslogik in einen kleinen gemeinsamen Helper, z. B.:
+
+```ts
+shiftRequirementsToWindow(
+  requirements,
+  originalWindowStart,
+  targetWindowStart
+)
+```
+
+Dieser Helper soll:
+
+```text
+periodStart
+periodEnd
+```
+
+um denselben Offset verschieben wie der Takt.
+
+Beispiel:
+
+```text
+Original Taktstart: 01.09.
+Requirement: 10.–12.09.
+Offset: +9 bis +11 Tage
+
+Alternative Taktstart: 15.09.
+Requirement neu: 24.–26.09.
+```
+
+Diesen Helper verwenden bei:
+
+```text
+Alternative Generator
+ACCEPT_ALTERNATIVE Re-Evaluation
+Auto-Booking der akzeptierten Alternative
+```
+
+Keine zweite eigene Datumsverschiebung implementieren.
+
+---
+
+# 3. `ACCEPT_ALTERNATIVE` erst nach erfolgreicher Neuprüfung buchen
+
+Bei:
+
+```text
+ACCEPT_ALTERNATIVE
+```
+
+Workflow:
+
+```text
+1. akzeptierten Alternativzeitraum bestimmen
+2. Requirements auf diesen Zeitraum verschieben
+3. evaluateResourceRequirements(...) mit verschobenen Requirements aufrufen
+4. nur bei vollständig FEASIBLE fortfahren
+5. Bookings aus genau diesem Ergebnis erzeugen
+```
+
+Keine `availableResources` aus dem ursprünglichen Check verwenden.
+
+Wenn die Alternative inzwischen nicht mehr verfügbar ist:
+
+```text
+keine Buchung erzeugen
+```
+
+und fachlichen Fehler zurückgeben.
+
+Keine Teilbuchungen.
+
+---
+
+# 4. DTC `REDUCED_CREW` vorerst deaktivieren
+
+Prüfe:
+
+```text
+alternative-generator.ts
+```
+
+Bei DTC-basierten ResourceRequirements derzeit keine Alternative erzeugen, die fachlich behauptet:
+
+```text
+REDUCED_CREW
+```
+
+oder:
+
+```text
+weniger Personal + längere Dauer
+```
+
+Grund:
+
+Die Requirements bleiben aktuell mengenmäßig unverändert. Dadurch wäre die Alternative semantisch falsch.
+
+## Verhalten für DTC
+
+Nur zeitliche Alternativen erzeugen:
+
+```text
+SHIFT_WINDOW
+NEXT_FREE_WINDOW
+```
+
+oder die vorhandenen entsprechenden Typen.
+
+Legacy-Pfad darf `REDUCED_CREW` behalten, falls dafür bestehende Funktionalität benötigt wird.
+
+Keine Produktivitätslogik neu implementieren.
+
+---
+
+# 5. Resource-Dialog – Einheit dynamisch anzeigen
+
+Prüfe:
+
+```text
+artifacts/an-app/src/pages/resources.tsx
+```
+
+Aktuell nicht mehr anzeigen:
+
+```text
+Kapazität (Einheiten)
+```
+
+sondern:
+
+```text
+Kapazität
+```
+
+und rechts bzw. darunter automatisch die Planungseinheit des ausgewählten ResourceType:
+
+```text
+PERSONS       → Personen
+UNITS         → Einheiten
+HOURS_PER_DAY → Std./Tag
+PERCENT       → Prozent
+```
+
+Beispiele:
+
+```text
+Kapazität
+[ 6 ] Personen
+```
+
+```text
+Kapazität
+[ 1 ] Einheit
+```
+
+Optional Hilfetext:
+
+```text
+Planbare Kapazität dieser Ressource in der beim Ressourcentyp definierten Planungseinheit.
+```
+
+Keine separate Einheitenauswahl ergänzen.
+
+---
+
+# 6. ResourceBooking-Anzeige – echte Planungseinheit verwenden
+
+Prüfe:
+
+```text
+artifacts/an-app/src/pages/resource-bookings.tsx
+```
+
+Nicht pauschal:
+
+```text
+4 Einheiten
+```
+
+anzeigen.
+
+Stattdessen anhand von `ResourceType.capacityUnit`:
+
+```text
+4 Personen
+1 Einheit
+8 Std./Tag
+50 Prozent
+```
+
+Für Singular möglichst:
+
+```text
+1 Person
+1 Einheit
+```
+
+Keine Modelländerung.
+
+---
+
+# 7. ResourceBooking-Dialog bei konkreter Resource synchronisieren
+
+Wenn der Benutzer eine konkrete Resource auswählt:
+
+```text
+resourceTypeId
+```
+
+automatisch auf:
+
+```text
+selectedResource.resourceTypeId
+```
+
+setzen.
+
+Damit darf die UI keinen Zustand mehr erzeugen wie:
+
+```text
+Resource = Mobilkran
+ResourceType = Facharbeiter
+```
+
+Bei Auswahl eines ResourceType ohne konkrete Resource:
+
+```text
+resourceId = null
+```
+
+weiterhin möglich lassen.
+
+---
+
+# 8. Leere Radix-Select-Werte entfernen
+
+Suche in:
+
+```text
+resources.tsx
+resource-bookings.tsx
+```
+
+nach:
+
+```tsx
+<SelectItem value="">
+```
+
+und ersetze durch Sentinel:
+
+```text
+__NONE__
+```
+
+Beim Speichern:
+
+```text
+__NONE__ → null
+```
+
+abbilden.
+
+Keine leeren SelectItem-Werte verwenden.
+
+---
+
+# 9. UI-Validierung für Kapazität konsistent machen
+
+Wenn Backend verlangt:
+
+```text
+capacity > 0
+```
+
+dann im Resource-Dialog ebenfalls:
+
+```text
+min > 0
+```
+
+setzen und Speichern bei:
+
+```text
+capacity <= 0
+```
+
+verhindern.
+
+Keine abweichenden UI-/Backend-Regeln.
+
+---
+
+# 10. Nur gezielte Tests ergänzen
+
+Keine große Test-Suite.
+
+Mindestens folgende Fälle:
+
+## Test A
+
+Requirement:
+
+```text
+requiredCapacity = 6
+utilizationPercent = 50
+periodStart = 10.09.
+periodEnd = 12.09.
+```
+
+Auto-Booking:
+
+```text
+quantity = 6
+utilizationPercent = 50
+```
+
+und korrekter Requirement-Zeitraum.
+
+## Test B
+
+Original:
+
+```text
+Taktstart 01.09.
+Requirement 10.–12.09.
+```
+
+Alternative:
+
+```text
+Taktstart 15.09.
+```
+
+Erwartung:
+
+```text
+Requirement 24.–26.09.
+```
+
+## Test C
+
+`ACCEPT_ALTERNATIVE` verwendet die verschobenen Requirements und erzeugt alle notwendigen Bookings.
+
+## Test D
+
+Wenn Alternative bei erneuter Prüfung nicht mehr machbar ist:
+
+```text
+keine Bookings
+```
+
+## Test E
+
+DTC-Anfrage erzeugt keine `REDUCED_CREW`-Alternative.
+
+---
+
+# 11. Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+und nur betroffene Tests:
+
+```text
+resource availability
+alternative generator
+gu decision / auto booking
+resource UI / booking UI sofern Tests vorhanden
+```
+
+Keine vollständige Test-Suite.
+
+---
+
+# Abschluss
+
+Kurz berichten:
+
+```text
+geänderte Dateien
+Auto-Booking-Änderung
+Requirement-Zeitverschiebung
+ACCEPT_ALTERNATIVE-Verhalten
+REDUCED_CREW-Verhalten
+UI-Änderungen
+Tests
+Typecheck/Build
+```
+
+Keine weiteren Optimierungen durchführen.

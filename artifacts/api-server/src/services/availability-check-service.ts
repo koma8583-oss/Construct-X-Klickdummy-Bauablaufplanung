@@ -42,7 +42,10 @@ import {
   type AlternativeRequirement,
   ALTERNATIVE_GENERATOR_CONFIG,
 } from "./alternative-generator";
-import { evaluateResourceRequirements } from "./resource-availability-service";
+import {
+  evaluateResourceRequirements,
+  shiftRequirementsToWindow,
+} from "./resource-availability-service";
 
 const logger = pino({ name: "availability-check-service" });
 
@@ -449,8 +452,14 @@ async function executeCheckRules(
   const hasDtcRequirements = dtcRequirements.some(r => r.resourceTypeId);
 
   if (hasDtcRequirements) {
-    return executeDtcCheck(
+    const originalWindowStart = new Date(`${snapshot.plannedTimeWindow.start}T00:00:00Z`);
+    const effectiveRequirements = shiftRequirementsToWindow(
       dtcRequirements,
+      originalWindowStart,
+      windowStart,
+    );
+    return executeDtcCheck(
+      effectiveRequirements,
       nuResources,
       overlappingBookings,
       snapshot,

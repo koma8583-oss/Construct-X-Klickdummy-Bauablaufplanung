@@ -12,7 +12,10 @@
  */
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
 import type { ResourceBooking } from "@workspace/db";
-import { evaluateResourceRequirements } from "./resource-availability-service";
+import {
+  evaluateResourceRequirements,
+  shiftRequirementsToWindow,
+} from "./resource-availability-service";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -164,15 +167,11 @@ function isDtcWindowClear(
   candidateStart: Date,
   candidateEnd: Date,
 ): boolean {
-  const shiftedRequirements = requirements.map((requirement) => ({
-    ...requirement,
-    periodStart: requirement.periodStart
-      ? formatDate(addDays(candidateStart, diffDays(plannedStart, parseDate(requirement.periodStart))))
-      : null,
-    periodEnd: requirement.periodEnd
-      ? formatDate(addDays(candidateStart, diffDays(plannedStart, parseDate(requirement.periodEnd))))
-      : null,
-  }));
+  const shiftedRequirements = shiftRequirementsToWindow(
+    requirements,
+    plannedStart,
+    candidateStart,
+  );
   const result = evaluateResourceRequirements({
     requirements: shiftedRequirements,
     resources: resources.map((resource) => ({

@@ -288,6 +288,9 @@ export async function createGuDecision(
     resourceId: string | null;
     resourceTypeId?: string;
     quantity?: number;
+    utilizationPercent?: number;
+    periodStart?: string | null;
+    periodEnd?: string | null;
   }> = [];
 
   const isAcceptance =
@@ -328,6 +331,9 @@ export async function createGuDecision(
         resourceId: r.resourceId ?? null,
         ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
         ...(r.quantity != null ? { quantity: r.quantity } : {}),
+        utilizationPercent: r.utilizationPercent,
+        periodStart: r.periodStart,
+        periodEnd: r.periodEnd,
       }));
     } else if (bookingStart && bookingEnd && request.nuOrgId) {
       const [latestCheck] = await db
@@ -348,6 +354,9 @@ export async function createGuDecision(
         resourceId: r.resourceId ?? null,
         ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
         ...(r.quantity != null ? { quantity: r.quantity } : {}),
+        ...(r.utilizationPercent != null ? { utilizationPercent: r.utilizationPercent } : {}),
+        ...(r.periodStart != null ? { periodStart: r.periodStart } : {}),
+        ...(r.periodEnd != null ? { periodEnd: r.periodEnd } : {}),
       }));
     }
   }
@@ -458,15 +467,22 @@ export async function createGuDecision(
       request.nuOrgId
     ) {
       const bookingValues = autoBookResources.map((resource) => ({
+        ...(() => {
+          if (!resource.periodStart || !resource.periodEnd) {
+            return { startAt: bookingStart!, endAt: bookingEnd! };
+          }
+          const startAt = new Date(`${resource.periodStart}T00:00:00Z`);
+          const endAt = new Date(`${resource.periodEnd}T00:00:00Z`);
+          endAt.setUTCDate(endAt.getUTCDate() + 1);
+          return { startAt, endAt };
+        })(),
         nuOrgId:           request.nuOrgId as string,
         resourceId:        resource.resourceId,
         resourceTypeId:    resource.resourceTypeId ?? null,
         quantity:          resource.quantity ?? null,
         sourceType:        "TAKT_REQUEST" as const,
         sourceReferenceId: taktRequestId,
-        startAt:           bookingStart!,
-        endAt:             bookingEnd!,
-        utilizationPercent: 100,
+        utilizationPercent: resource.utilizationPercent ?? 100,
         status:            "CONFIRMED" as const,
       }));
       await tx.insert(resourceBookingsTable).values(bookingValues);

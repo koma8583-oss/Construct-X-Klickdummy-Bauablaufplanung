@@ -42,6 +42,9 @@ export interface ResourceAvailabilityResult {
     resourceType: "DTC_TYPE";
     resourceTypeId: string;
     quantity: number;
+    utilizationPercent: number;
+    periodStart: string | null;
+    periodEnd: string | null;
   }>;
   missingQualifications: string[];
   tentativeWarnings: Array<{
@@ -50,6 +53,25 @@ export interface ResourceAvailabilityResult {
     overlapStart: string;
     overlapEnd: string;
   }>;
+}
+
+export function shiftRequirementsToWindow<
+  T extends { periodStart?: string | null; periodEnd?: string | null },
+>(requirements: T[], originalWindowStart: Date, targetWindowStart: Date): T[] {
+  const offsetDays = Math.round(
+    (targetWindowStart.getTime() - originalWindowStart.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  const shift = (value?: string | null) => {
+    if (!value) return value;
+    const date = parseDate(value);
+    date.setUTCDate(date.getUTCDate() + offsetDays);
+    return date.toISOString().slice(0, 10);
+  };
+  return requirements.map((requirement) => ({
+    ...requirement,
+    periodStart: shift(requirement.periodStart),
+    periodEnd: shift(requirement.periodEnd),
+  }));
 }
 
 function parseDate(value: string): Date {
@@ -160,6 +182,9 @@ export function evaluateResourceRequirements({
       resourceType: "DTC_TYPE",
       resourceTypeId: requirement.resourceTypeId,
       quantity: requiredCapacity,
+      utilizationPercent: requirement.utilizationPercent,
+      periodStart: requirement.periodStart ?? null,
+      periodEnd: requirement.periodEnd ?? null,
     });
 
     const tentativeUsed = requirementBookings
