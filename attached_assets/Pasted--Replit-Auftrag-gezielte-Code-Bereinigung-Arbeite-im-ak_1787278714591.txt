@@ -1,0 +1,326 @@
+# Replit-Auftrag – gezielte Code-Bereinigung
+
+Arbeite im aktuellen Repository.
+
+Ziel: Code übersichtlicher und robuster machen, **ohne Funktionsänderung und ohne große Refaktorierung**.
+
+Nur folgende Punkte umsetzen.
+
+## 1. Ressourcenregeln zentralisieren
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/resource-domain-service.ts
+```
+
+Verschiebe dorthin nur mehrfach verwendete Ressourcenlogik:
+
+```ts
+loadOwnedResourceType(resourceTypeId, orgId)
+loadOwnedResource(resourceId, orgId)
+
+deriveResourceFieldsFromType(resourceType)
+// liefert mindestens type und capacityUnit
+
+validateResourceTypeForOrg(resourceTypeId, orgId)
+
+validateResourceBooking({
+  resource,
+  resourceType,
+  quantity
+})
+```
+
+Danach vorhandene doppelte Prüfungen in:
+
+```text
+routes/resources.ts
+routes/nu.ts
+routes/takt-requests.ts
+routes/leistungen.ts
+```
+
+durch diese Funktionen ersetzen.
+
+Fachliche Regeln unverändert lassen:
+
+```text
+ResourceType muss zur AN-Organisation gehören.
+
+Resource.resourceTypeId muss gesetzt sein.
+
+Resource.type wird aus dem ResourceType abgeleitet.
+
+Resource.capacityUnit wird aus ResourceType.capacityUnit abgeleitet.
+
+Bei konkreter Resource + ResourceType müssen beide zusammenpassen.
+
+Typbuchung ohne konkrete resourceId benötigt quantity > 0.
+```
+
+Keine DB-Änderung.
+
+---
+
+## 2. Availability-Berechnung zentralisieren
+
+Derzeit darf die Kapazitätslogik nicht getrennt für:
+
+```text
+ursprünglichen Zeitraum
+Alternative
+ACCEPT_ALTERNATIVE
+```
+
+implementiert sein.
+
+Extrahiere aus:
+
+```text
+availability-check-service.ts
+```
+
+eine gemeinsame Funktion, z. B.:
+
+```ts
+evaluateResourceRequirements({
+  requirements,
+  resources,
+  bookings,
+  windowStart,
+  windowEnd
+})
+```
+
+Diese Funktion muss für jeden Requirement berücksichtigen:
+
+```text
+resourceTypeId
+requiredCapacity
+utilizationPercent
+requiredQualification
+periodStart
+periodEnd
+```
+
+und bei Bookings:
+
+```text
+resourceId
+resourceTypeId
+quantity
+utilizationPercent
+status
+startAt
+endAt
+```
+
+Berechnung beibehalten:
+
+```text
+Requirement:
+effectiveRequired =
+requiredCapacity * utilizationPercent / 100
+
+konkrete ResourceBooking:
+used =
+resource.capacity * utilizationPercent / 100
+
+Typbuchung:
+used =
+quantity * utilizationPercent / 100
+```
+
+Diese **eine Funktion** anschließend verwenden für:
+
+```text
+normalen Availability Check
+Alternativprüfung
+erneute Prüfung bei ACCEPT_ALTERNATIVE
+```
+
+Keine zweite Kapazitätslogik mehr pflegen.
+
+---
+
+## 3. Availability-Service nur noch orchestrieren lassen
+
+`availability-check-service.ts` soll danach hauptsächlich:
+
+```text
+Request laden
+Snapshot laden
+Requirements laden
+Resources/Bookings laden
+evaluateResourceRequirements(...) aufrufen
+Ergebnis speichern
+Alternativen erzeugen
+```
+
+Nicht weiter große fachliche Berechnungsblöcke direkt in diesem Service hinzufügen.
+
+Keine komplette Datei neu schreiben. Nur vorhandene Berechnungslogik extrahieren.
+
+---
+
+## 4. Alternative Generator vereinfachen
+
+`alternative-generator.ts` soll **keine eigene Ressourcenberechnung** mehr enthalten.
+
+Er soll nur:
+
+```text
+Kandidatenzeitfenster erzeugen
+```
+
+und für jedes Fenster die gemeinsame:
+
+```ts
+evaluateResourceRequirements(...)
+```
+
+verwenden.
+
+Legacy-Logik wie:
+
+```text
+EMPLOYEE
+CREW
+EQUIPMENT
+MACHINE
+```
+
+nicht mehr zur eigentlichen DTC-Verfügbarkeitsentscheidung verwenden.
+
+Falls Legacy-Pfad weiterhin benötigt wird, unverändert separat bestehen lassen.
+
+---
+
+## 5. ACCEPT_ALTERNATIVE ebenfalls denselben Evaluator verwenden
+
+In:
+
+```text
+gu-decision-service.ts
+```
+
+bei `ACCEPT_ALTERNATIVE`:
+
+```text
+akzeptiertes Zeitfenster bestimmen
+Requirements laden
+Resources/Bookings laden
+evaluateResourceRequirements(...) aufrufen
+```
+
+Nur wenn das Ergebnis vollständig machbar ist:
+
+```text
+alle notwendigen Bookings erzeugen
+```
+
+Nicht mehr:
+
+```text
+availableResources
+```
+
+des ursprünglichen Checks für die Buchung verwenden.
+
+---
+
+## 6. Führende Felder im Code eindeutig festlegen
+
+Keine DB-Felder löschen.
+
+Im Code aber folgende Regeln konsequent verwenden:
+
+```text
+ResourceType.dtcClass
+= semantische Ressourcenart
+
+ResourceType.capacityUnit
+= führende Planungseinheit
+
+Resource.resourceTypeId
+= führende Typzuordnung
+
+Resource.type
+= abgeleitetes Legacy-Feld
+
+Resource.capacityUnit
+= abgeleitetes Legacy-/Kompatibilitätsfeld
+```
+
+Keine neue Fachlogik auf Basis von `Resource.type` oder `Resource.capacityUnit` entwickeln, wenn der zugehörige ResourceType verfügbar ist.
+
+---
+
+## 7. Keine weitere Architekturänderung
+
+Nicht durchführen:
+
+```text
+keine neuen Repository-Klassen
+keine Clean-Architecture-Schichten
+kein CQRS
+kein Event Sourcing
+keine neuen Frameworks
+keine DB-Migration
+keine API-Umbenennung
+keine UI-Neugestaltung
+keine RDF-/Ontology-Infrastruktur
+```
+
+`takt-requests` und `leistungsanfragen` jetzt nicht vollständig zusammenführen.
+
+Nur dafür sorgen, dass beide dieselben zentralen Resource-/Availability-Funktionen verwenden.
+
+---
+
+## 8. Nur betroffene Tests
+
+Vorhandene Tests anpassen bzw. wenige gezielte Tests ergänzen für:
+
+```text
+ResourceType-Org-Prüfung
+ResourceType-Wechsel aktualisiert type + capacityUnit
+Typbuchung quantity × utilizationPercent
+Requirement requiredCapacity × utilizationPercent
+Alternative verwendet denselben Evaluator
+ACCEPT_ALTERNATIVE verwendet denselben Evaluator
+```
+
+Keine große neue Test-Suite erstellen.
+
+---
+
+## 9. Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+und nur betroffene Tests ausführen.
+
+---
+
+## Abschluss
+
+Kurz berichten:
+
+```text
+neu angelegte Service-/Helper-Dateien
+entfernte doppelte Logik
+welche Stellen jetzt evaluateResourceRequirements verwenden
+geänderte Dateien
+Tests
+Typecheck/Build
+```
+
+Keine weiteren Optimierungen durchführen.
