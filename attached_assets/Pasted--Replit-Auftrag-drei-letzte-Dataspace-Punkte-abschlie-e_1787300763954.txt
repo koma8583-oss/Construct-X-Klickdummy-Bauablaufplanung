@@ -1,0 +1,420 @@
+# Replit-Auftrag – drei letzte Dataspace-Punkte abschließen
+
+Arbeite im aktuellen Repository.
+
+Ziel: Nur die drei noch offenen Dataspace-Punkte abschließen.
+
+Keine weitere Architekturänderung. Keine echte EDC-Integration. Keine zusätzlichen Features.
+
+---
+
+# 1. `ExternalServiceRequest` direkt aus Fachdaten erzeugen
+
+Aktuelles Problem:
+
+Der produktive Versand erzeugt den externen Service Request teilweise noch aus einer Legacy-Notification / einem `MessageEnvelope`.
+
+Dadurch können:
+
+```text
+plannedStart
+plannedEnd
+resourceRequirements
+```
+
+fehlen oder falsch sein.
+
+## Änderung
+
+Beim Publish eines Service Requests die externen Daten direkt aus den vorhandenen Fachdaten erzeugen:
+
+```text
+Service Request
++ Snapshot
++ Resource Requirements
+```
+
+Verwende:
+
+```ts
+toExternalServiceRequest(...)
+```
+
+direkt mit den echten fachlichen Werten.
+
+Nicht mehr:
+
+```text
+Legacy MessageEnvelope
+→ toExternalServiceRequestFromEnvelope(...)
+→ ExternalServiceRequest
+```
+
+für den produktiven Request-Versand verwenden.
+
+---
+
+## `ExternalServiceRequest` muss enthalten
+
+Mindestens:
+
+```text
+requestId
+requestVersion
+projectReference
+plannedStart
+plannedEnd
+resourceRequirements
+metadata
+policy
+```
+
+`plannedStart` und `plannedEnd` müssen aus dem tatsächlichen Snapshot bzw. der Leistungsanfrage kommen.
+
+Keine Fallbacks wie:
+
+```ts
+new Date().toISOString()
+```
+
+verwenden.
+
+Wenn die Planungsdaten fehlen, Publish mit einem klaren Fehler abbrechen.
+
+---
+
+## Resource Requirements vollständig übertragen
+
+Für jeden vorhandenen Requirement übertragen:
+
+```text
+resourceTypeCode
+resourceTypeName
+requiredCapacity
+capacityUnit
+utilizationPercent
+periodStart
+periodEnd
+requiredQualification
+```
+
+`capacityUnit` aus dem zugehörigen ResourceType verwenden.
+
+Dabei weiterhin **keine internen Ressourceninformationen** übertragen:
+
+```text
+keine resourceId
+keine Mitarbeiternamen
+keine Geräte-IDs
+keine ResourceBookings
+keine internen Projekte
+keine internen Gesamtkapazitäten
+keine Kosten
+```
+
+---
+
+## Legacy Mapper
+
+`toExternalServiceRequestFromEnvelope(...)` nur behalten, wenn er für echten Legacy-Code noch benötigt wird.
+
+Falls er nicht mehr produktiv verwendet wird:
+
+```text
+als Legacy/Compatibility Helper markieren
+```
+
+Nicht als primären Publish-Pfad verwenden.
+
+Keine große Legacy-Bereinigung durchführen.
+
+---
+
+# 2. Inbound-Service in den realen Empfangspfad einbauen
+
+Aktuell existieren:
+
+```ts
+handleIncomingServiceRequest(...)
+handleIncomingServiceResponse(...)
+```
+
+sie werden aber noch nicht im tatsächlichen Empfangsworkflow genutzt.
+
+## Änderung
+
+Finde die Stellen, an denen heute eingehende organisationsübergreifende Request-/Response-Nachrichten aus dem REST-/Hub-Transport verarbeitet werden.
+
+Dort nicht mehr direkt die Fachlogik aufrufen.
+
+Stattdessen:
+
+```ts
+await handleIncomingServiceRequest(payload);
+```
+
+bzw.:
+
+```ts
+await handleIncomingServiceResponse(payload);
+```
+
+verwenden.
+
+---
+
+## Zielpfad Request
+
+```text
+RestDataspaceExchange / LocalHubTransport
+        ↓
+ExternalServiceRequest
+        ↓
+handleIncomingServiceRequest()
+        ↓
+Idempotenzprüfung
+        ↓
+dataspace_exchanges = RECEIVED
+        ↓
+bestehende Fachlogik
+        ↓
+PROCESSED
+```
+
+Bei Fehler:
+
+```text
+FAILED
+```
+
+---
+
+## Zielpfad Response
+
+```text
+RestDataspaceExchange / LocalHubTransport
+        ↓
+ExternalServiceResponse
+        ↓
+handleIncomingServiceResponse()
+        ↓
+Idempotenzprüfung
+        ↓
+dataspace_exchanges = RECEIVED
+        ↓
+bestehende Fachlogik
+        ↓
+PROCESSED
+```
+
+Keine zweite fachliche Request-/Response-Verarbeitung im Inbound-Service implementieren.
+
+Vorhandene Fachservices wiederverwenden.
+
+---
+
+## Idempotenz
+
+Bestehende `messageId`-Logik verwenden.
+
+Wenn:
+
+```text
+messageId bereits PROCESSED
+```
+
+dann keine zweite fachliche Verarbeitung.
+
+Keine zusätzliche komplexe Retry-Logik für `FAILED` oder parallele Verarbeitung implementieren.
+
+Das kommt später.
+
+---
+
+# 3. Einen echten Integrationstest für den Service Request ergänzen
+
+Ergänze genau einen gezielten Integrationstest für den produktiven Publish-Pfad.
+
+## Testdaten
+
+Beispiel:
+
+```text
+Service Request:
+plannedStart = 2026-09-01
+plannedEnd   = 2026-09-10
+```
+
+Resource Requirements:
+
+```text
+Facharbeiter Trockenbau
+requiredCapacity = 6
+capacityUnit = PERSONS
+utilizationPercent = 100
+periodStart = 2026-09-01
+periodEnd   = 2026-09-10
+```
+
+und:
+
+```text
+Mobilkran
+requiredCapacity = 1
+capacityUnit = UNITS
+utilizationPercent = 50
+periodStart = 2026-09-04
+periodEnd   = 2026-09-06
+```
+
+---
+
+## Prüfen
+
+Der tatsächlich an `DataspaceExchange.publishServiceRequest()` übergebene externe Payload muss enthalten:
+
+```text
+plannedStart = 2026-09-01
+plannedEnd   = 2026-09-10
+```
+
+und genau die beiden Resource Requirements.
+
+Prüfe insbesondere:
+
+```text
+requiredCapacity
+capacityUnit
+utilizationPercent
+periodStart
+periodEnd
+```
+
+---
+
+## Gleichzeitig Datenminimierung prüfen
+
+Der externe Payload darf nicht enthalten:
+
+```text
+resourceId
+resourceBookings
+concreteResources
+employeeName
+equipmentId
+localProjectId
+availableCapacity
+internalNotes
+costs
+```
+
+Der Test soll damit gleichzeitig absichern:
+
+```text
+korrekte Fachdaten
++
+keine internen AN-/NU-Daten
+```
+
+---
+
+# 4. Optionaler kleiner Response-Test
+
+Nur falls ohne nennenswerten Mehraufwand möglich:
+
+Prüfe zusätzlich, dass ein produktiv erzeugter:
+
+```text
+ExternalServiceResponse
+```
+
+nur enthält:
+
+```text
+requestId
+requestVersion
+decision
+alternatives
+metadata
+```
+
+und keine internen Resource-/Booking-Daten.
+
+Keinen größeren zusätzlichen Testaufwand erzeugen.
+
+---
+
+# 5. Keine weiteren Änderungen
+
+Nicht umsetzen:
+
+```text
+keine EDC APIs
+keine Assets
+keine Contract Negotiation
+keine Data Plane
+keine DCP/BPN-Logik
+keine weitere Transportabstraktion
+keine Legacy-DB-Umbenennung
+keine UI-Änderung
+keine neue Fachfunktion
+```
+
+---
+
+# Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+und die betroffenen Dataspace-/Service-Request-Tests ausführen.
+
+Keine vollständige Test-Suite.
+
+---
+
+# Abschlussprüfung
+
+Am Ende muss gelten:
+
+```text
+Service Request Publish
+→ echte plannedStart/plannedEnd
+→ echte Resource Requirements
+→ keine internen Resource-Daten
+```
+
+und:
+
+```text
+eingehender Service Request
+→ handleIncomingServiceRequest()
+```
+
+sowie:
+
+```text
+eingehende Service Response
+→ handleIncomingServiceResponse()
+```
+
+Die bestehende REST-Funktionalität muss erhalten bleiben.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. wo `ExternalServiceRequest` jetzt direkt aus Fachdaten erzeugt wird
+2. wie Resource Requirements gemappt werden
+3. welche Legacy-Mapper noch verbleiben
+4. wo `handleIncomingServiceRequest()` verdrahtet wurde
+5. wo `handleIncomingServiceResponse()` verdrahtet wurde
+6. Integrationstest-Ergebnis
+7. Typecheck-Ergebnis
+
+Keine weiteren Optimierungen durchführen.
