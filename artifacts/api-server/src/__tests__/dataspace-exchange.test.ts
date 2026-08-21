@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { toExternalTaktRequest, toExternalTaktResponse } from "../services/dataspace/external-mappers";
+import { toExternalServiceRequest, toExternalServiceResponse } from "../services/dataspace/external-mappers";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
 
 describe("dataspace exchange boundary", () => {
   it("maps only external request fields and does not expose internal resource data", () => {
-    const request = toExternalTaktRequest({
+    const request = toExternalServiceRequest({
       requestId: "request-1",
       requestVersion: 2,
       projectReference: "project-1",
@@ -29,7 +29,7 @@ describe("dataspace exchange boundary", () => {
   });
 
   it("maps only external response decision data", () => {
-    const response = toExternalTaktResponse({
+    const response = toExternalServiceResponse({
       requestId: "request-1",
       requestVersion: 2,
       decision: "ALTERNATIVES_PROPOSED",
@@ -54,7 +54,7 @@ describe("dataspace exchange boundary", () => {
     const previous = process.env.DATASPACE_TRANSPORT;
     process.env.DATASPACE_TRANSPORT = "tractusx-edc";
     const exchange = createDataspaceExchange();
-    await expect(exchange.publishTaktRequest(toExternalTaktRequest({
+    await expect(exchange.publishServiceRequest(toExternalServiceRequest({
       requestId: "request-1", requestVersion: 1, projectReference: "project-1",
       plannedStart: "2026-09-01", plannedEnd: "2026-09-03",
       senderOrgId: "ag-1", receiverOrgId: "an-1",
@@ -68,8 +68,8 @@ describe("dataspace exchange boundary", () => {
       requestId: "request-1", requestVersion: 1, senderOrgId: "ag-1", receiverOrgId: "an-1",
       projectReference: "project-1", plannedStart: "2026-09-01", plannedEnd: "2026-09-03",
     };
-    const first = toExternalTaktRequest(base);
-    const second = toExternalTaktResponse({
+    const first = toExternalServiceRequest(base);
+    const second = toExternalServiceResponse({
       requestId: base.requestId, requestVersion: base.requestVersion,
       decision: "ACCEPTED", senderOrgId: "an-1", receiverOrgId: "ag-1",
       correlationId: first.metadata.correlationId,

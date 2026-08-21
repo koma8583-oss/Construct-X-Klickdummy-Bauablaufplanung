@@ -92,8 +92,8 @@ import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-servic
 import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import {
-  toExternalTaktRequestFromEnvelope,
-  toExternalTaktResponseFromEnvelope,
+  toExternalServiceRequestFromEnvelope,
+  toExternalServiceResponseFromEnvelope,
 } from "../services/dataspace/external-mappers";
 import {
   IdempotencyConflictError,
@@ -132,8 +132,8 @@ async function safeSend(
 ): Promise<TransportResult | null> {
   try {
     const reference = envelope.messageType === DataspaceMessageType.TAKT_RESPONSE_SUBMITTED
-      ? await dataspaceExchange.publishTaktResponse(toExternalTaktResponseFromEnvelope(envelope))
-      : await dataspaceExchange.publishTaktRequest(toExternalTaktRequestFromEnvelope(envelope));
+      ? await dataspaceExchange.publishServiceResponse(toExternalServiceResponseFromEnvelope(envelope))
+      : await dataspaceExchange.publishServiceRequest(toExternalServiceRequestFromEnvelope(envelope));
     return {
       messageId: reference.exchangeId,
       status: reference.status ?? "DELIVERED",
