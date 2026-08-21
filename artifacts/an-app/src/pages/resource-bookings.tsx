@@ -159,7 +159,7 @@ function buildIso(date: string, time: string, isEnd: boolean): string {
 interface BookingFormData {
   resourceId: string;
   resourceTypeId: string;
-  quantity: number;
+  quantity: number | "";
   localProjectId: string;
   sourceType: string;
   startDate: string;
@@ -208,7 +208,7 @@ function CreateBookingDialog({
 
   const canSave =
     (form.resourceId !== "" || form.resourceTypeId !== "") &&
-    (form.resourceId !== "" || form.quantity > 0) &&
+    (form.resourceId !== "" || (typeof form.quantity === "number" && form.quantity > 0)) &&
     form.startDate !== "" &&
     form.endDate !== "" &&
     form.utilizationPercent > 0;
@@ -226,7 +226,7 @@ function CreateBookingDialog({
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">Ressource *</Label>
               <Select value={form.resourceId} onValueChange={(v) => set("resourceId", v)}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9" aria-label="Ressource">
                   <SelectValue placeholder="Ressource wählen…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -241,7 +241,7 @@ function CreateBookingDialog({
               <Select value={form.resourceTypeId} onValueChange={(v) => {
                 setForm((f) => ({ ...f, resourceTypeId: v, resourceId: "" }));
               }}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9" aria-label="Ressourcentyp">
                   <SelectValue placeholder="Typ wählen…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -259,7 +259,10 @@ function CreateBookingDialog({
                   min="1"
                   step="1"
                   value={form.quantity}
-                  onChange={(e) => set("quantity", Math.max(1, Number(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    set("quantity", value === "" ? "" : Number(value));
+                  }}
                 />
               </div>
             )}
@@ -467,9 +470,16 @@ export default function ResourceBookingsPage() {
   };
 
   const handleCreate = async (form: BookingFormData) => {
+    if (form.resourceTypeId && (typeof form.quantity !== "number" || !Number.isInteger(form.quantity) || form.quantity <= 0)) {
+      toast({ title: "Ungültige Menge", description: "Bitte geben Sie eine positive ganze Zahl ein.", variant: "destructive" });
+      return;
+    }
+
     const body: NuResourceBookingCreate = {
       ...(form.resourceId ? { resourceId: form.resourceId } : {}),
-      ...(form.resourceTypeId ? { resourceTypeId: form.resourceTypeId, quantity: form.quantity } : {}),
+      ...(form.resourceTypeId
+        ? { resourceTypeId: form.resourceTypeId, quantity: form.quantity as number }
+        : {}),
       sourceType: form.sourceType as NuResourceBookingCreate["sourceType"],
       startAt: buildIso(form.startDate, form.startTime, false),
       endAt:   buildIso(form.endDate, form.endTime, true),
