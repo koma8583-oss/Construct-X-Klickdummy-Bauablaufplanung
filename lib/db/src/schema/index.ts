@@ -21,6 +21,7 @@ export * from "./data-publications";
 export * from "./delegations";
 export * from "./hub";
 export * from "./messages";
+export * from "./dataspace-exchanges";
 export * from "./organizations";
 export * from "./projects";
 export * from "./refreshTokens";

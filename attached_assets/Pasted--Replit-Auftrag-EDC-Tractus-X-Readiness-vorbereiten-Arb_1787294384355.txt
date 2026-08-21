@@ -1,0 +1,682 @@
+# Replit-Auftrag – EDC-/Tractus-X-Readiness vorbereiten
+
+Arbeite im aktuellen Repository.
+
+Ziel: Die Anwendung so vorbereiten, dass später ein **Tractus-X/EDC-basierter Datenraum** angebunden werden kann, ohne die Fachlogik erneut umzubauen.
+
+Wichtig:
+
+* jetzt **keinen echten EDC** integrieren
+* keine EDC-Control-Plane/Data-Plane implementieren
+* keine RDF-/AAS-/DTR-Infrastruktur
+* keine DB-Neustrukturierung der Fachmodelle
+* bestehende REST-Kommunikation weiter nutzbar lassen
+* nur eine kleine Austauschschicht ergänzen
+
+---
+
+# 1. DataspaceExchange-Interface einführen
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/dataspace/dataspace-exchange.ts
+```
+
+Definiere:
+
+```ts
+export interface DataspaceExchange {
+  publishTaktRequest(
+    payload: ExternalTaktRequest
+  ): Promise<ExchangeReference>;
+
+  publishTaktResponse(
+    payload: ExternalTaktResponse
+  ): Promise<ExchangeReference>;
+}
+```
+
+Zusätzlich:
+
+```ts
+export type ExchangeReference = {
+  exchangeId: string;
+  externalReference?: string;
+};
+```
+
+Keine EDC-spezifischen Typen in dieses Interface aufnehmen.
+
+---
+
+# 2. REST-Implementierung erstellen
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/dataspace/rest-dataspace-exchange.ts
+```
+
+Implementiere:
+
+```ts
+RestDataspaceExchange
+```
+
+gegen das neue `DataspaceExchange`-Interface.
+
+Diese Implementierung soll die **aktuell vorhandene REST-/JSON-Kommunikation** kapseln.
+
+Keine neue Transportlogik erfinden.
+
+Nur die bisherige direkte Kommunikation hinter dieses Interface verschieben.
+
+---
+
+# 3. Externe DTOs definieren
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/dataspace/external-contracts.ts
+```
+
+Definiere nur folgende externen DTOs:
+
+```ts
+ExternalTaktRequest
+ExternalTaktResponse
+ExternalAlternativeProposal
+```
+
+Gemeinsame Metadaten:
+
+```ts
+type ExchangeMetadata = {
+  messageId: string;
+  correlationId: string;
+  schemaVersion: string;
+  senderOrgId: string;
+  receiverOrgId: string;
+  createdAt: string;
+};
+```
+
+`ExternalTaktRequest` mindestens:
+
+```ts
+{
+  metadata: ExchangeMetadata;
+
+  requestId: string;
+  requestVersion: number;
+
+  projectReference: string;
+
+  plannedStart: string;
+  plannedEnd: string;
+
+  resourceRequirements: ExternalResourceRequirement[];
+}
+```
+
+`ExternalResourceRequirement`:
+
+```ts
+{
+  resourceTypeCode: string;
+  resourceTypeName: string;
+  requiredCapacity: number;
+  capacityUnit: string;
+  utilizationPercent: number;
+  periodStart: string;
+  periodEnd: string;
+  requiredQualification?: string | null;
+}
+```
+
+`ExternalTaktResponse` mindestens:
+
+```ts
+{
+  metadata: ExchangeMetadata;
+
+  requestId: string;
+  requestVersion: number;
+
+  decision:
+    | "ACCEPTED"
+    | "REJECTED"
+    | "ALTERNATIVES_PROPOSED";
+
+  alternatives?: ExternalAlternativeProposal[];
+}
+```
+
+Keine internen DB-Entities direkt als externe DTOs verwenden.
+
+---
+
+# 4. Interne Daten explizit auf externe DTOs mappen
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/dataspace/external-mappers.ts
+```
+
+Implementiere nur:
+
+```ts
+toExternalTaktRequest(...)
+toExternalTaktResponse(...)
+```
+
+Diese Funktionen sind die **einzige Stelle**, an der interne Modelle in externe Datenraumobjekte umgewandelt werden.
+
+Wichtig:
+
+Folgende internen Daten dürfen **nicht** in externe DTOs gelangen:
+
+```text
+resourceId
+konkrete Mitarbeiternamen
+konkrete Geräte-IDs
+interne ResourceBookings
+interne Projekte
+andere GU-/AG-Projekte
+interne Gesamtkapazitäten
+Kosten
+interne Notizen
+DB-IDs ohne fachliche Notwendigkeit
+```
+
+Extern nur fachlich notwendige Informationen übertragen.
+
+---
+
+# 5. Message-ID und Correlation-ID verwenden
+
+Für jede ausgehende Nachricht erzeugen:
+
+```text
+messageId
+```
+
+eindeutig, z. B. UUID.
+
+Für alle Nachrichten eines TaktRequest-Workflows dieselbe:
+
+```text
+correlationId
+```
+
+verwenden.
+
+Beispiel:
+
+```text
+TaktRequest
+messageId = UUID-1
+correlationId = CR-123
+
+TaktResponse
+messageId = UUID-2
+correlationId = CR-123
+```
+
+`requestId` bleibt die fachliche Referenz.
+
+---
+
+# 6. Schema-Version explizit setzen
+
+Für externe DTOs zunächst konstant:
+
+```text
+schemaVersion = "1.0"
+```
+
+verwenden.
+
+Nicht aus DB-Schema oder API-Version ableiten.
+
+Diese Version beschreibt ausschließlich den externen Datenvertrag.
+
+---
+
+# 7. Policy-Metadaten vorbereiten
+
+Erweitere die externe Austauschlogik um:
+
+```ts
+export type ExchangePolicy = {
+  allowedConsumerOrgId: string;
+  usagePurpose: string;
+  validUntil?: string;
+};
+```
+
+Für den aktuellen Use Case:
+
+```text
+usagePurpose = "takt-coordination"
+```
+
+Beim Publish eines TaktRequests Policy mitgeben.
+
+Beispiel:
+
+```ts
+{
+  allowedConsumerOrgId: receiverOrgId,
+  usagePurpose: "takt-coordination"
+}
+```
+
+Keine ODRL-/EDC-Policy erzeugen.
+
+Nur diese interne Policy-Repräsentation vorbereiten.
+
+---
+
+# 8. Participant-Mapping vorbereiten
+
+Nicht die vorhandene `orgId` ersetzen.
+
+Erstelle einen kleinen Typ:
+
+```ts
+export type DataspaceParticipant = {
+  localOrgId: string;
+  participantId?: string;
+  connectorEndpoint?: string;
+};
+```
+
+`localOrgId` bleibt führend.
+
+`participantId` und `connectorEndpoint` zunächst optional.
+
+Keine BPN-, DID- oder Connector-Pflicht einführen.
+
+---
+
+# 9. Exchange-Audit-Tabelle ergänzen
+
+Erstelle eine kleine neue Tabelle:
+
+```text
+dataspace_exchanges
+```
+
+Felder:
+
+```text
+id
+direction
+messageType
+messageId
+correlationId
+senderOrgId
+receiverOrgId
+businessObjectId
+businessObjectVersion
+status
+externalReference
+errorCode
+createdAt
+updatedAt
+```
+
+Enums:
+
+```text
+direction:
+OUTBOUND
+INBOUND
+```
+
+```text
+messageType:
+TAKT_REQUEST
+TAKT_RESPONSE
+```
+
+```text
+status:
+CREATED
+PUBLISHED
+RECEIVED
+PROCESSED
+FAILED
+```
+
+Keine fachlichen Payloads in dieser Tabelle duplizieren.
+
+---
+
+# 10. Technischen und fachlichen Status trennen
+
+Bestehende fachliche Status wie:
+
+```text
+ACCEPTED
+REJECTED
+ALTERNATIVES_PROPOSED
+```
+
+nicht verändern.
+
+Technische Austauschzustände ausschließlich über:
+
+```text
+dataspace_exchanges.status
+```
+
+führen.
+
+Keine EDC-Zustände jetzt schon einführen.
+
+---
+
+# 11. Idempotenz vorbereiten
+
+Bei eingehenden Nachrichten später über:
+
+```text
+messageId
+```
+
+Duplikate erkennen können.
+
+Dafür:
+
+```text
+messageId UNIQUE
+```
+
+in `dataspace_exchanges`.
+
+Falls dieselbe `messageId` erneut verarbeitet wird:
+
+```text
+keine zweite fachliche Verarbeitung
+```
+
+vorsehen.
+
+Für den aktuellen REST-Pfad genügt, diese Prüfung zentral vorzubereiten.
+
+---
+
+# 12. Fachlogik nicht vom Transport abhängig machen
+
+Suche Stellen, an denen der TaktRequest bzw. die Antwort direkt an einen anderen Teilnehmer gesendet wird.
+
+Dort künftig nur:
+
+```ts
+dataspaceExchange.publishTaktRequest(...)
+```
+
+bzw.:
+
+```ts
+dataspaceExchange.publishTaktResponse(...)
+```
+
+aufrufen.
+
+Die Fachservices dürfen nicht wissen, ob darunter:
+
+```text
+REST
+oder später EDC
+```
+
+läuft.
+
+---
+
+# 13. Empfang als Service-Einstieg vorbereiten
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/dataspace/inbound-exchange-service.ts
+```
+
+Mit Funktionen:
+
+```ts
+handleIncomingTaktRequest(
+  payload: ExternalTaktRequest
+)
+
+handleIncomingTaktResponse(
+  payload: ExternalTaktResponse
+)
+```
+
+Diese Funktionen:
+
+```text
+messageId prüfen
+Exchange-Audit anlegen/aktualisieren
+externes DTO validieren
+bestehende Fachlogik aufrufen
+Status PROCESSED oder FAILED setzen
+```
+
+Keine zweite TaktRequest-Fachlogik implementieren.
+
+Vorhandene Services wiederverwenden.
+
+---
+
+# 14. Keine EDC-IDs ins Fachmodell schreiben
+
+Nicht folgende Felder ergänzen:
+
+```text
+taktRequest.assetId
+taktRequest.contractAgreementId
+taktRequest.transferProcessId
+```
+
+Solche späteren Werte gehören ausschließlich nach:
+
+```text
+dataspace_exchanges.externalReference
+```
+
+oder später in eine separate technische EDC-Metadatenstruktur.
+
+Fachmodelle müssen Tractus-X-unabhängig bleiben.
+
+---
+
+# 15. Struktur für späteren EDC-Adapter vorbereiten
+
+Lege nur die Datei an:
+
+```text
+artifacts/api-server/src/services/dataspace/tractusx-edc-exchange.ts
+```
+
+mit:
+
+```ts
+export class TractusXEdcExchange
+  implements DataspaceExchange
+```
+
+Methoden dürfen zunächst:
+
+```ts
+throw new Error("Tractus-X EDC adapter not configured");
+```
+
+enthalten.
+
+Keine echte EDC-Integration implementieren.
+
+Zweck: klarer späterer Austauschpunkt.
+
+---
+
+# 16. Konfiguration vorsehen
+
+Ergänze nur minimale Konfiguration:
+
+```text
+DATASPACE_TRANSPORT=rest
+```
+
+Erlaubte Werte zunächst:
+
+```text
+rest
+tractusx-edc
+```
+
+Default:
+
+```text
+rest
+```
+
+Factory erstellen:
+
+```ts
+createDataspaceExchange()
+```
+
+Verhalten:
+
+```text
+rest
+→ RestDataspaceExchange
+
+tractusx-edc
+→ TractusXEdcExchange
+```
+
+Damit muss später kein Fachservice geändert werden.
+
+---
+
+# 17. Keine unnötigen Änderungen
+
+Nicht implementieren:
+
+```text
+EDC Management API
+Asset Registration
+Contract Definitions
+Policy Definitions
+Contract Negotiation
+EDR
+Transfer Process
+DCP
+BPN Discovery
+Digital Twin Registry
+AAS
+Vault
+OAuth-Neukonzept
+RDF
+SPARQL
+```
+
+Das kommt erst bei echter EDC-Anbindung.
+
+---
+
+# 18. Nur wenige Tests
+
+Nur gezielte Tests ergänzen:
+
+## Test 1
+
+`toExternalTaktRequest()` enthält keine:
+
+```text
+resourceId
+Ressourcennamen
+internen Bookings
+```
+
+## Test 2
+
+`toExternalTaktResponse()` enthält nur externe Entscheidungsdaten.
+
+## Test 3
+
+Zwei Nachrichten desselben Workflows:
+
+```text
+verschiedene messageId
+gleiche correlationId
+```
+
+## Test 4
+
+Doppelte `messageId` wird nicht erneut verarbeitet.
+
+## Test 5
+
+`DATASPACE_TRANSPORT=rest`
+
+liefert `RestDataspaceExchange`.
+
+---
+
+# Zielstruktur
+
+Am Ende ungefähr:
+
+```text
+services/
+  dataspace/
+    dataspace-exchange.ts
+    external-contracts.ts
+    external-mappers.ts
+    rest-dataspace-exchange.ts
+    tractusx-edc-exchange.ts
+    inbound-exchange-service.ts
+    dataspace-exchange-factory.ts
+```
+
+Keine zusätzlichen Schichten.
+
+---
+
+# Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+und die neuen Dataspace-Tests ausführen.
+
+Frontend nicht ändern, sofern für diese Aufgabe nicht zwingend erforderlich.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. neue Dateien
+2. neue `dataspace_exchanges`-Tabelle
+3. externe DTOs
+4. welche internen Daten explizit nicht übertragen werden
+5. wo bestehende REST-Kommunikation jetzt über `DataspaceExchange` läuft
+6. Tests
+7. Typecheck-Ergebnis
+
+Keine echte EDC-Integration und keine weiteren Optimierungen durchführen.
