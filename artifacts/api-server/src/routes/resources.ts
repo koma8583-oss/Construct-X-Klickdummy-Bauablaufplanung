@@ -10,6 +10,11 @@ import {
 import { eq, and, gte, lte } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
+import {
+  deriveResourceFieldsFromType,
+  loadOwnedResource,
+  validateResourceTypeForOrg,
+} from "../services/resource-domain-service";
 
 const router = Router();
 
@@ -19,34 +24,6 @@ function requireAnWrite(req: { user?: { orgType?: string | null; orgId?: string 
     return false;
   }
   return true;
-}
-
-async function loadOwnResourceType(resourceTypeId: string, orgId: string) {
-  const [resourceType] = await db
-    .select()
-    .from(resourceTypesTable)
-    .where(and(eq(resourceTypesTable.id, resourceTypeId), eq(resourceTypesTable.anOrgId, orgId)))
-    .limit(1);
-  return resourceType ?? null;
-}
-
-// ── Helper: assert the resource belongs to the caller's org ──────────────────
-
-async function loadOwnResource(
-  resourceId: string,
-  orgId: string,
-): Promise<(typeof resourcesTable.$inferSelect) | null> {
-  const [r] = await db
-    .select()
-    .from(resourcesTable)
-    .where(
-      and(
-        eq(resourcesTable.id, resourceId),
-        eq(resourcesTable.anOrgId, orgId),
-      ),
-    )
-    .limit(1);
-  return r ?? null;
 }
 
 // ── GET /resources ────────────────────────────────────────────────────────────
@@ -102,9 +79,11 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
-  const resourceType = await loadOwnResourceType(parsed.data.resourceTypeId, orgId);
-  if (!resourceType) {
-    res.status(403).json({ error: "Resource type does not belong to your organisation" });
+  let resourceType;
+  try {
+    resourceType = await validateResourceTypeForOrg(parsed.data.resourceTypeId, orgId);
+  } catch (error) {
+    res.status(403).json({ error: (error as Error).message });
     return;
   }
   if (
@@ -117,25 +96,14 @@ router.post("/resources", requireJwt, async (req, res): Promise<void> => {
   }
 
   // Derive `type` from the linked ResourceType category when not explicitly supplied
-  let resolvedType = parsed.data.type;
-  if (!resolvedType) {
-      const CAT_TO_TYPE: Record<string, "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER"> = {
-        PERSONNEL: "EMPLOYEE",
-        CREW: "CREW",
-        EQUIPMENT: "EQUIPMENT",
-        MACHINE: "MACHINE",
-        OTHER: "OTHER",
-      };
-      resolvedType = CAT_TO_TYPE[resourceType.category] ?? "EMPLOYEE";
-  }
-  resolvedType ??= "EMPLOYEE";
+  const derivedFields = deriveResourceFieldsFromType(resourceType);
 
   const [resource] = await db
     .insert(resourcesTable)
     .values({
       ...parsed.data,
-      type: resolvedType,
-      capacityUnit: resourceType.capacityUnit,
+       type: derivedFields.type,
+       capacityUnit: derivedFields.capacityUnit,
       anOrgId: orgId,
     })
     .returning();
@@ -154,7 +122,7 @@ router.patch(
     const resourceId = req.params.resourceId as string;
 
     // Org-isolation check: resource must belong to caller's org
-    const existing = await loadOwnResource(resourceId, orgId);
+    const existing = await loadOwnedResource(resourceId, orgId);
     if (!existing) {
       res.status(404).json({ error: "Resource not found" });
       return;
@@ -192,11 +160,17 @@ router.patch(
       res.status(422).json({ error: "RESOURCE_TYPE_REQUIRED" });
       return;
     }
-    const resourceType = nextResourceTypeId
-      ? await loadOwnResourceType(nextResourceTypeId, orgId)
-      : null;
-    if (nextResourceTypeId && !resourceType) {
-      res.status(403).json({ error: "Resource type does not belong to your organisation" });
+    let resourceType = null;
+    if (nextResourceTypeId) {
+      try {
+        resourceType = await validateResourceTypeForOrg(nextResourceTypeId, orgId);
+      } catch (error) {
+        res.status(403).json({ error: (error as Error).message });
+        return;
+      }
+    }
+    if (!resourceType) {
+      res.status(422).json({ error: "RESOURCE_TYPE_REQUIRED" });
       return;
     }
     if (
@@ -208,20 +182,14 @@ router.patch(
       return;
     }
 
-    const categoryToType: Record<string, "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER"> = {
-      PERSONNEL: "EMPLOYEE",
-      CREW: "CREW",
-      EQUIPMENT: "EQUIPMENT",
-      MACHINE: "MACHINE",
-      OTHER: "OTHER",
-    };
+    const derivedFields = deriveResourceFieldsFromType(resourceType);
     const [updated] = await db
       .update(resourcesTable)
       .set({
         ...parsed.data,
         resourceTypeId: nextResourceTypeId,
-        capacityUnit: resourceType?.capacityUnit ?? existing.capacityUnit,
-        ...(resourceType?.category ? { type: categoryToType[resourceType.category] ?? existing.type } : {}),
+        capacityUnit: derivedFields.capacityUnit,
+        type: derivedFields.type,
       })
       .where(
         and(
@@ -251,7 +219,7 @@ router.delete(
     const resourceId = req.params.resourceId as string;
 
     // Org-isolation check
-    const existing = await loadOwnResource(resourceId, orgId);
+    const existing = await loadOwnedResource(resourceId, orgId);
     if (!existing) {
       res.status(404).json({ error: "Resource not found" });
       return;
@@ -343,7 +311,7 @@ router.post(
     }
 
     // Rule 1: resource must belong to caller's org and must be active (not soft-deleted)
-    const resource = await loadOwnResource(parsed.data.resourceId, orgId);
+    const resource = await loadOwnedResource(parsed.data.resourceId, orgId);
     if (!resource) {
       res.status(403).json({ error: "Resource does not belong to your organisation" });
       return;
