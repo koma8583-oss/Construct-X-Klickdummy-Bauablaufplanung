@@ -536,6 +536,10 @@ function ResourceDialog({
   const [form, setForm] = useState<ResFormData>(initial);
   const set = <K extends keyof ResFormData>(k: K, v: ResFormData[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+  const selectedType = resourceTypes.find((rt) => rt.id === form.resourceTypeId);
+  const capacityUnitLabel = selectedType?.capacityUnit
+    ? CAPACITY_UNIT_LABELS[selectedType.capacityUnit]
+    : "Einheiten";
 
   const handleOpenChange = (o: boolean) => {
     if (o) setForm(initial);
@@ -575,7 +579,7 @@ function ResourceDialog({
               </SelectTrigger>
               <SelectContent>
                 {resourceTypes.length === 0 ? (
-                  <SelectItem value="" disabled>
+                   <SelectItem value="__NONE__" disabled>
                     Keine Ressourcentypen vorhanden
                   </SelectItem>
                 ) : (
@@ -597,18 +601,21 @@ function ResourceDialog({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="res-cap" className="text-xs">
-                Kapazität (Einheiten)
+                 Kapazität
               </Label>
               <Input
                 id="res-cap"
                 type="number"
-                min="0"
-                step="1"
+                min="0.01"
+                step="0.01"
                 value={form.capacity}
                 onChange={(e) => set("capacity", e.target.value)}
                 placeholder="z. B. 1"
                 className="h-9"
               />
+              <p className="text-[10px] text-muted-foreground">
+                {capacityUnitLabel} — planbare Kapazität des ausgewählten Ressourcentyps.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="res-color" className="text-xs">

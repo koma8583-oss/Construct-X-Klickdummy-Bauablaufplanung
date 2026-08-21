@@ -68,6 +68,9 @@ export interface InternalResultPayload {
     resourceType: string;
     resourceTypeId?: string;
     quantity?: number;
+    utilizationPercent?: number;
+    periodStart?: string | null;
+    periodEnd?: string | null;
   }>;
   missingQualifications: string[];
   unavailableEquipment: string[];

@@ -24,6 +24,7 @@ import {
   getListNuResourceBookingsQueryKey,
   type NuResourceBooking,
   type NuResourceBookingCreate,
+  type ResourceTypeRecord,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DatePicker } from "@/components/date-picker";
@@ -95,6 +96,20 @@ const STATUS_STYLES: Record<string, string> = {
   CONFIRMED: "text-emerald-600 bg-emerald-500/10",
   CANCELLED: "text-muted-foreground bg-muted/50",
 };
+
+const CAPACITY_UNIT_LABELS: Record<string, string> = {
+  PERSONS: "Personen",
+  UNITS: "Einheiten",
+  HOURS_PER_DAY: "Std./Tag",
+  PERCENT: "Prozent",
+};
+
+function quantityLabel(quantity: number, capacityUnit?: string | null): string {
+  const unit = CAPACITY_UNIT_LABELS[capacityUnit ?? "UNITS"] ?? "Einheiten";
+  if (quantity === 1 && unit === "Personen") return "1 Person";
+  if (quantity === 1 && unit === "Einheiten") return "1 Einheit";
+  return `${quantity} ${unit}`;
+}
 
 function SourceBadge({ type }: { type: string }) {
   return (
@@ -225,11 +240,24 @@ function CreateBookingDialog({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">Ressource *</Label>
-              <Select value={form.resourceId} onValueChange={(v) => set("resourceId", v)}>
+              <Select
+                value={form.resourceId || "__NONE__"}
+                onValueChange={(v) => {
+                  const selected = (resources ?? []).find((r) => r.id === v);
+                  setForm((f) => ({
+                    ...f,
+                    resourceId: v === "__NONE__" ? "" : v,
+                    resourceTypeId: v === "__NONE__"
+                      ? f.resourceTypeId
+                      : (selected as (typeof selected & { resourceTypeId?: string | null }) | undefined)?.resourceTypeId ?? "",
+                  }));
+                }}
+              >
                 <SelectTrigger className="h-9" aria-label="Ressource">
                   <SelectValue placeholder="Ressource wählen…" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__NONE__">Keine konkrete Ressource</SelectItem>
                   {(resources ?? []).map((r) => (
                     <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                   ))}
@@ -238,13 +266,14 @@ function CreateBookingDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Oder Ressourcentyp</Label>
-              <Select value={form.resourceTypeId} onValueChange={(v) => {
-                setForm((f) => ({ ...f, resourceTypeId: v, resourceId: "" }));
+              <Select value={form.resourceTypeId || "__NONE__"} onValueChange={(v) => {
+                setForm((f) => ({ ...f, resourceTypeId: v === "__NONE__" ? "" : v, resourceId: "" }));
               }}>
                 <SelectTrigger className="h-9" aria-label="Ressourcentyp">
                   <SelectValue placeholder="Typ wählen…" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__NONE__">Kein Ressourcentyp</SelectItem>
                   {(resourceTypes?.items ?? []).map((rt) => (
                     <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
                   ))}
@@ -299,12 +328,12 @@ function CreateBookingDialog({
           {form.sourceType === "LOCAL_PROJECT" && (localProjects?.items?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <Label className="text-xs">Lokales Projekt</Label>
-              <Select value={form.localProjectId} onValueChange={(v) => set("localProjectId", v)}>
+              <Select value={form.localProjectId || "__NONE__"} onValueChange={(v) => set("localProjectId", v === "__NONE__" ? "" : v)}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Projekt wählen (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Kein Projekt</SelectItem>
+                  <SelectItem value="__NONE__">Kein Projekt</SelectItem>
                   {(localProjects?.items ?? []).map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.displayName}</SelectItem>
                   ))}

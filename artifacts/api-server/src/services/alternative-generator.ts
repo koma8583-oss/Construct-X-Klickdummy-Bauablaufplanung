@@ -222,6 +222,7 @@ export function generateAlternatives(
   const plannedStart = parseDate(snapshot.plannedTimeWindow.start);
   const plannedEnd   = parseDate(snapshot.plannedTimeWindow.end);
   const plannedDurationDays = diffDays(plannedStart, plannedEnd);
+  const hasDtcRequirements = requirements.some((requirement) => requirement.resourceTypeId);
 
   if (plannedDurationDays < 0) return [];
 
@@ -284,7 +285,7 @@ export function generateAlternatives(
   }
 
   // ── Alternative B — reduced crew, extended duration ──────────────────────────
-  if (crewResources.length >= 2 && alternatives.length < maximumAlternatives) {
+  if (!hasDtcRequirements && crewResources.length >= 2 && alternatives.length < maximumAlternatives) {
     // Try using one fewer crew resource (by removing the last alphabetically — deterministic)
     const sortedCrew = [...crewResources].sort((a, b) => a.resourceId.localeCompare(b.resourceId));
     const reducedCrew = sortedCrew.slice(0, sortedCrew.length - 1);
