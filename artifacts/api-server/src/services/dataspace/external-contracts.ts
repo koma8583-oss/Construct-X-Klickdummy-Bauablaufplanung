@@ -38,7 +38,7 @@ export type ExternalAlternativeProposal = {
   conditions?: string | null;
 };
 
-export type ExternalTaktRequest = {
+export type ExternalServiceRequest = {
   metadata: ExchangeMetadata;
   requestId: string;
   requestVersion: number;
@@ -49,7 +49,7 @@ export type ExternalTaktRequest = {
   policy?: ExchangePolicy;
 };
 
-export type ExternalTaktResponse = {
+export type ExternalServiceResponse = {
   metadata: ExchangeMetadata;
   requestId: string;
   requestVersion: number;

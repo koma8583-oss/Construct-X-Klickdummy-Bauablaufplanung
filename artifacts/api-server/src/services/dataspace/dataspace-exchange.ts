@@ -1,4 +1,4 @@
-import type { ExternalTaktRequest, ExternalTaktResponse } from "./external-contracts";
+import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 import type { DataspaceMessageStatus } from "@workspace/api-zod";
 
 export type ExchangeReference = {
@@ -11,6 +11,6 @@ export type ExchangeReference = {
 };
 
 export interface DataspaceExchange {
-  publishTaktRequest(payload: ExternalTaktRequest): Promise<ExchangeReference>;
-  publishTaktResponse(payload: ExternalTaktResponse): Promise<ExchangeReference>;
+  publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference>;
+  publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference>;
 }

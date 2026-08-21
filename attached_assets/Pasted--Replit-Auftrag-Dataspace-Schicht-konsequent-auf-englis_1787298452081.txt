@@ -1,0 +1,481 @@
+# Replit-Auftrag – Dataspace-Schicht konsequent auf englische Bezeichnungen umstellen
+
+Arbeite im aktuellen Repository.
+
+Ziel: In der **neuen Dataspace-/EDC-Readiness-Schicht** konsequent englische technische Bezeichnungen verwenden und den alten Begriff `Takt` dort vollständig entfernen.
+
+Wichtig:
+
+* nur neue Dataspace-/Exchange-Schicht und direkt zugehörige Tests/Dokumentation anpassen
+* bestehende Legacy-DB-Tabellen und tief verankerte Alt-Routen nicht unnötig migrieren
+* keine fachliche Logik ändern
+* UI bleibt deutsch
+* keine neue Architektur einführen
+* keine echte EDC-Integration
+
+---
+
+# 1. Externe DTOs umbenennen
+
+In der Dataspace-Schicht ersetzen:
+
+```text
+ExternalTaktRequest
+→ ExternalServiceRequest
+
+ExternalTaktResponse
+→ ExternalServiceResponse
+```
+
+Beibehalten:
+
+```text
+ExternalAlternativeProposal
+ExternalResourceRequirement
+ExchangeMetadata
+ExchangePolicy
+DataspaceParticipant
+```
+
+Datei kann weiterhin heißen:
+
+```text
+external-contracts.ts
+```
+
+---
+
+# 2. DataspaceExchange-Interface umbenennen
+
+Im Interface ersetzen:
+
+```ts
+publishTaktRequest(...)
+→ publishServiceRequest(...)
+
+publishTaktResponse(...)
+→ publishServiceResponse(...)
+```
+
+Ziel:
+
+```ts
+export interface DataspaceExchange {
+  publishServiceRequest(
+    payload: ExternalServiceRequest
+  ): Promise<ExchangeReference>;
+
+  publishServiceResponse(
+    payload: ExternalServiceResponse
+  ): Promise<ExchangeReference>;
+}
+```
+
+Alle Implementierungen entsprechend anpassen:
+
+```text
+RestDataspaceExchange
+TractusXEdcExchange
+```
+
+---
+
+# 3. Inbound-Funktionen umbenennen
+
+Ersetzen:
+
+```text
+handleIncomingTaktRequest
+→ handleIncomingServiceRequest
+
+handleIncomingTaktResponse
+→ handleIncomingServiceResponse
+```
+
+Datei:
+
+```text
+inbound-exchange-service.ts
+```
+
+kann unverändert heißen.
+
+Alle Aufrufer und Tests aktualisieren.
+
+---
+
+# 4. Mapper umbenennen
+
+Ersetzen:
+
+```text
+toExternalTaktRequest
+→ toExternalServiceRequest
+
+toExternalTaktResponse
+→ toExternalServiceResponse
+```
+
+Keine Mapping-Logik verändern.
+
+Weiterhin ausdrücklich keine internen Ressourcen-/Booking-Daten exportieren.
+
+---
+
+# 5. Exchange Message Types umbenennen
+
+In `dataspace_exchanges` bzw. zugehörigem Enum ersetzen:
+
+```text
+TAKT_REQUEST
+→ SERVICE_REQUEST
+
+TAKT_RESPONSE
+→ SERVICE_RESPONSE
+```
+
+Keine anderen Statuswerte verändern.
+
+Falls dies nur als DB-Enum definiert ist und eine Änderung eine unnötige Migration verursacht:
+
+* im aktuellen PoC anpassen, wenn ohne größeren Aufwand möglich
+* ansonsten Legacy-DB-Wert intern beibehalten, aber im neuen TypeScript-Code einen neutralen Mapping-Layer verwenden
+
+Keine große DB-Migration nur für den Namen erzeugen.
+
+---
+
+# 6. Variablennamen in der neuen Dataspace-Schicht bereinigen
+
+Innerhalb der neuen Dataspace-Dateien keine neuen Variablen mehr verwenden wie:
+
+```text
+taktRequest
+taktResponse
+taktRequestId
+taktRequestVersion
+```
+
+Stattdessen:
+
+```text
+serviceRequest
+serviceResponse
+serviceRequestId
+serviceRequestVersion
+```
+
+oder generisch:
+
+```text
+request
+response
+businessObjectId
+businessObjectVersion
+```
+
+---
+
+# 7. Correlation und Request IDs neutral halten
+
+Extern weiterhin:
+
+```text
+requestId
+requestVersion
+correlationId
+messageId
+```
+
+verwenden.
+
+Nicht:
+
+```text
+taktRequestId
+```
+
+in externe DTOs aufnehmen.
+
+Interne Legacy-ID darf beim Mapping als Quelle verwendet werden.
+
+Beispiel:
+
+```ts
+requestId: internalTaktRequest.id
+```
+
+ist intern okay.
+
+Das externe Feld bleibt aber:
+
+```text
+requestId
+```
+
+---
+
+# 8. Usage Purpose umbenennen
+
+Ersetzen:
+
+```text
+"takt-coordination"
+```
+
+durch:
+
+```text
+"construction-service-coordination"
+```
+
+Diesen Wert zentral als Konstante definieren, z. B.:
+
+```ts
+export const CONSTRUCTION_SERVICE_COORDINATION_PURPOSE =
+  "construction-service-coordination";
+```
+
+Nicht an mehreren Stellen als String duplizieren.
+
+---
+
+# 9. Dokumentation anpassen
+
+Prüfe:
+
+```text
+docs/dataspace-readiness.md
+```
+
+Dort keine neue Zielarchitektur mehr mit Begriffen wie:
+
+```text
+TaktRequest
+TaktResponse
+Takt Coordination
+```
+
+beschreiben.
+
+Stattdessen:
+
+```text
+Service Request
+Service Response
+Construction Service Coordination
+```
+
+Die deutsche UI-Bezeichnung darf in erklärendem Text weiterhin als:
+
+```text
+Leistungsanfrage
+Leistungsantwort
+```
+
+genannt werden.
+
+---
+
+# 10. Dateinamen nur dort umbenennen, wo sinnvoll
+
+Falls neue Dataspace-Dateien Namen mit `takt` enthalten, umbenennen.
+
+Beispiel:
+
+```text
+takt-exchange.ts
+→ service-exchange.ts
+```
+
+Nicht Legacy-Dateien außerhalb der Dataspace-Schicht nur wegen des Namens umbenennen.
+
+Insbesondere bestehende Dateien wie:
+
+```text
+takt-requests.ts
+takt-request-snapshot-service.ts
+```
+
+vorerst nicht anfassen, wenn sie tief im bestehenden System verwendet werden.
+
+---
+
+# 11. Keine neuen deutschen technischen Namen
+
+In neuem TypeScript-Code keine Bezeichner wie:
+
+```text
+leistungsanfrage
+leistungsantwort
+ressourcenbedarf
+```
+
+verwenden.
+
+Technische Bezeichnungen immer Englisch:
+
+```text
+serviceRequest
+serviceResponse
+resourceRequirement
+resourceBooking
+resourceType
+alternativeProposal
+```
+
+UI-Labels dürfen weiterhin Deutsch sein.
+
+---
+
+# 12. Productive Workflow ebenfalls mit den neuen Namen verdrahten
+
+Falls der echte Workflow bereits auf `DataspaceExchange` umgestellt wird, dort ebenfalls nur die neuen Methoden verwenden:
+
+```ts
+dataspaceExchange.publishServiceRequest(...)
+dataspaceExchange.publishServiceResponse(...)
+```
+
+Keine Wrapper mit den alten Namen beibehalten, sofern sie nur für die neue Dataspace-Schicht existieren.
+
+---
+
+# 13. TractusXEdcExchange Stub ebenfalls anpassen
+
+Der Stub soll implementieren:
+
+```ts
+publishServiceRequest(...)
+publishServiceResponse(...)
+```
+
+Fehlermeldung kann bleiben:
+
+```text
+Tractus-X EDC adapter not configured
+```
+
+Keine echte EDC-Logik ergänzen.
+
+---
+
+# 14. Tests umbenennen und aktualisieren
+
+Bestehende Dataspace-Tests auf die neuen Namen umstellen.
+
+Prüfen:
+
+```text
+ExternalServiceRequest
+ExternalServiceResponse
+publishServiceRequest
+publishServiceResponse
+handleIncomingServiceRequest
+handleIncomingServiceResponse
+SERVICE_REQUEST
+SERVICE_RESPONSE
+construction-service-coordination
+```
+
+Keine zusätzlichen großen Tests schreiben.
+
+---
+
+# 15. Suche nach verbleibenden `Takt`-Begriffen
+
+Am Ende gezielt in der neuen Dataspace-Schicht suchen nach:
+
+```text
+Takt
+takt
+TAKT
+```
+
+In:
+
+```text
+services/dataspace/
+zugehörigen Dataspace-Tests
+dataspace-readiness.md
+```
+
+soll danach kein fachlich neuer `Takt`-Begriff mehr vorkommen.
+
+Ausnahme:
+
+Kommentare oder Mapping-Code dürfen auf bestehende Legacy-Typen wie:
+
+```text
+TaktRequestTable
+taktRequestId
+```
+
+verweisen, wenn dies zwingend nötig ist, um das bestehende System anzubinden.
+
+Keine Legacy-Migration nur zum Entfernen dieser Referenzen.
+
+---
+
+# 16. Keine weiteren Änderungen
+
+Nicht durchführen:
+
+```text
+keine DB-Neustrukturierung
+keine Legacy-Routen umbenennen
+keine UI-Umbenennung auf Englisch
+keine EDC-Integration
+keine API-Großmigration
+keine neue Fachlogik
+```
+
+---
+
+# Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+und die betroffenen Dataspace-Tests ausführen.
+
+---
+
+# Abschlussprüfung
+
+Am Ende muss für die neue Dataspace-Schicht gelten:
+
+```text
+ExternalServiceRequest
+ExternalServiceResponse
+publishServiceRequest
+publishServiceResponse
+handleIncomingServiceRequest
+handleIncomingServiceResponse
+SERVICE_REQUEST
+SERVICE_RESPONSE
+construction-service-coordination
+```
+
+Keine neuen `Takt...`-Bezeichnungen mehr.
+
+Legacy-Begriffe außerhalb dieser Schicht bleiben vorerst unangetastet.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. umbenannte Typen
+2. umbenannte Methoden
+3. umbenannte Message Types
+4. geänderte Dateien
+5. verbliebene Legacy-`Takt`-Referenzen und warum sie bleiben
+6. Tests
+7. Typecheck-Ergebnis
+
+Keine weiteren Optimierungen durchführen.

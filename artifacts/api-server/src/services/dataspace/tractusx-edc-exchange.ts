@@ -1,12 +1,12 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
-import type { ExternalTaktRequest, ExternalTaktResponse } from "./external-contracts";
+import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 
 export class TractusXEdcExchange implements DataspaceExchange {
-  async publishTaktRequest(_payload: ExternalTaktRequest): Promise<ExchangeReference> {
+  async publishServiceRequest(_payload: ExternalServiceRequest): Promise<ExchangeReference> {
     throw new Error("Tractus-X EDC adapter not configured");
   }
 
-  async publishTaktResponse(_payload: ExternalTaktResponse): Promise<ExchangeReference> {
+  async publishServiceResponse(_payload: ExternalServiceResponse): Promise<ExchangeReference> {
     throw new Error("Tractus-X EDC adapter not configured");
   }
 }

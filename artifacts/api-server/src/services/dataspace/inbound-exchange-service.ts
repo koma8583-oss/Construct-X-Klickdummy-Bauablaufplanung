@@ -1,17 +1,17 @@
 import { db, dataspaceExchangesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import type { ExternalTaktRequest, ExternalTaktResponse } from "./external-contracts";
+import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 
-function validateMetadata(payload: { metadata: ExternalTaktRequest["metadata"] }): void {
+function validateMetadata(payload: { metadata: ExternalServiceRequest["metadata"] }): void {
   const metadata = payload.metadata;
   if (!metadata?.messageId || !metadata.correlationId || metadata.schemaVersion !== "1.0") {
     throw new Error("Invalid external exchange metadata");
   }
 }
 
-export async function handleIncomingTaktRequest(
-  payload: ExternalTaktRequest,
-  process?: (payload: ExternalTaktRequest) => Promise<void>,
+export async function handleIncomingServiceRequest(
+  payload: ExternalServiceRequest,
+  process?: (payload: ExternalServiceRequest) => Promise<void>,
 ): Promise<void> {
   validateMetadata(payload);
   const existing = await db.select().from(dataspaceExchangesTable)
@@ -20,7 +20,7 @@ export async function handleIncomingTaktRequest(
   const [exchange] = existing.length > 0
     ? [existing[0]]
     : await db.insert(dataspaceExchangesTable).values({
-        direction: "INBOUND", messageType: "TAKT_REQUEST",
+        direction: "INBOUND", messageType: "SERVICE_REQUEST",
         messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
         senderOrgId: payload.metadata.senderOrgId, receiverOrgId: payload.metadata.receiverOrgId,
         businessObjectId: payload.requestId, businessObjectVersion: payload.requestVersion,
@@ -37,9 +37,9 @@ export async function handleIncomingTaktRequest(
   }
 }
 
-export async function handleIncomingTaktResponse(
-  payload: ExternalTaktResponse,
-  process?: (payload: ExternalTaktResponse) => Promise<void>,
+export async function handleIncomingServiceResponse(
+  payload: ExternalServiceResponse,
+  process?: (payload: ExternalServiceResponse) => Promise<void>,
 ): Promise<void> {
   validateMetadata(payload);
   const existing = await db.select().from(dataspaceExchangesTable)
@@ -48,7 +48,7 @@ export async function handleIncomingTaktResponse(
   const [exchange] = existing.length > 0
     ? [existing[0]]
     : await db.insert(dataspaceExchangesTable).values({
-        direction: "INBOUND", messageType: "TAKT_RESPONSE",
+        direction: "INBOUND", messageType: "SERVICE_RESPONSE",
         messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
         senderOrgId: payload.metadata.senderOrgId, receiverOrgId: payload.metadata.receiverOrgId,
         businessObjectId: payload.requestId, businessObjectVersion: payload.requestVersion,

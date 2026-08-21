@@ -3,12 +3,12 @@ import { db, dataspaceExchangesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
-import type { ExternalTaktRequest, ExternalTaktResponse } from "./external-contracts";
+import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 
 export class RestDataspaceExchange implements DataspaceExchange {
   constructor(private readonly transport = new LocalHubTransport()) {}
 
-  private requestPayload(payload: ExternalTaktRequest): Record<string, unknown> {
+  private requestPayload(payload: ExternalServiceRequest): Record<string, unknown> {
     return {
       taktRequestId: payload.requestId,
       leistungsanfrageId: payload.requestId,
@@ -22,7 +22,7 @@ export class RestDataspaceExchange implements DataspaceExchange {
     };
   }
 
-  private responsePayload(payload: ExternalTaktResponse): Record<string, unknown> {
+  private responsePayload(payload: ExternalServiceResponse): Record<string, unknown> {
     return {
       taktRequestId: payload.requestId,
       leistungsanfrageId: payload.requestId,
@@ -32,9 +32,9 @@ export class RestDataspaceExchange implements DataspaceExchange {
     };
   }
 
-  async publishTaktRequest(payload: ExternalTaktRequest): Promise<ExchangeReference> {
+  async publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference> {
     await db.insert(dataspaceExchangesTable).values({
-      direction: "OUTBOUND", messageType: "TAKT_REQUEST",
+      direction: "OUTBOUND", messageType: "SERVICE_REQUEST",
       messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
       senderOrgId: payload.metadata.senderOrgId, receiverOrgId: payload.metadata.receiverOrgId,
       businessObjectId: payload.requestId, businessObjectVersion: payload.requestVersion,
@@ -67,9 +67,9 @@ export class RestDataspaceExchange implements DataspaceExchange {
     return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
   }
 
-  async publishTaktResponse(payload: ExternalTaktResponse): Promise<ExchangeReference> {
+  async publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference> {
     await db.insert(dataspaceExchangesTable).values({
-      direction: "OUTBOUND", messageType: "TAKT_RESPONSE",
+      direction: "OUTBOUND", messageType: "SERVICE_RESPONSE",
       messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
       senderOrgId: payload.metadata.senderOrgId, receiverOrgId: payload.metadata.receiverOrgId,
       businessObjectId: payload.requestId, businessObjectVersion: payload.requestVersion,

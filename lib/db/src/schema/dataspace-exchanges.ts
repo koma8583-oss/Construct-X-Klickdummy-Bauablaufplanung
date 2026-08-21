@@ -2,7 +2,7 @@ import { pgEnum, pgTable, text, timestamp, integer, index } from "drizzle-orm/pg
 import { organizationsTable } from "./organizations";
 
 export const dataspaceExchangeDirectionEnum = pgEnum("dataspace_exchange_direction", ["OUTBOUND", "INBOUND"]);
-export const dataspaceExchangeMessageTypeEnum = pgEnum("dataspace_exchange_message_type", ["TAKT_REQUEST", "TAKT_RESPONSE"]);
+export const dataspaceExchangeMessageTypeEnum = pgEnum("dataspace_exchange_message_type", ["SERVICE_REQUEST", "SERVICE_RESPONSE"]);
 export const dataspaceExchangeStatusEnum = pgEnum("dataspace_exchange_status", ["CREATED", "PUBLISHED", "RECEIVED", "PROCESSED", "FAILED"]);
 
 export const dataspaceExchangesTable = pgTable("dataspace_exchanges", {

@@ -1,16 +1,17 @@
 import type {
   ExternalAlternativeProposal,
-  ExternalTaktRequest,
-  ExternalTaktResponse,
+  ExternalServiceRequest,
+  ExternalServiceResponse,
   ExchangeMetadata,
   ExternalResourceRequirement,
 } from "./external-contracts";
 import type { MessageEnvelope } from "../../lib/transport/message-transport";
 
 const SCHEMA_VERSION = "1.0";
+export const CONSTRUCTION_SERVICE_COORDINATION_PURPOSE = "construction-service-coordination";
 const newMessageId = () => crypto.randomUUID();
 
-export function toExternalTaktRequest(input: {
+export function toExternalServiceRequest(input: {
   requestId: string;
   requestVersion: number;
   projectReference: string;
@@ -20,7 +21,7 @@ export function toExternalTaktRequest(input: {
   receiverOrgId: string;
   correlationId?: string;
   resourceRequirements?: ExternalResourceRequirement[];
-}): ExternalTaktRequest {
+}): ExternalServiceRequest {
   const metadata: ExchangeMetadata = {
     messageId: newMessageId(),
     correlationId: input.correlationId ?? input.requestId,
@@ -37,19 +38,19 @@ export function toExternalTaktRequest(input: {
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
     resourceRequirements: input.resourceRequirements ?? [],
-    policy: { allowedConsumerOrgId: input.receiverOrgId, usagePurpose: "takt-coordination" },
+    policy: { allowedConsumerOrgId: input.receiverOrgId, usagePurpose: CONSTRUCTION_SERVICE_COORDINATION_PURPOSE },
   };
 }
 
-export function toExternalTaktResponse(input: {
+export function toExternalServiceResponse(input: {
   requestId: string;
   requestVersion: number;
-  decision: ExternalTaktResponse["decision"];
+  decision: ExternalServiceResponse["decision"];
   senderOrgId: string;
   receiverOrgId: string;
   correlationId?: string;
   alternatives?: ExternalAlternativeProposal[];
-}): ExternalTaktResponse {
+}): ExternalServiceResponse {
   return {
     metadata: {
       messageId: newMessageId(),
@@ -67,9 +68,9 @@ export function toExternalTaktResponse(input: {
 }
 
 /** Converts the legacy notification envelope without leaking its payload wholesale. */
-export function toExternalTaktRequestFromEnvelope(envelope: MessageEnvelope): ExternalTaktRequest {
+export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope): ExternalServiceRequest {
   const payload = envelope.payload as Record<string, unknown>;
-  return toExternalTaktRequest({
+  return toExternalServiceRequest({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
     projectReference: String(payload.projectReference ?? payload.taktReference ?? ""),
@@ -82,9 +83,9 @@ export function toExternalTaktRequestFromEnvelope(envelope: MessageEnvelope): Ex
 }
 
 /** Converts the legacy response envelope to the public response whitelist. */
-export function toExternalTaktResponseFromEnvelope(envelope: MessageEnvelope): ExternalTaktResponse {
+export function toExternalServiceResponseFromEnvelope(envelope: MessageEnvelope): ExternalServiceResponse {
   const payload = envelope.payload as Record<string, any>;
-  return toExternalTaktResponse({
+  return toExternalServiceResponse({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
     decision: payload.decision === "REJECTED" ? "REJECTED" :
