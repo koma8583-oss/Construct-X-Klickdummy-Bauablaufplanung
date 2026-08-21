@@ -43,7 +43,24 @@ describe("dataspace exchange boundary", () => {
   });
 
   it("uses the REST implementation by default", () => {
+    const previous = process.env.DATASPACE_TRANSPORT;
+    delete process.env.DATASPACE_TRANSPORT;
     expect(createDataspaceExchange()).toBeInstanceOf(RestDataspaceExchange);
+    if (previous === undefined) delete process.env.DATASPACE_TRANSPORT;
+    else process.env.DATASPACE_TRANSPORT = previous;
+  });
+
+  it("routes the EDC setting to the explicit unconfigured adapter", async () => {
+    const previous = process.env.DATASPACE_TRANSPORT;
+    process.env.DATASPACE_TRANSPORT = "tractusx-edc";
+    const exchange = createDataspaceExchange();
+    await expect(exchange.publishTaktRequest(toExternalTaktRequest({
+      requestId: "request-1", requestVersion: 1, projectReference: "project-1",
+      plannedStart: "2026-09-01", plannedEnd: "2026-09-03",
+      senderOrgId: "ag-1", receiverOrgId: "an-1",
+    }))).rejects.toThrow("Tractus-X EDC adapter not configured");
+    if (previous === undefined) delete process.env.DATASPACE_TRANSPORT;
+    else process.env.DATASPACE_TRANSPORT = previous;
   });
 
   it("creates distinct message IDs but keeps a workflow correlation ID", () => {

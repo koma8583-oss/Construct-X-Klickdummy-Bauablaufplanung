@@ -33,27 +33,29 @@ TaktKoord's coordination flow maps naturally onto the EDC data transfer model:
 
 ---
 
-## 2 — Current Transport Abstraction (PoC)
+## 2 — Current DataspaceExchange Boundary
 
-All coordination messages flow through the `MessageTransport` interface
-(`artifacts/api-server/src/lib/transport/message-transport.ts`). No domain
-service, route handler, or business rule has a direct dependency on the Hub
-database tables, HTTP endpoints, or any specific transport mechanism.
+Cross-organisation TaktRequest and TaktResponse publications flow through
+`DataspaceExchange`. Domain routes map internal values to whitelisted external
+DTOs before publishing. `MessageTransport` remains the lower-level legacy
+message delivery contract used by the REST adapter.
 
 ```
-Domain service (e.g. takt-request-snapshot-service.ts)
+Domain service / route
     │
     ▼ calls
-MessageTransport interface
+DataspaceExchange
     │
-    ├── LocalHubTransport  (current PoC — same-DB delivery)
-    └── EdcTransport       (future — DSP protocol over HTTP/S)
+    ▼
+createDataspaceExchange()
+    │
+    ├── RestDataspaceExchange → LocalHubTransport (current PoC)
+    └── TractusXEdcExchange (stub, future)
 ```
 
-Swapping `LocalHubTransport` for `EdcTransport` requires:
-- Implementing `EdcTransport implements MessageTransport`
-- Wiring the new implementation at startup (dependency injection / factory)
-- **Zero changes** to any domain service or route handler
+`DATASPACE_TRANSPORT=rest` selects the current REST adapter. Setting
+`DATASPACE_TRANSPORT=tractusx-edc` reaches the explicit
+`Tractus-X EDC adapter not configured` stub; no EDC protocol logic exists yet.
 
 See `docs/transport-architecture.md` for the full interface specification and
 current PoC implementation details.
@@ -66,11 +68,11 @@ current PoC implementation details.
 
 | Step | Operation | Direction | Today (PoC) | Future (EDC Provider-Push) |
 |------|-----------|-----------|-------------|---------------------------|
-| 1 | TaktRequest notification | GU → NU | `LocalHubTransport.send()` writes to `message_outbox` → `message_inbox` | GU connector pushes `TaktRequestNotification` asset to NU connector endpoint |
+| 1 | TaktRequest notification | GU → NU | `DataspaceExchange.publishTaktRequest()` → `RestDataspaceExchange` → `LocalHubTransport` | GU connector pushes `TaktRequestNotification` asset to NU connector endpoint |
 | 2 | Takt snapshot retrieval | NU pulls from GU | `GET /api/an/takt-requests/:id/details` | Contract negotiation → EDC pull transfer; GU endpoint serves snapshot under access policy |
 | 3 | Availability check | NU internal | Local DB query (no external message) | Remains internal; no EDC transfer |
-| 4 | NU response delivery | NU → GU | `LocalHubTransport.send()` | NU connector pushes `TaktResponse` asset to GU connector endpoint |
-| 5 | GU decision delivery | GU → NU | `LocalHubTransport.send()` | GU connector pushes `TaktDecision` asset to NU connector endpoint |
+| 4 | NU response delivery | NU → GU | `DataspaceExchange.publishTaktResponse()` → `RestDataspaceExchange` → `LocalHubTransport` | NU connector pushes `TaktResponse` asset to GU connector endpoint |
+| 5 | GU decision delivery | GU → NU | existing legacy decision path | GU connector pushes `TaktDecision` asset to NU connector endpoint |
 | 6 | Revision notification | GU → NU | `LocalHubTransport.send()` (new envelope) | GU connector pushes `TaktRevisionNotification` asset |
 
 ### 3.2 Provider-Push flow (future EDC)
@@ -128,7 +130,8 @@ negotiation and policy enforcement. This separation is already enforced by the
 
 ## 5 — Contract and Policy Placeholders
 
-The `MessageTransport` interface is designed to accept optional contract/policy
+The `DataspaceExchange` interface accepts neutral external DTOs. The
+`MessageTransport` interface is designed to accept optional contract/policy
 context without changing any domain service. The current `MessageEnvelope` already
 carries:
 
