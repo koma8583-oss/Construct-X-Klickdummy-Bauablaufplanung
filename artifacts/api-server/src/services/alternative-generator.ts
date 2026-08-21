@@ -29,9 +29,20 @@ export const ALTERNATIVE_GENERATOR_CONFIG = {
 export interface AlternativeResource {
   resourceId: string;
   resourceType: string;
+  resourceTypeId?: string | null;
   capacity: number | null;
   capacityUnit: string | null;
   active: boolean;
+  qualifications?: unknown;
+}
+
+export interface AlternativeRequirement {
+  resourceTypeId: string | null;
+  requiredCapacity: string | null;
+  utilizationPercent: number;
+  requiredQualification: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
 }
 
 export interface GeneratedAlternative {
@@ -144,6 +155,51 @@ function isWindowClear(
   return findConflictingBookingsInWindow(resourceIds, windowStart, windowEnd, existingBookings).length === 0;
 }
 
+function isDtcWindowClear(
+  requirements: AlternativeRequirement[],
+  resources: AlternativeResource[],
+  bookings: Pick<ResourceBooking, "resourceId" | "resourceTypeId" | "quantity" | "startAt" | "endAt" | "status" | "utilizationPercent">[],
+  plannedStart: Date,
+  candidateStart: Date,
+  candidateEnd: Date,
+): boolean {
+  for (const requirement of requirements) {
+    if (!requirement.resourceTypeId) continue;
+    const typeResources = resources.filter((r) => r.resourceTypeId === requirement.resourceTypeId);
+    const qualification = requirement.requiredQualification?.trim().toLowerCase();
+    const eligible = qualification
+      ? typeResources.filter((r) =>
+          Array.isArray(r.qualifications) &&
+          (r.qualifications as string[]).some((q) => q.trim().toLowerCase() === qualification),
+        )
+      : typeResources;
+    const required = Number(requirement.requiredCapacity ?? 0);
+    if (eligible.length === 0 || !Number.isFinite(required) || required <= 0) return false;
+
+    const requirementStartOffset = requirement.periodStart
+      ? diffDays(plannedStart, parseDate(requirement.periodStart))
+      : 0;
+    const requirementEndOffset = requirement.periodEnd
+      ? diffDays(plannedStart, parseDate(requirement.periodEnd)) + 1
+      : diffDays(candidateStart, candidateEnd);
+    const start = addDays(candidateStart, requirementStartOffset);
+    const end = addDays(candidateStart, Math.max(requirementEndOffset, 1));
+    const overlapping = bookings.filter((b) =>
+      b.status !== "CANCELLED" && new Date(b.startAt) < end && new Date(b.endAt) > start,
+    );
+    const used = overlapping.reduce((sum, booking) => {
+      if (booking.resourceId === null && booking.resourceTypeId === requirement.resourceTypeId) {
+        return sum + ((booking.quantity ?? 0) * booking.utilizationPercent) / 100;
+      }
+      const resource = eligible.find((r) => r.resourceId === booking.resourceId);
+      return resource ? sum + ((resource.capacity ?? 1) * booking.utilizationPercent) / 100 : sum;
+    }, 0);
+    const capacity = eligible.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
+    if (capacity - used < (required * requirement.utilizationPercent) / 100) return false;
+  }
+  return true;
+}
+
 /**
  * Generates a deterministic opaque ID for an alternative.
  * Format: "alt-{type}-{YYYY-MM-DD}" — predictable, no internal data leaked.
@@ -166,6 +222,7 @@ export function generateAlternatives(
   snapshot: TaktRequestSnapshotPayload,
   resources: AlternativeResource[],
   bookings: Pick<ResourceBooking, "id" | "resourceId" | "startAt" | "endAt" | "status" | "utilizationPercent">[],
+  requirements: AlternativeRequirement[] = [],
 ): GeneratedAlternative[] {
   const { maximumAlternatives, searchHorizonDays, searchStepDays } = ALTERNATIVE_GENERATOR_CONFIG;
 
@@ -173,7 +230,7 @@ export function generateAlternatives(
   const plannedEnd   = parseDate(snapshot.plannedTimeWindow.end);
   const plannedDurationDays = diffDays(plannedStart, plannedEnd);
 
-  if (plannedDurationDays <= 0) return [];
+  if (plannedDurationDays < 0) return [];
 
   // Derive buffer boundaries
   const bufferEarliest = snapshot.bufferTimeWindow?.earliestStart
@@ -207,7 +264,10 @@ export function generateAlternatives(
       // Skip if this is the original window (that's where the conflict is)
       if (formatDate(cursor) !== formatDate(plannedStart)) {
         const key = windowKey(cursor, windowEnd);
-        if (!seenWindows.has(key) && isWindowClear(allIds, cursor, windowEnd, bookings)) {
+        const clear = requirements.some((r) => r.resourceTypeId)
+          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
+          : isWindowClear(allIds, cursor, windowEnd, bookings);
+        if (!seenWindows.has(key) && clear) {
           seenWindows.add(key);
           const outsideBuffer = cursor > bufferLatest || windowEnd < bufferEarliest;
           const totalCrewCapacity = crewResources.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
@@ -248,7 +308,10 @@ export function generateAlternatives(
       while (cursor <= searchHorizonEnd && alternatives.length < maximumAlternatives) {
         const windowEnd = addDays(cursor, extendedDuration);
         const key = windowKey(cursor, windowEnd);
-        if (!seenWindows.has(key) && isWindowClear(idsToCheck, cursor, windowEnd, bookings)) {
+        const clear = requirements.some((r) => r.resourceTypeId)
+          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
+          : isWindowClear(idsToCheck, cursor, windowEnd, bookings);
+        if (!seenWindows.has(key) && clear) {
           seenWindows.add(key);
           alternatives.push({
             alternativeId: makeAlternativeId("B", formatDate(cursor)),
@@ -276,7 +339,10 @@ export function generateAlternatives(
       const windowEnd = addDays(cursor, plannedDurationDays);
       const key = windowKey(cursor, windowEnd);
 
-      if (!seenWindows.has(key) && isWindowClear(allIds, cursor, windowEnd, bookings)) {
+       const clear = requirements.some((r) => r.resourceTypeId)
+         ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
+         : isWindowClear(allIds, cursor, windowEnd, bookings);
+       if (!seenWindows.has(key) && clear) {
         nextAvailable = cursor;
         break;
       }

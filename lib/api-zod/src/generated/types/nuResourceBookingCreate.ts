@@ -11,7 +11,7 @@ import type { NuResourceBookingCreateStatus } from './nuResourceBookingCreateSta
 /**
  * Body for POST /nu/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).
  */
-export interface NuResourceBookingCreate {
+export type NuResourceBookingCreate = (unknown & {
   /**
      * Concrete resource to book. Optional when resourceTypeId is supplied.
      * @minLength 1
@@ -39,4 +39,4 @@ export interface NuResourceBookingCreate {
   utilizationPercent?: number;
   status?: NuResourceBookingCreateStatus;
   note?: string;
-}
+});

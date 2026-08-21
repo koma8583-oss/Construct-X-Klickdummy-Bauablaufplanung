@@ -3248,6 +3248,27 @@ components:
           type: string
         name:
           type: string
+        resourceTypeId:
+          type: string
+          nullable: true
+        capacity:
+          type: number
+          nullable: true
+        capacityUnit:
+          type: string
+          nullable: true
+          enum: [PERSONS, UNITS, HOURS_PER_DAY, PERCENT]
+        skills:
+          type: array
+          items: { type: string }
+        qualifications:
+          type: array
+          items: { type: string }
+        calendarId:
+          type: string
+          nullable: true
+        active:
+          type: boolean
         type:
           type: string
           enum: [AG, AN]
@@ -4177,7 +4198,10 @@ components:
         createdAt:
           type: string
           format: date-time
-      required: [id, anOrgId, type, name, createdAt]
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, anOrgId, type, name, resourceTypeId, capacity, capacityUnit, skills, qualifications, calendarId, active, createdAt, updatedAt]
 
     CreateResourceRequest:
       type: object
@@ -4227,8 +4251,7 @@ components:
           type: string
         resourceTypeId:
           type: string
-          nullable: true
-          description: Optional link to a named resource type. Pass null to clear.
+          description: Link to a named resource type. Legacy rows without a type remain readable but cannot be saved without one.
         skills:
           type: array
           items: { type: string }
@@ -5903,6 +5926,9 @@ components:
         - sourceType
         - startAt
         - endAt
+      oneOf:
+        - required: [resourceId]
+        - required: [resourceTypeId, quantity]
 
     NuResourceBookingUpdate:
       type: object
@@ -6564,7 +6590,6 @@ components:
           type: string
         resourceTypeId:
           type: string
-          nullable: true
         resourceTypeName:
           type: string
           nullable: true
@@ -6573,7 +6598,6 @@ components:
           nullable: true
         requiredCapacity:
           type: string
-          nullable: true
         utilizationPercent:
           type: integer
           minimum: 1
@@ -6584,11 +6608,9 @@ components:
         periodStart:
           type: string
           format: date
-          nullable: true
         periodEnd:
           type: string
           format: date
-          nullable: true
         notes:
           type: string
           nullable: true
@@ -6604,7 +6626,11 @@ components:
         - taktRequestId
         - leistungsanfrageId
         - anOrgId
+        - resourceTypeId
+        - requiredCapacity
         - utilizationPercent
+        - periodStart
+        - periodEnd
         - createdAt
 
     CreateResourceRequirementRequest:
@@ -6613,10 +6639,9 @@ components:
       properties:
         resourceTypeId:
           type: string
-          nullable: true
         requiredCapacity:
           type: number
-          nullable: true
+          exclusiveMinimum: 0
         utilizationPercent:
           type: integer
           minimum: 1
@@ -6629,15 +6654,14 @@ components:
         periodStart:
           type: string
           format: date
-          nullable: true
         periodEnd:
           type: string
           format: date
-          nullable: true
         notes:
           type: string
           maxLength: 1000
           nullable: true
+      required: [resourceTypeId, requiredCapacity, utilizationPercent, periodStart, periodEnd]
 
     TaktRequestAuditTrailResponse:
       type: object

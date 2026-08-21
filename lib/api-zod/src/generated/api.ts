@@ -27,6 +27,13 @@ export const ListOrganizationsQueryParams = zod.object({
 export const ListOrganizationsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -48,6 +55,13 @@ export const CreateOrganizationBody = zod.object({
 export const CreateOrganizationResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -62,6 +76,13 @@ export const GetMyOrganizationsResponseItem = zod.object({
   "organization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -83,6 +104,13 @@ export const GetOrganizationParams = zod.object({
 export const GetOrganizationResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -106,6 +134,13 @@ export const UpdateOrganizationBody = zod.object({
 export const UpdateOrganizationResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -317,6 +352,13 @@ export const ListProjectContractorsParams = zod.object({
 export const ListProjectContractorsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1047,6 +1089,13 @@ export const ListDelegationsResponseItem = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1055,6 +1104,13 @@ export const ListDelegationsResponseItem = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1132,6 +1188,13 @@ export const CreateDelegationResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1140,6 +1203,13 @@ export const CreateDelegationResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1210,6 +1280,13 @@ export const GetDelegationResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1218,6 +1295,13 @@ export const GetDelegationResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1293,6 +1377,13 @@ export const UpdateDelegationResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1301,6 +1392,13 @@ export const UpdateDelegationResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1420,7 +1518,8 @@ export const ListResourcesResponseItem = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 export const ListResourcesResponse = zod.array(ListResourcesResponseItem)
 
@@ -1454,7 +1553,8 @@ export const CreateResourceResponse = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -1475,7 +1575,7 @@ export const UpdateResourceBody = zod.object({
   "qualification": zod.string().optional(),
   "dailyCapacityHours": zod.number().optional(),
   "color": zod.string().optional(),
-  "resourceTypeId": zod.string().nullish().describe('Optional link to a named resource type. Pass null to clear.'),
+  "resourceTypeId": zod.string().optional().describe('Link to a named resource type. Legacy rows without a type remain readable but cannot be saved without one.'),
   "skills": zod.array(zod.string()).optional(),
   "qualifications": zod.array(zod.string()).optional(),
   "capacity": zod.number().gt(updateResourceBodyCapacityExclusiveMin).optional(),
@@ -1491,7 +1591,8 @@ export const UpdateResourceResponse = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -1529,7 +1630,8 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }).optional(),
   "delegationId": zod.string(),
   "delegation": zod.object({
@@ -1575,6 +1677,13 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1583,6 +1692,13 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1631,7 +1747,8 @@ export const CreateResourceAssignmentResponse = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }).optional(),
   "delegationId": zod.string(),
   "delegation": zod.object({
@@ -1677,6 +1794,13 @@ export const CreateResourceAssignmentResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1685,6 +1809,13 @@ export const CreateResourceAssignmentResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1734,7 +1865,8 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }).optional(),
   "delegationId": zod.string(),
   "delegation": zod.object({
@@ -1780,6 +1912,13 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1788,6 +1927,13 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1987,6 +2133,13 @@ export const GetAgDashboardResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -1995,6 +2148,13 @@ export const GetAgDashboardResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -2066,6 +2226,13 @@ export const GetAnDashboardResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -2074,6 +2241,13 @@ export const GetAnDashboardResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -2098,7 +2272,8 @@ export const GetAnDashboardResponse = zod.object({
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }),
   "utilizationPercent": zod.number()
 })),
@@ -2145,6 +2320,13 @@ export const GetAnDashboardResponse = zod.object({
   "anOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -2153,6 +2335,13 @@ export const GetAnDashboardResponse = zod.object({
   "agOrganization": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish(),
+  "capacity": zod.number().nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "type": zod.enum(['AG', 'AN']),
   "description": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
@@ -3815,14 +4004,14 @@ export const ListLeistungsanfrageResourceRequirementsResponseItem = zod.object({
   "taktRequestId": zod.string().describe('Legacy: TaktRequest-ID'),
   "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
   "anOrgId": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
+  "resourceTypeId": zod.string(),
   "resourceTypeName": zod.string().nullish(),
   "resourceTypeCategory": zod.string().nullish(),
-  "requiredCapacity": zod.string().nullish(),
+  "requiredCapacity": zod.string(),
   "utilizationPercent": zod.number().min(1).max(listLeistungsanfrageResourceRequirementsResponseUtilizationPercentMax),
   "requiredQualification": zod.string().nullish(),
-  "periodStart": zod.coerce.date().nullish(),
-  "periodEnd": zod.coerce.date().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
   "notes": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().nullish()
@@ -3837,6 +4026,8 @@ export const CreateLeistungsanfrageResourceRequirementParams = zod.object({
   "leistungsanfrageId": zod.coerce.string()
 })
 
+export const createLeistungsanfrageResourceRequirementBodyRequiredCapacityExclusiveMin = 0;
+
 export const createLeistungsanfrageResourceRequirementBodyUtilizationPercentDefault = 100;
 export const createLeistungsanfrageResourceRequirementBodyUtilizationPercentMax = 100;
 
@@ -3847,12 +4038,12 @@ export const createLeistungsanfrageResourceRequirementBodyNotesMax = 1000;
 
 
 export const CreateLeistungsanfrageResourceRequirementBody = zod.object({
-  "resourceTypeId": zod.string().nullish(),
-  "requiredCapacity": zod.number().nullish(),
+  "resourceTypeId": zod.string(),
+  "requiredCapacity": zod.number().gt(createLeistungsanfrageResourceRequirementBodyRequiredCapacityExclusiveMin),
   "utilizationPercent": zod.number().min(1).max(createLeistungsanfrageResourceRequirementBodyUtilizationPercentMax).default(createLeistungsanfrageResourceRequirementBodyUtilizationPercentDefault),
   "requiredQualification": zod.string().max(createLeistungsanfrageResourceRequirementBodyRequiredQualificationMax).nullish(),
-  "periodStart": zod.coerce.date().nullish(),
-  "periodEnd": zod.coerce.date().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
   "notes": zod.string().max(createLeistungsanfrageResourceRequirementBodyNotesMax).nullish()
 }).describe('Anfragekörper für das Anlegen einer Ressourceanforderung')
 
@@ -3865,14 +4056,14 @@ export const CreateLeistungsanfrageResourceRequirementResponse = zod.object({
   "taktRequestId": zod.string().describe('Legacy: TaktRequest-ID'),
   "leistungsanfrageId": zod.string().describe('Kanonisch: Leistungsanfrage-ID'),
   "anOrgId": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
+  "resourceTypeId": zod.string(),
   "resourceTypeName": zod.string().nullish(),
   "resourceTypeCategory": zod.string().nullish(),
-  "requiredCapacity": zod.string().nullish(),
+  "requiredCapacity": zod.string(),
   "utilizationPercent": zod.number().min(1).max(createLeistungsanfrageResourceRequirementResponseUtilizationPercentMax),
   "requiredQualification": zod.string().nullish(),
-  "periodStart": zod.coerce.date().nullish(),
-  "periodEnd": zod.coerce.date().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
   "notes": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().nullish()
@@ -4071,12 +4262,12 @@ export const ListNuResourceBookingsResponse = zod.object({
 
 
 
-export const createNuResourceBookingBodyUtilizationPercentDefault = 100;
-export const createNuResourceBookingBodyUtilizationPercentMax = 100;
+export const createNuResourceBookingBodyThreeUtilizationPercentDefault = 100;
+export const createNuResourceBookingBodyThreeUtilizationPercentMax = 100;
 
-export const createNuResourceBookingBodyStatusDefault = `TENTATIVE`;
+export const createNuResourceBookingBodyThreeStatusDefault = `TENTATIVE`;
 
-export const CreateNuResourceBookingBody = zod.object({
+export const CreateNuResourceBookingBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
   "resourceId": zod.string().min(1).optional().describe('Concrete resource to book. Optional when resourceTypeId is supplied.'),
   "resourceTypeId": zod.string().min(1).optional().describe('Resource type for DTC type-level capacity bookings. Optional when resourceId is supplied.'),
   "quantity": zod.number().min(1).optional().describe('Number of units of the resource type to reserve. Used for type-level bookings.'),
@@ -4085,10 +4276,10 @@ export const CreateNuResourceBookingBody = zod.object({
   "sourceReferenceId": zod.string().optional(),
   "startAt": zod.coerce.date(),
   "endAt": zod.coerce.date(),
-  "utilizationPercent": zod.number().min(1).max(createNuResourceBookingBodyUtilizationPercentMax).default(createNuResourceBookingBodyUtilizationPercentDefault),
-  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).default(createNuResourceBookingBodyStatusDefault),
+  "utilizationPercent": zod.number().min(1).max(createNuResourceBookingBodyThreeUtilizationPercentMax).default(createNuResourceBookingBodyThreeUtilizationPercentDefault),
+  "status": zod.enum(['TENTATIVE', 'CONFIRMED', 'CANCELLED']).default(createNuResourceBookingBodyThreeStatusDefault),
   "note": zod.string().optional()
-}).describe('Body for POST \/nu\/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).\n')
+})).describe('Body for POST \/nu\/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).\n')
 
 export const createNuResourceBookingResponseUtilizationPercentMax = 100;
 

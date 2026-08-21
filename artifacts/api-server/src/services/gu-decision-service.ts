@@ -32,8 +32,10 @@ import {
   takteTable,
   resourceBookingsTable,
   availabilityChecksTable,
+  taktRequestResourceRequirementsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+import { evaluateAvailabilityWindow } from "./availability-check-service";
 import type {
   TaktResponseDecision,
   TaktCoordinationDecisionType,
@@ -302,7 +304,32 @@ export async function createGuDecision(
     }
 
     // Load the latest completed availability check to get concrete resource IDs
-    if (bookingStart && bookingEnd && request.nuOrgId) {
+    const [dtcRequirement] = decisionType === "ACCEPT_ALTERNATIVE"
+      ? await db
+          .select({ id: taktRequestResourceRequirementsTable.id })
+          .from(taktRequestResourceRequirementsTable)
+          .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId))
+          .limit(1)
+      : [];
+    if (bookingStart && bookingEnd && request.nuOrgId && decisionType === "ACCEPT_ALTERNATIVE" && dtcRequirement) {
+      const reevaluated = await evaluateAvailabilityWindow(
+        taktRequestId,
+        request.nuOrgId,
+        bookingStart,
+        bookingEnd,
+      );
+      if (reevaluated.conflicts.some((conflict) => !conflict.isTentative)) {
+        throw new GuDecisionError(
+          "The accepted alternative is no longer feasible for all resource requirements",
+          409,
+        );
+      }
+      autoBookResources = reevaluated.availableResources.map((r) => ({
+        resourceId: r.resourceId ?? null,
+        ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
+        ...(r.quantity != null ? { quantity: r.quantity } : {}),
+      }));
+    } else if (bookingStart && bookingEnd && request.nuOrgId) {
       const [latestCheck] = await db
         .select({ internalResultPayload: availabilityChecksTable.internalResultPayload })
         .from(availabilityChecksTable)

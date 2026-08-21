@@ -16,18 +16,18 @@ export interface ResourceRequirement {
   /** Kanonisch: Leistungsanfrage-ID */
   leistungsanfrageId: string;
   anOrgId: string;
-  resourceTypeId?: string | null;
+  resourceTypeId: string;
   resourceTypeName?: string | null;
   resourceTypeCategory?: string | null;
-  requiredCapacity?: string | null;
+  requiredCapacity: string;
   /**
      * @minimum 1
      * @maximum 100
      */
   utilizationPercent: number;
   requiredQualification?: string | null;
-  periodStart?: Date | null;
-  periodEnd?: Date | null;
+  periodStart: Date;
+  periodEnd: Date;
   notes?: string | null;
   createdAt: Date;
   updatedAt?: Date | null;

@@ -113,6 +113,7 @@ export * from './nuResponseCreateAcceptedTimeWindow';
 export * from './nuResponseResult';
 export * from './nuResponseResultAcceptedTimeWindow';
 export * from './organization';
+export * from './organizationCapacityUnit';
 export * from './organizationMember';
 export * from './organizationMemberRole';
 export * from './organizationMembership';

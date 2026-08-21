@@ -205,7 +205,25 @@ describe("buildTaktRequestSnapshot() — pure function", () => {
     expect(payload.taktVersion).toBe(2);
   });
 
-  it("throws InvalidTaktForSnapshotError when plannedEnd <= plannedStart", () => {
+  it("allows an inclusive one-day planned window", () => {
+    const oneDay: Takt = {
+      ...TAKT_FIXTURE,
+      plannedStart: "2026-08-21",
+      plannedEnd: "2026-08-21",
+    };
+    const payload = buildTaktRequestSnapshot({
+      takt: oneDay,
+      projectId: PROJECT_ID,
+      predecessors: [],
+      successors: [],
+    });
+    expect(payload.plannedTimeWindow).toEqual({
+      start: "2026-08-21",
+      end: "2026-08-21",
+    });
+  });
+
+  it("throws InvalidTaktForSnapshotError when plannedEnd is before plannedStart", () => {
     const badTakt: Takt = { ...TAKT_FIXTURE, plannedStart: "2026-09-28", plannedEnd: "2026-09-14" };
     expect(() =>
       buildTaktRequestSnapshot({ takt: badTakt, projectId: PROJECT_ID, predecessors: [], successors: [] }),

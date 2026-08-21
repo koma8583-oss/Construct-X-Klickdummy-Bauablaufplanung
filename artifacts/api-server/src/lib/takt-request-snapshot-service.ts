@@ -191,9 +191,9 @@ export function buildTaktRequestSnapshot(input: {
       `Takt ${takt.id} is missing plannedStart or plannedEnd — cannot build snapshot.`,
     );
   }
-  if (takt.plannedEnd <= takt.plannedStart) {
+  if (takt.plannedEnd < takt.plannedStart) {
     throw new InvalidTaktForSnapshotError(
-      `Takt ${takt.id}: plannedEnd (${takt.plannedEnd}) must be after plannedStart (${takt.plannedStart}).`,
+      `Takt ${takt.id}: plannedEnd (${takt.plannedEnd}) must not be before plannedStart (${takt.plannedStart}).`,
     );
   }
   if (takt.version < 1) {

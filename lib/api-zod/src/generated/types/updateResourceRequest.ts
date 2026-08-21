@@ -14,8 +14,8 @@ export interface UpdateResourceRequest {
   qualification?: string;
   dailyCapacityHours?: number;
   color?: string;
-  /** Optional link to a named resource type. Pass null to clear. */
-  resourceTypeId?: string | null;
+  /** Link to a named resource type. Legacy rows without a type remain readable but cannot be saved without one. */
+  resourceTypeId?: string;
   skills?: string[];
   qualifications?: string[];
   /** @exclusiveMinimum 0 */

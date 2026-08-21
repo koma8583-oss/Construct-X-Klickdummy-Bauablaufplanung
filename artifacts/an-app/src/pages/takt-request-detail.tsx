@@ -438,7 +438,16 @@ export default function TaktRequestDetailPage() {
   // Step 1: policy OK = we loaded the data (no 403)
   const step1Done = true; // if we reached here, policy is OK or no policy required
   const step2Done = detailsGot;
-  const step3Done = requirements.length > 0;
+  const isValidRequirement = (req: any) =>
+    typeof req.resourceTypeId === 'string' &&
+    req.resourceTypeId.length > 0 &&
+    Number(req.requiredCapacity) > 0 &&
+    Number(req.utilizationPercent) >= 1 &&
+    Number(req.utilizationPercent) <= 100 &&
+    typeof req.periodStart === 'string' &&
+    typeof req.periodEnd === 'string' &&
+    req.periodStart <= req.periodEnd;
+  const step3Done = requirements.length > 0 && requirements.every(isValidRequirement);
   const step4Done = !!latestCheck && latestCheck.status === 'COMPLETED';
   const step5Done = hasResponded;
 
@@ -468,15 +477,25 @@ export default function TaktRequestDetailPage() {
   };
 
   const handleAddRequirement = () => {
+    const start = newReqStart || snapStart?.substring(0, 10) || '';
+    const end = newReqEnd || snapEnd?.substring(0, 10) || '';
+    const capacity = Number(newReqCapacity);
+    const utilization = Number(newReqUtil);
+    if (!newReqTypeId || !Number.isFinite(capacity) || capacity <= 0 ||
+        !Number.isInteger(utilization) || utilization < 1 || utilization > 100 ||
+        !start || !end || start > end) {
+      toast({ title: 'Ungültiger Ressourcenbedarf', description: 'Ressourcentyp, positive Kapazität, Auslastung und ein gültiger Zeitraum sind erforderlich.', variant: 'destructive' });
+      return;
+    }
     addRequirement.mutate({
       requestId: requestId!,
       data: {
-        resourceTypeId:       newReqTypeId || null,
-        requiredCapacity:     newReqCapacity ? parseFloat(newReqCapacity) : null,
-        utilizationPercent:   parseInt(newReqUtil) || 100,
+        resourceTypeId:       newReqTypeId,
+        requiredCapacity:     capacity,
+        utilizationPercent:   utilization,
         requiredQualification: newReqQual || null,
-        periodStart: newReqStart || (snapStart?.substring(0, 10) ?? null),
-        periodEnd:   newReqEnd   || (snapEnd?.substring(0, 10)   ?? null),
+        periodStart: start,
+        periodEnd: end,
       },
     }, {
       onSuccess: () => {
@@ -913,7 +932,9 @@ export default function TaktRequestDetailPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddRequirement} disabled={addRequirement.isPending} className="gap-1">
+                <Button size="sm" onClick={handleAddRequirement}
+                  disabled={addRequirement.isPending || !newReqTypeId || Number(newReqCapacity) <= 0 || Number(newReqUtil) < 1 || Number(newReqUtil) > 100}
+                  className="gap-1">
                   {addRequirement.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Speichern
                 </Button>
@@ -933,7 +954,7 @@ export default function TaktRequestDetailPage() {
 
       {/* ── Step 4: Verfügbarkeit ──────────────────────────────────────────── */}
       <StepSection step={4} currentStep={currentStep} completedSteps={completedSteps}
-        locked={!step2Done}>
+        locked={!step2Done || !step3Done}>
         <CardHeader className="pb-2 px-5 pt-5">
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4 text-primary" />

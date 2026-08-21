@@ -39,6 +39,7 @@ import {
   generateAlternatives,
   toPublicAlternative,
   type AlternativeResource,
+  type AlternativeRequirement,
   ALTERNATIVE_GENERATOR_CONFIG,
 } from "./alternative-generator";
 
@@ -90,6 +91,24 @@ export async function getLatestAvailabilityCheck(
     .limit(1);
 
   return latest ?? null;
+}
+
+/** Re-evaluate a specific acceptance window without creating a check row. */
+export async function evaluateAvailabilityWindow(
+  taktRequestId: string,
+  nuOrgId: string,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<InternalResultPayload> {
+  const [snapshotRow] = await db
+    .select()
+    .from(taktRequestSnapshotsTable)
+    .where(eq(taktRequestSnapshotsTable.taktRequestId, taktRequestId))
+    .limit(1);
+  if (!snapshotRow) throw new AvailabilityCheckError(`No snapshot found for TaktRequest ${taktRequestId}`, "SNAPSHOT_MISSING");
+  const snapshot = snapshotRow.snapshotPayload as unknown as TaktRequestSnapshotPayload;
+  const result = await executeCheckRules(snapshot, windowStart, windowEnd, nuOrgId, taktRequestId);
+  return result.internalPayload;
 }
 
 export class AvailabilityCheckError extends Error {
@@ -597,7 +616,7 @@ async function executeDtcCheck(
         resourceId: null,
         resourceTypeId: rtId,
         resourceType: "DTC_TYPE",
-        quantity: Math.ceil(requiredQty),
+       quantity: declaredCapacity,
       });
 
       // Tentative warnings: would there be a conflict if tentative bookings are confirmed?
@@ -646,7 +665,16 @@ async function executeDtcCheck(
       capacityUnit: r.capacityUnit,
       active: r.active,
     }));
-    const alternatives = generateAlternatives(snapshot, altResources, overlappingBookings);
+    const alternatives = generateAlternatives(
+      snapshot,
+      altResources.map((r) => ({
+        ...r,
+        resourceTypeId: nuResources.find((nr) => nr.id === r.resourceId)?.resourceTypeId,
+        qualifications: nuResources.find((nr) => nr.id === r.resourceId)?.qualifications,
+      })),
+      overlappingBookings,
+      requirements as AlternativeRequirement[],
+    );
     publicAlternatives = alternatives.map(toPublicAlternative);
     if (alternatives.length > 0) nextAvailableDate = alternatives[0].timeWindow.start;
   }

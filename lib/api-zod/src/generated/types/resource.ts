@@ -17,4 +17,5 @@ export interface Resource {
   /** Hex color for Gantt display */
   color?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }

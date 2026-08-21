@@ -10,17 +10,18 @@
  * Anfragekörper für das Anlegen einer Ressourceanforderung
  */
 export interface CreateResourceRequirementRequest {
-  resourceTypeId?: string | null;
-  requiredCapacity?: number | null;
+  resourceTypeId: string;
+  /** @exclusiveMinimum 0 */
+  requiredCapacity: number;
   /**
      * @minimum 1
      * @maximum 100
      */
-  utilizationPercent?: number;
+  utilizationPercent: number;
   /** @maxLength 500 */
   requiredQualification?: string | null;
-  periodStart?: Date | null;
-  periodEnd?: Date | null;
+  periodStart: Date;
+  periodEnd: Date;
   /** @maxLength 1000 */
   notes?: string | null;
 }

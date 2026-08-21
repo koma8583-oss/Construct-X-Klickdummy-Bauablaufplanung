@@ -2166,8 +2166,8 @@ router.post(
     const id = req.params.id as string;
 
     const schema = z.object({
-      resourceTypeId:        z.string().min(1).nullable().optional(),
-      requiredCapacity:      z.number().positive().nullable().optional(),
+      resourceTypeId:        z.string().min(1),
+      requiredCapacity:      z.number().positive(),
       utilizationPercent:    z.number().int().min(1).max(100).optional().default(100),
       requiredQualification: z.string().max(500).nullable().optional(),
       periodStart:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
@@ -2187,17 +2187,37 @@ router.post(
       return;
     }
 
+    const [resourceType] = await db
+      .select({ id: resourceTypesTable.id })
+      .from(resourceTypesTable)
+      .where(and(eq(resourceTypesTable.id, parsed.data.resourceTypeId), eq(resourceTypesTable.anOrgId, nuOrgId)))
+      .limit(1);
+    if (!resourceType) {
+      res.status(422).json({ error: "RESOURCE_TYPE_NOT_OWNED" });
+      return;
+    }
+
+    const snapshot = (await getTaktRequestWithSnapshot(id))?.snapshot?.snapshotPayload as
+      | { plannedTimeWindow?: { start?: string; end?: string } }
+      | undefined;
+    const periodStart = parsed.data.periodStart ?? snapshot?.plannedTimeWindow?.start ?? null;
+    const periodEnd = parsed.data.periodEnd ?? snapshot?.plannedTimeWindow?.end ?? null;
+    if (!periodStart || !periodEnd || periodStart > periodEnd) {
+      res.status(422).json({ error: "INVALID_REQUIREMENT_PERIOD" });
+      return;
+    }
+
     const [inserted] = await db
       .insert(leistungsanfrageResourceRequirementsTable)
       .values({
         leistungsanfrageId:   id,
         anOrgId:              nuOrgId,
-        resourceTypeId:       parsed.data.resourceTypeId       ?? null,
-        requiredCapacity:     parsed.data.requiredCapacity?.toString() ?? null,
+        resourceTypeId:       parsed.data.resourceTypeId,
+        requiredCapacity:     parsed.data.requiredCapacity.toString(),
         utilizationPercent:   parsed.data.utilizationPercent   ?? 100,
         requiredQualification: parsed.data.requiredQualification ?? null,
-        periodStart:          parsed.data.periodStart          ?? null,
-        periodEnd:            parsed.data.periodEnd            ?? null,
+        periodStart,
+        periodEnd,
         notes:                parsed.data.notes                ?? null,
       })
       .returning();

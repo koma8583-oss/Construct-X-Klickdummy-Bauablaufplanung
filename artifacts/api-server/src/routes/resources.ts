@@ -173,8 +173,13 @@ router.patch(
       capacityUnit:      z.enum(["PERSONS", "UNITS", "HOURS_PER_DAY", "PERCENT"]).optional(),
       calendarId:        z.string().optional(),
       active:            z.boolean().optional(),
-      resourceTypeId:    z.string().nullable().optional(),
+      resourceTypeId:    z.string().min(1).optional(),
     });
+
+    if (req.body?.resourceTypeId === null) {
+      res.status(422).json({ error: "RESOURCE_TYPE_REQUIRED" });
+      return;
+    }
 
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -183,6 +188,10 @@ router.patch(
     }
 
     const nextResourceTypeId = parsed.data.resourceTypeId ?? existing.resourceTypeId;
+    if (!nextResourceTypeId) {
+      res.status(422).json({ error: "RESOURCE_TYPE_REQUIRED" });
+      return;
+    }
     const resourceType = nextResourceTypeId
       ? await loadOwnResourceType(nextResourceTypeId, orgId)
       : null;
@@ -199,9 +208,21 @@ router.patch(
       return;
     }
 
+    const categoryToType: Record<string, "EMPLOYEE" | "CREW" | "EQUIPMENT" | "MACHINE" | "OTHER"> = {
+      PERSONNEL: "EMPLOYEE",
+      CREW: "CREW",
+      EQUIPMENT: "EQUIPMENT",
+      MACHINE: "MACHINE",
+      OTHER: "OTHER",
+    };
     const [updated] = await db
       .update(resourcesTable)
-      .set(parsed.data)
+      .set({
+        ...parsed.data,
+        resourceTypeId: nextResourceTypeId,
+        capacityUnit: resourceType?.capacityUnit ?? existing.capacityUnit,
+        ...(resourceType?.category ? { type: categoryToType[resourceType.category] ?? existing.type } : {}),
+      })
       .where(
         and(
           eq(resourcesTable.id, resourceId),

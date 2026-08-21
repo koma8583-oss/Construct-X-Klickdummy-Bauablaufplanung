@@ -13,6 +13,16 @@ export interface HealthStatus {
   status: string;
 }
 
+export type OrganizationCapacityUnit = typeof OrganizationCapacityUnit[keyof typeof OrganizationCapacityUnit] | null;
+
+
+export const OrganizationCapacityUnit = {
+  PERSONS: 'PERSONS',
+  UNITS: 'UNITS',
+  HOURS_PER_DAY: 'HOURS_PER_DAY',
+  PERCENT: 'PERCENT',
+} as const;
+
 export type OrganizationType = typeof OrganizationType[keyof typeof OrganizationType];
 
 
@@ -24,6 +34,13 @@ export const OrganizationType = {
 export interface Organization {
   id: string;
   name: string;
+  resourceTypeId?: string | null;
+  capacity?: number | null;
+  capacityUnit?: OrganizationCapacityUnit;
+  skills?: string[];
+  qualifications?: string[];
+  calendarId?: string | null;
+  active?: boolean;
   type: OrganizationType;
   description?: string | null;
   contactEmail?: string | null;
@@ -645,6 +662,7 @@ export interface Resource {
   /** Hex color for Gantt display */
   color?: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export type CreateResourceRequestType = typeof CreateResourceRequestType[keyof typeof CreateResourceRequestType];
@@ -710,8 +728,8 @@ export interface UpdateResourceRequest {
   qualification?: string;
   dailyCapacityHours?: number;
   color?: string;
-  /** Optional link to a named resource type. Pass null to clear. */
-  resourceTypeId?: string | null;
+  /** Link to a named resource type. Legacy rows without a type remain readable but cannot be saved without one. */
+  resourceTypeId?: string;
   skills?: string[];
   qualifications?: string[];
   /** @exclusiveMinimum 0 */
@@ -1764,7 +1782,7 @@ export const NuResourceBookingCreateStatus = {
 /**
  * Body for POST /nu/resource-bookings. Business rule: at least one of resourceId or resourceTypeId must be provided. For concrete-resource bookings provide resourceId (and optionally resourceTypeId). For type-level capacity bookings provide resourceTypeId (and optionally quantity).
  */
-export interface NuResourceBookingCreate {
+export type NuResourceBookingCreate = (unknown & {
   /**
      * Concrete resource to book. Optional when resourceTypeId is supplied.
      * @minLength 1
@@ -1792,7 +1810,7 @@ export interface NuResourceBookingCreate {
   utilizationPercent?: number;
   status?: NuResourceBookingCreateStatus;
   note?: string;
-}
+});
 
 export type NuResourceBookingUpdateStatus = typeof NuResourceBookingUpdateStatus[keyof typeof NuResourceBookingUpdateStatus];
 
@@ -2191,18 +2209,18 @@ export interface ResourceRequirement {
   /** Kanonisch: Leistungsanfrage-ID */
   leistungsanfrageId: string;
   anOrgId: string;
-  resourceTypeId?: string | null;
+  resourceTypeId: string;
   resourceTypeName?: string | null;
   resourceTypeCategory?: string | null;
-  requiredCapacity?: string | null;
+  requiredCapacity: string;
   /**
      * @minimum 1
      * @maximum 100
      */
   utilizationPercent: number;
   requiredQualification?: string | null;
-  periodStart?: string | null;
-  periodEnd?: string | null;
+  periodStart: string;
+  periodEnd: string;
   notes?: string | null;
   createdAt: string;
   updatedAt?: string | null;
@@ -2212,17 +2230,18 @@ export interface ResourceRequirement {
  * Anfragekörper für das Anlegen einer Ressourceanforderung
  */
 export interface CreateResourceRequirementRequest {
-  resourceTypeId?: string | null;
-  requiredCapacity?: number | null;
+  resourceTypeId: string;
+  /** @exclusiveMinimum 0 */
+  requiredCapacity: number;
   /**
      * @minimum 1
      * @maximum 100
      */
-  utilizationPercent?: number;
+  utilizationPercent: number;
   /** @maxLength 500 */
   requiredQualification?: string | null;
-  periodStart?: string | null;
-  periodEnd?: string | null;
+  periodStart: string;
+  periodEnd: string;
   /** @maxLength 1000 */
   notes?: string | null;
 }
