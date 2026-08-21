@@ -44,6 +44,11 @@ import { VersionConflictError } from "./takt-version-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import type { MessageTransport } from "../lib/transport/message-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
+import {
+  withCanonicalSnapshot,
+  withCanonicalTaktRequest,
+  withCanonicalVersion,
+} from "../lib/legacy-takt-mappers";
 
 const logger = pino({ name: "revision-service" });
 const transport = new LocalHubTransport();
@@ -394,10 +399,10 @@ export async function createRevision(
       .where(eq(taktRequestsTable.id, oldRequestId));
 
     return {
-      oldRequest,
-      newRequest,
-      newSnapshot,
-      newTaktVersion,
+      oldRequest: withCanonicalTaktRequest(oldRequest),
+      newRequest: withCanonicalTaktRequest(newRequest),
+      newSnapshot: withCanonicalSnapshot(newSnapshot),
+      newTaktVersion: withCanonicalVersion(newTaktVersion),
     };
   });
 

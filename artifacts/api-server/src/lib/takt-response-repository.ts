@@ -20,6 +20,7 @@ import {
   type TaktDecision,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { withCanonicalResponse } from "./legacy-takt-mappers";
 
 export type { TaktDecision };
 
@@ -180,7 +181,7 @@ export async function createTaktResponse(
       alternatives.push(...rows);
     }
 
-    return { response, alternatives };
+    return { response: withCanonicalResponse(response), alternatives };
   });
 }
 
@@ -196,7 +197,7 @@ export async function getTaktResponseByRequestId(
     .from(taktResponsesTable)
     .where(eq(taktResponsesTable.taktRequestId, taktRequestId))
     .limit(1);
-  return row ?? null;
+  return row ? withCanonicalResponse(row) : null;
 }
 
 /**
@@ -214,5 +215,5 @@ export async function getTaktResponseWithAlternatives(
     .from(taktResponseAlternativesTable)
     .where(eq(taktResponseAlternativesTable.responseId, response.id));
 
-  return { response, alternatives };
+  return { response: withCanonicalResponse(response), alternatives };
 }

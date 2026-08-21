@@ -28,6 +28,10 @@ import {
 } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import {
+  withCanonicalSnapshot,
+  withCanonicalTaktRequest,
+} from "./legacy-takt-mappers";
 
 // ── Detail view types (Task 5.4) ──────────────────────────────────────────────
 
@@ -400,7 +404,7 @@ export async function createTaktRequestDraft(data: {
     })
     .returning();
   if (!row) throw new Error("Failed to insert TaktRequest");
-  return row;
+  return withCanonicalTaktRequest(row);
 }
 
 /**
@@ -415,7 +419,7 @@ export async function getTaktRequestById(
     .from(taktRequestsTable)
     .where(eq(taktRequestsTable.id, id))
     .limit(1);
-  return row ?? null;
+  return row ? withCanonicalTaktRequest(row) : null;
 }
 
 /**
@@ -440,7 +444,10 @@ export async function getTaktRequestWithSnapshot(id: string): Promise<{
     .where(eq(taktRequestSnapshotsTable.taktRequestId, id))
     .limit(1);
 
-  return { request: row, snapshot: snapshot ?? null };
+  return {
+    request: withCanonicalTaktRequest(row),
+    snapshot: snapshot ? withCanonicalSnapshot(snapshot) : null,
+  };
 }
 
 /**
@@ -458,10 +465,11 @@ export async function listTaktRequestsForGu(
   if (filters?.taktId) {
     conditions.push(eq(taktRequestsTable.taktId, filters.taktId));
   }
-  return db
+  const rows = await db
     .select()
     .from(taktRequestsTable)
     .where(and(...conditions));
+  return rows.map(withCanonicalTaktRequest);
 }
 
 /**
@@ -544,10 +552,11 @@ export async function listTaktRequestsForNu(
   if (filters?.status) {
     conditions.push(eq(taktRequestsTable.status, filters.status));
   }
-  return db
+  const rows = await db
     .select()
     .from(taktRequestsTable)
     .where(and(...conditions));
+  return rows.map(withCanonicalTaktRequest);
 }
 
 /**
@@ -681,7 +690,7 @@ export async function updateTaktRequestStatus(
     .where(eq(taktRequestsTable.id, id))
     .returning();
   if (!updated) throw new Error(`TaktRequest ${id} not found after update`);
-  return updated;
+  return withCanonicalTaktRequest(updated);
 }
 
 /**
@@ -720,7 +729,7 @@ export async function transitionToDetailsRetrievedAtomic(
     .returning();
 
   // `updated` is undefined when no row matched (already past DELIVERED)
-  return updated ?? null;
+  return updated ? withCanonicalTaktRequest(updated) : null;
 }
 
 /**
@@ -763,7 +772,7 @@ export async function createTaktRequestSnapshot(data: {
     })
     .returning();
   if (!row) throw new Error("Failed to insert TaktRequestSnapshot");
-  return row;
+  return withCanonicalSnapshot(row);
 }
 
 /**
@@ -778,5 +787,5 @@ export async function getTaktRequestSnapshot(
     .from(taktRequestSnapshotsTable)
     .where(eq(taktRequestSnapshotsTable.taktRequestId, taktRequestId))
     .limit(1);
-  return row ?? null;
+  return row ? withCanonicalSnapshot(row) : null;
 }

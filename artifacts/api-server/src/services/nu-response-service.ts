@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "../lib/takt-response-repository";
+import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -312,7 +313,7 @@ export async function processNuResponse(
   });
 
   return {
-    response:    txResult.response,
+    response:    withCanonicalResponse(txResult.response),
     alternatives: txResult.alternatives,
     newStatus:   nextStatus,
     payloadHash,

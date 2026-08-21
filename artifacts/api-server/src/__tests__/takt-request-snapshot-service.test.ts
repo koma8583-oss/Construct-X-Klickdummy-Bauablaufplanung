@@ -43,6 +43,7 @@ const USER_ID = "t35-user-001";
 // ── Fixture data ──────────────────────────────────────────────────────────────
 
 const TAKT_FIXTURE: Takt = {
+  leistungsBezeichnung: "Test Takt",
   id: TAKT_ID,
   projectId: PROJECT_ID,
   taktBezeichnung: "T1 – Trockenbau Nord",

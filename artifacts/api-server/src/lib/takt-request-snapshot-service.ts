@@ -27,6 +27,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
+import { withCanonicalTakt } from "./legacy-takt-mappers";
 
 // ── Snapshot payload type ─────────────────────────────────────────────────────
 
@@ -389,7 +390,7 @@ export async function createTaktRequestWithSnapshot(
 
   // ── Step 6: Build snapshot payload (pure — may throw InvalidTaktForSnapshotError)
   const basePayload = buildTaktRequestSnapshot({
-    takt,
+    takt: withCanonicalTakt(takt),
     projectId: project.id,
     projectLocation: project.location ?? null,
     projectDescription: project.description ?? null,

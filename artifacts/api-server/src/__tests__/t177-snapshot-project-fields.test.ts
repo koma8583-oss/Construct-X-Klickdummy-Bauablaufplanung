@@ -42,6 +42,7 @@ const PROJECT_DESCRIPTION = "Neubau Bürogebäude – Phase 2 Ausbau";
 // ── Shared Takt fixture (valid dates, version >= 1) ────────────────────────
 
 const TAKT_FIXTURE: Takt = {
+  leistungsBezeichnung: "Test Takt",
   id: TAKT_ID,
   projectId: PROJECT_ID,
   taktBezeichnung: "T177 – Trockenbau EG",

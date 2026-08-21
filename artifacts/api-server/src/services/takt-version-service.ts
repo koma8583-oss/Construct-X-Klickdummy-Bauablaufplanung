@@ -36,6 +36,7 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { TaktVersion } from "@workspace/db";
+import { withCanonicalVersion } from "../lib/legacy-takt-mappers";
 
 const logger = pino({ name: "takt-version-service" });
 
@@ -252,7 +253,7 @@ export async function applyConfirmAccepted(
     "CONFIRM_ACCEPTED: content changed, new takt_versions entry created",
   );
 
-  return { newVersion: versionRow, confirmedAt };
+  return { newVersion: withCanonicalVersion(versionRow), confirmedAt };
 }
 
 // ── ACCEPT_ALTERNATIVE ────────────────────────────────────────────────────────
@@ -390,5 +391,5 @@ export async function applyAcceptAlternative(
     "ACCEPT_ALTERNATIVE: new takt_versions entry, takt updated",
   );
 
-  return { newVersion: versionRow, confirmedAt };
+  return { newVersion: withCanonicalVersion(versionRow), confirmedAt };
 }

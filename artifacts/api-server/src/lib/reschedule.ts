@@ -16,6 +16,7 @@ import { db } from "@workspace/db";
 import { takteTable, taktDependenciesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
+import { withCanonicalTakt } from "./legacy-takt-mappers";
 
 // Derive the Drizzle transaction type from db.transaction's callback signature
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -202,9 +203,9 @@ export async function rescheduleTakte(
         .set({ plannedStart: rs, plannedEnd: re })
         .where(eq(takteTable.id, takt.id))
         .returning();
-      if (updated) moved.push(updated);
+       if (updated) moved.push(withCanonicalTakt(updated));
     } else {
-      conflicts.push({ takt, requiredStart: rs, requiredEnd: re });
+       conflicts.push({ takt: withCanonicalTakt(takt), requiredStart: rs, requiredEnd: re });
     }
   }
 

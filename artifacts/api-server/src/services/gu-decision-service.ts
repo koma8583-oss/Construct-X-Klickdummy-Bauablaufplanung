@@ -52,6 +52,11 @@ import {
 } from "./takt-version-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
+import {
+  withCanonicalDecision,
+  withCanonicalTaktRequest,
+  withCanonicalVersion,
+} from "../lib/legacy-takt-mappers";
 
 const logger = pino({ name: "gu-decision-service" });
 const transport = new LocalHubTransport();
@@ -220,7 +225,12 @@ export async function createGuDecision(
     ) {
       logger.info({ taktRequestId, idempotencyKey }, "Idempotent GU decision retry — returning existing");
       const updatedRequest = await getTaktRequestById(taktRequestId);
-      return { decision: existingDecision, updatedRequest: updatedRequest!, newTaktVersion: null, idempotent: true };
+      return {
+        decision: withCanonicalDecision(existingDecision),
+        updatedRequest: withCanonicalTaktRequest(updatedRequest!),
+        newTaktVersion: null,
+        idempotent: true,
+      };
     }
     if (idempotencyKey && existingDecision.idempotencyKey === idempotencyKey) {
       throw new GuDecisionIdempotencyConflict(
@@ -445,7 +455,13 @@ export async function createGuDecision(
       .where(eq(taktRequestsTable.id, taktRequestId))
       .limit(1);
 
-    return { decision, updatedRequest, newTaktVersion };
+    return {
+      decision: withCanonicalDecision(decision),
+      updatedRequest: withCanonicalTaktRequest(updatedRequest),
+      newTaktVersion: newTaktVersion
+        ? withCanonicalVersion(newTaktVersion)
+        : null,
+    };
   });
 
   logger.info(
@@ -462,7 +478,7 @@ export async function createGuDecision(
   // Fire-and-forget post-commit: transport failure does NOT roll back the decision.
   try {
     await sendGuDecisionMessage({
-      decision:     result.decision,
+      decision:       withCanonicalDecision(result.decision),
       request,
       newTaktVersion: result.newTaktVersion,
     });
@@ -473,9 +489,11 @@ export async function createGuDecision(
   }
 
   return {
-    decision:       result.decision,
-    updatedRequest: result.updatedRequest,
-    newTaktVersion: result.newTaktVersion,
+    decision:       withCanonicalDecision(result.decision),
+    updatedRequest: withCanonicalTaktRequest(result.updatedRequest),
+    newTaktVersion: result.newTaktVersion
+      ? withCanonicalVersion(result.newTaktVersion)
+      : null,
     idempotent:     false,
   };
 }
