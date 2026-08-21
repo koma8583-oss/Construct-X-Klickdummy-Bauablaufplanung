@@ -110,6 +110,7 @@ import {
 } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
+import { validateResourceTypeForOrg } from "../services/resource-domain-service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -2187,12 +2188,9 @@ router.post(
       return;
     }
 
-    const [resourceType] = await db
-      .select({ id: resourceTypesTable.id })
-      .from(resourceTypesTable)
-      .where(and(eq(resourceTypesTable.id, parsed.data.resourceTypeId), eq(resourceTypesTable.anOrgId, nuOrgId)))
-      .limit(1);
-    if (!resourceType) {
+    try {
+      await validateResourceTypeForOrg(parsed.data.resourceTypeId, nuOrgId);
+    } catch {
       res.status(422).json({ error: "RESOURCE_TYPE_NOT_OWNED" });
       return;
     }

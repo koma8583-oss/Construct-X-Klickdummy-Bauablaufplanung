@@ -42,6 +42,7 @@ import {
   type AlternativeRequirement,
   ALTERNATIVE_GENERATOR_CONFIG,
 } from "./alternative-generator";
+import { evaluateResourceRequirements } from "./resource-availability-service";
 
 const logger = pino({ name: "availability-check-service" });
 
@@ -512,136 +513,15 @@ async function executeDtcCheck(
   windowStart: Date,
   windowEnd: Date,
 ): Promise<CheckRulesResult> {
-  const conflicts: InternalResultPayload["conflicts"] = [];
-  const tentativeWarnings: InternalResultPayload["tentativeWarnings"] = [];
-  const missingQualifications: string[] = [];
+  const evaluated = evaluateResourceRequirements({
+    requirements,
+    resources: nuResources,
+    bookings: overlappingBookings,
+    windowStart,
+    windowEnd,
+  });
+  const { conflicts, tentativeWarnings, missingQualifications, availableResources } = evaluated;
   const unavailableEquipment: string[] = [];
-  const availableResources: Array<{
-    resourceId: string | null;
-    resourceType: string;
-    resourceTypeId?: string;
-    quantity?: number;
-  }> = [];
-
-  for (const req of requirements) {
-    if (!req.resourceTypeId) continue;
-
-    const rtId = req.resourceTypeId;
-    const declaredCapacity = parseFloat(req.requiredCapacity ?? "0");
-    const requiredQty =
-      (Math.max(Number.isFinite(declaredCapacity) ? declaredCapacity : 0, 1) *
-        req.utilizationPercent) /
-      100;
-    const effectiveStart = req.periodStart ? parseDate(req.periodStart) : windowStart;
-    const effectiveEnd = req.periodEnd ? parseInclusiveEnd(req.periodEnd) : windowEnd;
-    const requirementBookings = overlappingBookings.filter((b) =>
-      overlaps(b.startAt, b.endAt, effectiveStart, effectiveEnd),
-    );
-
-    // Active resources of this type registered for the NU
-    const typeResources = nuResources.filter(r => r.resourceTypeId === rtId);
-    const normalizedQualification = req.requiredQualification?.trim().toLocaleLowerCase();
-    const eligibleResources = normalizedQualification
-      ? typeResources.filter((r) =>
-          Array.isArray(r.qualifications) &&
-          (r.qualifications as string[]).some(
-            (qualification) =>
-              qualification.trim().toLocaleLowerCase() === normalizedQualification,
-          ),
-        )
-      : typeResources;
-
-    // No resources of this type at all → hard conflict immediately
-    if (eligibleResources.length === 0) {
-      conflicts.push({
-        resourceId: rtId,
-        resourceName: req.notes ?? `ResourceType ${rtId}`,
-        conflictType: "MISSING_EQUIPMENT",
-        missingQualification: normalizedQualification
-          ? req.requiredQualification!.trim()
-          : "Keine Ressource dieses Typs vorhanden",
-        isTentative: false,
-        overlapUtilizationSum: 0,
-      });
-      if (normalizedQualification) {
-        missingQualifications.push(req.requiredQualification!.trim());
-        conflicts[conflicts.length - 1].conflictType = "MISSING_QUALIFICATION";
-      }
-      continue;
-    }
-
-    // Capacity: resources without a set capacity count as 1 unit each
-    const totalCapacity = eligibleResources.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
-
-    const confirmedBookings = requirementBookings.filter(b => b.status === "CONFIRMED");
-    const tentativeBookings = requirementBookings.filter(b => b.status === "TENTATIVE");
-
-    // Helper: does this booking consume capacity from a resource of type rtId?
-    const isTypeBooking = (b: OverlapBooking) => {
-      if (b.resourceId !== null) {
-        // Resource-level booking — check whether the resource belongs to this type
-        return eligibleResources.some(r => r.id === b.resourceId);
-      }
-      // Type-level booking (quantity on the resourceTypeId column)
-      return b.resourceTypeId === rtId && b.quantity != null;
-    };
-
-    // Capacity consumed by CONFIRMED type-level bookings (quantity column)
-    const usedByTypeBookings = confirmedBookings
-      .filter(b => b.resourceId === null && b.resourceTypeId === rtId && b.quantity != null)
-      .reduce((sum, b) => sum + ((b.quantity ?? 0) * b.utilizationPercent) / 100, 0);
-
-    // Capacity consumed by CONFIRMED resource-level bookings (utilization × capacity)
-    const usedByResourceBookings = confirmedBookings
-      .filter(b => b.resourceId !== null && eligibleResources.some(r => r.id === b.resourceId))
-      .reduce((sum, b) => {
-        const resource = eligibleResources.find(r => r.id === b.resourceId);
-        const cap = resource?.capacity ?? 1;   // treat null capacity as 1 unit
-        return sum + (cap * b.utilizationPercent) / 100;
-      }, 0);
-
-    const usedCapacity = usedByTypeBookings + usedByResourceBookings;
-    const availableCapacity = totalCapacity - usedCapacity;
-
-    if (availableCapacity < requiredQty) {
-      conflicts.push({
-        resourceId: rtId,
-        resourceName: req.notes ?? `ResourceType ${rtId}`,
-        conflictType: "CAPACITY_EXCEEDED",
-        isTentative: false,
-        overlapUtilizationSum: Math.round(usedCapacity),
-      });
-    } else {
-      availableResources.push({
-        resourceId: null,
-        resourceTypeId: rtId,
-        resourceType: "DTC_TYPE",
-       quantity: declaredCapacity,
-      });
-
-      // Tentative warnings: would there be a conflict if tentative bookings are confirmed?
-      const tentativeUsed = tentativeBookings
-        .filter(b => isTypeBooking(b))
-        .reduce((sum, b) => {
-          if (b.resourceId === null && b.quantity != null) {
-            return sum + ((b.quantity ?? 0) * b.utilizationPercent) / 100;
-          }
-          const resource = eligibleResources.find(r => r.id === b.resourceId);
-          return sum + ((resource?.capacity ?? 1) * b.utilizationPercent) / 100;
-        }, 0);
-
-      if (usedCapacity + tentativeUsed + requiredQty > totalCapacity) {
-        for (const b of tentativeBookings.filter(b => isTypeBooking(b))) {
-          tentativeWarnings.push({
-            resourceId: b.resourceId ?? rtId,
-            bookingId: b.id,
-            overlapStart: new Date(b.startAt).toISOString(),
-            overlapEnd: new Date(b.endAt).toISOString(),
-          });
-        }
-      }
-    }
-  }
 
   const hardConflicts = conflicts.filter(c => !c.isTentative);
   const isFeasible = hardConflicts.length === 0;

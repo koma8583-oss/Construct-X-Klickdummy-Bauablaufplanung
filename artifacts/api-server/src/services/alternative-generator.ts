@@ -12,6 +12,7 @@
  */
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
 import type { ResourceBooking } from "@workspace/db";
+import { evaluateResourceRequirements } from "./resource-availability-service";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -158,46 +159,39 @@ function isWindowClear(
 function isDtcWindowClear(
   requirements: AlternativeRequirement[],
   resources: AlternativeResource[],
-  bookings: Pick<ResourceBooking, "resourceId" | "resourceTypeId" | "quantity" | "startAt" | "endAt" | "status" | "utilizationPercent">[],
+  bookings: Pick<ResourceBooking, "id" | "resourceId" | "resourceTypeId" | "quantity" | "startAt" | "endAt" | "status" | "utilizationPercent">[],
   plannedStart: Date,
   candidateStart: Date,
   candidateEnd: Date,
 ): boolean {
-  for (const requirement of requirements) {
-    if (!requirement.resourceTypeId) continue;
-    const typeResources = resources.filter((r) => r.resourceTypeId === requirement.resourceTypeId);
-    const qualification = requirement.requiredQualification?.trim().toLowerCase();
-    const eligible = qualification
-      ? typeResources.filter((r) =>
-          Array.isArray(r.qualifications) &&
-          (r.qualifications as string[]).some((q) => q.trim().toLowerCase() === qualification),
-        )
-      : typeResources;
-    const required = Number(requirement.requiredCapacity ?? 0);
-    if (eligible.length === 0 || !Number.isFinite(required) || required <= 0) return false;
-
-    const requirementStartOffset = requirement.periodStart
-      ? diffDays(plannedStart, parseDate(requirement.periodStart))
-      : 0;
-    const requirementEndOffset = requirement.periodEnd
-      ? diffDays(plannedStart, parseDate(requirement.periodEnd)) + 1
-      : diffDays(candidateStart, candidateEnd);
-    const start = addDays(candidateStart, requirementStartOffset);
-    const end = addDays(candidateStart, Math.max(requirementEndOffset, 1));
-    const overlapping = bookings.filter((b) =>
-      b.status !== "CANCELLED" && new Date(b.startAt) < end && new Date(b.endAt) > start,
-    );
-    const used = overlapping.reduce((sum, booking) => {
-      if (booking.resourceId === null && booking.resourceTypeId === requirement.resourceTypeId) {
-        return sum + ((booking.quantity ?? 0) * booking.utilizationPercent) / 100;
-      }
-      const resource = eligible.find((r) => r.resourceId === booking.resourceId);
-      return resource ? sum + ((resource.capacity ?? 1) * booking.utilizationPercent) / 100 : sum;
-    }, 0);
-    const capacity = eligible.reduce((sum, r) => sum + (r.capacity ?? 1), 0);
-    if (capacity - used < (required * requirement.utilizationPercent) / 100) return false;
-  }
-  return true;
+  const shiftedRequirements = requirements.map((requirement) => ({
+    ...requirement,
+    periodStart: requirement.periodStart
+      ? formatDate(addDays(candidateStart, diffDays(plannedStart, parseDate(requirement.periodStart))))
+      : null,
+    periodEnd: requirement.periodEnd
+      ? formatDate(addDays(candidateStart, diffDays(plannedStart, parseDate(requirement.periodEnd))))
+      : null,
+  }));
+  const result = evaluateResourceRequirements({
+    requirements: shiftedRequirements,
+    resources: resources.map((resource) => ({
+      id: resource.resourceId,
+      type: resource.resourceType,
+      name: resource.resourceId,
+      capacity: resource.capacity,
+      qualifications: resource.qualifications,
+      resourceTypeId: resource.resourceTypeId ?? null,
+    })),
+    bookings: bookings.map((booking) => ({
+      ...booking,
+      startAt: new Date(booking.startAt),
+      endAt: new Date(booking.endAt),
+    })),
+    windowStart: candidateStart,
+    windowEnd: candidateEnd,
+  });
+  return result.conflicts.length === 0;
 }
 
 /**

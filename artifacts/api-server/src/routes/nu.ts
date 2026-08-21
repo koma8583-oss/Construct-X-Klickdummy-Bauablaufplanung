@@ -22,6 +22,11 @@ import {
 import { and, eq, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import type { Request, Response } from "express";
+import {
+  loadOwnedResource,
+  loadOwnedResourceType,
+  validateResourceBooking,
+} from "../services/resource-domain-service";
 
 const router = Router();
 
@@ -58,15 +63,6 @@ const DTC_CLASS_TO_CATEGORY: Record<string, ResourceTypeCategory> = {
   "https://dtc-ontology.cms.ed.tum.de/ontology/v2#AsPlannedTemporaryEquipment": "MACHINE",
 };
 const VALID_DTC_CLASSES = Object.keys(DTC_CLASS_TO_CATEGORY);
-
-async function loadOwnResourceType(resourceTypeId: string, nuOrgId: string) {
-  const [resourceType] = await db
-    .select()
-    .from(resourceTypesTable)
-    .where(and(eq(resourceTypesTable.id, resourceTypeId), eq(resourceTypesTable.anOrgId, nuOrgId)))
-    .limit(1);
-  return resourceType ?? null;
-}
 
 async function loadOwnLocalProject(localProjectId: string, nuOrgId: string) {
   const [project] = await db
@@ -555,16 +551,6 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
 
   const data = parsed.data;
 
-  // Business rule: at least one of resourceId or resourceTypeId must be present
-  if (!data.resourceId && !data.resourceTypeId) {
-    res.status(400).json({ error: "At least one of 'resourceId' or 'resourceTypeId' must be provided" });
-    return;
-  }
-  if (!data.resourceId && data.resourceTypeId && data.quantity == null) {
-    res.status(422).json({ error: "quantity is required for type-level bookings" });
-    return;
-  }
-
   const startAt = new Date(data.startAt);
   const endAt   = new Date(data.endAt);
 
@@ -573,40 +559,38 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     return;
   }
 
-  // If resourceId provided, verify it belongs to this NU
-  if (data.resourceId) {
-    const [resource] = await db
-      .select({ id: resourcesTable.id, anOrgId: resourcesTable.anOrgId, resourceTypeId: resourcesTable.resourceTypeId })
+  const resource = data.resourceId
+    ? await loadOwnedResource(data.resourceId, nuOrgId)
+    : null;
+  if (data.resourceId && !resource) {
+    const [anyResource] = await db
+      .select({ anOrgId: resourcesTable.anOrgId })
       .from(resourcesTable)
       .where(eq(resourcesTable.id, data.resourceId))
       .limit(1);
-
-    if (!resource) {
-      res.status(404).json({ error: "Resource not found" });
-      return;
-    }
-    if (resource.anOrgId !== nuOrgId) {
-      res.status(403).json({ error: "Resource does not belong to your organisation" });
-      return;
-    }
-
-    if (data.resourceTypeId && resource.resourceTypeId !== data.resourceTypeId) {
-      res.status(422).json({ error: "RESOURCE_TYPE_MISMATCH" });
-      return;
-    }
-
-    // Auto-fill resourceTypeId from the resource if not explicitly provided
-    if (!data.resourceTypeId && resource.resourceTypeId) {
-      data.resourceTypeId = resource.resourceTypeId;
-    }
+    res.status(anyResource && anyResource.anOrgId !== nuOrgId ? 403 : 404).json({
+      error: anyResource && anyResource.anOrgId !== nuOrgId
+        ? "Resource does not belong to your organisation"
+        : "Resource not found",
+    });
+    return;
   }
-
-  if (data.resourceTypeId) {
-    const resourceType = await loadOwnResourceType(data.resourceTypeId, nuOrgId);
-    if (!resourceType) {
-      res.status(403).json({ error: "Resource type does not belong to your organisation" });
-      return;
-    }
+  if (data.resourceId && !data.resourceTypeId && resource?.resourceTypeId) {
+    data.resourceTypeId = resource.resourceTypeId;
+  }
+  const resourceType = data.resourceTypeId
+    ? await loadOwnedResourceType(data.resourceTypeId, nuOrgId)
+    : null;
+  try {
+    validateResourceBooking({ resource, resourceType, quantity: data.quantity });
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    res.status(code === "QUANTITY_REQUIRED" ? 422 : 400).json({ error: (error as Error).message });
+    return;
+  }
+  if (data.resourceTypeId && !resourceType) {
+    res.status(403).json({ error: "Resource type does not belong to your organisation" });
+    return;
   }
   if (data.localProjectId && !(await loadOwnLocalProject(data.localProjectId, nuOrgId))) {
     res.status(403).json({ error: "Local project does not belong to your organisation" });
@@ -692,34 +676,28 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   const nextResourceTypeId =
     patchData.resourceTypeId !== undefined ? patchData.resourceTypeId : existing.resourceTypeId;
   const nextQuantity = patchData.quantity !== undefined ? patchData.quantity : existing.quantity;
-  if (!nextResourceId && !nextResourceTypeId) {
-    res.status(422).json({ error: "At least one of 'resourceId' or 'resourceTypeId' must be provided" });
+  const nextResource = nextResourceId
+    ? await loadOwnedResource(nextResourceId, nuOrgId)
+    : null;
+  const nextResourceType = nextResourceTypeId
+    ? await loadOwnedResourceType(nextResourceTypeId, nuOrgId)
+    : null;
+  try {
+    validateResourceBooking({
+      resource: nextResource,
+      resourceType: nextResourceType,
+      quantity: nextQuantity,
+    });
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    res.status(code === "QUANTITY_REQUIRED" ? 422 : 400).json({ error: (error as Error).message });
     return;
   }
-  if (!nextResourceId && nextResourceTypeId && (nextQuantity == null || nextQuantity <= 0)) {
-    res.status(422).json({ error: "quantity is required for type-level bookings" });
+  if (nextResourceId && !nextResource) {
+    res.status(404).json({ error: "Resource not found" });
     return;
   }
-  if (nextResourceId) {
-    const [resource] = await db
-      .select({ anOrgId: resourcesTable.anOrgId, resourceTypeId: resourcesTable.resourceTypeId })
-      .from(resourcesTable)
-      .where(eq(resourcesTable.id, nextResourceId))
-      .limit(1);
-    if (!resource) {
-      res.status(404).json({ error: "Resource not found" });
-      return;
-    }
-    if (resource.anOrgId !== nuOrgId) {
-      res.status(403).json({ error: "Resource does not belong to your organisation" });
-      return;
-    }
-    if (nextResourceTypeId && resource.resourceTypeId !== nextResourceTypeId) {
-      res.status(422).json({ error: "RESOURCE_TYPE_MISMATCH" });
-      return;
-    }
-  }
-  if (nextResourceTypeId && !(await loadOwnResourceType(nextResourceTypeId, nuOrgId))) {
+  if (nextResourceTypeId && !nextResourceType) {
     res.status(403).json({ error: "Resource type does not belong to your organisation" });
     return;
   }
