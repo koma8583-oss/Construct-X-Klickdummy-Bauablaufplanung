@@ -29,6 +29,7 @@ import {
   resourcesTable,
   resourceAssignmentsTable,
   nuLocalProjectsTable,
+  resourceTypesTable,
   resourceBookingsTable,
   delegationsTable,
   projectsTable,
@@ -276,6 +277,46 @@ describe("resource_bookings", () => {
 
     expect(booking.sourceReferenceId).toBe(taktRequestId);
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+  });
+
+  it("stores concrete and type-level bookings for the same period", async () => {
+    const [resourceType] = await db.insert(resourceTypesTable).values({
+      anOrgId: NU_ORG_A,
+      name: "T42 Mixed Booking Type",
+      category: "PERSONNEL",
+    }).returning();
+
+    const [concreteBooking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: NU_ORG_A,
+      resourceId: RESOURCE_A,
+      resourceTypeId: resourceType.id,
+      sourceType: "MANUAL_BLOCK",
+      startAt: new Date("2026-12-10T00:00:00Z"),
+      endAt: new Date("2026-12-11T00:00:00Z"),
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    }).returning();
+    const [typeBooking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: NU_ORG_A,
+      resourceId: null,
+      resourceTypeId: resourceType.id,
+      quantity: 2,
+      sourceType: "MANUAL_BLOCK",
+      startAt: new Date("2026-12-10T00:00:00Z"),
+      endAt: new Date("2026-12-11T00:00:00Z"),
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    }).returning();
+
+    expect(concreteBooking.resourceId).toBe(RESOURCE_A);
+    expect(concreteBooking.quantity).toBeNull();
+    expect(typeBooking.resourceId).toBeNull();
+    expect(typeBooking.resourceTypeId).toBe(resourceType.id);
+    expect(typeBooking.quantity).toBe(2);
+
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
+    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, resourceType.id));
   });
 });
 

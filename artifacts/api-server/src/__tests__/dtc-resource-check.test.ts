@@ -355,6 +355,106 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
+  it("requirement-specific periods ignore bookings outside that requirement period", async () => {
+    const taktId = "dtc-takt-period";
+    const reqId = "dtc-req-period";
+    await seedTakt(taktId);
+    await seedRequest(reqId, taktId);
+
+    await db.insert(taktRequestResourceRequirementsTable).values({
+      taktRequestId: reqId, anOrgId: ORG_NU, resourceTypeId: rtId,
+      requiredCapacity: "6", utilizationPercent: 100,
+      periodStart: "2027-03-05", periodEnd: "2027-03-07",
+    });
+
+    // This consumes all capacity in the overall request window, but not in
+    // this requirement's narrower period.
+    const [booking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 6,
+      sourceType: "MANUAL_BLOCK",
+      startAt: new Date("2027-03-01T00:00:00Z"),
+      endAt: new Date("2027-03-04T00:00:00Z"),
+      status: "CONFIRMED",
+    }).returning();
+
+    const check = await runAvailabilityCheck(reqId, ORG_NU, USER_ID);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internalResultPayload?.conflicts).toHaveLength(0);
+
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
+  });
+
+  it("matches a requirement qualification case-insensitively and ignores whitespace", async () => {
+    const taktId = "dtc-takt-qualification";
+    const reqId = "dtc-req-qualification";
+    await seedTakt(taktId);
+    await seedRequest(reqId, taktId);
+
+    const [qualifiedResource] = await db.insert(resourcesTable).values({
+      anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Qualified Worker",
+      resourceTypeId: rtId, capacity: 6, qualifications: ["  SCC  "],
+    }).returning();
+    await db.insert(taktRequestResourceRequirementsTable).values({
+      taktRequestId: reqId, anOrgId: ORG_NU, resourceTypeId: rtId,
+      requiredCapacity: "6", utilizationPercent: 100,
+      requiredQualification: "scc",
+    });
+
+    const check = await runAvailabilityCheck(reqId, ORG_NU, USER_ID);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internalResultPayload?.missingQualifications).toHaveLength(0);
+
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, qualifiedResource.id));
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
+  });
+
+  it("combines concrete and type-level bookings when calculating used capacity", async () => {
+    const taktId = "dtc-takt-mixed-bookings";
+    const reqId = "dtc-req-mixed-bookings";
+    await seedTakt(taktId);
+    await seedRequest(reqId, taktId);
+
+    await db.insert(taktRequestResourceRequirementsTable).values({
+      taktRequestId: reqId, anOrgId: ORG_NU, resourceTypeId: rtId,
+      requiredCapacity: "9", utilizationPercent: 100,
+    });
+
+    const [concreteResource] = await db.insert(resourcesTable).values({
+      anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Concrete Booking Worker",
+      resourceTypeId: rtId, capacity: 3,
+    }).returning();
+    const [concreteBooking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: concreteResource.id,
+      sourceType: "MANUAL_BLOCK",
+      startAt: new Date("2027-03-01T00:00:00Z"),
+      endAt: new Date("2027-03-14T00:00:00Z"),
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    }).returning();
+    const [typeBooking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 6,
+      sourceType: "MANUAL_BLOCK",
+      startAt: new Date("2027-03-01T00:00:00Z"),
+      endAt: new Date("2027-03-14T00:00:00Z"),
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    }).returning();
+
+    const check = await runAvailabilityCheck(reqId, ORG_NU, USER_ID);
+
+    // The concrete booking uses 3 and the type booking uses another 6.
+    expect(check.result).not.toBe("FEASIBLE");
+    expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
+
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, concreteResource.id));
+    await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
+  });
+
   // Test 9: Internal resource info not in public result
   it("test 9 — internal resource IDs and org IDs not in public result payload", async () => {
     const taktId = "dtc-takt-9"; const reqId = "dtc-req-9";

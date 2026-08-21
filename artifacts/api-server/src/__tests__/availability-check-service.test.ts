@@ -313,6 +313,41 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
+  it("treats a single-day planned window as inclusive", async () => {
+    const taktId = "t45-takt-single-day";
+    const reqId = "t45-req-single-day";
+    await seedTakt(taktId);
+    await seedRequest({
+      id: reqId,
+      taktId,
+      snapshotPayload: makeSnapshot({
+        plannedTimeWindow: { start: "2026-11-05", end: "2026-11-05" },
+      }),
+    });
+
+    const [res] = await db.insert(resourcesTable).values({
+      anOrgId: NU_ORG_A, type: "CREW", name: "T45 Single Day Crew", active: true,
+    }).returning();
+    const [booking] = await db.insert(resourceBookingsTable).values({
+      nuOrgId: NU_ORG_A,
+      resourceId: res.id,
+      sourceType: "MANUAL_BLOCK",
+      // The booking occupies exactly the requested calendar day.
+      startAt: new Date("2026-11-05T00:00:00Z"),
+      endAt: new Date("2026-11-06T00:00:00Z"),
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    }).returning();
+
+    const check = await runAvailabilityCheck(reqId, NU_ORG_A, USER_ID);
+
+    expect(check.result).not.toBe("FEASIBLE");
+    expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
+
+    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+  });
+
   it("other NU's bookings are not considered", async () => {
     const taktId = "t45-takt-other-nu";
     const reqId  = "t45-req-other-nu";
