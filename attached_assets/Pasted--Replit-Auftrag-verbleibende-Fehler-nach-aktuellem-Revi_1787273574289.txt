@@ -1,0 +1,1086 @@
+# Replit-Auftrag – verbleibende Fehler nach aktuellem Review beheben
+
+Arbeite auf Basis des aktuellen Repository-Stands:
+
+`koma8583-oss/Construct-X-Klickdummy-Bauablaufplanung`
+
+Ziel ist ausschließlich die Korrektur der nach dem letzten Review noch offenen Fehler.
+
+Wichtig:
+
+* keine größere Refaktorierung
+* keine neue Architektur
+* keine neuen Fachfunktionen
+* keine Änderung der grundsätzlichen Felder `capacity`, `capacityUnit`, `requiredCapacity`, `quantity`, `utilizationPercent`
+* bestehende DTC-Integration beibehalten
+* vorhandene Services und Tabellen wiederverwenden
+* Änderungen möglichst lokal halten
+
+---
+
+# 1. P0 – eintägige Leistungen zulassen
+
+Prüfe:
+
+```text
+artifacts/api-server/src/lib/takt-request-snapshot-service.ts
+```
+
+Aktuell werden Leistungen mit:
+
+```text
+plannedStart == plannedEnd
+```
+
+noch abgelehnt.
+
+Fachliche Regel:
+
+```text
+plannedStart = inklusiv
+plannedEnd   = inklusiv
+```
+
+Damit muss beispielsweise:
+
+```text
+21.08.2026 – 21.08.2026
+```
+
+ein gültiger eintägiger Zeitraum sein.
+
+Ändere daher eine Prüfung wie:
+
+```ts
+plannedEnd <= plannedStart
+```
+
+zu:
+
+```ts
+plannedEnd < plannedStart
+```
+
+Bestehende Working-Day-Logik nicht verändern.
+
+---
+
+# 2. Datumslogik konsistent halten
+
+Prüfe gemeinsam:
+
+```text
+working-days.ts
+takt-request-snapshot-service.ts
+availability-check-service.ts
+alternative-generator.ts
+```
+
+Planungsdaten bleiben fachlich inklusiv:
+
+```text
+[startDate, endDate]
+```
+
+Für interne Timestamp-Überlappungen verwenden:
+
+```text
+[startOf(startDate), startOf(dayAfter(endDate)))
+```
+
+Beispiel:
+
+```text
+01.09.–05.09.
+```
+
+intern:
+
+```text
+01.09. 00:00
+bis
+06.09. 00:00 exklusiv
+```
+
+Falls `parseInclusiveEnd()` oder ein vergleichbarer Helper bereits existiert, diesen wiederverwenden.
+
+Keine zweite Datumslogik hinzufügen.
+
+---
+
+# 3. P0 – Alternative Generator auf DTC-Requirements umstellen
+
+Prüfe:
+
+```text
+artifacts/api-server/src/services/availability-check-service.ts
+artifacts/api-server/src/services/alternative-generator.ts
+```
+
+Aktuelles Problem:
+
+Die normale DTC-Verfügbarkeitsprüfung berücksichtigt inzwischen:
+
+```text
+resourceTypeId
+requiredCapacity
+utilizationPercent
+requiredQualification
+periodStart
+periodEnd
+```
+
+Der Alternative Generator verwendet jedoch noch überwiegend Legacy-Logik auf Basis konkreter:
+
+```text
+resourceId
+EMPLOYEE
+CREW
+EQUIPMENT
+MACHINE
+```
+
+Das darf für DTC-basierte Anforderungen nicht mehr die entscheidende Prüfung sein.
+
+## Ziel
+
+Eine Alternative ist nur gültig, wenn **alle ResourceRequirements der Anfrage** im Kandidatenzeitraum verfügbar sind.
+
+Prüfe für jede Alternative:
+
+```text
+ResourceType
+benötigte Kapazität
+Auslastung
+Qualifikation
+Requirement-Zeitraum
+bestehende Typbuchungen
+bestehende konkrete Buchungen
+```
+
+---
+
+# 4. Keine doppelte Availability-Logik
+
+Nicht eine zweite neue Kapazitätsberechnung im `alternative-generator.ts` implementieren.
+
+Extrahiere die bereits funktionierende DTC-Prüfung möglichst in eine kleine interne Funktion, beispielsweise:
+
+```ts
+evaluateResourceRequirements(...)
+```
+
+oder:
+
+```ts
+evaluateRequirementsForWindow(...)
+```
+
+Diese Funktion soll sowohl für:
+
+```text
+ursprünglichen Zeitraum
+```
+
+als auch für:
+
+```text
+Alternativzeitraum
+```
+
+verwendet werden.
+
+Damit müssen normale Verfügbarkeitsprüfung und Alternativprüfung dieselben Regeln nutzen.
+
+---
+
+# 5. Typbasierte Buchungen bei Alternativen berücksichtigen
+
+Eine Buchung wie:
+
+```text
+resourceId = null
+resourceTypeId = Facharbeiter Trockenbau
+quantity = 4
+utilizationPercent = 100
+```
+
+muss die verfügbare Kapazität dieses Ressourcentyps auch im Alternative Generator reduzieren.
+
+Nicht nur `resourceId`-basierte Bookings prüfen.
+
+Für Typbuchungen weiterhin rechnen:
+
+```text
+verbrauchte Kapazität =
+quantity × utilizationPercent / 100
+```
+
+---
+
+# 6. Vollständigen Alternativ-Suchhorizont berücksichtigen
+
+Wenn Alternativen beispielsweise bis zu 60 Tage nach vorne gesucht werden, müssen auch Buchungen aus diesem Zeitraum berücksichtigt werden.
+
+Nicht nur Bookings des ursprünglichen Taktes laden.
+
+Mindestens:
+
+```text
+originalStart
+bis
+maxAlternativeEnd
+```
+
+berücksichtigen.
+
+Eine Alternative darf niemals als verfügbar erscheinen, wenn im Kandidatenzeitraum bereits eine relevante bestätigte Buchung liegt.
+
+---
+
+# 7. P0 – ACCEPT_ALTERNATIVE neu bewerten
+
+Prüfe:
+
+```text
+artifacts/api-server/src/services/gu-decision-service.ts
+```
+
+Aktuelles Problem:
+
+Bei:
+
+```text
+ACCEPT_ALTERNATIVE
+```
+
+werden weiterhin `availableResources` aus dem ursprünglichen Availability Check verwendet.
+
+Das ist falsch.
+
+## Zielworkflow
+
+Bei `ACCEPT_ALTERNATIVE`:
+
+```text
+1. akzeptierten Alternativzeitraum lesen
+2. alle ResourceRequirements der Anfrage laden
+3. diese Requirements für den akzeptierten Zeitraum erneut prüfen
+4. nur wenn vollständig machbar → Buchungen erzeugen
+5. alle notwendigen ResourceTypes buchen
+```
+
+Nicht die `availableResources` des ursprünglichen Zeitfensters wiederverwenden.
+
+---
+
+# 8. ACCEPT_ALTERNATIVE atomar behandeln
+
+Falls die erneute Prüfung des akzeptierten Alternativzeitraums nicht mehr machbar ist:
+
+```text
+keine Teilbuchungen erzeugen
+```
+
+und die Entscheidung mit einem fachlich sinnvollen Fehler abbrechen.
+
+Keine Situation zulassen, in der beispielsweise:
+
+```text
+Kran gebucht
+Facharbeiter nicht gebucht
+```
+
+entsteht.
+
+Die Erstellung aller notwendigen Buchungen möglichst in einer bestehenden DB-Transaktion durchführen.
+
+---
+
+# 9. Typbasierte Auto-Bookings verwenden
+
+Für DTC ResourceRequirements weiterhin keine automatische konkrete Mitarbeiterauswahl durchführen.
+
+Beispiel:
+
+```text
+Facharbeiter Trockenbau
+requiredCapacity = 6
+```
+
+ergibt:
+
+```text
+resourceId = null
+resourceTypeId = <Facharbeiter-Typ>
+quantity = 6
+```
+
+Keine sechs einzelnen Mitarbeiter automatisch auswählen.
+
+---
+
+# 10. Requirement-Kapazität und Auslastung unverändert in Booking übernehmen
+
+Aktuell darf nicht mehr aus:
+
+```text
+requiredCapacity = 6
+utilizationPercent = 50
+```
+
+werden:
+
+```text
+quantity = 3
+utilizationPercent = 100
+```
+
+Bevorzugt übernehmen:
+
+```text
+quantity = requiredCapacity
+utilizationPercent = requirement.utilizationPercent
+```
+
+Also:
+
+```text
+Requirement:
+6 Personen × 50 %
+
+Booking:
+6 Personen × 50 %
+```
+
+Keine `Math.ceil()`-Transformation der effektiven Kapazität für das Auto-Booking verwenden.
+
+Die effektive Kapazität wird nur für die Verfügbarkeitsberechnung verwendet.
+
+---
+
+# 11. ResourceRequirement serverseitig verpflichtend machen
+
+Prüfe alle Endpunkte für ResourceRequirements, insbesondere:
+
+```text
+/takt-requests/.../resource-requirements
+/leistungsanfragen/.../resource-requirements
+```
+
+Für neue Requirements verlangen:
+
+```text
+resourceTypeId required
+requiredCapacity > 0
+utilizationPercent > 0
+utilizationPercent <= 100
+```
+
+`resourceTypeId` und `requiredCapacity` dürfen nicht mehr `null` sein.
+
+---
+
+# 12. Requirement-Zeitraum validieren
+
+Für:
+
+```text
+periodStart
+periodEnd
+```
+
+gilt:
+
+```text
+periodStart <= periodEnd
+```
+
+Falls nicht explizit angegeben, aus dem Snapshot-/Taktzeitraum übernehmen.
+
+Nach dem Speichern muss jedes Requirement einen eindeutig bestimmbaren effektiven Zeitraum besitzen.
+
+---
+
+# 13. ResourceType-Organisation beim Requirement prüfen
+
+Bei jedem ResourceRequirement laden:
+
+```text
+resourceTypeId
+```
+
+und prüfen:
+
+```text
+resourceType.anOrgId === currentANOrgId
+```
+
+Fremde ResourceTypes ablehnen.
+
+Geeignete Antwort:
+
+```text
+403
+```
+
+oder:
+
+```text
+422 RESOURCE_TYPE_NOT_OWNED
+```
+
+Keine Details des fremden Ressourcentyps in der Fehlermeldung zurückgeben.
+
+---
+
+# 14. ResourceRequirement-UI validieren
+
+Prüfe insbesondere:
+
+```text
+artifacts/an-app/src/pages/takt-request-detail.tsx
+```
+
+Speichern eines Ressourcenbedarfs nur erlauben, wenn:
+
+```text
+resourceTypeId gesetzt
+requiredCapacity > 0
+utilizationPercent > 0
+utilizationPercent <= 100
+gültiger Zeitraum
+```
+
+vorhanden sind.
+
+Der Speichern-Button muss sonst deaktiviert sein.
+
+Keine unvollständigen Requirements mehr an die API senden.
+
+---
+
+# 15. step3Done fachlich korrekt berechnen
+
+Nicht mehr nur:
+
+```ts
+requirements.length > 0
+```
+
+verwenden.
+
+Stattdessen sinngemäß:
+
+```ts
+const step3Done =
+  requirements.length > 0 &&
+  requirements.every(isValidRequirement);
+```
+
+`isValidRequirement` soll mindestens prüfen:
+
+```text
+resourceTypeId
+requiredCapacity > 0
+utilizationPercent gültig
+effektiver Zeitraum gültig
+```
+
+---
+
+# 16. Availability-Schritt sperren, solange Requirements ungültig sind
+
+Schritt 4 darf erst freigeschaltet sein, wenn:
+
+```text
+Taktdaten erfolgreich abgerufen
+UND
+gültige Ressourcenbedarfe vorhanden
+```
+
+Sinngemäß:
+
+```tsx
+locked={!step2Done || !step3Done}
+```
+
+Der Server soll zusätzlich ebenfalls eine Availability-Prüfung ohne gültige Requirements ablehnen.
+
+Nicht nur auf die UI vertrauen.
+
+---
+
+# 17. ResourceType-Wechsel einer Resource korrekt synchronisieren
+
+Prüfe:
+
+```text
+artifacts/api-server/src/routes/resources.ts
+```
+
+Wenn sich bei einer konkreten Resource:
+
+```text
+resourceTypeId
+```
+
+ändert, müssen automatisch auch die abhängigen Kompatibilitätsfelder aktualisiert werden.
+
+Mindestens:
+
+```text
+resources.type
+resources.capacityUnit
+```
+
+aus dem neuen ResourceType ableiten.
+
+Beispiel:
+
+```text
+vorher:
+ResourceType = Facharbeiter
+type = EMPLOYEE
+capacityUnit = PERSONS
+```
+
+nach Änderung auf Mobilkran:
+
+```text
+ResourceType = Mobilkran
+type = EQUIPMENT
+capacityUnit = UNITS
+```
+
+Keine widersprüchlichen Zustände zulassen.
+
+---
+
+# 18. ResourceType darf beim Bearbeiten nicht entfernt werden
+
+Neue bzw. bearbeitete Resources benötigen zwingend:
+
+```text
+resourceTypeId
+```
+
+PATCH mit:
+
+```json
+{
+  "resourceTypeId": null
+}
+```
+
+ablehnen.
+
+Beispielsweise:
+
+```text
+422 RESOURCE_TYPE_REQUIRED
+```
+
+Historische Legacy-Datensätze ohne ResourceType weiterhin lesbar lassen.
+
+Aber sobald eine solche Resource bearbeitet wird, muss ein gültiger ResourceType gesetzt werden.
+
+---
+
+# 19. capacityUnit nicht separat durch Resource-UI verändern
+
+Die bestehende Semantik beibehalten:
+
+```text
+ResourceType.capacityUnit
+```
+
+ist die verbindliche Planungseinheit.
+
+Beim Erstellen bzw. Wechseln eines ResourceTypes:
+
+```text
+Resource.capacityUnit
+```
+
+automatisch daraus synchronisieren.
+
+Keine neue Einheitenauswahl im Resource-Dialog ergänzen.
+
+---
+
+# 20. ResourceBooking-Dialog synchronisieren
+
+Prüfe:
+
+```text
+artifacts/an-app/src/pages/resource-bookings.tsx
+```
+
+Wenn eine konkrete Resource gewählt wird:
+
+```text
+resourceTypeId = resource.resourceTypeId
+```
+
+automatisch setzen.
+
+Nicht zulassen:
+
+```text
+resource = Mobilkran K-01
+resourceType = Facharbeiter
+```
+
+Auch wenn das Backend diesen Zustand bereits ablehnt, soll die UI ihn gar nicht erzeugen.
+
+---
+
+# 21. Leere Select-Werte entfernen
+
+Suche in den betroffenen Ressourcen-Seiten nach:
+
+```tsx
+<SelectItem value="">
+```
+
+Insbesondere:
+
+```text
+resources.tsx
+resource-bookings.tsx
+```
+
+Ersetze durch einen eindeutigen Sentinel:
+
+```text
+__NONE__
+```
+
+Beim Speichern:
+
+```text
+__NONE__ → null
+```
+
+abbilden.
+
+Keine leeren Radix-Select-Werte verwenden.
+
+---
+
+# 22. Planungseinheit dynamisch anzeigen
+
+Keine Modelländerung.
+
+Für:
+
+```text
+PERSONS
+UNITS
+HOURS_PER_DAY
+PERCENT
+```
+
+zentral benutzerfreundlich anzeigen:
+
+```text
+PERSONS       → Personen
+UNITS         → Einheiten
+HOURS_PER_DAY → Std./Tag
+PERCENT       → Prozent
+```
+
+Beispiel ResourceBooking:
+
+Nicht:
+
+```text
+Facharbeiter Trockenbau (4 Einheiten)
+```
+
+sondern:
+
+```text
+Facharbeiter Trockenbau (4 Personen)
+```
+
+---
+
+# 23. Resource-Dialog verständlicher anzeigen
+
+Nicht pauschal:
+
+```text
+Kapazität (Einheiten)
+```
+
+verwenden.
+
+Stattdessen:
+
+```text
+Kapazität
+[ 6 ] Personen
+```
+
+wobei die Einheit aus dem gewählten ResourceType kommt.
+
+Optionaler Hilfetext:
+
+```text
+Planbare Kapazität dieser Ressource in der beim Ressourcentyp definierten Planungseinheit.
+```
+
+Keine Änderung von `capacity` oder `capacityUnit`.
+
+---
+
+# 24. OpenAPI Resource-Schema vervollständigen
+
+Prüfe:
+
+```text
+lib/api-spec/openapi.yaml
+```
+
+Das Response-Schema `Resource` muss mindestens die aktuell tatsächlich verwendeten Felder enthalten:
+
+```text
+id
+anOrgId
+type
+name
+resourceTypeId
+capacity
+capacityUnit
+skills
+qualifications
+calendarId
+active
+color
+createdAt
+updatedAt
+```
+
+Legacy-Felder dürfen für Rückwärtskompatibilität bestehen bleiben.
+
+---
+
+# 25. OpenAPI ResourceBooking korrigieren
+
+Für typbasierte Buchungen dokumentieren:
+
+```text
+resourceTypeId required
+quantity required and > 0
+resourceId optional
+```
+
+Nicht mehr behaupten:
+
+```text
+quantity optional
+```
+
+wenn der Server sie verlangt.
+
+---
+
+# 26. API-Client anschließend neu generieren
+
+Nach OpenAPI-Anpassungen den vorhandenen Client-Generate-Befehl ausführen.
+
+Danach nur in den betroffenen Dateien überflüssige:
+
+```ts
+as any
+```
+
+bzw. lokale Resource-Type-Erweiterungen entfernen.
+
+Keine große Client-Refaktorierung durchführen.
+
+---
+
+# 27. Regressionstest – eintägige Leistung
+
+Test ergänzen:
+
+```text
+plannedStart = 21.08.2026
+plannedEnd   = 21.08.2026
+```
+
+Erwartung:
+
+```text
+Snapshot wird erfolgreich erzeugt.
+```
+
+---
+
+# 28. Regressionstest – letzter Tag
+
+Eine bestätigte Buchung am letzten Takt-Tag muss die Verfügbarkeit beeinflussen.
+
+Damit die inklusive Enddatum-Semantik explizit absichern.
+
+---
+
+# 29. Regressionstest – Type-Level-Booking blockiert Alternative
+
+Beispiel:
+
+```text
+ursprünglich:
+01.–05.09. nicht machbar
+
+Kandidat:
+15.–19.09.
+
+bestehende Typbuchung:
+Facharbeiter, quantity = 4, 15.–19.09.
+```
+
+Erwartung:
+
+Der Kandidat darf nur angeboten werden, wenn trotz dieser Buchung alle Requirements erfüllt sind.
+
+---
+
+# 30. Regressionstest – ACCEPT_ALTERNATIVE vollständig
+
+Testfall:
+
+```text
+Requirement A = Facharbeiter 6
+Requirement B = Mobilkran 1
+
+ursprünglicher Zeitraum:
+A nicht verfügbar
+B verfügbar
+
+Alternativzeitraum:
+A und B verfügbar
+```
+
+Danach:
+
+```text
+ACCEPT_ALTERNATIVE
+```
+
+Erwartung:
+
+Es entstehen Buchungen für:
+
+```text
+A
+UND
+B
+```
+
+im akzeptierten Alternativzeitraum.
+
+Nicht nur für die ursprünglich verfügbaren Ressourcen.
+
+---
+
+# 31. Regressionstest – Requirement-Auslastung bleibt erhalten
+
+Input:
+
+```text
+requiredCapacity = 6
+utilizationPercent = 50
+```
+
+Auto-Booking muss ergeben:
+
+```text
+quantity = 6
+utilizationPercent = 50
+```
+
+Nicht:
+
+```text
+quantity = 3
+utilizationPercent = 100
+```
+
+---
+
+# 32. Regressionstest – unvollständiger Ressourcenbedarf
+
+Folgende Requests müssen scheitern:
+
+```text
+kein resourceTypeId
+```
+
+und:
+
+```text
+requiredCapacity = null
+```
+
+und:
+
+```text
+requiredCapacity <= 0
+```
+
+Erwartung:
+
+```text
+400 oder 422
+```
+
+---
+
+# 33. Regressionstest – fremder ResourceType
+
+AN A versucht ResourceType von AN B in einem Requirement zu verwenden.
+
+Erwartung:
+
+```text
+403/422
+```
+
+und keine Informationen zu AN B werden ausgegeben.
+
+---
+
+# 34. Regressionstest – ResourceType-Wechsel
+
+Ausgang:
+
+```text
+ResourceType = Facharbeiter
+type = EMPLOYEE
+capacityUnit = PERSONS
+```
+
+PATCH auf:
+
+```text
+ResourceType = Mobilkran
+```
+
+Erwartung:
+
+```text
+type = EQUIPMENT
+capacityUnit = UNITS
+```
+
+---
+
+# 35. Regressionstest – resourceTypeId null
+
+PATCH:
+
+```json
+{
+  "resourceTypeId": null
+}
+```
+
+Erwartung:
+
+```text
+422
+```
+
+Keine Resource darf dadurch erneut ohne ResourceType gespeichert werden.
+
+---
+
+# Technische Prüfung
+
+Nach Umsetzung nur die betroffenen Bereiche prüfen.
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+Falls OpenAPI geändert wurde zusätzlich:
+
+```text
+vorhandenen API-Client-Generate-Befehl ausführen
+```
+
+und den API-Client typechecken.
+
+Nur die relevanten Tests ausführen:
+
+```text
+snapshot / working days
+availability
+alternative generator
+gu decision / auto booking
+resource requirements
+resources
+resource bookings
+```
+
+Keine vollständige Repository-Test-Suite, sofern nicht notwendig.
+
+---
+
+# Priorisierung
+
+Zuerst zwingend erledigen:
+
+```text
+P0
+1 eintägige Leistungen
+2 DTC-basierte Alternativprüfung
+3 ACCEPT_ALTERNATIVE erneut prüfen und vollständig buchen
+4 Requirement-Menge/Auslastung im Auto-Booking erhalten
+```
+
+Danach:
+
+```text
+P1
+5 ResourceRequirement verpflichtend validieren
+6 ResourceType-Org-Isolation
+7 Availability ohne gültige Requirements verhindern
+8 ResourceType-Wechsel synchronisieren
+9 resourceTypeId nicht auf null setzen lassen
+```
+
+Danach:
+
+```text
+P2
+10 ResourceBooking-UI synchronisieren
+11 leere Select-Werte
+12 dynamische Einheitenanzeige
+13 OpenAPI/API-Client
+14 gezielte Regressionstests
+```
+
+Keine zusätzlichen Funktionen außerhalb dieses Auftrags implementieren.
+
+# Abschlussbericht
+
+Berichte anschließend nur knapp:
+
+1. behobene P0-Punkte
+2. Änderungen an der Alternativprüfung
+3. Änderungen an `ACCEPT_ALTERNATIVE`
+4. Änderungen am Auto-Booking von `requiredCapacity`/`utilizationPercent`
+5. ResourceRequirement-Validierung
+6. ResourceType-/`capacityUnit`-Synchronisierung
+7. UI-Korrekturen
+8. OpenAPI-/Client-Änderungen
+9. ergänzte Tests
+10. Typecheck-/Build-Ergebnisse
+11. verbleibende bekannte Legacy-Probleme
