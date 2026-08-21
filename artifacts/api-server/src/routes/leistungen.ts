@@ -105,6 +105,11 @@ import {
 } from "../lib/schema-version";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
+  createChangeProposal,
+  getCoordination,
+  resolveChangeProposal,
+} from "../services/service-change-proposal-service";
+import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
@@ -888,6 +893,108 @@ router.get(
     res.json(requests.map((r) => enrichLeistungsanfrage(r as unknown as Record<string, unknown>)));
   },
 );
+
+// ── Bilateral coordination / change proposals ─────────────────────────────────
+router.get("/leistungsanfragen/:id/coordination", requireJwt, async (req, res): Promise<void> => {
+  const coordination = await getCoordination(req.params.id as string, req.user!.orgId!);
+  if (!coordination) {
+    res.status(404).json({ error: "Leistungsanfrage nicht gefunden" });
+    return;
+  }
+  res.json(coordination);
+});
+
+router.post("/leistungsanfragen/:id/change-proposals", requireJwt, async (req, res): Promise<void> => {
+  const parsed = z.object({
+    start: z.string().datetime({ offset: true }),
+    end: z.string().datetime({ offset: true }),
+    reasonCode: z.string().max(80).optional().nullable(),
+    comment: z.string().max(2000).optional().nullable(),
+    action: z.enum(["PROPOSE", "COUNTER"]).optional(),
+    supersedesProposalId: z.string().optional().nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const proposal = await createChangeProposal({
+      requestId: req.params.id as string,
+      orgId: req.user!.orgId!,
+      userId: req.user!.userId!,
+      start: new Date(parsed.data.start),
+      end: new Date(parsed.data.end),
+      reasonCode: parsed.data.reasonCode,
+      comment: parsed.data.comment,
+      action: parsed.data.action,
+      supersedesProposalId: parsed.data.supersedesProposalId,
+    });
+    res.status(201).json(proposal);
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : "Vorschlag konnte nicht erstellt werden" });
+  }
+});
+
+router.post("/leistungsanfragen/:id/change-proposals/:proposalId/accept", requireJwt, async (req, res): Promise<void> => {
+  try {
+    const proposal = await resolveChangeProposal({
+      proposalId: req.params.proposalId as string,
+      orgId: req.user!.orgId!,
+      userId: req.user!.userId!,
+      status: "ACCEPTED",
+    });
+    res.json(proposal);
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : "Vorschlag konnte nicht angenommen werden" });
+  }
+});
+
+router.post("/leistungsanfragen/:id/change-proposals/:proposalId/reject", requireJwt, async (req, res): Promise<void> => {
+  try {
+    const proposal = await resolveChangeProposal({
+      proposalId: req.params.proposalId as string,
+      orgId: req.user!.orgId!,
+      userId: req.user!.userId!,
+      status: "REJECTED",
+    });
+    res.json(proposal);
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : "Vorschlag konnte nicht abgelehnt werden" });
+  }
+});
+
+router.post("/leistungsanfragen/:id/change-proposals/:proposalId/counter", requireJwt, async (req, res): Promise<void> => {
+  const parsed = z.object({
+    start: z.string().datetime({ offset: true }),
+    end: z.string().datetime({ offset: true }),
+    reasonCode: z.string().max(80).optional().nullable(),
+    comment: z.string().max(2000).optional().nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const proposal = await createChangeProposal({
+      requestId: req.params.id as string,
+      orgId: req.user!.orgId!,
+      userId: req.user!.userId!,
+      start: new Date(parsed.data.start),
+      end: new Date(parsed.data.end),
+      reasonCode: parsed.data.reasonCode,
+      comment: parsed.data.comment,
+      action: "COUNTER",
+      supersedesProposalId: req.params.proposalId as string,
+    });
+    res.status(201).json(proposal);
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    res.status(status).json({ error: error instanceof Error ? error.message : "Gegenvorschlag konnte nicht erstellt werden" });
+  }
+});
 
 // ── POST /projects/:projectId/leistungsanfragen ───────────────────────────────
 // Legacy-path alias under project context — delegates to createTaktRequestWithSnapshot.

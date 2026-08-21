@@ -152,6 +152,8 @@ export const taktRequestsTable = pgTable(
     lastReminderAt: timestamp("last_reminder_at", { withTimezone: true }),
     reminderCount: integer("reminder_count").notNull().default(0),
     guDecisionRequiredBy: timestamp("gu_decision_required_by", { withTimezone: true }),
+    agreedStart: timestamp("agreed_start", { withTimezone: true }),
+    agreedEnd: timestamp("agreed_end", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

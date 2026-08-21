@@ -32,6 +32,7 @@ import {
   withCanonicalSnapshot,
   withCanonicalTaktRequest,
 } from "./legacy-takt-mappers";
+import { getCoordination } from "../services/service-change-proposal-service";
 
 // ── Detail view types (Task 5.4) ──────────────────────────────────────────────
 
@@ -129,6 +130,21 @@ export interface TaktRequestDetail {
     updatedRequestStatus: string;
     idempotent: boolean;
   } | null;
+  currentAgreement: { start: Date; end: Date } | null;
+  openProposal: {
+    id: string;
+    start: Date;
+    end: Date;
+    proposerOrgId: string;
+    status: string;
+    reasonCode: string | null;
+    comment: string | null;
+    createdAt: Date;
+  } | null;
+  coordinationState: string;
+  nextActionOwner: "AG" | "AN" | null;
+  scheduleDelta: { startDays: number; endDays: number; durationDays: number; hasChange: boolean };
+  coordinationTimeline: unknown[];
 }
 
 /**
@@ -254,6 +270,7 @@ export async function getTaktRequestDetailForGu(
     }));
   }
 
+  const coordination = await getCoordination(requestId, guOrgId);
   return {
     id: row.id,
     requestNumber: row.requestNumber,
@@ -317,6 +334,23 @@ export async function getTaktRequestDetailForGu(
           idempotent: false,
         }
       : null,
+    currentAgreement: coordination?.currentAgreement ?? null,
+    openProposal: coordination?.openProposal
+      ? {
+          id: coordination.openProposal.id,
+          start: coordination.openProposal.start,
+          end: coordination.openProposal.end,
+          proposerOrgId: coordination.openProposal.proposerOrgId,
+          status: coordination.openProposal.status,
+          reasonCode: coordination.openProposal.reasonCode,
+          comment: coordination.openProposal.comment,
+          createdAt: coordination.openProposal.createdAt,
+        }
+      : null,
+    coordinationState: coordination?.coordinationState ?? "NO_AGREEMENT",
+    nextActionOwner: coordination?.nextActionOwner ?? null,
+    scheduleDelta: coordination?.scheduleDelta ?? { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
+    coordinationTimeline: coordination?.timeline ?? [],
     timeline: {
       requestCreatedAt: row.createdAt,
       snapshotCreatedAt: row.snapshotCreatedAt ?? null,

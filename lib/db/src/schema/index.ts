@@ -1,6 +1,7 @@
 // ── Canonical Leistung schema (Task #196) ────────────────────────────────────
 export * from "./leistungen";
 export * from "./leistungsanfragen";
+export * from "./service-change-proposals";
 export * from "./leistungsanfrage-audit-events";
 export * from "./leistungsanfrage-reminders";
 export * from "./leistungsanfrage-resource-requirements";

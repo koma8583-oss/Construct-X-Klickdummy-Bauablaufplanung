@@ -173,6 +173,61 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
   );
 }
 
+function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
+  const coordination = detail as TaktRequestDetail & {
+    currentAgreement?: { start: string; end: string } | null;
+    openProposal?: { id: string; start: string; end: string; proposerOrgId: string; comment?: string | null } | null;
+    nextActionOwner?: 'AG' | 'AN' | null;
+    scheduleDelta?: { startDays: number; endDays: number; durationDays: number; hasChange: boolean };
+    coordinationTimeline?: Array<{ type: string; at: string; start?: string; end?: string }>;
+  };
+  const agreement = coordination.currentAgreement;
+  const proposal = coordination.openProposal;
+  const delta = coordination.scheduleDelta;
+  return (
+    <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Terminabstimmung</h2>
+          <p className="text-xs text-muted-foreground">Vereinbarung und offener Änderungsvorschlag bleiben getrennt.</p>
+        </div>
+        {coordination.nextActionOwner && (
+          <Badge variant="outline">Nächste Aktion: {coordination.nextActionOwner === 'AG' ? 'AG' : 'AN'}</Badge>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung</p>
+          <p className="font-medium mt-1">{agreement ? `${format(new Date(agreement.start), 'dd.MM.yyyy')} – ${format(new Date(agreement.end), 'dd.MM.yyyy')}` : 'Noch keine Vereinbarung'}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Offener Vorschlag</p>
+          <p className="font-medium mt-1">{proposal ? `${format(new Date(proposal.start), 'dd.MM.yyyy')} – ${format(new Date(proposal.end), 'dd.MM.yyyy')}` : 'Kein offener Vorschlag'}</p>
+          {proposal?.comment && <p className="text-xs text-muted-foreground mt-1">{proposal.comment}</p>}
+        </div>
+      </div>
+      {delta?.hasChange && (
+        <p className="text-sm text-amber-700 dark:text-amber-300">
+          Delta: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage, Ende {delta.endDays >= 0 ? '+' : ''}{delta.endDays} Tage
+        </p>
+      )}
+      {coordination.coordinationTimeline && coordination.coordinationTimeline.length > 0 && (
+        <div className="border-t pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Verlauf</p>
+          <div className="space-y-1.5">
+            {coordination.coordinationTimeline.slice(-5).map((event, index) => (
+              <div key={`${event.type}-${index}`} className="flex justify-between gap-3 text-xs">
+                <span>{event.type === 'PROPOSED' ? 'Änderung vorgeschlagen' : event.type === 'COUNTER_PROPOSED' ? 'Gegenvorschlag' : event.type === 'ACCEPTED' ? 'Änderung angenommen' : event.type}</span>
+                <span className="text-muted-foreground">{format(new Date(event.at), 'dd.MM.yyyy HH:mm')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Snapshot Preview ──────────────────────────────────────────────────────────
 
 function SnapshotPreview({ snapshot }: { snapshot: TaktRequestDetail['snapshot'] }) {
@@ -602,6 +657,8 @@ export default function LeistungsanfragenDetailPage() {
           )}
         </div>
       </div>
+
+      <CoordinationSummary detail={detail} />
 
       {/* Transport Error Panel */}
       {outboxFailed && <TransportErrorPanel detail={detail} />}

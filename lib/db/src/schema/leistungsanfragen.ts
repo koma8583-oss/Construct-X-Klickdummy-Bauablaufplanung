@@ -146,6 +146,10 @@ export const leistungsanfragenTable = pgTable(
       withTimezone: true,
     }),
 
+    /** The currently agreed execution window. A proposal never overwrites it. */
+    agreedStart: timestamp("agreed_start", { withTimezone: true }),
+    agreedEnd: timestamp("agreed_end", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

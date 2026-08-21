@@ -87,6 +87,35 @@ function fmtDateTime(s?: string | null): string {
   try { return format(new Date(s), 'dd.MM.yyyy HH:mm', { locale: de }); } catch { return s; }
 }
 
+function CoordinationSummary({ details }: { details: any }) {
+  const agreement = details.currentAgreement as { start: string; end: string } | null | undefined;
+  const proposal = details.openProposal as { start: string; end: string; comment?: string | null } | null | undefined;
+  const delta = details.scheduleDelta as { startDays: number; endDays: number; hasChange: boolean } | undefined;
+  return (
+    <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Terminabstimmung</h2>
+          <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung und offene Änderung getrennt.</p>
+        </div>
+        {details.nextActionOwner && <Badge variant="outline">Nächste Aktion: {details.nextActionOwner}</Badge>}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 text-sm">
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung</p>
+          <p className="font-medium mt-1">{agreement ? `${fmtDate(agreement.start)} – ${fmtDate(agreement.end)}` : 'Noch keine Vereinbarung'}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Offener Vorschlag</p>
+          <p className="font-medium mt-1">{proposal ? `${fmtDate(proposal.start)} – ${fmtDate(proposal.end)}` : 'Kein offener Vorschlag'}</p>
+          {proposal?.comment && <p className="text-xs text-muted-foreground mt-1">{proposal.comment}</p>}
+        </div>
+      </div>
+      {delta?.hasChange && <p className="text-sm text-amber-700 dark:text-amber-300">Terminänderung: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage</p>}
+    </section>
+  );
+}
+
 // ── Step indicator ────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -640,6 +669,8 @@ export default function LeistungsanfrageDetailPage() {
           <span>Keine Frist gesetzt</span>
         </div>
       )}
+
+      <CoordinationSummary details={details} />
 
       {/* Step indicator */}
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />

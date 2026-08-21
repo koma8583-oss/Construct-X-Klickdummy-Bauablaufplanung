@@ -451,7 +451,12 @@ export async function createGuDecision(
       if (request.status !== "ACCEPTED") {
         await tx
           .update(taktRequestsTable)
-          .set({ status: "ACCEPTED" })
+          .set({
+            status: "ACCEPTED",
+            ...(bookingStart && bookingEnd
+              ? { agreedStart: bookingStart, agreedEnd: bookingEnd }
+              : {}),
+          })
           .where(eq(taktRequestsTable.id, taktRequestId));
       }
     }

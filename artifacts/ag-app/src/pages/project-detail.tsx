@@ -2582,7 +2582,7 @@ export default function ProjectDetail() {
                         type="number"
                         min={0.5}
                         step={0.5}
-                        placeholder={editTakt.durationDays ?? 'z.B. 5'}
+                        placeholder={String((editTakt as { durationDays?: string | number | null }).durationDays ?? 'z.B. 5')}
                         value={editDurationDays}
                         onChange={e => {
                           setEditDurationDays(e.target.value);

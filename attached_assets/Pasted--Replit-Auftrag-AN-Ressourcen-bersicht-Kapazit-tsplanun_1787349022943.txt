@@ -1,0 +1,1366 @@
+# Replit-Auftrag – AN-Ressourcenübersicht, Kapazitätsplanung, Resource-Gantt und Anfragekonflikte
+
+Arbeite im aktuellen Repository.
+
+Ziel: Die AN-Seite so erweitern, dass der Nutzer auf einen Blick sieht:
+
+1. welche Ressourcen insgesamt vorhanden sind,
+2. welche Kapazitäten fest eingeplant sind,
+3. welche Kapazitäten durch offene Anfragen potenziell beansprucht werden,
+4. welche Kapazitäten noch frei sind,
+5. wo konkrete Anfragen Konflikte erzeugen,
+6. welcher nächste Zeitraum vollständig verfügbar wäre,
+7. wie bestätigte, tentative und angefragte Ressourcen zeitlich in einer Resource-Timeline/Gantt liegen.
+
+Wichtig:
+
+* bestehende `ResourceType`-/`Resource`-/`ResourceBooking`-/Availability-Logik wiederverwenden
+* keine parallele Ressourcenlogik implementieren
+* bestehende Dataspace-/Service-Request-Logik nicht verändern
+* keine interne Ressourcendaten an den AG übertragen
+* technische Bezeichner im Code Englisch
+* UI-Texte Deutsch
+* keine komplexe Projekt-Gantt-Planungssoftware bauen
+* Gantt ausschließlich als **Resource Timeline** für AN-interne Ressourcenplanung verwenden
+
+---
+
+# 1. AN-Ressourcenbereich in drei Hauptansichten strukturieren
+
+Die bestehende AN-Ressourcenplanung in drei Tabs gliedern:
+
+```text
+Übersicht
+Kapazitätsplanung
+Anfragen & Konflikte
+```
+
+Reihenfolge genau so.
+
+Standardmäßig öffnen:
+
+```text
+Übersicht
+```
+
+Bestehende Verwaltungsfunktionen für:
+
+```text
+Ressourcentypen
+Ressourcen
+Ressourcenbuchungen
+```
+
+nicht löschen.
+
+Stattdessen aus dem neuen Bereich erreichbar lassen, z. B. über:
+
+```text
+[Ressourcen verwalten]
+```
+
+---
+
+# 2. Tab „Übersicht“ – kompakte Gesamtübersicht aller Ressourcen
+
+Ziel: Schneller Bestands- und Auslastungsüberblick.
+
+Oberhalb der Tabelle vier KPI-Karten:
+
+```text
+Ressourcentypen
+Konkrete Ressourcen
+Aktive Buchungen
+Offene Anfragen
+```
+
+Keine fachlich falsche Gesamtkapazität über unterschiedliche Einheiten bilden.
+
+Nicht:
+
+```text
+Personen + Geräte + Stunden = Gesamtkapazität
+```
+
+Die KPI `Konkrete Ressourcen` zählt nur Resource-Datensätze.
+
+---
+
+# 3. Backend-Service für kompakte Ressourcenübersicht
+
+Erstelle bzw. erweitere:
+
+```text
+artifacts/api-server/src/services/resource-capacity-overview-service.ts
+```
+
+Funktion:
+
+```ts
+getResourceCapacityOverview({
+  orgId,
+  startDate,
+  endDate
+})
+```
+
+Rückgabe pro `ResourceType`:
+
+```ts
+type ResourceCapacityOverviewItem = {
+  resourceTypeId: string;
+  resourceTypeName: string;
+  capacityUnit: string;
+
+  resourceCount: number;
+
+  totalCapacity: number;
+  confirmedCapacity: number;
+  requestedCapacity: number;
+
+  availableCapacity: number;
+  projectedAvailableCapacity: number;
+
+  utilizationPercent: number;
+};
+```
+
+Berechnung:
+
+```text
+totalCapacity
+= Summe Resource.capacity aller aktiven Resources dieses ResourceType
+```
+
+```text
+confirmedCapacity
+= effektive Kapazität aller CONFIRMED Bookings im ausgewählten Zeitraum
+```
+
+```text
+requestedCapacity
+= effektive Kapazität aus TENTATIVE Bookings
+  plus offenen Service-Request-Requirements,
+  sofern dafür noch kein Tentative Booking existiert
+```
+
+```text
+availableCapacity
+= totalCapacity - confirmedCapacity
+```
+
+```text
+projectedAvailableCapacity
+= totalCapacity - confirmedCapacity - requestedCapacity
+```
+
+Negative Werte zulassen.
+
+```text
+utilizationPercent
+= confirmedCapacity / totalCapacity * 100
+```
+
+Bei `totalCapacity = 0`:
+
+```text
+utilizationPercent = 0
+```
+
+---
+
+# 4. Offene Anforderungen nicht doppelt zählen
+
+Wichtig:
+
+Wenn für dieselbe offene Service Request / dasselbe Requirement bereits ein:
+
+```text
+TENTATIVE ResourceBooking
+```
+
+existiert, den Requirement-Bedarf nicht zusätzlich in `requestedCapacity` addieren.
+
+Regel:
+
+```text
+Tentative Booking vorhanden
+→ Tentative Booking verwenden
+
+kein Tentative Booking vorhanden
+→ offenen Requirement-Bedarf verwenden
+```
+
+Keine Doppelzählung.
+
+---
+
+# 5. Requirement-Zeitraum berücksichtigen
+
+Bei offenen Anforderungen immer:
+
+```text
+periodStart
+periodEnd
+```
+
+verwenden.
+
+Nicht automatisch den kompletten Service-Request-Zeitraum verwenden.
+
+Beispiel:
+
+```text
+Service Request:
+01.–20.09.
+
+Mobilkran Requirement:
+10.–12.09.
+```
+
+Dann nur 10.–12.09. als angefragte Krankapazität berücksichtigen.
+
+---
+
+# 6. `utilizationPercent` berücksichtigen
+
+Für Aggregationen:
+
+```text
+effectiveRequirement =
+requiredCapacity * utilizationPercent / 100
+```
+
+Für Bookings:
+
+```text
+effectiveBooking =
+quantity bzw. resource.capacity
+* utilizationPercent / 100
+```
+
+UI zeigt weiterhin die fachliche Originalangabe:
+
+```text
+6 Personen · 50 %
+```
+
+und nicht nur:
+
+```text
+3
+```
+
+---
+
+# 7. Zeitraumfilter in der Übersicht
+
+Oben einfache Auswahl:
+
+```text
+Heute
+Diese Woche
+Nächste Woche
+30 Tage
+```
+
+Standard:
+
+```text
+Diese Woche
+```
+
+Keine komplexe Kalenderkomponente für diese Ansicht nötig.
+
+---
+
+# 8. Tabelle „Ressourcenübersicht“
+
+Spalten exakt:
+
+```text
+Ressourcentyp
+Gesamt
+Fest eingeplant
+In Abstimmung
+Noch frei
+Nach offenen Anfragen
+Auslastung
+```
+
+Beispiel:
+
+| Ressourcentyp           |      Gesamt | Fest eingeplant | In Abstimmung | Noch frei | Nach offenen Anfragen | Auslastung |
+| ----------------------- | ----------: | --------------: | ------------: | --------: | --------------------: | ---------: |
+| Facharbeiter Trockenbau | 12 Personen |               6 |             4 |         6 |                     2 |       50 % |
+| Mobilkran               | 2 Einheiten |               1 |             1 |         1 |                     0 |       50 % |
+
+Einheit aus:
+
+```text
+ResourceType.capacityUnit
+```
+
+verwenden.
+
+Mapping zentral:
+
+```text
+PERSONS       → Personen
+UNITS         → Einheiten
+HOURS_PER_DAY → Std./Tag
+PERCENT       → Prozent
+```
+
+---
+
+# 9. Ressourcentyp-Zeilen aufklappbar machen
+
+Jede Tabellenzeile aufklappbar.
+
+Beim Aufklappen konkrete Resources anzeigen.
+
+Spalten:
+
+```text
+Ressource
+Kapazität
+Status im Zeitraum
+Projekt / Verwendung
+```
+
+Status:
+
+```text
+Frei
+Teilweise gebucht
+Voll gebucht
+```
+
+Bei mehreren Buchungen:
+
+```text
+2 Buchungen
+```
+
+anzeigen.
+
+Details optional per Tooltip/Popover.
+
+---
+
+# 10. Kapazitätsbalken in der Übersicht
+
+In `Auslastung` zusätzlich einfachen horizontalen Balken anzeigen.
+
+Keine externe Chart-Bibliothek.
+
+Tailwind/CSS verwenden.
+
+Schwellen:
+
+```text
+< 70 %      normal
+70–90 %     Warnung
+> 90 %      kritisch
+```
+
+Bestehende semantische Projektfarben verwenden.
+
+---
+
+# 11. Tab „Kapazitätsplanung“ als Resource Timeline / Gantt
+
+Dieser Tab soll aus zwei Darstellungsmodi bestehen:
+
+```text
+[Kapazitätsraster] [Timeline]
+```
+
+Standard:
+
+```text
+Timeline
+```
+
+Beide Modi nutzen dieselben Backend-Daten.
+
+Keine doppelte fachliche Berechnung.
+
+---
+
+# 12. Resource-Timeline/Gantt – Grundaufbau
+
+Die Timeline ist kein klassisches Projekt-Gantt.
+
+Links:
+
+```text
+ResourceType
+  konkrete Resource
+```
+
+Rechts:
+
+```text
+Zeitachse
+```
+
+Beispiel:
+
+```text
+                         10  11  12  13  14  15  16 Sep
+
+Facharbeiter Trockenbau
+  Kolonne A              ███████████
+  Kolonne B                      ███████
+  Mitarbeiterpool        █████
+
+Mobilkran
+  Kran K-01                  █████
+  Kran K-02                             ███
+```
+
+---
+
+# 13. Timeline-Hierarchie
+
+Erste Ebene:
+
+```text
+ResourceType
+```
+
+aufklappbar.
+
+Darunter:
+
+```text
+konkrete Resources
+```
+
+Beispiel:
+
+```text
+▾ Facharbeiter Trockenbau
+    Kolonne A
+    Kolonne B
+    Mitarbeiterpool
+
+▸ Mobilkran
+```
+
+ResourceType-Zeile selbst zeigt eine aggregierte Kapazitätsdarstellung.
+
+Konkrete Resource-Zeilen zeigen Bookings als Balken.
+
+---
+
+# 14. Zeitraum und Zoom
+
+Oben Navigation:
+
+```text
+←
+Heute
+→
+```
+
+Zoom:
+
+```text
+Woche
+2 Wochen
+Monat
+```
+
+Standard:
+
+```text
+2 Wochen
+```
+
+Keine Stundenansicht.
+
+Tagesauflösung reicht für den PoC.
+
+---
+
+# 15. Gantt-Balkentypen
+
+Visuell klar unterscheiden:
+
+## Confirmed Booking
+
+```text
+durchgehender Balken
+```
+
+Label:
+
+```text
+Projekt Alpha
+```
+
+## Tentative / In Abstimmung
+
+```text
+abgeschwächter oder gestrichelter Balken
+```
+
+Label:
+
+```text
+In Abstimmung
+```
+
+## Ausgewählte Service Request
+
+```text
+eigener Overlay-Balken
+```
+
+mit Label:
+
+```text
+Anfrage
+```
+
+## Konflikt
+
+Wenn Overlay eine nicht ausreichende Kapazität erzeugt:
+
+```text
+Konfliktmarkierung / Warnsymbol
+```
+
+Keine neue Farbpalette entwickeln.
+
+Bestehende Theme-/Statusfarben verwenden.
+
+---
+
+# 16. Gantt-Komponente technisch schlank halten
+
+Prüfe zuerst, ob im Repository bereits eine Timeline-/Gantt-fähige Komponente oder Library vorhanden ist.
+
+Wenn ja:
+
+```text
+bestehende Library verwenden
+```
+
+Wenn nein:
+
+Keine schwere Enterprise-Gantt-Library integrieren.
+
+Für den PoC eine schlanke eigene Timeline mit:
+
+```text
+CSS Grid
+positionierten Balken
+horizontalem Scrollbereich
+sticky linker Spalte
+sticky Datumsheader
+```
+
+implementieren.
+
+Keine Drag-&-Drop-Terminverschiebung.
+
+Keine Abhängigkeitspfeile.
+
+Keine kritischen Pfade.
+
+Keine Baselines.
+
+---
+
+# 17. Timeline-Datenmodell
+
+Backend-Funktion ergänzen:
+
+```ts
+getResourceTimeline({
+  orgId,
+  startDate,
+  endDate,
+  resourceTypeId?
+})
+```
+
+Rückgabe:
+
+```ts
+type ResourceTimelineGroup = {
+  resourceTypeId: string;
+  resourceTypeName: string;
+  capacityUnit: string;
+
+  totalCapacity: number;
+
+  resources: ResourceTimelineResource[];
+};
+
+type ResourceTimelineResource = {
+  resourceId: string;
+  resourceName: string;
+  capacity: number;
+
+  bookings: ResourceTimelineBooking[];
+};
+
+type ResourceTimelineBooking = {
+  bookingId: string;
+  startAt: string;
+  endAt: string;
+
+  status: "CONFIRMED" | "TENTATIVE";
+
+  utilizationPercent: number;
+
+  projectName?: string | null;
+  agName?: string | null;
+
+  sourceType: string;
+};
+```
+
+Nur AN-interne Daten.
+
+Nicht über Dataspace übertragen.
+
+---
+
+# 18. ResourceType-Aggregat in Timeline
+
+Auf der ResourceType-Zeile pro Tag anzeigen:
+
+```text
+confirmed / total
+```
+
+Beispiel:
+
+```text
+8 / 12
+```
+
+Tooltip:
+
+```text
+Gesamt: 12 Personen
+Fest gebucht: 8
+In Abstimmung: 3
+Noch frei: 4
+Nach offenen Anfragen: 1
+```
+
+---
+
+# 19. Kapazitätsraster als zweite Darstellung
+
+Modus:
+
+```text
+Kapazitätsraster
+```
+
+zeigt ResourceTypes als Zeilen und Tage als Spalten.
+
+Zelle:
+
+```text
+8 / 12
+```
+
+Status:
+
+```text
+✓
+⚠
+✕
+```
+
+Tooltip mit Detailzahlen.
+
+Diese Ansicht ist kompakter als Gantt und bleibt für schnellen Vergleich erhalten.
+
+---
+
+# 20. Tab „Anfragen & Konflikte“
+
+Oben Liste aller offenen/nicht endgültig abgeschlossenen Service Requests des AN.
+
+Spalten:
+
+```text
+Leistung
+AG
+Zeitraum
+Ressourcenbedarf
+Verfügbarkeit
+Frist
+Aktion
+```
+
+Sortierung:
+
+1. Konflikt
+2. Gefährdet
+3. Verfügbar
+
+innerhalb:
+
+```text
+responseRequiredBy ASC
+```
+
+Überfällige zuerst.
+
+---
+
+# 21. Einheitliche Availability-Zustände
+
+Zentral definieren:
+
+```ts
+type CapacityStatus =
+  | "AVAILABLE"
+  | "AT_RISK"
+  | "CONFLICT";
+```
+
+UI:
+
+```text
+✓ Verfügbar
+⚠ Gefährdet
+✕ Konflikt
+```
+
+Bedeutung:
+
+```text
+AVAILABLE
+= Request gegen bestätigte Buchungen machbar
+  und offene Anfragen verursachen keinen Konflikt
+```
+
+```text
+AT_RISK
+= gegen bestätigte Buchungen machbar,
+  aber inklusive offener/tentativer Anforderungen potenziell nicht mehr
+```
+
+```text
+CONFLICT
+= bereits gegen bestätigte Buchungen nicht machbar
+```
+
+---
+
+# 22. Anfrage auswählen
+
+Beim Klick auf eine Anfrage:
+
+```text
+selectedServiceRequestId
+```
+
+setzen.
+
+Darunter Detailbereich öffnen.
+
+Die ausgewählte Anfrage gleichzeitig in:
+
+```text
+Kapazitätsraster
+und
+Resource Timeline
+```
+
+als Overlay darstellbar machen.
+
+---
+
+# 23. Overlay der ausgewählten Anfrage in der Timeline
+
+Für jeden Requirement:
+
+```text
+resourceTypeId
+requiredCapacity
+utilizationPercent
+periodStart
+periodEnd
+```
+
+verwenden.
+
+Auf ResourceType-Ebene einen transparenten/abgesetzten Balken über dem Requirement-Zeitraum anzeigen.
+
+Label:
+
+```text
+Anfrage: 6 Personen
+```
+
+Nicht automatisch konkrete Resources zuweisen.
+
+Overlay bleibt auf ResourceType-Ebene.
+
+---
+
+# 24. Konflikttage visuell markieren
+
+Wenn Requirement an einzelnen Tagen nicht erfüllbar:
+
+Diese Tage im Overlay markieren.
+
+Beispiel:
+
+```text
+10  11  12  13  14 Sep
+✓   ✓   ✕   ✕   ✓
+```
+
+Unterhalb:
+
+```text
+Konflikt an 2 Tagen:
+12.09.2026
+13.09.2026
+```
+
+Zusätzlich:
+
+```text
+Minimum verfügbar: 4 Personen
+Benötigt: 6 Personen
+```
+
+---
+
+# 25. Anfrage-Kapazität tabellarisch unter Timeline
+
+Zusätzlich kompakte Tabelle:
+
+```text
+             10.09  11.09  12.09  13.09  14.09
+Gesamt          12     12     12     12     12
+Gebucht          4      5      8      8      6
+Anfrage          6      6      6      6      6
+Ergebnis          ✓      ✓      ✕      ✕      ✓
+```
+
+Keine konkreten Resource-Namen hier.
+
+Nur Typ-/Kapazitätsebene.
+
+---
+
+# 26. Nächsten verfügbaren Zeitraum anzeigen
+
+Bei `CONFLICT` vorhandene Alternative-/Availability-Logik wiederverwenden.
+
+Anzeige:
+
+```text
+Nächster vollständig verfügbarer Zeitraum
+
+16.09.–20.09.2026
+✓ alle Ressourcenanforderungen erfüllbar
+```
+
+Button:
+
+```text
+Alternative vorschlagen
+```
+
+Dieser verwendet die bereits vorhandene Proposal-/Alternative-Logik.
+
+Keine neue Alternative-Funktion implementieren.
+
+---
+
+# 27. Anfrage direkt in Timeline öffnen
+
+Wenn Nutzer im Tab `Anfragen & Konflikte` auf:
+
+```text
+In Kapazitätsplanung anzeigen
+```
+
+klickt:
+
+* auf Tab `Kapazitätsplanung` wechseln
+* Zeitraum automatisch auf Anfragezeitraum setzen
+* `Timeline` aktivieren
+* ausgewählte Anfrage als Overlay anzeigen
+
+So wird die Verbindung zwischen Anfrage und interner Ressourcenplanung direkt sichtbar.
+
+---
+
+# 28. Kompakte Ressourcenbedarfsanzeige
+
+In Anfrage-Liste nicht nur:
+
+```text
+3 Anforderungen
+```
+
+anzeigen.
+
+Stattdessen z. B.:
+
+```text
+6 Personen Facharbeiter
+1 Mobilkran
++2 weitere
+```
+
+Bei Klick/Tooltip alle Requirements anzeigen.
+
+---
+
+# 29. Interne Booking-Information im Timeline-Tooltip
+
+Bei Klick/Hover auf einen Booking-Balken intern anzeigen:
+
+```text
+Projekt
+AG
+Zeitraum
+Status
+Auslastung
+Quelle
+```
+
+Beispiel:
+
+```text
+Projekt Alpha
+AG Musterbau
+10.–14.09.
+Bestätigt
+100 %
+Service Request SR-4711
+```
+
+Keine Kosten anzeigen, sofern bisher nicht vorgesehen.
+
+---
+
+# 30. Filter
+
+In `Kapazitätsplanung`:
+
+```text
+Ressourcentyp
+Projekt
+AG
+Status
+```
+
+In `Anfragen & Konflikte`:
+
+```text
+AG
+Ressourcentyp
+Status
+```
+
+Einfache Selects.
+
+Kein Filter Builder.
+
+---
+
+# 31. UI-Layout für „Übersicht“
+
+Desktop:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ Ressourcenplanung                                           │
+│ [Übersicht] [Kapazitätsplanung] [Anfragen & Konflikte]      │
+├──────────────────────────────────────────────────────────────┤
+│ [Ressourcentypen] [Ressourcen] [Buchungen] [Offene Anfragen]│
+├──────────────────────────────────────────────────────────────┤
+│ Zeitraum: Diese Woche                                       │
+├──────────────────────────────────────────────────────────────┤
+│ Ressourcentyp | Gesamt | Gebucht | Abstimmung | Frei | ...  │
+│ ...                                                          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 32. UI-Layout für „Kapazitätsplanung“
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ Zeitraum  [←] [Heute] [→]   [Woche] [2 Wochen] [Monat]      │
+│ Filter...                    [Timeline] [Kapazitätsraster]    │
+├──────────────────────────────────────────────────────────────┤
+│ Ressource              │ 10 │ 11 │ 12 │ 13 │ 14 │ ...       │
+├────────────────────────┼────┼────┼────┼────┼────┼───────────┤
+│ ▾ Facharbeiter         │              aggregate              │
+│   Kolonne A            │ █████████                            │
+│   Kolonne B            │          ███████                    │
+│   Mitarbeiterpool      │ ███                                 │
+├────────────────────────┼─────────────────────────────────────┤
+│ ▸ Mobilkran            │                                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Linke Resource-Spalte sticky.
+
+Datumsheader sticky.
+
+Horizontal scrollbar nur Timeline-Bereich.
+
+---
+
+# 33. UI-Layout für „Anfragen & Konflikte“
+
+Oben Anfrage-Liste.
+
+Darunter bei Auswahl:
+
+```text
+┌────────────────────────────────────────────────────┐
+│ Trockenbau EG · AG Musterbau                      │
+│ 10.–14.09. · 6 Personen                           │
+│ ✕ Konflikt                                         │
+├────────────────────────────────────────────────────┤
+│ Resource Timeline Overlay                         │
+├────────────────────────────────────────────────────┤
+│ Konflikt an 12.–13.09.                            │
+│ Minimum verfügbar 4 / benötigt 6                  │
+│                                                    │
+│ Nächster Zeitraum: 16.–20.09. ✓                   │
+│                                                    │
+│ [In Kapazitätsplanung anzeigen]                   │
+│ [Alternative vorschlagen]                         │
+└────────────────────────────────────────────────────┘
+```
+
+---
+
+# 34. Responsive Verhalten
+
+Bei kleiner Breite:
+
+* Tabs horizontal scrollbar
+* KPI-Karten 2×2
+* Tabellen horizontal scrollbar
+* Timeline horizontal scrollbar
+* linke Ressourcen-Spalte mindestens 180–220 px
+* Detailbereich unter Anfrage-Liste
+
+Keine separate Mobile-App-Ansicht.
+
+---
+
+# 35. Backend-Endpunkte
+
+Maximal folgende neue Aggregationsendpunkte:
+
+```text
+GET /api/nu/resource-capacity/overview
+GET /api/nu/resource-capacity/timeline
+```
+
+Parameter:
+
+```text
+startDate
+endDate
+resourceTypeId?
+projectId?
+agOrgId?
+status?
+```
+
+Für Anfragekonflikte vorhandene Service-Request-/Availability-Endpunkte wiederverwenden.
+
+Keine API pro Tabellenzelle.
+
+---
+
+# 36. Performance
+
+Keine N+1-Abfragen pro Tag oder Resource.
+
+Pro Zeitraum möglichst einmal laden:
+
+```text
+ResourceTypes
+Resources
+ResourceBookings
+Open Service Requests
+ResourceRequirements
+```
+
+danach im Service aggregieren.
+
+Timeline darf bei 30 Tagen nicht pro Tag eine DB-Abfrage ausführen.
+
+---
+
+# 37. Keine Einheiten vermischen
+
+Alle Kapazitätsberechnungen pro `ResourceType`.
+
+Nicht:
+
+```text
+8 Personen + 1 Kran = 9
+```
+
+KPI-Ebene nur:
+
+```text
+Anzahl Ressourcentypen
+Anzahl konkrete Ressourcen
+Anzahl aktive Buchungen
+Anzahl offene Anfragen
+```
+
+---
+
+# 38. Datenhoheit
+
+Alle folgenden Informationen bleiben AN-intern:
+
+```text
+konkrete Resource-Namen
+konkrete Mitarbeiter
+konkrete Geräte
+andere AG-Projekte
+interne Projekte
+ResourceBookings
+lokale Gesamtkapazitäten
+Timeline/Gantt-Belegungen
+```
+
+Keine Änderungen an externen Dataspace-DTOs.
+
+AG erhält weiterhin nur die vorgesehenen fachlichen Antworten/Alternativen.
+
+---
+
+# 39. Tests – Overview
+
+Test:
+
+```text
+totalCapacity = 12
+confirmedCapacity = 6
+requestedCapacity = 4
+```
+
+Erwartung:
+
+```text
+availableCapacity = 6
+projectedAvailableCapacity = 2
+utilizationPercent = 50
+```
+
+---
+
+# 40. Tests – keine Doppelzählung
+
+Offener Requirement:
+
+```text
+4 Personen
+```
+
+und bereits Tentative Booking:
+
+```text
+4 Personen
+```
+
+für denselben Request.
+
+Erwartung:
+
+```text
+requestedCapacity = 4
+```
+
+nicht 8.
+
+---
+
+# 41. Tests – Requirement-Zeitraum
+
+Kran Requirement:
+
+```text
+10.–12.09.
+```
+
+Nur diese Tage bekommen `requestedCapacity`.
+
+---
+
+# 42. Tests – Capacity Status
+
+Beispiel A:
+
+```text
+total = 12
+confirmed = 4
+currentRequest = 6
+openOthers = 0
+```
+
+→ `AVAILABLE`
+
+Beispiel B:
+
+```text
+total = 12
+confirmed = 4
+currentRequest = 6
+openOthers = 4
+```
+
+→ `AT_RISK`
+
+Beispiel C:
+
+```text
+total = 12
+confirmed = 8
+currentRequest = 6
+```
+
+→ `CONFLICT`
+
+---
+
+# 43. Tests – Timeline
+
+Resource mit:
+
+```text
+Confirmed Booking 10.–12.09.
+Tentative Booking 14.–16.09.
+```
+
+Timeline liefert beide Balken mit korrektem Status und Zeitraum.
+
+---
+
+# 44. Tests – Anfrage-Overlay
+
+Requirement:
+
+```text
+6 Personen
+10.–14.09.
+```
+
+Overlay wird nur auf passendem ResourceType und korrektem Zeitraum erzeugt.
+
+Konflikttage müssen korrekt erkannt werden.
+
+---
+
+# 45. Tests – Unit Separation
+
+`PERSONS` und `UNITS` werden niemals gemeinsam aggregiert.
+
+---
+
+# 46. Keine unnötigen Features
+
+Nicht implementieren:
+
+```text
+keine Drag-&-Drop-Buchungen
+keine Terminänderung direkt per Gantt-Balken
+keine Abhängigkeitspfeile
+keinen kritischen Pfad
+keine Baselines
+keine automatische Ressourcenoptimierung
+keine automatische konkrete Ressourcenallokation
+keine externe Gantt-Freigabe an AG
+keine neue EDC-Funktion
+```
+
+---
+
+# 47. Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+und nur die neuen Ressourcen-/Kapazitäts-/Timeline-Tests.
+
+Keine vollständige Test-Suite.
+
+---
+
+# Abschlussprüfung
+
+Am Ende muss der AN ohne Wechsel zwischen mehreren technischen Seiten beantworten können:
+
+```text
+Welche Ressourcen habe ich?
+
+Welche sind fest eingeplant?
+
+Welche sind in Abstimmung?
+
+Welche Kapazität ist noch frei?
+
+Wie sieht die Belegung zeitlich aus?
+
+Welche Projekte belegen intern welche konkrete Resource?
+
+Welche offenen Anfragen gefährden meine Kapazität?
+
+Wo genau liegt der Konflikt?
+
+Wie sieht die Anfrage direkt in meiner Resource Timeline aus?
+
+Wann wäre die Anfrage vollständig machbar?
+```
+
+Die Resource-Timeline ergänzt die Kapazitätsübersicht, ersetzt sie aber nicht.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. neue/angepasste Backend-Services
+2. neue API-Endpunkte
+3. Aufbau der drei Tabs
+4. kompakte Ressourcenübersicht
+5. Kapazitätsberechnung
+6. Resource Timeline/Gantt
+7. Anfrage-Overlay
+8. Konfliktstatus-Logik
+9. Alternative-Zeitraum-Integration
+10. Drill-down auf konkrete Resources
+11. Tests
+12. Typecheck-/Build-Ergebnis
+
+Keine weiteren Funktionen außerhalb dieses Auftrags implementieren.
