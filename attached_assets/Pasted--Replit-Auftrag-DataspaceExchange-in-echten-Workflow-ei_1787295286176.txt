@@ -1,0 +1,589 @@
+# Replit-Auftrag – DataspaceExchange in echten Workflow einbauen
+
+Arbeite im aktuellen Repository.
+
+Ziel: Die bereits vorhandene `DataspaceExchange`-Schicht jetzt tatsächlich in den produktiven TaktRequest-/TaktResponse-Workflow einbauen.
+
+Wichtig:
+
+* keine neue Architektur
+* keine neue Transportabstraktion
+* keine echte EDC-Integration
+* bestehende `DataspaceExchange`, `RestDataspaceExchange`, `TractusXEdcExchange`, Mapper und Inbound-Services verwenden
+* `LocalHubTransport` nur noch innerhalb der REST-Transportimplementierung verwenden
+* Fachservices dürfen nicht mehr direkt `LocalHubTransport` instanziieren
+
+---
+
+# 1. Direkte `LocalHubTransport`-Nutzung finden
+
+Suche im API-Server nach:
+
+```ts
+new LocalHubTransport()
+```
+
+Prüfe insbesondere:
+
+```text
+routes/takt-requests.ts
+routes/leistungen.ts
+gu-decision-service.ts
+revision-service.ts
+data-publication-service.ts
+deadline-evaluation-service.ts
+```
+
+Nicht pauschal alles ersetzen.
+
+Nur organisationsübergreifende TaktRequest-/TaktResponse-Kommunikation auf `DataspaceExchange` umstellen.
+
+---
+
+# 2. TaktRequest-Versand auf `DataspaceExchange` umstellen
+
+Dort, wo ein TaktRequest an den AN/NU veröffentlicht bzw. übertragen wird:
+
+Nicht mehr direkt:
+
+```ts
+const transport = new LocalHubTransport();
+await transport.send(...);
+```
+
+verwenden.
+
+Stattdessen:
+
+```ts
+const dataspaceExchange = createDataspaceExchange();
+```
+
+Dann internes Modell mit bestehendem Mapper umwandeln:
+
+```ts
+const externalRequest = toExternalTaktRequest(...);
+```
+
+und senden:
+
+```ts
+await dataspaceExchange.publishTaktRequest(externalRequest);
+```
+
+Keine DB-Entity direkt übergeben.
+
+---
+
+# 3. TaktRequest-Metadaten korrekt setzen
+
+Beim Erzeugen von `ExternalTaktRequest`:
+
+```text
+messageId
+```
+
+immer neu als UUID erzeugen.
+
+```text
+correlationId
+```
+
+für den gesamten Request-/Response-Workflow stabil halten.
+
+Bevorzugt:
+
+```text
+correlationId = bestehende TaktRequest-ID
+```
+
+oder eine bereits vorhandene Workflow-/Correlation-ID verwenden.
+
+Nicht bei jedem Schritt neue `correlationId` erzeugen.
+
+---
+
+# 4. Empfänger korrekt setzen
+
+Beim TaktRequest:
+
+```text
+senderOrgId = GU/AG
+receiverOrgId = AN/NU
+```
+
+verwenden.
+
+Policy:
+
+```ts
+{
+  allowedConsumerOrgId: receiverOrgId,
+  usagePurpose: "takt-coordination"
+}
+```
+
+setzen.
+
+Keine konkreten Resource- oder Booking-Daten ergänzen.
+
+---
+
+# 5. TaktResponse-Versand auf `DataspaceExchange` umstellen
+
+Dort, wo der AN/NU seine Antwort veröffentlicht:
+
+Nicht mehr direkt `LocalHubTransport` verwenden.
+
+Stattdessen:
+
+```ts
+const externalResponse = toExternalTaktResponse(...);
+await dataspaceExchange.publishTaktResponse(externalResponse);
+```
+
+Die Response darf nur externe Entscheidungsdaten enthalten:
+
+```text
+ACCEPTED
+REJECTED
+ALTERNATIVES_PROPOSED
+```
+
+und ggf. externe Alternativvorschläge.
+
+Keine internen Ressourcen oder Bookings senden.
+
+---
+
+# 6. TaktResponse-Metadaten korrekt setzen
+
+Für die Antwort:
+
+```text
+messageId = neue UUID
+correlationId = dieselbe correlationId wie beim Request
+senderOrgId = AN/NU
+receiverOrgId = GU/AG
+```
+
+`requestId` und `requestVersion` aus dem ursprünglichen Request übernehmen.
+
+---
+
+# 7. Eingehende TaktRequests durch Inbound-Service führen
+
+Prüfe die bestehende REST-/Hub-Empfangsstelle.
+
+Wenn ein externer TaktRequest empfangen wird, nicht direkt Fachlogik aufrufen.
+
+Stattdessen:
+
+```ts
+await handleIncomingTaktRequest(payload);
+```
+
+verwenden.
+
+Der bestehende Inbound-Service soll zuständig bleiben für:
+
+```text
+messageId prüfen
+Audit-Eintrag anlegen
+Status RECEIVED
+DTO validieren
+bestehende Fachlogik aufrufen
+Status PROCESSED oder FAILED
+```
+
+Keine zweite Idempotenzprüfung daneben implementieren.
+
+---
+
+# 8. Eingehende TaktResponses ebenfalls zentral verarbeiten
+
+Analog bei eingehender Antwort:
+
+```ts
+await handleIncomingTaktResponse(payload);
+```
+
+verwenden.
+
+Keine direkte Verarbeitung von externen Response-DTOs in Routes oder Hub-Handlern.
+
+---
+
+# 9. `LocalHubTransport` nur noch im REST-Adapter verwenden
+
+Nach der Änderung soll die fachliche Aufrufkette sein:
+
+```text
+Fachservice
+→ DataspaceExchange
+→ RestDataspaceExchange
+→ LocalHubTransport
+```
+
+Suche anschließend erneut nach:
+
+```ts
+new LocalHubTransport()
+```
+
+Erlaubt ist die direkte Nutzung nur noch in:
+
+```text
+rest-dataspace-exchange.ts
+```
+
+oder technisch zwingenden Legacy-/Teststellen.
+
+Falls andere produktive TaktRequest-/TaktResponse-Stellen übrig bleiben, ebenfalls über `DataspaceExchange` führen.
+
+---
+
+# 10. Factory überall verwenden
+
+Keine direkte Instanziierung:
+
+```ts
+new RestDataspaceExchange()
+```
+
+oder:
+
+```ts
+new TractusXEdcExchange()
+```
+
+in Fachservices.
+
+Immer:
+
+```ts
+createDataspaceExchange()
+```
+
+verwenden.
+
+Damit muss später nur:
+
+```text
+DATASPACE_TRANSPORT
+```
+
+geändert werden.
+
+---
+
+# 11. `DATASPACE_TRANSPORT` tatsächlich wirksam machen
+
+Prüfe:
+
+```text
+DATASPACE_TRANSPORT=rest
+```
+
+Erwartung:
+
+```text
+RestDataspaceExchange
+```
+
+wird für TaktRequest und TaktResponse verwendet.
+
+Bei:
+
+```text
+DATASPACE_TRANSPORT=tractusx-edc
+```
+
+muss derselbe produktive Workflow tatsächlich den Stub:
+
+```text
+TractusXEdcExchange
+```
+
+erreichen.
+
+Der Stub darf weiterhin mit:
+
+```ts
+throw new Error("Tractus-X EDC adapter not configured");
+```
+
+abbrechen.
+
+Wichtig ist nur, dass die Umschaltung jetzt real im Workflow greift.
+
+---
+
+# 12. Exchange-Audit bei Versand verwenden
+
+Beim Publish von:
+
+```text
+TAKT_REQUEST
+TAKT_RESPONSE
+```
+
+muss ein Eintrag in:
+
+```text
+dataspace_exchanges
+```
+
+entstehen.
+
+Mindestens:
+
+```text
+direction = OUTBOUND
+messageType
+messageId
+correlationId
+senderOrgId
+receiverOrgId
+businessObjectId
+businessObjectVersion
+status
+```
+
+Statusablauf für REST:
+
+```text
+CREATED
+→ PUBLISHED
+```
+
+bei Fehler:
+
+```text
+FAILED
+```
+
+Keine Payload-Kopie speichern.
+
+---
+
+# 13. `externalReference` bei REST einfach halten
+
+Für den aktuellen REST-Pfad darf:
+
+```text
+externalReference
+```
+
+z. B. die vorhandene Hub-/Message-ID enthalten.
+
+Keine EDC-artigen Dummy-IDs erzeugen.
+
+Später kann der EDC-Adapter dort z. B. speichern:
+
+```text
+assetId
+contractAgreementId
+transferProcessId
+```
+
+Jetzt nicht implementieren.
+
+---
+
+# 14. Participant-Resolver minimal ergänzen
+
+Erstelle, falls noch nicht vorhanden:
+
+```text
+services/dataspace/dataspace-participant-resolver.ts
+```
+
+Mit:
+
+```ts
+export function resolveDataspaceParticipant(
+  localOrgId: string
+): DataspaceParticipant {
+  return {
+    localOrgId,
+  };
+}
+```
+
+Noch keine DB-Tabelle und keine BPN-/DID-Logik.
+
+Beim Publish darf vorerst weiterhin `localOrgId` verwendet werden.
+
+Der Resolver dient nur als späterer Erweiterungspunkt.
+
+---
+
+# 15. Keine EDC-Logik ergänzen
+
+Nicht implementieren:
+
+```text
+Asset Registration
+PolicyDefinition
+ContractDefinition
+Catalog
+Contract Negotiation
+EDR
+Transfer Process
+Data Plane
+DCP
+BPN Discovery
+Digital Twin Registry
+AAS
+```
+
+`TractusXEdcExchange` bleibt Stub.
+
+---
+
+# 16. Dokumentation aktualisieren
+
+Aktualisiere:
+
+```text
+docs/dataspace-readiness.md
+```
+
+Auf die tatsächliche Architektur:
+
+```text
+Domain/Fachservice
+        ↓
+DataspaceExchange
+        ↓
+createDataspaceExchange()
+        ↓
+┌─────────────────────────────┐
+│ RestDataspaceExchange       │
+│ → LocalHubTransport         │
+└─────────────────────────────┘
+
+oder später
+
+┌─────────────────────────────┐
+│ TractusXEdcExchange         │
+│ → Tractus-X EDC             │
+└─────────────────────────────┘
+```
+
+Entferne Aussagen, dass noch ein zukünftiger separater `EdcTransport` notwendig sei.
+
+---
+
+# 17. Nur gezielte Tests ergänzen
+
+Keine große Testsuite.
+
+## Test 1
+
+```text
+DATASPACE_TRANSPORT=rest
+```
+
+TaktRequest-Publish verwendet `RestDataspaceExchange`.
+
+## Test 2
+
+TaktResponse-Publish verwendet ebenfalls `RestDataspaceExchange`.
+
+## Test 3
+
+Outbound TaktRequest erzeugt `dataspace_exchanges`-Eintrag mit:
+
+```text
+OUTBOUND
+TAKT_REQUEST
+PUBLISHED
+```
+
+## Test 4
+
+Outbound TaktResponse erzeugt:
+
+```text
+OUTBOUND
+TAKT_RESPONSE
+PUBLISHED
+```
+
+## Test 5
+
+Eingehender TaktRequest läuft über:
+
+```text
+handleIncomingTaktRequest()
+```
+
+und wird bei gleicher `messageId` nicht zweimal fachlich verarbeitet.
+
+## Test 6
+
+```text
+DATASPACE_TRANSPORT=tractusx-edc
+```
+
+führt im echten Publish-Workflow zum erwarteten Stub-Fehler:
+
+```text
+Tractus-X EDC adapter not configured
+```
+
+Damit ist bewiesen, dass die Factory tatsächlich im produktiven Workflow verwendet wird.
+
+---
+
+# 18. Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+und die betroffenen Dataspace-/TaktRequest-/TaktResponse-Tests.
+
+Keine Frontend-Änderung und kein Frontend-Build nötig.
+
+---
+
+# Abschlussprüfung
+
+Am Ende muss gelten:
+
+```text
+Kein produktiver TaktRequest-Versand
+→ direkt über LocalHubTransport
+
+Kein produktiver TaktResponse-Versand
+→ direkt über LocalHubTransport
+
+Beide laufen über:
+createDataspaceExchange()
+```
+
+Der REST-Pfad muss funktional gleich bleiben.
+
+`DATASPACE_TRANSPORT=tractusx-edc` muss den vorbereiteten EDC-Adapter im echten Workflow erreichen.
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. welche direkten `LocalHubTransport`-Aufrufe ersetzt wurden
+2. wo TaktRequest jetzt über `DataspaceExchange` läuft
+3. wo TaktResponse jetzt über `DataspaceExchange` läuft
+4. wo Inbound Request/Response zentral verarbeitet werden
+5. Audit-Verhalten
+6. geänderte Dateien
+7. Tests
+8. Typecheck-Ergebnis
+
+Keine weiteren Optimierungen durchführen.

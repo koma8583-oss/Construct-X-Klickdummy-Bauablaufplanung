@@ -31,7 +31,7 @@ export class RestDataspaceExchange implements DataspaceExchange {
       status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
       externalReference: result.messageId,
     }).onConflictDoNothing();
-    return { exchangeId: result.messageId };
+    return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
   }
 
   async publishTaktResponse(payload: ExternalTaktResponse): Promise<ExchangeReference> {
@@ -58,6 +58,6 @@ export class RestDataspaceExchange implements DataspaceExchange {
       status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
       externalReference: result.messageId,
     }).onConflictDoNothing();
-    return { exchangeId: result.messageId };
+    return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
   }
 }

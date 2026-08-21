@@ -64,7 +64,12 @@ import {
   ResponseConflictError,
   ResponseStatusError,
 } from "../services/nu-response-service";
-import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
+import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
+import {
+  toExternalTaktRequestFromEnvelope,
+  toExternalTaktResponseFromEnvelope,
+} from "../services/dataspace/external-mappers";
 import { IdempotencyConflictError } from "../lib/transport/transport-errors";
 import {
   MalformedSchemaVersionError,
@@ -91,7 +96,7 @@ import type { TaktCoordinationDecisionType } from "@workspace/db";
 import { validateResourceTypeForOrg } from "../services/resource-domain-service";
 
 // Module-level transport singleton — stateless, safe to share across requests.
-const transport = new LocalHubTransport();
+const dataspaceExchange = createDataspaceExchange();
 
 /**
  * Wraps transport.send() and maps schema / idempotency errors to proper HTTP
@@ -104,11 +109,20 @@ const transport = new LocalHubTransport();
  *   IdempotencyConflictError      → 409  (same messageId, different fields)
  */
 async function safeSend(
-  envelope: Parameters<(typeof transport)["send"]>[0],
+  envelope: MessageEnvelope,
   res: import("express").Response,
-): Promise<Awaited<ReturnType<(typeof transport)["send"]>> | null> {
+): Promise<TransportResult | null> {
   try {
-    return await transport.send(envelope);
+    const reference = envelope.messageType === DataspaceMessageType.TAKT_RESPONSE_SUBMITTED
+      ? await dataspaceExchange.publishTaktResponse(toExternalTaktResponseFromEnvelope(envelope))
+      : await dataspaceExchange.publishTaktRequest(toExternalTaktRequestFromEnvelope(envelope));
+    return {
+      messageId: reference.exchangeId,
+      status: reference.status ?? "DELIVERED",
+      sentAt: reference.sentAt ?? new Date(),
+      deliveredAt: reference.deliveredAt ?? new Date(),
+      attemptCount: reference.attemptCount ?? 1,
+    };
   } catch (err) {
     if (err instanceof IdempotencyConflictError) {
       res.status(409).json({ error: err.message, conflictingFields: err.conflictingFields });

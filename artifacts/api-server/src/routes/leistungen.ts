@@ -89,7 +89,12 @@ import {
 } from "../services/gu-decision-service";
 import { createRevision, RevisionError } from "../services/revision-service";
 import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-service";
-import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
+import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
+import {
+  toExternalTaktRequestFromEnvelope,
+  toExternalTaktResponseFromEnvelope,
+} from "../services/dataspace/external-mappers";
 import {
   IdempotencyConflictError,
 } from "../lib/transport/transport-errors";
@@ -116,17 +121,26 @@ import { validateResourceTypeForOrg } from "../services/resource-domain-service"
 // Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const transport = new LocalHubTransport();
+const dataspaceExchange = createDataspaceExchange();
 
 /**
  * Wrap transport.send() — identical to safeSend in takt-requests.ts.
  */
 async function safeSend(
-  envelope: Parameters<(typeof transport)["send"]>[0],
+  envelope: MessageEnvelope,
   res: Response,
-): Promise<Awaited<ReturnType<(typeof transport)["send"]>> | null> {
+): Promise<TransportResult | null> {
   try {
-    return await transport.send(envelope);
+    const reference = envelope.messageType === DataspaceMessageType.TAKT_RESPONSE_SUBMITTED
+      ? await dataspaceExchange.publishTaktResponse(toExternalTaktResponseFromEnvelope(envelope))
+      : await dataspaceExchange.publishTaktRequest(toExternalTaktRequestFromEnvelope(envelope));
+    return {
+      messageId: reference.exchangeId,
+      status: reference.status ?? "DELIVERED",
+      sentAt: reference.sentAt ?? new Date(),
+      deliveredAt: reference.deliveredAt ?? new Date(),
+      attemptCount: reference.attemptCount ?? 1,
+    };
   } catch (err) {
     if (err instanceof IdempotencyConflictError) {
       res.status(409).json({ error: (err as any).message, conflictingFields: (err as any).conflictingFields });
