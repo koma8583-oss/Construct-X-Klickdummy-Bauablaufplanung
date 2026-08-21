@@ -467,18 +467,6 @@ export const taktRequestRemindersTable = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [
-    unique("uq_reminder_dedup").on(t.taktRequestId, t.reminderType, t.deduplicationKey),
-    index("reminders_takt_request_id_idx").on(t.taktRequestId),
-    index("reminders_recipient_org_id_idx").on(t.recipientOrgId),
-    index("reminders_reminder_type_idx").on(t.reminderType),
-    index("reminders_status_idx").on(t.status),
-    index("reminders_scheduled_for_idx").on(t.scheduledFor),
-    index("reminders_created_at_idx").on(t.createdAt),
-    index("reminders_status_scheduled_for_idx").on(t.status, t.scheduledFor),
-    index("reminders_recipient_status_idx").on(t.recipientOrgId, t.status),
-    index("reminders_request_status_idx").on(t.taktRequestId, t.status),
-  ],
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -538,7 +526,7 @@ type _TaktInferSelect = typeof takteTable.$inferSelect;
 /** @deprecated Use Leistung */
 export type Takt = _TaktInferSelect & {
   /** @deprecated Canonical alias for taktBezeichnung */
-  leistungsBezeichnung: string;
+  leistungsBezeichnung?: string;
 };
 /** @deprecated Use InsertLeistung */
 export type InsertTakt = typeof takteTable.$inferInsert;
@@ -555,9 +543,9 @@ type _TaktRequestInferSelect = typeof taktRequestsTable.$inferSelect;
  */
 export type TaktRequest = _TaktRequestInferSelect & {
   /** @deprecated Canonical alias for taktId */
-  leistungId: string;
+  leistungId?: string;
   /** @deprecated Canonical alias for taktVersion */
-  leistungVersion: number;
+  leistungVersion?: number;
 };
 /** @deprecated Use InsertLeistungsanfrage */
 export type InsertTaktRequest = typeof taktRequestsTable.$inferInsert;
@@ -569,7 +557,7 @@ type _TaktRequestSnapshotInferSelect = typeof taktRequestSnapshotsTable.$inferSe
  */
 export type TaktRequestSnapshot = _TaktRequestSnapshotInferSelect & {
   /** @deprecated Canonical alias for taktRequestId */
-  leistungsanfrageId: string;
+  leistungsanfrageId?: string;
 };
 /** @deprecated Use InsertLeistungsanfrageSnapshot */
 export type InsertTaktRequestSnapshot = typeof taktRequestSnapshotsTable.$inferInsert;
@@ -581,7 +569,7 @@ export type TaktResponseReasonCode = typeof taktResponsesTable.$inferSelect["rea
 /** @deprecated Use Leistungsantwort */
 export type TaktResponse = typeof taktResponsesTable.$inferSelect & {
   /** @deprecated Canonical alias for taktRequestId */
-  leistungsanfrageId: string;
+  leistungsanfrageId?: string;
 };
 /** @deprecated Use InsertLeistungsantwort */
 export type InsertTaktResponse = typeof taktResponsesTable.$inferInsert;
@@ -600,7 +588,7 @@ type _TaktResponseDecisionInferSelect = typeof taktResponseDecisionsTable.$infer
  */
 export type TaktResponseDecision = _TaktResponseDecisionInferSelect & {
   /** @deprecated Canonical alias for taktRequestId */
-  leistungsanfrageId: string;
+  leistungsanfrageId?: string;
 };
 /** @deprecated Use InsertLeistungsantwortEntscheidung */
 export type InsertTaktResponseDecision = typeof taktResponseDecisionsTable.$inferInsert;
@@ -615,7 +603,7 @@ type _TaktVersionInferSelect = typeof taktVersionsTable.$inferSelect;
  */
 export type TaktVersion = _TaktVersionInferSelect & {
   /** @deprecated Canonical alias for taktId */
-  leistungId: string;
+  leistungId?: string;
 };
 /** @deprecated Use InsertLeistungsVersion */
 export type InsertTaktVersion = typeof taktVersionsTable.$inferInsert;
@@ -638,7 +626,7 @@ type _TaktRequestReminderInferSelect = typeof taktRequestRemindersTable.$inferSe
  */
 export type TaktRequestReminder = _TaktRequestReminderInferSelect & {
   /** @deprecated Canonical alias for taktRequestId */
-  leistungsanfrageId: string;
+  leistungsanfrageId?: string;
 };
 /** @deprecated Use InsertLeistungsanfrageReminder */
 export type InsertTaktRequestReminder = typeof taktRequestRemindersTable.$inferInsert;
@@ -650,7 +638,7 @@ type _TaktRequestResourceRequirementInferSelect = typeof taktRequestResourceRequ
  */
 export type TaktRequestResourceRequirement = _TaktRequestResourceRequirementInferSelect & {
   /** @deprecated Canonical alias for taktRequestId */
-  leistungsanfrageId: string;
+  leistungsanfrageId?: string;
 };
 /** @deprecated Use InsertLeistungsanfrageResourceRequirement */
 export type InsertTaktRequestResourceRequirement = typeof taktRequestResourceRequirementsTable.$inferInsert;
