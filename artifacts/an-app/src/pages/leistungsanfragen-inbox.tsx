@@ -256,7 +256,7 @@ export default function LeistungsanfragenInboxPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
+    <div className="w-full min-w-0 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>

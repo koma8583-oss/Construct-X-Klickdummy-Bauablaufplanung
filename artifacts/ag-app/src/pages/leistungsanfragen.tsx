@@ -305,7 +305,7 @@ export default function LeistungsanfragenPage() {
 
   // ── Main ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 max-w-5xl mx-auto animate-in fade-in duration-300">
+    <div className="w-full min-w-0 p-4 sm:p-6 space-y-5 max-w-5xl mx-auto animate-in fade-in duration-300">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

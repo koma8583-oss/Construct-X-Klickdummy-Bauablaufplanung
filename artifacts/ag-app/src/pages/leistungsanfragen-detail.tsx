@@ -199,9 +199,6 @@ function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
           <h2 className="font-semibold">Terminabstimmung</h2>
           <p className="text-xs text-muted-foreground">Vereinbarung und offener Änderungsvorschlag bleiben getrennt.</p>
         </div>
-        {coordination.nextActionOwner && (
-          <Badge variant="outline">Nächste Aktion: {coordination.nextActionOwner === 'AG' ? 'AG' : 'AN'}</Badge>
-        )}
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="rounded-lg border bg-background p-3">
@@ -618,7 +615,7 @@ export default function LeistungsanfragenDetailPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="w-full min-w-0 p-4 sm:p-6 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Back link */}
       <Link href="/leistungsanfragen" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />

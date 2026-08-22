@@ -1,7 +1,12 @@
 import { ArrowDown, CheckCircle2, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+
+async function apiFetch<T>(url: string): Promise<T> {
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return response.json() as Promise<T>;
+}
 
 type CurrentAction =
   | "RESPOND_TO_REQUEST"

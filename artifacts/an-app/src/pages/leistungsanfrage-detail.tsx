@@ -105,7 +105,6 @@ function CoordinationSummary({ details }: { details: any }) {
           <h2 className="font-semibold">Terminabstimmung</h2>
           <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung und offene Änderung getrennt.</p>
         </div>
-        {details.nextActionOwner && <Badge variant="outline">Nächste Aktion: {details.nextActionOwner}</Badge>}
       </div>
       <div className="grid sm:grid-cols-2 gap-3 text-sm">
         <div className="rounded-lg border bg-background p-3">
@@ -119,68 +118,7 @@ function CoordinationSummary({ details }: { details: any }) {
         </div>
       </div>
       {delta?.hasChange && <p className="text-sm text-amber-700 dark:text-amber-300">Terminänderung: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage</p>}
-      <CoordinationProposalActions details={details} />
     </section>
-  );
-}
-
-function CoordinationProposalActions({ details }: { details: any }) {
-  const queryClient = useQueryClient();
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
-  const [comment, setComment] = useState('');
-  const [error, setError] = useState('');
-  const proposal = details.openProposal as { id: string; start: string; end: string; proposerOrgId: string } | null | undefined;
-  const agreement = details.currentAgreement as { start: string; end: string } | null | undefined;
-  const isCounterparty = !!proposal && proposal.proposerOrgId !== details.nuOrgId;
-  const mutation = useMutation({
-    mutationFn: async (action: 'create' | 'counter' | 'accept' | 'reject') => {
-      setError('');
-      if (action === 'accept') return acceptChangeProposal(details.id, proposal!.id);
-      if (action === 'reject') return rejectChangeProposal(details.id, proposal!.id);
-      if (!start || !end) throw new Error('Bitte Beginn und Ende angeben.');
-      if (new Date(start) >= new Date(end)) throw new Error('Das Ende muss nach dem Beginn liegen.');
-      const payload = {
-        start: `${start}T00:00:00.000Z`,
-        end: `${end}T23:59:59.000Z`,
-        comment: comment || null,
-      };
-      return action === 'counter'
-        ? counterChangeProposal(details.id, proposal!.id, payload)
-        : createChangeProposal(details.id, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailsQueryKey(details.id) });
-      setStart('');
-      setEnd('');
-      setComment('');
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Aktion konnte nicht ausgeführt werden.'),
-  });
-  if (!proposal && !agreement) return null;
-  const initialStart = (proposal?.start ?? agreement?.start ?? '').slice(0, 10);
-  const initialEnd = (proposal?.end ?? agreement?.end ?? '').slice(0, 10);
-  return (
-    <div className="border-t pt-3 space-y-3">
-      <div className="grid sm:grid-cols-2 gap-3">
-        <label className="text-xs text-muted-foreground">Neuer Beginn
-          <input type="date" value={start || initialStart} onChange={(e) => setStart(e.target.value)} className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5 text-sm text-foreground" />
-        </label>
-        <label className="text-xs text-muted-foreground">Neues Ende
-          <input type="date" value={end || initialEnd} onChange={(e) => setEnd(e.target.value)} className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5 text-sm text-foreground" />
-        </label>
-      </div>
-      <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Hinweis (optional)" className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm" />
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <div className="flex flex-wrap gap-2">
-        {!proposal && <Button size="sm" onClick={() => mutation.mutate('create')} disabled={mutation.isPending}>Änderung vorschlagen</Button>}
-        {isCounterparty && <>
-          <Button size="sm" onClick={() => mutation.mutate('accept')} disabled={mutation.isPending}><CheckCircle2 className="mr-1.5 h-4 w-4" />Annehmen</Button>
-          <Button size="sm" variant="outline" onClick={() => mutation.mutate('reject')} disabled={mutation.isPending}>Ablehnen</Button>
-          <Button size="sm" variant="outline" onClick={() => mutation.mutate('counter')} disabled={mutation.isPending}>Gegenvorschlag</Button>
-        </>}
-      </div>
-    </div>
   );
 }
 
@@ -665,7 +603,7 @@ export default function LeistungsanfrageDetailPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="w-full min-w-0 p-4 sm:p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
 
       {/* Back navigation */}
       <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
@@ -684,6 +622,8 @@ export default function LeistungsanfrageDetailPage() {
           {STATUS_LABELS[status] ?? status}
         </Badge>
       </div>
+
+      <CurrentActionCard requestId={requestId!} onFocus={() => document.getElementById('own-response')?.scrollIntoView({ behavior: 'smooth' })} />
 
       {/* Revision-requested banner — shown when GU has sent REQUEST_REVISION */}
       {status === 'REVISION_REQUIRED' && (
@@ -738,7 +678,6 @@ export default function LeistungsanfrageDetailPage() {
         </div>
       )}
 
-      <CurrentActionCard requestId={requestId!} onFocus={() => document.getElementById('own-response')?.scrollIntoView({ behavior: 'smooth' })} />
       <CoordinationSummary details={details} />
       <ProposalActions requestId={requestId!} />
       <ServiceCoordinationTools requestId={requestId!} role="AN" />
