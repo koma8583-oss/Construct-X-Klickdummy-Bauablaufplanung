@@ -1317,7 +1317,7 @@ export default function ProjectDetail() {
   if (!project || !projectOverview) return <div>Projekt nicht gefunden</div>;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
+    <div className="space-y-6 animate-in fade-in duration-500 min-h-full pb-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -1439,11 +1439,24 @@ export default function ProjectDetail() {
         </Card>
       </div>
 
-      <CoordinationBoard projectId={projectId} />
+      <details open className="rounded-xl border border-border bg-card overflow-hidden">
+        <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-primary" />Koordination</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform details-chevron" />
+        </summary>
+        <div className="border-t border-border/60 p-3">
+          <CoordinationBoard projectId={projectId} />
+        </div>
+      </details>
 
       {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
       {dataPublications && dataPublications.length > 0 && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <details open className="rounded-xl border border-border bg-card overflow-hidden">
+          <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />Datenraum-Bereitstellungen <span className="text-xs text-muted-foreground">({dataPublications.length})</span></span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </summary>
+        <div className="border-t border-border/60">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Globe className="h-4 w-4 text-primary" />
@@ -1528,6 +1541,7 @@ export default function ProjectDetail() {
             })}
           </div>
         </div>
+        </details>
       )}
 
       {/* Status legend */}
@@ -1564,7 +1578,12 @@ export default function ProjectDetail() {
       </div>
 
       {/* Chart area — Gantt / Netzplan tabs */}
-      <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+      <details open className="rounded-xl border border-border bg-card overflow-hidden">
+        <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2"><Calendar className="h-4 w-4 text-primary" />Bauablaufplanung</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </summary>
+      <div className="bg-card border-t border-border/60 overflow-hidden flex flex-col min-h-[620px]">
         {/* Section heading */}
         <div className="px-4 pt-3 pb-0 shrink-0">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Bauablaufplanung</h2>
@@ -1986,6 +2005,7 @@ export default function ProjectDetail() {
           );
         })()}
       </div>
+      </details>
 
         {/* ── Kalender panel ────────────────────────────────────────────── */}
         {activeChartTab === 'kalender' && (() => {
