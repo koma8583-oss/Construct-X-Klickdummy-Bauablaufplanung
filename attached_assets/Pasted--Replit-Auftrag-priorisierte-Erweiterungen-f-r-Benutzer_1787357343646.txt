@@ -1,0 +1,1441 @@
+# Replit-Auftrag – priorisierte Erweiterungen für Benutzerführung und Koordination
+
+Arbeite im aktuellen Repository.
+
+Ziel: Die bestehende AG-/AN-Koordination gezielt um sechs fachlich relevante Funktionen erweitern:
+
+1. persönliches Aufgaben-Cockpit
+2. Risk-/Constraint-Meldungen für vereinbarte Leistungen
+3. Abhängigkeiten zwischen Leistungen und Change-Impact-Hinweise
+4. Ready-for-Execution-Check
+5. Clarification Requests
+6. AG Coordination Board
+
+Wichtig:
+
+* bestehende Service-Request-, Change-Proposal-, Resource-Availability- und Dataspace-Logik weiterverwenden
+* keine neue Workflow-Engine
+* kein Event Sourcing
+* keine automatische Terminfortschreibung
+* keine Chat-Funktion
+* keine neue EDC-Logik
+* technische Bezeichnungen im Code Englisch
+* UI-Texte Deutsch
+* bestehende Legacy-`takt...`-Felder nicht unnötig migrieren
+* neue Logik möglichst über wenige zentrale Services/Helper implementieren
+* keine zusätzliche Architekturplanung durchführen
+
+---
+
+# 1. Persönliches Cockpit „Meine Aufgaben“
+
+## Ziel
+
+AG und AN sollen nach dem Login nicht zuerst technische Listen sehen, sondern alle aktuell notwendigen Aktionen.
+
+Ergänze eine zentrale Ansicht:
+
+```text
+Meine Aufgaben
+```
+
+Diese Ansicht soll bestehende Daten aggregieren und keine neue Fachlogik duplizieren.
+
+---
+
+## Backend
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/coordination-task-service.ts
+```
+
+Funktion:
+
+```ts
+getCoordinationTasks({
+  orgId,
+  role
+})
+```
+
+Rückgabetyp:
+
+```ts
+type CoordinationTask = {
+  id: string;
+
+  serviceRequestId: string;
+  serviceName: string;
+
+  partnerOrgId: string;
+  partnerName: string;
+
+  projectId?: string | null;
+  projectName?: string | null;
+
+  taskType:
+    | "RESPOND_TO_REQUEST"
+    | "DECIDE_RESPONSE"
+    | "RESPOND_TO_CHANGE_PROPOSAL"
+    | "RESOLVE_CONSTRAINT"
+    | "ANSWER_CLARIFICATION"
+    | "CONFIRM_READINESS";
+
+  priority:
+    | "NORMAL"
+    | "HIGH"
+    | "CRITICAL";
+
+  dueAt: string | null;
+
+  status:
+    | "OVERDUE"
+    | "DUE_TODAY"
+    | "DUE_SOON"
+    | "OPEN";
+
+  summary: string;
+
+  lastChangedAt: string;
+
+  targetUrl: string;
+};
+```
+
+---
+
+## Task-Erzeugungsregeln
+
+### Eingehende Leistungsanfrage wartet auf AN
+
+```text
+taskType = RESPOND_TO_REQUEST
+```
+
+### AN hat geantwortet und AG muss entscheiden
+
+```text
+taskType = DECIDE_RESPONSE
+```
+
+### Change Proposal wartet auf Gegenseite
+
+```text
+taskType = RESPOND_TO_CHANGE_PROPOSAL
+```
+
+### Offener Constraint verlangt Aktion der eigenen Organisation
+
+```text
+taskType = RESOLVE_CONSTRAINT
+```
+
+### Offene Clarification wartet auf eigene Antwort
+
+```text
+taskType = ANSWER_CLARIFICATION
+```
+
+### Readiness Check verlangt Bestätigung
+
+```text
+taskType = CONFIRM_READINESS
+```
+
+Keine zusätzlichen Task-Typen einführen.
+
+---
+
+## Friststatus
+
+Aus `dueAt` berechnen:
+
+```text
+OVERDUE
+DUE_TODAY
+DUE_SOON
+OPEN
+```
+
+Definition:
+
+```text
+OVERDUE
+= dueAt < now
+```
+
+```text
+DUE_TODAY
+= dueAt am heutigen Kalendertag
+```
+
+```text
+DUE_SOON
+= dueAt innerhalb der nächsten 3 Kalendertage
+```
+
+sonst:
+
+```text
+OPEN
+```
+
+---
+
+## UI
+
+Neue Start-/Dashboard-Sektion:
+
+```text
+Meine Aufgaben
+```
+
+Oben vier KPI-Karten:
+
+```text
+Überfällig
+Heute fällig
+Demnächst
+Offen
+```
+
+Darunter Tabelle:
+
+```text
+Priorität
+Vorgang
+Partner
+Aufgabe
+Frist
+Letzte Änderung
+Aktion
+```
+
+Standard-Sortierung:
+
+1. `OVERDUE`
+2. `DUE_TODAY`
+3. `DUE_SOON`
+4. `CRITICAL`
+5. `HIGH`
+6. `lastChangedAt DESC`
+
+Button in letzter Spalte:
+
+```text
+Öffnen
+```
+
+führt zu `targetUrl`.
+
+Keine Aktionen direkt aus dem Dashboard ausführen.
+
+---
+
+# 2. Risk-/Constraint-Meldungen für vereinbarte Leistungen
+
+## Ziel
+
+AG oder AN sollen bei einer bereits vereinbarten Leistung ein Problem melden können, ohne sofort den vereinbarten Zeitraum zu verändern.
+
+Ein Constraint bedeutet:
+
+```text
+Die aktuelle Vereinbarung besteht weiter,
+aber ihre Ausführung ist gefährdet.
+```
+
+---
+
+## Datenmodell
+
+Erstelle Tabelle:
+
+```text
+service_constraints
+```
+
+Felder:
+
+```ts
+id
+serviceRequestId
+
+reportedByOrgId
+reportedByRole // AG | AN
+
+constraintType
+
+description
+
+status
+
+responsibleOrgId
+
+reportedAt
+resolvedAt
+
+createdAt
+updatedAt
+```
+
+---
+
+## `constraintType`
+
+Nur:
+
+```text
+UPSTREAM_NOT_READY
+SITE_NOT_READY
+RESOURCE_CONFLICT
+MATERIAL_NOT_AVAILABLE
+INFORMATION_MISSING
+APPROVAL_MISSING
+ACCESS_RESTRICTED
+SAFETY_CLEARANCE_MISSING
+OTHER
+```
+
+---
+
+## `status`
+
+Nur:
+
+```text
+OPEN
+RESOLVED
+CANCELLED
+```
+
+---
+
+## Regeln
+
+Constraint darf nur erstellt werden, wenn:
+
+```text
+serviceRequest.currentAgreement != null
+```
+
+AG oder AN des Service Requests dürfen melden.
+
+Beim Erstellen:
+
+```text
+agreedStart/agreedEnd NICHT verändern
+```
+
+Der Constraint ist nur ein Risikohinweis.
+
+---
+
+## API
+
+Endpunkte:
+
+```text
+POST /service-requests/:id/constraints
+GET  /service-requests/:id/constraints
+POST /service-requests/:id/constraints/:constraintId/resolve
+POST /service-requests/:id/constraints/:constraintId/cancel
+```
+
+Create Payload:
+
+```ts
+{
+  constraintType: ConstraintType;
+  description: string;
+  responsibleOrgId: string;
+}
+```
+
+Validieren:
+
+```text
+description nicht leer
+responsibleOrgId muss AG oder AN des Vorgangs sein
+```
+
+---
+
+## UI Detailseite
+
+Direkt unter `Aktuelle Vereinbarung` anzeigen:
+
+Wenn kein Constraint:
+
+```text
+Keine offenen Risiken
+```
+
+Wenn offen:
+
+```text
+⚠ Ausführung gefährdet
+```
+
+Darunter:
+
+```text
+Ressourcenkonflikt
+gemeldet durch AN
+verantwortlich: AN
+seit 21.08.2026
+```
+
+Aktionen:
+
+```text
+[Als gelöst markieren]
+[Terminänderung vorschlagen]
+```
+
+`Terminänderung vorschlagen` öffnet den bereits vorhandenen Change-Proposal-Dialog.
+
+Keine neue Terminänderungslogik implementieren.
+
+---
+
+# 3. Abhängigkeiten zwischen Leistungen und Change Impact
+
+## Ziel
+
+Bei Terminänderungen soll sichtbar werden, welche nachgelagerten Leistungen möglicherweise betroffen sind.
+
+Keine automatische Terminverschiebung.
+
+---
+
+## Datenmodell
+
+Erstelle:
+
+```text
+service_dependencies
+```
+
+Felder:
+
+```ts
+id
+
+projectId
+
+predecessorServiceRequestId
+successorServiceRequestId
+
+dependencyType
+
+lagDays
+
+createdAt
+updatedAt
+```
+
+---
+
+## `dependencyType`
+
+Nur:
+
+```text
+FINISH_TO_START
+```
+
+Für den PoC keine weiteren Abhängigkeitstypen.
+
+`lagDays`:
+
+```text
+integer >= 0
+```
+
+---
+
+## API
+
+Endpunkte:
+
+```text
+POST   /projects/:projectId/service-dependencies
+GET    /projects/:projectId/service-dependencies
+DELETE /projects/:projectId/service-dependencies/:id
+```
+
+Create Payload:
+
+```ts
+{
+  predecessorServiceRequestId: string;
+  successorServiceRequestId: string;
+  lagDays?: number;
+}
+```
+
+Validieren:
+
+* beide Service Requests gehören zum selben Projekt
+* predecessor != successor
+* keine direkte Duplikatabhängigkeit
+* keine einfache Zirkelschleife erzeugen
+
+Für Zyklen reicht DFS/BFS über die vorhandenen Dependencies.
+
+Keine komplexe Scheduling Engine.
+
+---
+
+## Impact-Service
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/change-impact-service.ts
+```
+
+Funktion:
+
+```ts
+evaluateChangeImpact({
+  serviceRequestId,
+  proposedStart,
+  proposedEnd
+})
+```
+
+Rückgabe:
+
+```ts
+type ChangeImpact = {
+  affectedServices: Array<{
+    serviceRequestId: string;
+    serviceName: string;
+
+    currentStart: string | null;
+    currentEnd: string | null;
+
+    requiredEarliestStart: string;
+
+    impactDays: number;
+  }>;
+};
+```
+
+---
+
+## Berechnung
+
+Für jede direkte nachgelagerte Leistung:
+
+```text
+requiredEarliestStart
+=
+proposedEnd des Vorgängers
++ lagDays
++ 1 Kalendertag
+```
+
+Falls:
+
+```text
+successor.agreedStart < requiredEarliestStart
+```
+
+ist sie potenziell betroffen.
+
+`impactDays`:
+
+```text
+requiredEarliestStart - successor.agreedStart
+```
+
+Nur direkte Nachfolger für den ersten Stand.
+
+Keine rekursive automatische Verschiebung.
+
+---
+
+## UI Change Proposal
+
+Vor dem Absenden eines AG-Change-Proposals:
+
+```text
+Auswirkungen prüfen
+```
+
+automatisch anzeigen.
+
+Beispiel:
+
+```text
+⚠ 2 nachgelagerte Leistungen möglicherweise betroffen
+
+Elektroinstallation
+vereinbart ab 15.09.
+frühester Start nach Änderung: 18.09.
++3 Tage
+
+Malerarbeiten
+vereinbart ab 20.09.
+frühester Start nach Änderung: 22.09.
++2 Tage
+```
+
+Nur Hinweis.
+
+Keine Checkbox:
+
+```text
+alle automatisch verschieben
+```
+
+implementieren.
+
+---
+
+# 4. Ready-for-Execution-Check
+
+## Ziel
+
+Kurz vor Ausführung soll erkennbar sein, ob die vereinbarte Leistung tatsächlich startbereit ist.
+
+Keine komplexe Checklisten-Engine.
+
+---
+
+## Datenmodell
+
+Erstelle:
+
+```text
+service_readiness_checks
+```
+
+Ein Datensatz pro Service Request.
+
+Felder:
+
+```ts
+id
+serviceRequestId
+
+scheduleConfirmed
+siteReady
+informationComplete
+agReady
+anReady
+
+updatedByOrgId
+
+createdAt
+updatedAt
+```
+
+Boolean-Felder.
+
+---
+
+## Gesamtstatus
+
+Zentral berechnen:
+
+```ts
+type ReadinessStatus =
+  | "READY"
+  | "NOT_READY";
+```
+
+Regel:
+
+```text
+READY
+nur wenn alle 5 Werte true
+```
+
+sonst:
+
+```text
+NOT_READY
+```
+
+Keine dritte Stufe.
+
+---
+
+## Verantwortlichkeiten
+
+AG darf ändern:
+
+```text
+scheduleConfirmed
+siteReady
+informationComplete
+agReady
+```
+
+AN darf ändern:
+
+```text
+anReady
+```
+
+AN darf die AG-Felder nur lesen.
+
+AG darf `anReady` nur lesen.
+
+Serverseitig erzwingen.
+
+---
+
+## API
+
+```text
+GET /service-requests/:id/readiness
+PATCH /service-requests/:id/readiness
+```
+
+PATCH nur erlaubte Felder je Rolle.
+
+---
+
+## UI
+
+Auf Detailseite neue kompakte Box:
+
+```text
+Ausführungsbereitschaft
+```
+
+Darstellung:
+
+```text
+✓ Termin bestätigt
+✓ Arbeitsbereich bereit
+⚠ Informationen vollständig
+✓ AG bereit
+✓ AN bereit
+```
+
+Gesamt:
+
+```text
+✓ Bereit zur Ausführung
+```
+
+oder:
+
+```text
+⚠ Noch nicht ausführungsbereit
+```
+
+Keine frei konfigurierbaren Checklistenpunkte.
+
+---
+
+## Task-Integration
+
+Wenn `agreedStart` innerhalb der nächsten 7 Tage liegt und Readiness nicht vollständig ist:
+
+Task erzeugen.
+
+Für AG:
+
+```text
+CONFIRM_READINESS
+```
+
+wenn eines seiner Felder false ist.
+
+Für AN:
+
+```text
+CONFIRM_READINESS
+```
+
+wenn `anReady = false`.
+
+---
+
+# 5. Clarification Requests
+
+## Ziel
+
+Fehlende Informationen sollen geklärt werden können, ohne daraus sofort eine Terminänderung zu machen.
+
+Keine Chat-Funktion.
+
+---
+
+## Datenmodell
+
+Erstelle:
+
+```text
+service_clarifications
+```
+
+Felder:
+
+```ts
+id
+serviceRequestId
+
+askedByOrgId
+askedByRole
+
+category
+
+question
+answer
+
+status
+
+answeredByOrgId
+
+createdAt
+answeredAt
+updatedAt
+```
+
+---
+
+## `category`
+
+Nur:
+
+```text
+PLAN
+APPROVAL
+DIMENSION
+ACCESS
+INTERFACE_INFORMATION
+SCOPE
+OTHER
+```
+
+---
+
+## `status`
+
+Nur:
+
+```text
+OPEN
+RESOLVED
+CANCELLED
+```
+
+---
+
+## API
+
+```text
+POST /service-requests/:id/clarifications
+GET  /service-requests/:id/clarifications
+POST /service-requests/:id/clarifications/:clarificationId/answer
+POST /service-requests/:id/clarifications/:clarificationId/cancel
+```
+
+Create:
+
+```ts
+{
+  category: ClarificationCategory;
+  question: string;
+}
+```
+
+Answer:
+
+```ts
+{
+  answer: string;
+}
+```
+
+---
+
+## Regeln
+
+AG oder AN dürfen Frage stellen.
+
+Nur Gegenseite darf antworten.
+
+Beim Antworten:
+
+```text
+answer setzen
+answeredByOrgId setzen
+answeredAt = now
+status = RESOLVED
+```
+
+Keine Kommentare oder Threads.
+
+Eine Frage → eine Antwort.
+
+---
+
+## UI
+
+Auf Service-Request-Detailseite:
+
+```text
+Offene Klärungen
+```
+
+Beispiel:
+
+```text
+PLAN
+Welche Planversion ist für Bereich B verbindlich?
+gestellt durch AN · 21.08.
+```
+
+Button für Gegenseite:
+
+```text
+[Antworten]
+```
+
+Nach Resolution kompakt in Historie anzeigen.
+
+---
+
+## Task-Integration
+
+Offene Clarification erzeugt Task bei der Gegenseite:
+
+```text
+ANSWER_CLARIFICATION
+```
+
+Nach Antwort verschwindet Task.
+
+---
+
+# 6. AG Coordination Board
+
+## Ziel
+
+AG soll alle Partner und Leistungen eines Projekts in einer einzigen Koordinationsübersicht sehen.
+
+Keine Gantt-Planung.
+
+Keine Ressourceninformationen des AN anzeigen.
+
+---
+
+## Backend
+
+Erstelle:
+
+```text
+artifacts/api-server/src/services/ag-coordination-board-service.ts
+```
+
+Funktion:
+
+```ts
+getProjectCoordinationBoard({
+  projectId,
+  agOrgId
+})
+```
+
+Rückgabe pro Service Request:
+
+```ts
+type CoordinationBoardItem = {
+  serviceRequestId: string;
+  serviceName: string;
+
+  partnerOrgId: string;
+  partnerName: string;
+
+  agreedStart: string | null;
+  agreedEnd: string | null;
+
+  proposedStart: string | null;
+  proposedEnd: string | null;
+
+  proposalInitiator: "AG" | "AN" | null;
+
+  nextActionOwner: "AG" | "AN" | "NONE";
+  nextAction: string;
+
+  responseRequiredBy: string | null;
+
+  openConstraintCount: number;
+  openClarificationCount: number;
+
+  readinessStatus:
+    | "READY"
+    | "NOT_READY"
+    | "NOT_APPLICABLE";
+
+  dependencyImpactCount: number;
+
+  lastChangedAt: string;
+};
+```
+
+Bestehenden `deriveCoordinationState()`-Helper wiederverwenden.
+
+Keine zweite Next-Action-Logik.
+
+---
+
+## API
+
+```text
+GET /api/ag/projects/:projectId/coordination-board
+```
+
+Nur AG dieses Projekts darf zugreifen.
+
+---
+
+## UI
+
+Neue Projektansicht:
+
+```text
+Koordinationsübersicht
+```
+
+Tabelle:
+
+```text
+Leistung
+AN
+Aktuelle Vereinbarung
+Offener Vorschlag
+Nächste Aktion
+Risiken
+Klärungen
+Bereitschaft
+Auswirkungen
+Letzte Änderung
+```
+
+---
+
+## Beispiel
+
+| Leistung   | AN        | Vereinbart | Vorschlag  | Nächste Aktion | Risiken | Klärungen | Bereitschaft |
+| ---------- | --------- | ---------- | ---------- | -------------- | ------: | --------: | ------------ |
+| Rohbau     | Bau A     | 01.–10.09. | –          | –              |       0 |         0 | ✓            |
+| TGA        | Technik B | 11.–18.09. | 14.–21.09. | AG entscheiden |       1 |         0 | ⚠            |
+| Trockenbau | Ausbau C  | 20.–25.09. | –          | AN antworten   |       0 |         2 | –            |
+
+---
+
+## Filter
+
+Nur:
+
+```text
+AN
+Status / nächste Aktion
+Risiko vorhanden
+Klärung offen
+Bereitschaft
+```
+
+Keine umfangreiche Filterarchitektur.
+
+---
+
+## Schnellfilter oberhalb
+
+```text
+Handlung durch AG
+Warten auf AN
+Mit Risiken
+Mit offenen Klärungen
+Nicht ausführungsbereit
+```
+
+---
+
+# 7. Einheitliches Status-/Badge-System
+
+Für alle neuen UI-Bereiche bestehende semantische Komponenten wiederverwenden.
+
+Nur diese Business-Badges ergänzen:
+
+```text
+Aktion erforderlich
+Warten auf Partner
+Risiko
+Klärung offen
+Bereit
+Nicht bereit
+```
+
+Keine technischen Enum-Werte direkt in der UI anzeigen.
+
+---
+
+# 8. Business Timeline erweitern
+
+Bestehende Coordination Timeline erweitern um:
+
+```text
+CONSTRAINT_REPORTED
+CONSTRAINT_RESOLVED
+
+CLARIFICATION_CREATED
+CLARIFICATION_RESOLVED
+
+READINESS_CHANGED
+```
+
+Keine technische Dataspace-Message-Historie anzeigen.
+
+Beispiele UI:
+
+```text
+21.08. · AN
+Ressourcenkonflikt gemeldet
+```
+
+```text
+22.08. · AG
+Klärungsfrage beantwortet
+```
+
+```text
+25.08. · AN
+Ausführungsbereitschaft bestätigt
+```
+
+---
+
+# 9. Keine automatische Fachaktion
+
+Für alle neuen Funktionen gilt:
+
+Nicht automatisch:
+
+```text
+Termin ändern
+Change Proposal erzeugen
+Folgeleistung verschieben
+Service Request ablehnen
+```
+
+System zeigt Handlungsbedarf und bietet den passenden bestehenden Button.
+
+Nutzer bestätigt jede fachliche Änderung bewusst.
+
+---
+
+# 10. Dataspace-Grundsätze
+
+Falls Constraints oder Clarifications später organisationsübergreifend übertragen werden müssen:
+
+Bestehende `DataspaceExchange`-Schicht verwenden.
+
+Für diesen Auftrag aber **keine neue EDC-Implementierung**.
+
+Keine:
+
+```text
+ResourceBooking
+interne Kapazität
+andere AG-Projekte
+konkrete Ressourcen
+```
+
+nach außen übertragen.
+
+---
+
+# 11. Performance
+
+Für Cockpit und Coordination Board keine N+1-Abfragen.
+
+Daten möglichst gesammelt laden:
+
+```text
+Service Requests
+Open Proposals
+Constraints
+Clarifications
+Readiness
+Dependencies
+```
+
+und im Service aggregieren.
+
+Keine DB-Abfrage pro Tabellenzeile.
+
+---
+
+# 12. Tests – Aufgaben-Cockpit
+
+Mindestens prüfen:
+
+```text
+AN muss Request beantworten
+→ RESPOND_TO_REQUEST
+```
+
+```text
+AG muss Response entscheiden
+→ DECIDE_RESPONSE
+```
+
+```text
+offene Clarification wartet auf AG
+→ ANSWER_CLARIFICATION
+```
+
+```text
+überfällige Frist
+→ OVERDUE
+```
+
+---
+
+# 13. Tests – Constraint
+
+Prüfen:
+
+```text
+Constraint erstellen
+→ Agreement bleibt unverändert
+```
+
+und:
+
+```text
+Resolve
+→ status RESOLVED
+```
+
+---
+
+# 14. Tests – Change Impact
+
+Beispiel:
+
+```text
+Vorgänger proposedEnd = 15.09.
+lagDays = 2
+```
+
+erforderlicher Nachfolgerstart:
+
+```text
+18.09.
+```
+
+Nachfolger vereinbart ab:
+
+```text
+16.09.
+```
+
+Erwartung:
+
+```text
+impactDays = 2
+```
+
+---
+
+# 15. Tests – Readiness
+
+Alle fünf Werte true:
+
+```text
+READY
+```
+
+ein Wert false:
+
+```text
+NOT_READY
+```
+
+Rollenrechte prüfen:
+
+```text
+AN kann siteReady nicht ändern
+AG kann anReady nicht ändern
+```
+
+---
+
+# 16. Tests – Clarification
+
+Prüfen:
+
+```text
+AN fragt
+AG antwortet
+→ RESOLVED
+```
+
+AN darf eigene Frage nicht selbst beantworten.
+
+---
+
+# 17. Tests – Coordination Board
+
+Prüfen:
+
+* aktuelles Agreement korrekt
+* offener Proposal korrekt
+* Next Action aus zentralem Helper
+* Anzahl offener Constraints
+* Anzahl offener Clarifications
+* Readiness Status
+* Impact Count
+
+---
+
+# 18. UI-Reihenfolge auf Service-Request-Detailseite
+
+Oben immer in dieser Reihenfolge:
+
+```text
+1. Aktuelle Vereinbarung
+2. Offener Vorschlag
+3. Nächste Aktion
+4. Risiken / Constraints
+5. Ausführungsbereitschaft
+6. Offene Klärungen
+7. Ressourcen / Verfügbarkeit
+8. Timeline / Historie
+```
+
+Nicht anders strukturieren.
+
+Damit sieht der Nutzer zuerst den aktuellen Handlungsstand.
+
+---
+
+# 19. Keine weiteren Features
+
+Nicht implementieren:
+
+```text
+kein Chat
+keine Kommentare pro Nachricht
+keine automatische Eskalationsmail
+kein Bulk Accept
+keine automatische Terminverschiebung
+keine rekursive Terminplanung
+keine neuen Gantt-Abhängigkeitspfeile
+keine Workflow Engine
+keine neue EDC-Funktion
+```
+
+---
+
+# 20. Technische Prüfung
+
+Nur:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+```
+
+und nur gezielte Tests für:
+
+```text
+coordination tasks
+constraints
+change impact
+readiness
+clarifications
+coordination board
+```
+
+Keine vollständige Test-Suite.
+
+---
+
+# Abschlussprüfung
+
+Am Ende sollen folgende Fälle ohne Umwege unterstützt sein:
+
+```text
+AG sieht auf Startseite:
+„3 Aufgaben erforderlich“
+```
+
+```text
+AN meldet bei vereinbarter Leistung:
+RESOURCE_CONFLICT
+
+Agreement bleibt bestehen.
+AG sieht Risiko.
+AN kann Terminänderung vorschlagen.
+```
+
+```text
+AG verschiebt eine Vorleistung.
+
+System zeigt:
+„2 nachgelagerte Leistungen möglicherweise betroffen“
+
+Keine automatische Verschiebung.
+```
+
+```text
+Leistung startet in 5 Tagen.
+
+System zeigt:
+„Noch nicht ausführungsbereit“
+
+AG/AN sehen jeweils nur ihre eigenen zu bestätigenden Punkte.
+```
+
+```text
+AN benötigt Planinformation.
+
+AN stellt Clarification.
+AG erhält Aufgabe.
+AG antwortet.
+Clarification = RESOLVED.
+```
+
+```text
+AG öffnet Coordination Board und sieht
+alle Leistungen, Partner, Vereinbarungen,
+offenen Vorschläge, Risiken, Klärungen,
+Readiness und nächste Aktionen.
+```
+
+---
+
+# Abschlussbericht
+
+Nur kurz berichten:
+
+1. neue Tabellen
+2. neue Services
+3. neue API-Endpunkte
+4. Aufgaben-Cockpit
+5. Constraint-Logik
+6. Change-Impact-Logik
+7. Readiness-Check
+8. Clarification-Logik
+9. AG Coordination Board
+10. Timeline-Erweiterungen
+11. Tests
+12. Typecheck-/Build-Ergebnis
+
+Keine weiteren Funktionen außerhalb dieses Auftrags implementieren.
