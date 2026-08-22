@@ -123,29 +123,14 @@ afterAll(async () => {
 });
 
 describe("bilateral change proposals", () => {
-  it("creates the initial agreement by accepting a proposal without losing request history", async () => {
+  it("requires an existing agreement before a change proposal can be created", async () => {
     const requestId = REQUEST_IDS[0];
     const proposal = await request(app)
       .post(`/api/leistungsanfragen/${requestId}/change-proposals`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({ start: "2026-09-02T08:00:00.000Z", end: "2026-09-06T17:00:00.000Z", reasonCode: "SEQUENCING" });
-    expect(proposal.status).toBe(201);
-
-    const accepted = await request(app)
-      .post(`/api/leistungsanfragen/${requestId}/change-proposals/${proposal.body.id}/accept`)
-      .set("Authorization", `Bearer ${nuToken}`);
-    expect(accepted.status).toBe(200);
-    expect(accepted.body.status).toBe("ACCEPTED");
-
-    const coordination = await request(app)
-      .get(`/api/leistungsanfragen/${requestId}/coordination`)
-      .set("Authorization", `Bearer ${guToken}`);
-    expect(coordination.status).toBe(200);
-    expect(coordination.body.currentAgreement.start).toContain("2026-09-02");
-    expect(coordination.body.openProposal).toBeNull();
-    expect(coordination.body.proposals).toHaveLength(1);
-    expect(coordination.body.timeline.map((event: { type: string }) => event.type))
-      .toEqual(["REQUEST_CREATED", "AGREEMENT_REACHED", "REQUEST_SENT", "REQUEST_DELIVERED", "PROPOSED", "ACCEPTED"]);
+    expect(proposal.status).toBe(422);
+    expect(proposal.body.code).toBe("CHANGE_PROPOSAL_REQUIRES_AGREEMENT");
   });
 
   it("allows only one open proposal, while the opposite party may replace it with a counter", async () => {
@@ -301,6 +286,6 @@ describe("proposal calculations and history ordering", () => {
       resolvedByUserId: NU_USER,
     }]);
     expect(timeline.map((event) => event.type))
-      .toEqual(["REQUEST_CREATED", "AGREEMENT_REACHED", "REQUEST_SENT", "REQUEST_DELIVERED", "PROPOSED", "ACCEPTED"]);
+      .toEqual(["REQUEST_CREATED", "REQUEST_SENT", "REQUEST_DELIVERED", "PROPOSED", "AGREEMENT_REACHED", "CHANGE_PROPOSAL_ACCEPTED"]);
   });
 });

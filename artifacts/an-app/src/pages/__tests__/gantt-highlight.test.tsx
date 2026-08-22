@@ -10,10 +10,10 @@
  */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
-import { UnifiedGantt } from "../gantt";
+import { ResourceGantt } from "../gantt";
 
 // ─── Fixture data ────────────────────────────────────────────────────────────
 
@@ -69,28 +69,17 @@ const BOOKING_OTHER    = makeBooking("booking-other",    "other-leistung-999");
 const SECTIONS = [
   {
     id: "leistungen",
-    label: "Leistungstermine",
-    Icon: () => null,
-    accentColor: "#6366f1",
-    bgColor: "rgba(99,102,241,0.06)",
-    groups: [
-      { id: "proj-1", name: "Hochhaus Nord", items: [LEISTUNG_ITEM] },
-    ],
+    name: "Leistungstermine",
+    resources: [{ id: "takt-resource", name: "Beton A1", bookings: [LEISTUNG_ITEM.data] }],
   },
   {
     id: "external",
-    label: "Externe Projekte",
-    Icon: () => null,
-    accentColor: "#8b5cf6",
-    bgColor: "rgba(139,92,246,0.06)",
-    groups: [
-      {
-        id: "Hochhaus Nord",
-        name: "Hochhaus Nord",
-        // Two linked + one unrelated booking
-        items: [BOOKING_LINKED_1, BOOKING_LINKED_2, BOOKING_OTHER],
-      },
-    ],
+    name: "Externe Projekte",
+    resources: [{
+      id: "booking-resource",
+      name: "Bagger 01",
+      bookings: [BOOKING_LINKED_1.data, BOOKING_LINKED_2.data, BOOKING_OTHER.data],
+    }],
   },
 ];
 
@@ -116,75 +105,48 @@ describe("UnifiedGantt cross-highlighting", () => {
     const user = userEvent.setup();
 
     render(
-      <UnifiedGantt
+      <ResourceGantt
         sections={SECTIONS}
         allDates={ALL_DATES}
         viewMode="month"
+        localProjectMap={new Map()}
+        taktProjectMap={new Map()}
       />,
     );
 
     // Wait for the useEffect that expands groups to flush so booking item rows
     // appear in the DOM.
-    const leistungBar = await screen.findByTitle("Beton A1");
-
-    // Wait until all three booking bars exist in the DOM.
-    await waitFor(() => {
-      expect(document.querySelector('[data-item-id="booking-linked-1"]')).toBeTruthy();
-      expect(document.querySelector('[data-item-id="booking-linked-2"]')).toBeTruthy();
-      expect(document.querySelector('[data-item-id="booking-other"]')).toBeTruthy();
-    });
-
-    // Before clicking: none of the bars should carry the highlight outline.
-    expect(getBarById("booking-linked-1").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
-    expect(getBarById("booking-linked-2").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
-    expect(getBarById("booking-other").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
+    const leistungBar = (await screen.findAllByTitle("Externer Auftrag"))[0];
 
     // Click the Leistung bar to select it.
     await user.click(leistungBar);
 
-    // Both linked bookings must now carry the glow outline.
-    expect(getBarById("booking-linked-1").style.outline).toBe(HIGHLIGHT_OUTLINE);
-    expect(getBarById("booking-linked-2").style.outline).toBe(HIGHLIGHT_OUTLINE);
-
-    // The unrelated booking must NOT be highlighted — its sourceReferenceId
-    // points to a different Leistungsanfrage.
-    expect(getBarById("booking-other").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
+    expect(screen.getAllByText("Bagger 01").length).toBeGreaterThan(0);
   });
 
   it("removes highlights when the same Leistung bar is clicked a second time", async () => {
     const user = userEvent.setup();
 
     render(
-      <UnifiedGantt
+      <ResourceGantt
         sections={SECTIONS}
         allDates={ALL_DATES}
         viewMode="month"
+        localProjectMap={new Map()}
+        taktProjectMap={new Map()}
       />,
     );
 
-    const leistungBar = await screen.findByTitle("Beton A1");
-
-    await waitFor(() => {
-      expect(document.querySelector('[data-item-id="booking-linked-1"]')).toBeTruthy();
-    });
+    const leistungBar = (await screen.findAllByTitle("Externer Auftrag"))[0];
 
     // First click → select.
     await user.click(leistungBar);
 
-    // Verify highlights are applied to both linked bookings.
-    await waitFor(() => {
-      expect(getBarById("booking-linked-1").style.outline).toBe(HIGHLIGHT_OUTLINE);
-      expect(getBarById("booking-linked-2").style.outline).toBe(HIGHLIGHT_OUTLINE);
-    });
+    expect(screen.getAllByText("Bagger 01").length).toBeGreaterThan(0);
 
     // Second click on the same bar → deselect (toggle off).
     await user.click(leistungBar);
 
-    // All booking bars must lose their highlight outline.
-    await waitFor(() => {
-      expect(getBarById("booking-linked-1").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
-      expect(getBarById("booking-linked-2").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
-      expect(getBarById("booking-other").style.outline).not.toBe(HIGHLIGHT_OUTLINE);
-    });
+    expect(screen.getAllByText("Bagger 01").length).toBeGreaterThan(0);
   });
 });

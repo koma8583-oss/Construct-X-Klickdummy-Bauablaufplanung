@@ -204,7 +204,7 @@ describe("DTC test 4 — type-level booking without resourceId", () => {
 
     expect(booking.resourceId).toBeNull();
     expect(booking.resourceTypeId).toBe(rt.id);
-    expect(booking.quantity).toBe(2);
+    expect(Number(booking.quantity)).toBe(2);
 
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
     await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));

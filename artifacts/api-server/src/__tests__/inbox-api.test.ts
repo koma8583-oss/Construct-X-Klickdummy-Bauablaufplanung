@@ -86,7 +86,7 @@ beforeAll(async () => {
   }).onConflictDoNothing();
 
   await db.insert(projectContractorsTable).values({
-    projectId: PROJECT_ID, anOrgId: NU_ORG,
+    projectId: PROJECT_ID, anOrgId: NU_ORG, assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({

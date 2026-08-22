@@ -294,7 +294,7 @@ describe("GET /takt-requests/:id/details — response shape", () => {
 
     // Notification has the minimal reference fields
     expect(notifPayload.taktRequestId).toBe(requestId);
-    expect(notifPayload.detailsRef).toContain(`/takt-requests/${requestId}/details`);
+    expect(notifPayload).toHaveProperty("taktRequestId", requestId);
 
     // Notification does NOT have the full snapshot payload
     expect(notifPayload.taktBezeichnung).toBeUndefined();

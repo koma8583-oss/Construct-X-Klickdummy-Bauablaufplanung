@@ -33,6 +33,10 @@ describe("authenticated AN Leistungsanfrage actions", () => {
           nextAction: "RESPOND_TO_REQUEST",
           nextActionOwner: "AN",
           responseRequiredBy: "2026-09-15T12:00:00.000Z",
+          currentAgreement: {
+            start: "2026-09-01T00:00:00.000Z",
+            end: "2026-09-10T23:59:59.000Z",
+          },
           openProposal: null,
         });
       }

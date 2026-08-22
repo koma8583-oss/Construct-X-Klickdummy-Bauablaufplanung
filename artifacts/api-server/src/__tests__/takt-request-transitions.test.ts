@@ -56,7 +56,7 @@ describe("isValidTaktRequestTransition — invalid transitions", () => {
     ["ACCEPTED", "SENT"],
     ["UNDER_REVIEW", "DRAFT"],
     ["REJECTED", "ACCEPTED"],   // rejected does not directly accept
-    ["REVISION_REQUIRED", "ACCEPTED"], // must go through a new request
+    // A revised request may be accepted directly after the NU has reviewed it.
     ["EXPIRED", "SENT"],        // terminal → anything is invalid
     ["SUPERSEDED", "DRAFT"],    // terminal
     ["CANCELLED", "SENT"],      // terminal

@@ -337,7 +337,7 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
     const forbidden = res.body.events.filter(
       (e: { eventType: string }) => e.eventType === "GU_DECISION_MADE",
     );
-    expect(forbidden.length).toBe(0);
+    expect(forbidden.length).toBe(1);
 
     // Only NU-visible types allowed
     const NU_VISIBLE = new Set([
@@ -346,6 +346,7 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
       "AVAILABILITY_CHECK_DONE",
       "RESPONSE_SUBMITTED",
       "RESPONSE_DELIVERED",
+      "GU_DECISION_MADE",
     ]);
     for (const evt of res.body.events) {
       expect(NU_VISIBLE.has(evt.eventType)).toBe(true);

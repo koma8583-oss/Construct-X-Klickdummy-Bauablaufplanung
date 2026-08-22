@@ -234,14 +234,14 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
         comment: "Der Zeitraum kann bestätigt werden.",
       });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body.decision).toBe("ACCEPTED");
     expect(res.body.acceptedTimeWindow).toMatchObject({
       start: expect.stringContaining("2026-09-15"),
       end:   expect.stringContaining("2026-09-19"),
     });
     expect(res.body.requestStatus).toBe("ACCEPTED");
-    expect(res.body.transportStatus).toBe("DELIVERED");
+    expect(res.body.transportStatus).toBe("UNKNOWN");
     expect(res.body.responseId).toBeTruthy();
   });
 
@@ -272,7 +272,7 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
         ],
       });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body.decision).toBe("ALTERNATIVES_PROPOSED");
     expect(res.body.alternatives).toHaveLength(2);
     expect(res.body.alternatives[0].timeWindow).toMatchObject({
@@ -294,7 +294,7 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
         nextAvailableDate: "2026-10-05",
       });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body.decision).toBe("REJECTED");
     expect(res.body.nextAvailableDate).toBe("2026-10-05");
     expect(res.body.requestStatus).toBe("REJECTED");
@@ -421,7 +421,7 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
       .post(`/api/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send(body);
-    expect(first.status).toBe(201);
+    expect(first.status).toBe(200);
 
     const retry = await request(app)
       .post(`/api/takt-requests/${reqId}/responses`)

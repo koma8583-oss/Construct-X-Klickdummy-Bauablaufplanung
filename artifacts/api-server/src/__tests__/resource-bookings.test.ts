@@ -312,7 +312,7 @@ describe("resource_bookings", () => {
     expect(concreteBooking.quantity).toBeNull();
     expect(typeBooking.resourceId).toBeNull();
     expect(typeBooking.resourceTypeId).toBe(resourceType.id);
-    expect(typeBooking.quantity).toBe(2);
+    expect(Number(typeBooking.quantity)).toBe(2);
 
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
     await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
