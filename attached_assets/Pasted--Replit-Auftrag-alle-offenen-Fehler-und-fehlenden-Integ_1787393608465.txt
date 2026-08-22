@@ -1,0 +1,2072 @@
+# Replit-Auftrag – alle offenen Fehler und fehlenden Integrationen beheben
+
+Arbeite im aktuellen Repository-Stand.
+
+Ziel: **Nur die aktuell offenen Fehler, Inkonsistenzen und nicht vollständig integrierten Funktionen beheben.** Keine neuen Features darüber hinaus.
+
+Wichtig:
+
+* keine große Refaktorierung
+* keine neue Architektur
+* keine Workflow-Engine
+* kein Event Sourcing
+* keine neue EDC-Integration
+* technische Bezeichner im Code Englisch
+* UI-Texte Deutsch
+* bestehende Datenmodelle möglichst weiterverwenden
+* bestehende zentrale Services wiederverwenden
+* keine doppelte Fachlogik erzeugen
+* vorhandene Legacy-`takt...`-Bezeichner nur dort belassen, wo eine Migration unnötig wäre
+
+---
+
+# A. P0 – fachliche Kernfehler zuerst beheben
+
+## 1. Accepted Change Proposal muss den tatsächlichen Plan vollständig aktualisieren
+
+Prüfe insbesondere:
+
+```text
+artifacts/api-server/src/services/service-change-proposal-service.ts
+artifacts/api-server/src/services/gu-decision-service.ts
+```
+
+Aktuelles Problem:
+
+Bei `ACCEPTED` werden nur:
+
+```text
+agreedStart
+agreedEnd
+```
+
+aktualisiert.
+
+Der eigentliche Plan und die Ressourcenbelegung bleiben auf dem alten Zeitraum.
+
+Das ist fachlich nicht zulässig.
+
+## Ziel
+
+Eine akzeptierte Terminänderung muss atomar den gesamten vereinbarten Zustand aktualisieren.
+
+Erstelle dafür einen zentralen Service/Helper:
+
+```text
+applyAcceptedScheduleChange(...)
+```
+
+z. B. in:
+
+```text
+artifacts/api-server/src/services/schedule-change-service.ts
+```
+
+Nicht dieselbe Logik erneut direkt im Change-Proposal-Service implementieren.
+
+---
+
+## 1.1 Eingaben
+
+Mindestens:
+
+```ts
+{
+  serviceRequestId: string;
+  newStart: string;
+  newEnd: string;
+  initiatedBy: "AG" | "AN";
+  proposalId?: string;
+}
+```
+
+---
+
+## 1.2 Ablauf
+
+Innerhalb einer DB-Transaktion:
+
+```text
+1. Service Request laden
+2. aktuelle Vereinbarung laden
+3. neue Datumswerte validieren
+4. Resource Requirements laden
+5. neue Requirement-Zeiträume bestimmen
+6. AN-Verfügbarkeit für neuen Zeitraum prüfen
+7. falls nicht machbar → Abbruch, keine Änderung
+8. eigentlichen Plan/Leistung aktualisieren
+9. Plan-/Leistungsversion erhöhen, falls dieses Modell vorhanden ist
+10. agreedStart/agreedEnd aktualisieren
+11. bestehende automatisch erzeugte CONFIRMED ResourceBookings aktualisieren
+12. Proposal auf ACCEPTED setzen
+```
+
+Keine Teiländerungen.
+
+---
+
+## 1.3 Requirement-Zeiträume verschieben
+
+Wenn ein Requirement einen Teilzeitraum besitzt:
+
+Beispiel:
+
+```text
+alte Vereinbarung:
+01.–20.09.
+
+Requirement:
+10.–12.09.
+```
+
+Offset:
+
+```text
++9 bis +11 Tage
+```
+
+Neue Vereinbarung:
+
+```text
+15.–34.09. sinngemäß
+```
+
+Requirement muss entsprechend relativ verschoben werden.
+
+Vorhandenen Helper zur Verschiebung von Requirements wiederverwenden.
+
+Keine zweite Offset-Logik schreiben.
+
+---
+
+## 1.4 ResourceBookings aktualisieren
+
+Nur Bookings, die fachlich aus diesem Service Request stammen, ändern.
+
+Erkennbar z. B. über:
+
+```text
+sourceType = SERVICE_REQUEST / TAKT_REQUEST
+sourceReferenceId = serviceRequestId
+```
+
+oder bestehende passende Felder.
+
+Nicht manuelle oder andere Projektbuchungen verändern.
+
+Für Type-Level-Bookings:
+
+```text
+resourceId = null
+resourceTypeId bleibt
+quantity bleibt
+utilizationPercent bleibt
+```
+
+Nur Zeitraum verschieben.
+
+Für konkrete ResourceBookings:
+
+* Resource-Zuordnung beibehalten
+* Zeitraum verschieben
+* vorher Verfügbarkeit prüfen
+
+---
+
+# 2. Availability-Berechnung auf tagesweise Kapazität umstellen
+
+Prüfe:
+
+```text
+resource-availability-service.ts
+```
+
+Aktuell werden alle Bookings, die den Requirement-Zeitraum irgendwo überlappen, summiert.
+
+Das ist falsch.
+
+## Ziel
+
+Kapazität pro Kalendertag berechnen.
+
+Für jeden Requirement-Tag:
+
+```text
+confirmedUsed(day)
+tentativeUsed(day)
+required(day)
+```
+
+berechnen.
+
+---
+
+## 2.1 Pro Tag
+
+Für konkrete ResourceBooking:
+
+```text
+used =
+resource.capacity
+* booking.utilizationPercent / 100
+```
+
+Für Type-Level-Booking:
+
+```text
+used =
+booking.quantity
+* booking.utilizationPercent / 100
+```
+
+Nur wenn das Booking den konkreten Tag umfasst.
+
+---
+
+## 2.2 Verfügbarkeit
+
+Pro Tag:
+
+```text
+availableConfirmed =
+totalCapacity - confirmedUsed
+```
+
+```text
+projectedAvailable =
+totalCapacity - confirmedUsed - tentativeUsed
+```
+
+---
+
+## 2.3 Requirement machbar
+
+Requirement ist nur `FEASIBLE`, wenn an **jedem relevanten Tag**:
+
+```text
+availableConfirmed >= effectiveRequired
+```
+
+mit:
+
+```text
+effectiveRequired =
+requiredCapacity * utilizationPercent / 100
+```
+
+---
+
+## 2.4 Ergebnis erweitern
+
+Falls möglich, Ergebnis zusätzlich mitgeben:
+
+```ts
+dailyAvailability?: Array<{
+  date: string;
+  totalCapacity: number;
+  confirmedUsed: number;
+  tentativeUsed: number;
+  requiredCapacity: number;
+  availableCapacity: number;
+}>
+```
+
+Diese Daten später für UI-Konflikttage wiederverwenden.
+
+---
+
+# 3. Gleichzeitige Requirements desselben ResourceType aggregieren
+
+Im selben Evaluator korrigieren.
+
+Aktuell werden Requirements einzeln geprüft.
+
+## Ziel
+
+Für jeden:
+
+```text
+resourceTypeId + day
+```
+
+alle gleichzeitig geltenden Requirements aggregieren.
+
+Beispiel:
+
+```text
+Requirement A = 4 Personen
+Requirement B = 3 Personen
+Gesamtkapazität = 6
+```
+
+Ergebnis:
+
+```text
+7 > 6
+→ Konflikt
+```
+
+---
+
+## Umsetzung
+
+Vor Availability-Prüfung intern eine Tagesstruktur erzeugen:
+
+```ts
+Map<resourceTypeId, Map<date, effectiveRequiredCapacity>>
+```
+
+Alle Requirements desselben Types auf demselben Tag addieren.
+
+Qualifikationsspezifische Requirements nicht blind zusammenfassen, wenn sie unterschiedliche `requiredQualification` besitzen.
+
+Für den PoC:
+
+```text
+resourceTypeId + requiredQualification + day
+```
+
+als Gruppierung verwenden.
+
+---
+
+# 4. Change Proposal nur nach bestehender Vereinbarung erlauben
+
+Prüfe:
+
+```text
+service-change-proposal-service.ts
+Proposal UI AG
+Proposal UI AN
+```
+
+## Backend-Regel
+
+Vor Create:
+
+```ts
+if (!serviceRequest.agreedStart || !serviceRequest.agreedEnd) {
+  throw 422 CHANGE_PROPOSAL_REQUIRES_AGREEMENT;
+}
+```
+
+Initiale Abstimmung darf ausschließlich über:
+
+```text
+Service Request
+→ Service Response
+→ AG Decision
+```
+
+laufen.
+
+---
+
+## UI-Regel
+
+Button:
+
+```text
+Zeitraum ändern / Änderung vorschlagen
+```
+
+nur anzeigen, wenn:
+
+```text
+currentAgreement vorhanden
+```
+
+Kein Agreement:
+
+keine Change-Proposal-Aktion.
+
+---
+
+# 5. Accept/Reject Race Condition schließen
+
+Prüfe:
+
+```text
+resolveChangeProposal(...)
+```
+
+Nach:
+
+```ts
+UPDATE ... WHERE status = "OPEN" RETURNING
+```
+
+muss zwingend geprüft werden:
+
+```ts
+if (!updated) {
+  throw 409 CHANGE_PROPOSAL_ALREADY_RESOLVED;
+}
+```
+
+Erst danach:
+
+```text
+Agreement ändern
+Plan ändern
+Bookings ändern
+```
+
+Keine fachliche Änderung, wenn das Statusupdate nicht gewonnen wurde.
+
+---
+
+# 6. Revision-Service auf kanonischen Snapshot-Builder umstellen
+
+Prüfe:
+
+```text
+revision-service.ts
+takt-request-snapshot-service.ts
+```
+
+Der Revision-Service darf kein eigenes Snapshot-Format mehr erzeugen.
+
+## Änderung
+
+Denselben Snapshot-Builder verwenden wie bei normalen Requests.
+
+Snapshot muss insbesondere enthalten:
+
+```ts
+plannedTimeWindow: {
+  start: string;
+  end: string;
+}
+```
+
+und alle weiteren kanonischen Felder.
+
+---
+
+## Testfall
+
+```text
+Revision erstellen
+sendImmediately = false
+```
+
+danach:
+
+```text
+/send
+```
+
+muss erfolgreich funktionieren.
+
+---
+
+# B. P1 – konsistente Datums-, Ressourcen- und Workflow-Logik
+
+# 7. Ein-Tages-Semantik überall vereinheitlichen
+
+Systemweite Regel:
+
+```text
+start <= end
+```
+
+ist gültig.
+
+Nur:
+
+```text
+end < start
+```
+
+ist ungültig.
+
+Prüfe mindestens:
+
+```text
+service-change-proposal-service.ts
+revision-service.ts
+change-impact-service.ts
+AG Proposal UI
+AN Proposal UI
+alle relevanten Zod-/Date-Validierungen
+```
+
+Beispiel:
+
+```text
+21.08.2026 – 21.08.2026
+```
+
+muss überall gültig sein.
+
+---
+
+# 8. `ResourceBooking.quantity` dezimalfähig machen
+
+Aktuell:
+
+```text
+requiredCapacity = decimal
+quantity = integer
+```
+
+Das ist inkonsistent.
+
+## Änderung
+
+DB:
+
+```text
+resource_bookings.quantity
+```
+
+auf Decimal/Numeric umstellen, passend zu `requiredCapacity`, z. B.:
+
+```text
+numeric(10,2)
+```
+
+API-Validation:
+
+Nicht mehr:
+
+```ts
+z.number().int().positive()
+```
+
+sondern:
+
+```ts
+z.number().positive()
+```
+
+oder passende Decimal-Validierung.
+
+Alle Berechnungen weiterhin mit `number` normalisieren.
+
+---
+
+# 9. `LOCAL_PROJECT` Booking validieren
+
+Bei:
+
+```text
+sourceType = LOCAL_PROJECT
+```
+
+muss gelten:
+
+```text
+localProjectId required
+```
+
+Bei fehlendem Projekt:
+
+```text
+422 LOCAL_PROJECT_REQUIRED
+```
+
+Zusätzlich:
+
+```text
+localProject.nuOrgId === currentOrgId
+```
+
+weiterhin prüfen.
+
+---
+
+# C. Neue Koordinationsfunktionen vollständig nutzbar machen
+
+# 10. Change-Proposal-Task-Frist korrigieren
+
+Prüfe:
+
+```text
+coordination-task-service.ts
+```
+
+Nicht:
+
+```text
+dueAt = proposal.createdAt
+```
+
+verwenden.
+
+Solange Change Proposals keine eigene Frist besitzen:
+
+```text
+dueAt = null
+```
+
+setzen.
+
+Keine künstliche Deadline ableiten.
+
+---
+
+# 11. Readiness Tasks unabhängig von vorherigem GET erzeugen
+
+Aktuelles Problem:
+
+Task entsteht nur, wenn bereits ein `service_readiness_checks`-Datensatz existiert.
+
+## Ziel
+
+Fehlender Datensatz bedeutet fachlich Default:
+
+```text
+scheduleConfirmed = false
+siteReady = false
+informationComplete = false
+agReady = false
+anReady = false
+```
+
+Task-Service soll diesen virtuellen Default berücksichtigen.
+
+Kein vorheriger GET notwendig.
+
+---
+
+## Zeitfenster
+
+Readiness Task nur wenn:
+
+```text
+agreedStart >= today
+AND
+agreedStart <= today + 7 days
+```
+
+Vergangene Leistungen dürfen keinen neuen Readiness Task erzeugen.
+
+---
+
+# 12. Readiness GET ohne DB-Schreibzugriff
+
+Prüfe:
+
+```text
+GET /service-requests/:id/readiness
+```
+
+Wenn kein Datensatz existiert:
+
+```text
+virtuellen Default zurückgeben
+```
+
+Nicht automatisch INSERT ausführen.
+
+Erst bei PATCH Datensatz anlegen bzw. upserten.
+
+Damit bleibt GET read-only.
+
+---
+
+# 13. Readiness UI vollständig anzeigen
+
+Auf AG und AN immer alle fünf Kriterien anzeigen:
+
+```text
+Termin bestätigt
+Arbeitsbereich bereit
+Informationen vollständig
+AG bereit
+AN bereit
+```
+
+Schreibrechte:
+
+### AG
+
+bearbeitbar:
+
+```text
+scheduleConfirmed
+siteReady
+informationComplete
+agReady
+```
+
+`anReady` read-only.
+
+### AN
+
+bearbeitbar:
+
+```text
+anReady
+```
+
+alle AG-Felder read-only.
+
+---
+
+# 14. Constraints UI vollständig umsetzen
+
+Backend existiert bereits.
+
+Frontend ergänzen.
+
+## Aktionen
+
+Auf Service-Request-Detailseite:
+
+```text
+[Risiko melden]
+```
+
+Dialog:
+
+```text
+Typ
+Beschreibung
+Verantwortliche Organisation
+```
+
+Nach Erstellung anzeigen.
+
+---
+
+## Bei offenem Constraint
+
+Aktionen:
+
+```text
+[Als gelöst markieren]
+[Stornieren]
+[Terminänderung vorschlagen]
+```
+
+Rechte:
+
+```text
+Resolve → responsibleOrgId
+Cancel → reportedByOrgId
+```
+
+Serverseitig erzwingen.
+
+Falls beide Organisationen bewusst Resolve dürfen sollen, dann `responsibleOrgId` nicht verwenden. Bevorzugt aber obige klare Regel.
+
+---
+
+# 15. Clarifications UI vollständig umsetzen
+
+Backend existiert.
+
+Frontend ergänzen.
+
+## Aktionen
+
+```text
+[Klärungsfrage stellen]
+```
+
+Dialog:
+
+```text
+Kategorie
+Frage
+```
+
+---
+
+## Offene Frage
+
+Gegenseite sieht:
+
+```text
+[Antworten]
+```
+
+Fragesteller sieht:
+
+```text
+[Stornieren]
+```
+
+Keine Chat-/Thread-Funktion.
+
+Eine Frage → eine Antwort.
+
+---
+
+# D. Dependencies und Change Impact konsolidieren
+
+# 16. Nur ein Dependency-Modell verwenden
+
+Aktuell existieren zwei parallele Modelle:
+
+```text
+bestehende Projekt-/Takt-Dependencies
+service_dependencies
+```
+
+Das ist zu vermeiden.
+
+## Vorgabe
+
+Für zukünftige Koordinationslogik **`service_dependencies` als kanonisches Modell verwenden**.
+
+Bestehende Projekt-UI, die aktuell alte Dependencies erzeugt, auf:
+
+```text
+service_dependencies
+```
+
+umstellen.
+
+Legacy-Tabelle nur lesen/kompatibel lassen, wenn nötig.
+
+Keine neuen Daten mehr ausschließlich im alten Modell speichern.
+
+---
+
+# 17. Dependency Cycle Detection vollständig implementieren
+
+Beim Create:
+
+```text
+predecessor → successor
+```
+
+prüfen, ob über vorhandene Dependencies bereits ein Pfad existiert:
+
+```text
+successor → ... → predecessor
+```
+
+DFS oder BFS verwenden.
+
+Wenn ja:
+
+```text
+422 DEPENDENCY_CYCLE
+```
+
+Direkte und indirekte Zyklen verhindern.
+
+Beispiel:
+
+```text
+A → B
+B → C
+C → A
+```
+
+muss verhindert werden.
+
+---
+
+# 18. Change Impact nur für AG zugänglich machen
+
+Endpoint:
+
+```text
+GET /service-requests/:id/change-impact
+```
+
+nur für die AG-Organisation des Requests zulassen.
+
+AN darf keine Informationen über andere AN-/Folgeleistungen sehen.
+
+Bei AN:
+
+```text
+403
+```
+
+---
+
+# 19. Change Impact in Change-Proposal-UI integrieren
+
+Nur auf AG-Seite.
+
+Wenn AG neuen Zeitraum eingibt:
+
+vor Absenden:
+
+```text
+evaluateChangeImpact(...)
+```
+
+aufrufen.
+
+Anzeige:
+
+```text
+⚠ 2 nachgelagerte Leistungen möglicherweise betroffen
+```
+
+mit:
+
+```text
+Leistungsname
+aktuell vereinbarter Start
+frühester möglicher Start
+Delta in Tagen
+```
+
+Keine automatische Verschiebung.
+
+Button bleibt:
+
+```text
+Änderung vorschlagen
+```
+
+---
+
+# 20. Automatische Terminfortschreibung aus altem Dependency-Workflow entfernen
+
+Prüfe:
+
+```text
+project-detail.tsx
+```
+
+Falls weiterhin angeboten:
+
+```text
+Plantermine automatisch anpassen?
+```
+
+im Kontext der Service-Koordination entfernen oder deaktivieren.
+
+Neue Regel:
+
+```text
+Impact anzeigen
+→ AG entscheidet
+→ keine automatische Folgeänderung
+```
+
+---
+
+# E. Coordination Board und Next Action korrigieren
+
+# 21. Eine zentrale Next-Action-Funktion für gesamten Workflow
+
+Aktuell:
+
+```text
+coordination-task-service
+deriveCoordinationState
+```
+
+berechnen ähnliche Zustände unterschiedlich.
+
+Erstelle bzw. erweitere einen einzigen zentralen Helper:
+
+```ts
+deriveServiceCoordinationState(...)
+```
+
+Er soll berücksichtigen:
+
+```text
+Service Request Status
+Service Response
+AG Decision
+Agreement
+Open Change Proposal
+Constraints
+Clarifications
+Readiness
+```
+
+---
+
+## Mindestregeln
+
+### Request wartet auf AN
+
+```text
+nextActionOwner = AN
+nextAction = RESPOND_TO_REQUEST
+```
+
+### AN Response wartet auf AG
+
+```text
+nextActionOwner = AG
+nextAction = DECIDE_RESPONSE
+```
+
+### AG Change Proposal
+
+```text
+nextActionOwner = AN
+nextAction = RESPOND_TO_CHANGE_PROPOSAL
+```
+
+### AN Change Proposal
+
+```text
+nextActionOwner = AG
+nextAction = RESPOND_TO_CHANGE_PROPOSAL
+```
+
+### Keine offene Aktion
+
+```text
+nextActionOwner = NONE
+nextAction = NO_ACTION
+```
+
+Task-Cockpit, Board, Detailseite und Inbox müssen denselben Helper verwenden.
+
+---
+
+# 22. AG Coordination Board vervollständigen
+
+Vorhandenen Board-Service/UI erweitern.
+
+Tabelle muss anzeigen:
+
+```text
+Leistung
+AN
+Aktuelle Vereinbarung
+Offener Vorschlag
+Nächste Aktion
+Risiken
+Klärungen
+Bereitschaft
+Auswirkungen
+Letzte Änderung
+```
+
+---
+
+## Filter
+
+Nur:
+
+```text
+AN
+Nächste Aktion
+Risiko vorhanden
+Klärung offen
+Bereitschaft
+```
+
+---
+
+## Schnellfilter
+
+```text
+Handlung durch AG
+Warten auf AN
+Mit Risiken
+Mit offenen Klärungen
+Nicht ausführungsbereit
+```
+
+Keine weiteren Dashboard-Filter.
+
+---
+
+# 23. `dependencyImpactCount` richtig berechnen
+
+Momentan wird offenbar die Zahl der Vorgänger gezählt.
+
+Gewünscht:
+
+```text
+Wie viele nachgelagerte Leistungen können durch diese Leistung betroffen sein?
+```
+
+Also:
+
+```text
+predecessorServiceRequestId === currentRequest.id
+```
+
+verwenden.
+
+Noch besser:
+
+nur tatsächlich vom aktuellen Agreement potenziell betroffene Successors zählen.
+
+---
+
+# F. Timeline und Detailseiten bereinigen
+
+# 24. Coordination Timeline fachlich korrigieren
+
+`AGREEMENT_REACHED` darf nicht:
+
+```text
+request.createdAt
+```
+
+verwenden.
+
+Tatsächlichen Ereigniszeitpunkt verwenden:
+
+```text
+AG Decision createdAt
+oder
+accepted Change Proposal resolvedAt
+```
+
+---
+
+## Actor-Modell
+
+Nicht mehr ein gemischtes `party`-Feld.
+
+Verwenden:
+
+```ts
+actorRole: "AG" | "AN";
+actorOrgId?: string;
+```
+
+Keine User-IDs an Gegenseite ausgeben.
+
+---
+
+# 25. Neue Koordinationsereignisse in Timeline aufnehmen
+
+Ergänzen:
+
+```text
+CONSTRAINT_REPORTED
+CONSTRAINT_RESOLVED
+
+CLARIFICATION_CREATED
+CLARIFICATION_RESOLVED
+
+READINESS_CHANGED
+```
+
+Nur Business Events.
+
+Keine Dataspace-/Transportevents.
+
+---
+
+# 26. Öffentliche Coordination DTOs minimieren
+
+Nicht komplette DB-Zeilen der Change Proposals zurückgeben.
+
+Extern/UI-übergreifend nur:
+
+```ts
+{
+  id,
+  start,
+  end,
+  proposerRole,
+  reasonCode,
+  comment,
+  status,
+  supersedesProposalId,
+  createdAt,
+  resolvedAt
+}
+```
+
+Nicht ausgeben:
+
+```text
+proposerUserId
+resolvedByUserId
+```
+
+Organisationenübergreifend keine internen User-IDs.
+
+---
+
+# 27. Doppelte Proposal UI entfernen
+
+Auf AG- und AN-Detailseite darf jeweils nur **ein** Terminabstimmungsbereich erscheinen.
+
+Prüfe:
+
+```text
+CoordinationSummary
+ProposalActions
+CoordinationProposalActions
+```
+
+Entscheide pro App für eine gemeinsame Komponente.
+
+Bevorzugt:
+
+```text
+ProposalActions
+```
+
+als zentrale Komponente.
+
+Lokale Parallelimplementierungen entfernen.
+
+Keine zwei „Zeitraum vorschlagen“-Bereiche auf derselben Seite.
+
+---
+
+# G. AN-Ressourcenübersicht vollständig implementieren
+
+# 28. Drei Tabs umsetzen
+
+Auf AN-Seite:
+
+```text
+Übersicht
+Kapazitätsplanung
+Anfragen & Konflikte
+```
+
+Standard:
+
+```text
+Übersicht
+```
+
+---
+
+# 29. Backend-Service für kompakte Ressourcenübersicht
+
+Erstelle:
+
+```text
+resource-capacity-overview-service.ts
+```
+
+Funktion:
+
+```ts
+getResourceCapacityOverview({
+  orgId,
+  startDate,
+  endDate
+})
+```
+
+Pro ResourceType:
+
+```ts
+{
+  resourceTypeId,
+  resourceTypeName,
+  capacityUnit,
+
+  resourceCount,
+
+  totalCapacity,
+  confirmedCapacity,
+  requestedCapacity,
+
+  availableCapacity,
+  projectedAvailableCapacity,
+
+  utilizationPercent
+}
+```
+
+Berechnung konsistent mit dem zentralen tagesweisen Availability-Evaluator.
+
+Keine separate Kapazitätslogik.
+
+---
+
+# 30. Keine offene Anfrage doppelt zählen
+
+Wenn bereits:
+
+```text
+TENTATIVE Booking
+```
+
+für Requirement/ServiceRequest existiert:
+
+```text
+dieses Booking verwenden
+```
+
+Requirement nicht zusätzlich addieren.
+
+---
+
+# 31. API-Endpunkte
+
+Maximal:
+
+```text
+GET /api/nu/resource-capacity/overview
+GET /api/nu/resource-capacity/timeline
+```
+
+Parameter:
+
+```text
+startDate
+endDate
+resourceTypeId?
+projectId?
+agOrgId?
+status?
+```
+
+---
+
+# 32. Übersicht UI
+
+KPI:
+
+```text
+Ressourcentypen
+Konkrete Ressourcen
+Aktive Buchungen
+Offene Anfragen
+```
+
+Tabelle:
+
+```text
+Ressourcentyp
+Gesamt
+Fest eingeplant
+In Abstimmung
+Noch frei
+Nach offenen Anfragen
+Auslastung
+```
+
+Keine unterschiedlichen Einheiten summieren.
+
+---
+
+# 33. Bestehendes Gantt zur echten Resource Timeline erweitern
+
+Aktuelles `gantt.tsx` weiterverwenden, nicht neu bauen.
+
+## Muss künftig anzeigen
+
+* freie Resources
+* Confirmed Bookings
+* Tentative Bookings
+* Type-Level-Bookings
+* ausgewählte Service Request als Overlay
+* Konflikttage
+* ResourceType-Aggregat
+
+---
+
+## Freie Resources
+
+Nicht mehr:
+
+```ts
+if (!booksForThis.length) return;
+```
+
+Freie Resources trotzdem darstellen.
+
+---
+
+## Type-Level-Bookings
+
+Bookings mit:
+
+```text
+resourceId = null
+resourceTypeId != null
+```
+
+auf ResourceType-Zeile darstellen.
+
+Nicht verlieren.
+
+---
+
+# 34. Gantt-Konfliktberechnung korrigieren
+
+Bei konkreter Resource nicht jede Überlappung automatisch als Konflikt markieren.
+
+Pro Tag:
+
+```text
+sum(utilizationPercent)
+```
+
+berechnen.
+
+Nur:
+
+```text
+> 100 %
+```
+
+ist Konflikt.
+
+```text
+50 % + 50 % = erlaubt
+```
+
+---
+
+# 35. Anfrage als Overlay
+
+Ausgewählte Service Request auf ResourceType-Ebene darstellen:
+
+```text
+requiredCapacity
+utilizationPercent
+periodStart
+periodEnd
+```
+
+Konflikttage aus zentralem Availability-Ergebnis übernehmen.
+
+Nicht im Frontend neu berechnen.
+
+---
+
+# 36. „Anfragen & Konflikte“ umsetzen
+
+Liste:
+
+```text
+Leistung
+AG
+Zeitraum
+Ressourcenbedarf
+Verfügbarkeit
+Frist
+Aktion
+```
+
+Zustände:
+
+```text
+AVAILABLE
+AT_RISK
+CONFLICT
+```
+
+UI:
+
+```text
+✓ Verfügbar
+⚠ Gefährdet
+✕ Konflikt
+```
+
+---
+
+# 37. Nächsten verfügbaren Zeitraum anzeigen
+
+Bei `CONFLICT`:
+
+bestehende Alternative-Logik verwenden.
+
+Anzeige:
+
+```text
+Nächster vollständig verfügbarer Zeitraum
+16.–20.09.
+```
+
+Button:
+
+```text
+Alternative vorschlagen
+```
+
+bestehenden Change-/Alternative-Workflow verwenden.
+
+---
+
+# H. OpenAPI und Typisierung korrigieren
+
+# 38. `Resource`-Schema vollständig reparieren
+
+In `openapi.yaml` unter:
+
+```yaml
+Resource:
+  properties:
+```
+
+mindestens ergänzen:
+
+```text
+resourceTypeId
+capacity
+capacityUnit
+skills
+qualifications
+calendarId
+active
+updatedAt
+```
+
+`required` darf nur Felder enthalten, die auch definiert sind.
+
+Danach API-Client regenerieren.
+
+---
+
+# 39. Neue Koordinationsendpunkte in OpenAPI aufnehmen
+
+Mindestens:
+
+```text
+Change Proposals
+Constraints
+Clarifications
+Readiness
+Dependencies
+Change Impact
+Coordination Tasks
+Coordination Board
+```
+
+Passende Request-/Response-Schemas definieren.
+
+Danach handgeschriebene `Promise<any>`-Clients in diesen Bereichen schrittweise durch generierte Typen ersetzen.
+
+Keine globale `as any`-Bereinigung.
+
+Nur betroffene neue Module.
+
+---
+
+# I. Dataspace-Readiness abschließen
+
+# 40. Invalid Decision niemals zu ACCEPTED mappen
+
+In:
+
+```text
+external-mappers.ts
+```
+
+nur erlauben:
+
+```text
+ACCEPTED
+REJECTED
+ALTERNATIVES_PROPOSED
+```
+
+Alles andere:
+
+```text
+throw InvalidExternalServiceResponse
+```
+
+Kein Default auf `ACCEPTED`.
+
+---
+
+# 41. `messageId` aus bestehendem Envelope übernehmen
+
+Mapper so erweitern, dass optional:
+
+```text
+messageId
+```
+
+mitgegeben werden kann.
+
+Bei Mapping aus bestehendem Envelope:
+
+```text
+external.metadata.messageId = envelope.messageId
+```
+
+Nicht immer neue UUID erzeugen.
+
+Neue UUID nur, wenn keine Message-ID vorhanden ist.
+
+---
+
+# 42. RestDataspaceExchange idempotent machen
+
+Vor Versand prüfen:
+
+Wenn `dataspace_exchanges` bereits enthält:
+
+```text
+messageId
+status = PUBLISHED
+```
+
+dann:
+
+```text
+nicht erneut transport.send(...)
+```
+
+sondern existierende:
+
+```text
+ExchangeReference
+```
+
+zurückgeben.
+
+---
+
+# 43. Inbound-Service wirklich verdrahten
+
+Produktiver Empfang von:
+
+```text
+ExternalServiceRequest
+ExternalServiceResponse
+```
+
+muss über:
+
+```ts
+handleIncomingServiceRequest(...)
+handleIncomingServiceResponse(...)
+```
+
+laufen.
+
+Nicht direkt Fachlogik aus Transport-Handlern aufrufen.
+
+Damit aktivieren:
+
+```text
+Inbound Audit
+Idempotenz
+RECEIVED
+PROCESSED
+FAILED
+```
+
+---
+
+# 44. Cross-Org-Nachrichten identifizieren
+
+Noch vorhandene direkte:
+
+```text
+new LocalHubTransport()
+```
+
+prüfen in:
+
+```text
+gu-decision-service.ts
+revision-service.ts
+data-publication-service.ts
+deadline-evaluation-service.ts
+routes/messages.ts
+```
+
+Nur organisationsübergreifende fachliche Nachrichten über `DataspaceExchange` führen.
+
+Interne technische Messages dürfen lokal bleiben.
+
+Keine komplette Transportarchitektur umbauen.
+
+---
+
+# J. Security / Data Sovereignty
+
+# 45. Change Impact AG-only testen
+
+Expliziter Test:
+
+```text
+AN A fragt Change Impact ab
+```
+
+→ `403`.
+
+Keine Daten anderer AN zurückgeben.
+
+---
+
+# 46. Interne User-IDs nicht organisationsübergreifend ausgeben
+
+Prüfe Response DTOs für:
+
+```text
+Change Proposals
+Constraints
+Clarifications
+Timeline
+```
+
+Kein:
+
+```text
+createdByUserId
+resolvedByUserId
+proposerUserId
+```
+
+an Gegenseite senden.
+
+Rollen-/Org-Information reicht.
+
+---
+
+# K. Gezielte Regressionstests
+
+Keine riesige Testsuite.
+
+Folgende Fälle zwingend ergänzen.
+
+## Availability
+
+### Test 1
+
+Zeitlich getrennte Bookings:
+
+```text
+01.–02. = 2
+04.–05. = 2
+Capacity = 6
+Requirement = 4
+```
+
+→ feasible.
+
+### Test 2
+
+Gleichzeitige Requirements:
+
+```text
+4 + 3
+Capacity = 6
+```
+
+→ conflict.
+
+### Test 3
+
+50 % + 50 % konkrete Resource:
+
+→ kein Konflikt.
+
+### Test 4
+
+60 % + 60 %:
+
+→ Konflikt.
+
+---
+
+## Change Proposal
+
+### Test 5
+
+Kein Agreement:
+
+```text
+create Change Proposal
+```
+
+→ 422.
+
+### Test 6
+
+Accept:
+
+Plan, Agreement und Bookings werden auf neuen Zeitraum aktualisiert.
+
+### Test 7
+
+gleichzeitiges Accept/Reject:
+
+nur eine Entscheidung gewinnt.
+
+### Test 8
+
+eintägiges Proposal:
+
+```text
+start == end
+```
+
+zulässig.
+
+---
+
+## Revision
+
+### Test 9
+
+eintägige Revision zulässig.
+
+### Test 10
+
+Revision:
+
+```text
+sendImmediately=false
+```
+
+danach `/send` erfolgreich.
+
+---
+
+## Readiness
+
+### Test 11
+
+kein Readiness-Datensatz vorhanden, Start in 5 Tagen:
+
+Task wird trotzdem erzeugt.
+
+### Test 12
+
+vergangene Leistung:
+
+kein Readiness Task.
+
+### Test 13
+
+GET Readiness erzeugt keinen DB-Datensatz.
+
+### Test 14
+
+AG kann `anReady` nicht ändern.
+
+### Test 15
+
+AN kann AG-Felder nicht ändern.
+
+---
+
+## Constraint
+
+### Test 16
+
+Responsible AN:
+
+AG kann Constraint nicht als resolved markieren.
+
+### Test 17
+
+Reporter kann eigenen Constraint canceln.
+
+---
+
+## Clarification
+
+### Test 18
+
+AN fragt, AG antwortet → RESOLVED.
+
+### Test 19
+
+AN kann eigene Frage nicht beantworten.
+
+---
+
+## Dependencies
+
+### Test 20
+
+```text
+A → B
+B → C
+C → A
+```
+
+→ 422 cycle.
+
+### Test 21
+
+Change Impact als AN → 403.
+
+---
+
+## Coordination Board
+
+### Test 22
+
+initialer Request wartet auf AN:
+
+```text
+nextActionOwner = AN
+```
+
+### Test 23
+
+AN Response wartet auf AG:
+
+```text
+nextActionOwner = AG
+```
+
+### Test 24
+
+Impact Count zählt Successors, nicht Predecessors.
+
+---
+
+## Dataspace
+
+### Test 25
+
+invalid decision:
+
+```text
+"FOO"
+```
+
+→ Fehler, niemals `ACCEPTED`.
+
+### Test 26
+
+gleiche `messageId` bereits `PUBLISHED`:
+
+kein zweiter Transport-Versand.
+
+### Test 27
+
+Inbound gleiche `messageId` bereits `PROCESSED`:
+
+keine zweite fachliche Verarbeitung.
+
+---
+
+# L. Reihenfolge der Umsetzung
+
+Bitte exakt in dieser Reihenfolge arbeiten.
+
+## Block 1 – fachliche Kernkonsistenz
+
+```text
+1 Change Proposal Acceptance
+2 tagesweise Availability
+3 kombinierte Requirements
+4 Change Proposal nur nach Agreement
+5 Accept/Reject Race
+6 Revision Snapshot
+7 inklusive Datumssemantik
+8 decimal quantity
+```
+
+Danach gezielte Tests.
+
+---
+
+## Block 2 – neue Koordinationsfunktionen fertigstellen
+
+```text
+9 Tasks/Readiness
+10 Constraint UI/Rechte
+11 Clarification UI
+12 Dependency-Konsolidierung
+13 Cycle Detection
+14 Change Impact AG-only + Proposal UI
+15 Next Action zentral
+16 Coordination Board
+17 Timeline
+18 doppelte Proposal UI
+```
+
+Danach gezielte Tests.
+
+---
+
+## Block 3 – AN-Ressourcenplanung
+
+```text
+19 Übersicht
+20 Capacity APIs
+21 Resource Timeline erweitern
+22 Type-Level-Bookings
+23 freie Resources
+24 Anfrage-Overlay
+25 Konfliktansicht
+26 nächster Zeitraum
+```
+
+---
+
+## Block 4 – technische Konsistenz
+
+```text
+27 OpenAPI
+28 API Client
+29 Dataspace Mapper
+30 Dataspace Idempotenz
+31 Inbound Wiring
+32 restliche Cross-Org Messages
+```
+
+---
+
+# M. Nicht umsetzen
+
+Keine zusätzlichen Funktionen außerhalb dieses Auftrags:
+
+```text
+kein Chat
+keine automatische Terminfortschreibung
+keine Gantt-Drag&Drop-Terminänderung
+keine automatische konkrete Ressourcenallokation
+keine neue EDC-API
+kein DTR
+kein AAS
+kein Event Sourcing
+keine Workflow Engine
+keine vollständige Legacy-Migration
+keine globale as-any-Bereinigung
+```
+
+---
+
+# N. Technische Prüfung
+
+Nach jedem Block nur betroffene Tests.
+
+Am Ende:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/ag-app build
+pnpm --filter @workspace/an-app build
+```
+
+Falls OpenAPI geändert wurde:
+
+```text
+vorhandenen API-Client-Generate-Befehl ausführen
+```
+
+und generierten Client typechecken.
+
+---
+
+# Abschlussbericht
+
+Nur knapp berichten:
+
+1. behobene P0-Fehler
+2. Change-Proposal-/Schedule-Change-Verhalten
+3. neue Availability-Berechnung
+4. Revision-Korrektur
+5. Readiness-/Task-Korrekturen
+6. Constraint-/Clarification-UI
+7. Dependency-/Impact-Korrekturen
+8. Coordination Board / Next Action
+9. AN Ressourcenübersicht / Timeline
+10. OpenAPI-/Dataspace-Korrekturen
+11. neue Tests
+12. Typecheck-/Build-Ergebnisse
+13. verbleibende bekannte Legacy-Probleme
+
+Keine weiteren Optimierungen durchführen.
