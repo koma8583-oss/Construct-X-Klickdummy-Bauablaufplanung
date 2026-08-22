@@ -22,6 +22,7 @@ import {
 import { format, isPast } from "date-fns";
 import { de } from "date-fns/locale";
 import { Link } from "wouter";
+import { CoordinationTasksPanel } from "@/components/coordination-tasks-panel";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -292,6 +293,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+      <CoordinationTasksPanel />
     </div>
   );
 }

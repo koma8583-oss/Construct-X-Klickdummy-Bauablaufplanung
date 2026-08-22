@@ -59,6 +59,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { ServiceCoordinationTools } from '@/components/service-coordination-tools';
 import { ProposalActions } from '@/components/proposal-actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -117,12 +118,12 @@ function CoordinationSummary({ details }: { details: any }) {
         </div>
       </div>
       {delta?.hasChange && <p className="text-sm text-amber-700 dark:text-amber-300">Terminänderung: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage</p>}
-      <ProposalActions details={details} />
+      <CoordinationProposalActions details={details} />
     </section>
   );
 }
 
-function ProposalActions({ details }: { details: any }) {
+function CoordinationProposalActions({ details }: { details: any }) {
   const queryClient = useQueryClient();
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -738,6 +739,7 @@ export default function LeistungsanfrageDetailPage() {
 
       <CoordinationSummary details={details} />
       <ProposalActions requestId={requestId!} />
+      <ServiceCoordinationTools requestId={requestId!} role="AN" />
 
       {/* Step indicator */}
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />

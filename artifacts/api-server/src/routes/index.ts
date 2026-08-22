@@ -14,6 +14,8 @@ import nuRouter from "./nu";
 import projectCalendarsRouter from "./project-calendars";
 // Canonical German Leistung endpoints (Task #196)
 import leistungenRouter from "./leistungen";
+import coordinationTasksRouter from "./coordination-tasks";
+import serviceCoordinationRouter from "./service-coordination";
 
 const router: IRouter = Router();
 
@@ -34,5 +36,7 @@ router.use(nuRouter);
 // the legacy /takte, /takt-dependencies and /takt-requests paths take precedence
 // for any overlapping patterns (there are none, but belt-and-suspenders ordering).
 router.use(leistungenRouter);
+router.use(coordinationTasksRouter);
+router.use(serviceCoordinationRouter);
 
 export default router;

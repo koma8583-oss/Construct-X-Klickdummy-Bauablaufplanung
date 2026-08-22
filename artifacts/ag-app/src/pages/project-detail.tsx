@@ -118,6 +118,7 @@ import {
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
+import { CoordinationBoard } from '@/components/coordination-board';
 import { findAlternativeImpacts, type AlternativeImpact } from '@/lib/alternative-impact';
 
 // ── Working-days client utility ────────────────────────────────────────────────
@@ -1437,6 +1438,8 @@ export default function ProjectDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <CoordinationBoard projectId={projectId} />
 
       {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
       {dataPublications && dataPublications.length > 0 && (

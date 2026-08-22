@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Briefcase, AlertTriangle, CheckCircle, Clock, Activity } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
+import { CoordinationTasksPanel } from '@/components/coordination-tasks-panel';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -171,6 +172,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+      <CoordinationTasksPanel />
     </div>
   );
 }
