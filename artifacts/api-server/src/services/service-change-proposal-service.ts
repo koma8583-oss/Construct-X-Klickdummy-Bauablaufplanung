@@ -92,6 +92,22 @@ export async function getCoordination(requestId: string, orgId: string) {
   const openProposal = proposals.find((p) => p.status === "OPEN") ?? null;
   const currentAgreement = request.agreedStart && request.agreedEnd ? { start: request.agreedStart, end: request.agreedEnd } : null;
   const state = deriveCoordinationState({ openProposal, currentAgreement, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
+  const party = partyForOrg(request, orgId);
+  const nextActionOwner = state.nextActionOwner ?? (
+    party === "AN" && ["DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(request.status)
+      ? "AN"
+      : party === "AG" && ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED"].includes(request.status)
+        ? "AG"
+        : null
+  );
+  const nextAction =
+    openProposal
+      ? (nextActionOwner === party ? "RESPOND_TO_CHANGE_PROPOSAL" : "NO_ACTION")
+      : party === "AN" && ["DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(request.status)
+        ? "RESPOND_TO_REQUEST"
+        : party === "AG" && ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED"].includes(request.status)
+          ? "DECIDE_RESPONSE"
+          : "NO_ACTION";
   const delta = openProposal
     ? calculateScheduleDelta(currentAgreement?.start, currentAgreement?.end, openProposal.start, openProposal.end)
     : { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };
@@ -100,7 +116,9 @@ export async function getCoordination(requestId: string, orgId: string) {
     openProposal,
     proposals,
     coordinationState: state.state,
-    nextActionOwner: state.nextActionOwner,
+    nextActionOwner,
+    nextAction,
+    responseRequiredBy: request.responseRequiredBy,
     scheduleDelta: delta,
     timeline: buildCoordinationTimeline(request, proposals),
   };

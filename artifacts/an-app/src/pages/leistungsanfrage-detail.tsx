@@ -61,6 +61,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { ServiceCoordinationTools } from '@/components/service-coordination-tools';
 import { ProposalActions } from '@/components/proposal-actions';
+import { CurrentActionCard } from '@/components/current-action-card';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -737,12 +738,13 @@ export default function LeistungsanfrageDetailPage() {
         </div>
       )}
 
+      <CurrentActionCard requestId={requestId!} onFocus={() => document.getElementById('own-response')?.scrollIntoView({ behavior: 'smooth' })} />
       <CoordinationSummary details={details} />
       <ProposalActions requestId={requestId!} />
       <ServiceCoordinationTools requestId={requestId!} role="AN" />
 
       {/* Step indicator */}
-      <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />
+      <div id="own-response"><StepIndicator currentStep={currentStep} completedSteps={completedSteps} /></div>
 
       {/* ── Step 1: Datenfreigabe ─────────────────────────────────────────── */}
       <StepSection step={1} currentStep={currentStep} completedSteps={completedSteps}>

@@ -49,6 +49,7 @@ import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
 import { findAlternativeImpacts } from '@/lib/alternative-impact';
 import { ProposalActions } from '@/components/proposal-actions';
 import { ServiceCoordinationTools } from '@/components/service-coordination-tools';
+import { CurrentActionCard } from '@/components/current-action-card';
 
 // ── Status badge helpers ───────────────────────────────────────────────────────
 
@@ -218,7 +219,6 @@ function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
           Delta: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage, Ende {delta.endDays >= 0 ? '+' : ''}{delta.endDays} Tage
         </p>
       )}
-      <ProposalActions requestId={detail.id} />
       {coordination.coordinationTimeline && coordination.coordinationTimeline.length > 0 && (
         <div className="border-t pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Verlauf</p>
@@ -666,6 +666,7 @@ export default function LeistungsanfragenDetailPage() {
         </div>
       </div>
 
+      <CurrentActionCard requestId={detail.id} onFocus={() => document.getElementById('partner-response')?.scrollIntoView({ behavior: 'smooth' })} />
       <CoordinationSummary detail={detail} />
 
       {/* Transport Error Panel */}
@@ -741,7 +742,7 @@ export default function LeistungsanfragenDetailPage() {
 
           {/* Response + GU Decision panel */}
           <Section icon={<FileText className="w-4 h-4" />} title={t('taktRequestDetail.response.title')}>
-            <ResponsePanel detail={detail} />
+            <div id="partner-response"><ResponsePanel detail={detail} /></div>
             <ProposalActions requestId={requestId ?? ''} />
             <ServiceCoordinationTools requestId={requestId ?? ''} role="AG" />
             {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
