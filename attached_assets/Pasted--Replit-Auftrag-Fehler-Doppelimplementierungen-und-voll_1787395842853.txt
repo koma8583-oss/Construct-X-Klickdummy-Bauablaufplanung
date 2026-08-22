@@ -1,0 +1,2805 @@
+# Replit-Auftrag – Fehler, Doppelimplementierungen und vollständigen pnpm-Build bereinigen
+
+Arbeite auf Basis des aktuellen Repository-Stands.
+
+Dieser Auftrag dient ausschließlich der Behebung der aktuell festgestellten **fachlichen Fehler, inkonsistenten Doppelimplementierungen und technischen Inkonsistenzen**.
+
+Die große zuletzt beschriebene Überarbeitung der Leistungsanfragen-UI noch **nicht** implementieren.
+
+---
+
+# 0. Verbindliche Grundregeln
+
+## Nicht umsetzen
+
+Keine neuen Features außerhalb dieses Auftrags.
+
+Insbesondere jetzt noch nicht:
+
+```text
+kein neues Detailseiten-Design
+kein neues Dashboard
+keine neue Gantt-Funktion
+keine neue Resource-Capacity-Übersicht
+keine neue EDC-Implementierung
+keine Workflow Engine
+kein Event Sourcing
+kein Chat
+keine automatische Folgeverschiebung von Leistungen
+keine vollständige Legacy-Migration
+```
+
+---
+
+## Bestehende Fachlogik wiederverwenden
+
+Vorhandene zentrale Funktionen bevorzugen:
+
+```text
+evaluateResourceRequirements(...)
+shiftRequirementsToWindow(...)
+calculateScheduleDelta(...)
+deriveServiceCoordinationState(...)
+```
+
+Falls eine vorhandene Funktion fehlerhaft ist:
+
+```text
+diese korrigieren
+```
+
+und nicht daneben eine zweite neue Variante schreiben.
+
+---
+
+## Technische Namen
+
+Neue technische Bezeichner:
+
+```text
+Englisch
+```
+
+UI-Texte:
+
+```text
+Deutsch
+```
+
+Legacy-`takt...`-Namen nicht unnötig migrieren.
+
+---
+
+# BLOCK A – Accepted Change Proposal fachlich konsistent machen
+
+# 1. `schedule-change-service.ts` vollständig korrigieren
+
+Prüfe:
+
+```text
+artifacts/api-server/src/services/schedule-change-service.ts
+artifacts/api-server/src/services/service-change-proposal-service.ts
+artifacts/api-server/src/services/gu-decision-service.ts
+artifacts/api-server/src/services/resource-availability-service.ts
+```
+
+Ziel:
+
+Ein akzeptierter Change Proposal darf erst dann wirksam werden, wenn der neue Zeitraum fachlich und ressourcenseitig konsistent angewendet werden kann.
+
+---
+
+# 2. Vor Acceptance neue Ressourcenverfügbarkeit prüfen
+
+Vor jeder Änderung von:
+
+```text
+agreedStart
+agreedEnd
+Plantermin
+ResourceBookings
+```
+
+müssen die ResourceRequirements für den neuen Zeitraum bestimmt werden.
+
+Dafür vorhandenen Helper verwenden:
+
+```ts
+shiftRequirementsToWindow(...)
+```
+
+Eingaben:
+
+```text
+originalAgreementStart
+newAgreementStart
+ResourceRequirements
+```
+
+Ergebnis:
+
+Requirements mit auf den neuen Termin verschobenen:
+
+```text
+periodStart
+periodEnd
+```
+
+---
+
+# 3. Verschobene Requirements gegen aktuelle Ressourcenlage prüfen
+
+Danach:
+
+```ts
+evaluateResourceRequirements(...)
+```
+
+mit den verschobenen Requirements ausführen.
+
+Wichtig:
+
+Die bereits aus diesem Service Request stammenden alten `CONFIRMED` Bookings dürfen bei dieser Re-Evaluation nicht als Fremdbelegung gegen den Request selbst gerechnet werden.
+
+Dafür bestehenden Exclude-/Ignore-Mechanismus verwenden oder minimal erweitern:
+
+```ts
+excludeSourceReferenceId?: string
+```
+
+bzw. vorhandene passende Möglichkeit.
+
+Nicht sämtliche Bookings des AN ignorieren.
+
+Nur die Bookings dieses konkreten Service Requests.
+
+---
+
+# 4. Acceptance bei fehlender Verfügbarkeit abbrechen
+
+Wenn der neue Zeitraum nicht vollständig machbar ist:
+
+```text
+keine Änderung am Agreement
+keine Änderung am Plan
+keine Änderung an Bookings
+Proposal bleibt OPEN
+```
+
+API-Fehler:
+
+```text
+409 CHANGE_PROPOSAL_NOT_FEASIBLE
+```
+
+Response nach Möglichkeit:
+
+```ts
+{
+  code: "CHANGE_PROPOSAL_NOT_FEASIBLE",
+  availability: ...
+}
+```
+
+Keine Teiländerung durchführen.
+
+---
+
+# 5. Alle Änderungen in einer DB-Transaktion
+
+Folgende Änderungen atomar:
+
+```text
+1. Availability erfolgreich geprüft
+2. Plan/Leistung aktualisieren
+3. neue Leistungsversion erzeugen
+4. Agreement aktualisieren
+5. relevante ResourceBookings ersetzen
+6. Proposal auf ACCEPTED setzen
+```
+
+Wenn ein Schritt fehlschlägt:
+
+```text
+ROLLBACK
+```
+
+---
+
+# 6. Bestehende Bookings nicht nur per Millisekunden-Offset verschieben
+
+Aktuell vorhandene Logik wie:
+
+```ts
+deltaMs = newStart - oldStart
+booking.start += deltaMs
+booking.end += deltaMs
+```
+
+für Service-Request-Bookings entfernen.
+
+Grund:
+
+Sie ist falsch bei:
+
+```text
+geänderter Dauer
+unterschiedlichen Requirement-Teilzeiträumen
+abweichenden Uhrzeiten
+Sommer-/Winterzeit
+```
+
+---
+
+# 7. Bookings aus verschobenen Requirements neu erzeugen
+
+Für automatisch aus dem Service Request stammende Bookings:
+
+```text
+alte fachbezogene Auto-Bookings dieses Requests identifizieren
+```
+
+nur über:
+
+```text
+sourceType
+sourceReferenceId
+```
+
+Keine manuellen Bookings anfassen.
+
+Danach aus den verschobenen Requirements neue Booking-Spezifikationen bilden.
+
+Pro Requirement mindestens erhalten:
+
+```ts
+{
+  resourceTypeId,
+  quantity,
+  utilizationPercent,
+  periodStart,
+  periodEnd,
+  requiredQualification
+}
+```
+
+Keine Zusammenfassung unterschiedlicher Requirement-Zeiträume in einen einzigen Booking-Eintrag.
+
+---
+
+# 8. Konkrete Resource-Zuordnung erhalten, wenn möglich
+
+Wenn ein bestehendes automatisches Booking eine konkrete:
+
+```text
+resourceId
+```
+
+enthält und diese Ressource im neuen Zeitraum weiterhin verfügbar ist:
+
+```text
+resourceId beibehalten
+```
+
+Wenn sie nicht verfügbar ist:
+
+```text
+nicht automatisch irgendeine andere konkrete Resource auswählen
+```
+
+Für den PoC bevorzugt:
+
+```text
+Acceptance mit Konflikt abbrechen
+```
+
+oder vorhandene Type-Level-Booking-Logik verwenden, wenn dies bereits der etablierte Workflow ist.
+
+Keine neue automatische Optimierung bauen.
+
+---
+
+# 9. Type-Level-Bookings korrekt neu erzeugen
+
+Bei:
+
+```text
+resourceId = null
+resourceTypeId != null
+```
+
+müssen erhalten bleiben:
+
+```text
+resourceTypeId
+quantity
+utilizationPercent
+periodStart
+periodEnd
+```
+
+`quantity` nicht aus verschiedenen Requirements addieren, wenn deren Zeiträume unterschiedlich sind.
+
+---
+
+# 10. Leistungsversion korrekt erzeugen
+
+Aktuell darf nicht nur:
+
+```text
+leistung.version++
+```
+
+erfolgen.
+
+Wenn das bestehende Modell Leistungsversionen speichert:
+
+```text
+neue Version über denselben bestehenden Versionierungsmechanismus erzeugen
+```
+
+Neue Version muss den geänderten Zeitraum enthalten.
+
+Verknüpfung möglichst dokumentieren:
+
+```text
+source = CHANGE_PROPOSAL
+proposalId = ...
+```
+
+nur falls bestehendes Versionsmodell ein entsprechendes Metadata-/Reason-Feld besitzt.
+
+Kein großes neues Versionsmodell schaffen.
+
+---
+
+# 11. `initiatedBy` und `proposalId` sinnvoll verwenden oder entfernen
+
+Falls `applyAcceptedScheduleChange(...)` aktuell Parameter besitzt:
+
+```text
+initiatedBy
+proposalId
+```
+
+diese nicht ungenutzt lassen.
+
+Verwenden für:
+
+```text
+Audit / Versionierungsgrund / Timeline
+```
+
+falls bestehende Datenstruktur dies unterstützt.
+
+Falls kein sinnvoller Verwendungsort existiert:
+
+Parameter entfernen.
+
+Keine toten Parameter stehen lassen.
+
+---
+
+# BLOCK B – Availability-Ergebnis und Auto-Booking trennen
+
+# 12. Tagesweise Availability beibehalten
+
+Die neue tagesbezogene Availability-Logik nicht zurückbauen.
+
+Weiterhin pro:
+
+```text
+resourceTypeId
+requiredQualification
+day
+```
+
+prüfen.
+
+---
+
+# 13. `availableResources` nicht aus aggregiertem Gesamtbedarf erzeugen
+
+Aktuelles fehlerhaftes Verhalten beseitigen.
+
+Nicht:
+
+```text
+quantity = Summe aller Requirements
+utilizationPercent = erstes Requirement
+periodStart = erstes Requirement
+periodEnd = erstes Requirement
+```
+
+verwenden.
+
+---
+
+# 14. Zwei getrennte Ergebnisse einführen
+
+Die Availability-Funktion soll zwei fachlich getrennte Informationen liefern.
+
+## A – Machbarkeitsbewertung
+
+```ts
+availabilityGroups
+```
+
+bzw. bestehende Conflict-/Daily-Struktur.
+
+Diese darf Requirements aggregieren.
+
+## B – Booking-Spezifikationen
+
+```ts
+bookingRequirements
+```
+
+oder passender vorhandener Name.
+
+Diese müssen die ursprünglichen fachlichen Requirement-Segmente erhalten.
+
+Beispiel:
+
+```ts
+[
+  {
+    resourceTypeId: "workers",
+    quantity: 4,
+    utilizationPercent: 50,
+    periodStart: "2026-09-01",
+    periodEnd: "2026-09-02",
+    requiredQualification: null
+  },
+  {
+    resourceTypeId: "workers",
+    quantity: 2,
+    utilizationPercent: 100,
+    periodStart: "2026-09-03",
+    periodEnd: "2026-09-04",
+    requiredQualification: null
+  }
+]
+```
+
+Nicht zu einem Eintrag verdichten.
+
+---
+
+# 15. `gu-decision-service.ts` auf Booking-Spezifikationen umstellen
+
+Auto-Booking bei initialem ACCEPT darf nicht mehr aus einem verdichteten Availability-Aggregat erzeugt werden.
+
+Stattdessen die neuen:
+
+```text
+bookingRequirements
+```
+
+verwenden.
+
+---
+
+# 16. `schedule-change-service.ts` dieselben Booking-Spezifikationen verwenden
+
+Initial Acceptance und spätere Change Acceptance müssen denselben Mechanismus zur Erzeugung von Bookings verwenden.
+
+Keine zwei verschiedenen Booking-Algorithmen.
+
+Falls sinnvoll zentralen Helper erstellen:
+
+```ts
+buildBookingRequirements(...)
+```
+
+oder:
+
+```ts
+createConfirmedBookingsForRequirements(...)
+```
+
+aber nur einen kleinen zentralen Service/Helper.
+
+---
+
+# 17. `dailyAvailability` vollständig durchreichen
+
+Falls `evaluateResourceRequirements(...)` bereits:
+
+```text
+dailyAvailability
+```
+
+erzeugt, muss diese Information bis zum finalen Availability-Ergebnis erhalten bleiben.
+
+Nicht in:
+
+```text
+executeDtcCheck(...)
+```
+
+wegwerfen.
+
+---
+
+# 18. DailyAvailability eindeutig typisieren
+
+Jeder Eintrag mindestens:
+
+```ts
+{
+  resourceTypeId: string;
+  requiredQualification: string | null;
+  date: string;
+
+  totalCapacity: number;
+  confirmedUsed: number;
+  tentativeUsed: number;
+  requiredCapacity: number;
+
+  availableCapacity: number;
+  projectedAvailableCapacity: number;
+}
+```
+
+Diese Struktur später auch für Konflikt-UI wiederverwendbar halten.
+
+Noch keine neue UI bauen.
+
+---
+
+# 19. Überlappende Qualifikationen konservativ behandeln
+
+Problem:
+
+Eine konkrete Resource kann mehrere Qualifikationen besitzen und dadurch bei zwei Qualification-Gruppen doppelt als verfügbare Kapazität erscheinen.
+
+Für diesen PoC keine komplexe Matching-/Optimierungs-Engine bauen.
+
+Implementiere stattdessen eine konservative Regel:
+
+Wenn mehrere gleichzeitig aktive Requirements:
+
+```text
+gleichen ResourceType
+aber unterschiedliche requiredQualification
+```
+
+haben und dieselben konkreten Resources mehrere dieser Qualifikationen erfüllen können:
+
+```text
+dieselbe konkrete Resource darf bei der aggregierten Tageskapazität nicht mehrfach gezählt werden
+```
+
+Mindestens testbar sicherstellen:
+
+```text
+6 reale Personen
+4 benötigt mit Qualification A
+4 benötigt mit Qualification B
+
+wenn alle 6 Personen A und B haben
+→ Ergebnis darf nicht 8 verfügbare Personen vortäuschen
+```
+
+Wenn eine vollständige optimale Zuordnung zu komplex wäre:
+
+```text
+konservativ Konflikt melden
+```
+
+statt Machbarkeit fälschlich zu bestätigen.
+
+---
+
+# BLOCK C – Change-Proposal-Doppelimplementierungen entfernen
+
+# 20. AN: nur eine Proposal-Komponente behalten
+
+Prüfe:
+
+```text
+artifacts/an-app/src/pages/leistungsanfrage-detail.tsx
+CoordinationProposalActions
+ProposalActions
+```
+
+Aktuell werden zwei unterschiedliche Implementierungen verwendet.
+
+Das muss beendet werden.
+
+---
+
+# 21. Kanonische AN-Komponente festlegen
+
+Bevorzugt die bereits gemeinsam genutzte:
+
+```text
+ProposalActions
+```
+
+als einzige Change-Proposal-Komponente verwenden.
+
+Lokale:
+
+```text
+CoordinationProposalActions
+```
+
+entfernen, sofern keine zwingende zusätzliche Funktion enthalten ist.
+
+Falls darin benötigte Funktionalität steckt:
+
+```text
+in ProposalActions integrieren
+```
+
+und danach lokale Komponente entfernen.
+
+---
+
+# 22. Keine unterschiedlichen Zeitformate mehr
+
+Beide bisherigen Wege verwenden unterschiedliche Endzeiten.
+
+Neue Regel:
+
+Für Change-Proposal-Datumsfelder ausschließlich kanonische Kalenderdatums-Normalisierung verwenden.
+
+Wenn API ISO-Timestamps verlangt:
+
+```text
+start = YYYY-MM-DDT00:00:00.000Z
+end   = YYYY-MM-DDT00:00:00.000Z
+```
+
+für beide.
+
+Keine:
+
+```text
+23:59:59Z
+```
+
+Sonderbehandlung.
+
+Die fachliche Semantik bleibt:
+
+```text
+Starttag inklusiv
+Endtag inklusiv
+```
+
+Backend muss dies entsprechend interpretieren.
+
+---
+
+# 23. Eintägigen Proposal im Frontend erlauben
+
+Validation:
+
+Gültig:
+
+```text
+startDate <= endDate
+```
+
+Ungültig nur:
+
+```text
+endDate < startDate
+```
+
+Beispiel:
+
+```text
+21.08.2026 – 21.08.2026
+```
+
+muss möglich sein.
+
+---
+
+# 24. AG: doppelte `ProposalActions`-Renderstelle entfernen
+
+Prüfe die AG-Detailseite.
+
+`ProposalActions` darf dort maximal einmal gerendert werden.
+
+Keine zweite Instanz:
+
+```text
+im CoordinationSummary
+und zusätzlich im Response-/Detailbereich
+```
+
+---
+
+# 25. Proposal-Aktion nur bei Agreement
+
+Frontend zusätzlich zur Backend-Validierung:
+
+```text
+currentAgreement vorhanden
+```
+
+prüfen.
+
+Ohne Agreement:
+
+```text
+keine Change-Proposal-Aktion anzeigen
+```
+
+Die Initialabstimmung läuft ausschließlich über:
+
+```text
+Request
+Response
+AG Decision
+```
+
+---
+
+# BLOCK D – Next Action nur noch einmal berechnen
+
+# 26. Doppelte Next-Action-Businesslogik beseitigen
+
+Aktuell existiert fachlich ähnliche Logik in mindestens:
+
+```text
+coordination-task-service.ts
+deriveCoordinationState(...)
+ag-coordination-board-service.ts
+```
+
+Ziel:
+
+Eine einzige zentrale Funktion.
+
+---
+
+# 27. Zentralen Helper definieren
+
+Bevorzugter Name:
+
+```ts
+deriveServiceCoordinationState(...)
+```
+
+Ort beispielsweise:
+
+```text
+services/service-coordination-state.ts
+```
+
+Keine zweite Variante behalten.
+
+---
+
+# 28. Input der zentralen Funktion
+
+Mindestens:
+
+```ts
+{
+  serviceRequest,
+  latestResponse,
+  decision,
+  agreement,
+  openChangeProposal,
+  openConstraints?,
+  openClarifications?,
+  readiness?
+}
+```
+
+Nur tatsächlich benötigte Felder übergeben.
+
+---
+
+# 29. Output
+
+```ts
+{
+  nextActionOwner: "AG" | "AN" | "NONE";
+
+  nextAction:
+    | "RESPOND_TO_REQUEST"
+    | "DECIDE_RESPONSE"
+    | "RESPOND_TO_CHANGE_PROPOSAL"
+    | "ANSWER_CLARIFICATION"
+    | "RESOLVE_CONSTRAINT"
+    | "CONFIRM_READINESS"
+    | "NO_ACTION";
+
+  responseRequiredBy: string | null;
+}
+```
+
+---
+
+# 30. Prioritätsreihenfolge für offene Aktionen
+
+Wenn mehrere offene Koordinationsprobleme vorhanden sind, deterministisch priorisieren.
+
+Verwende diese Reihenfolge:
+
+```text
+1. RESPOND_TO_CHANGE_PROPOSAL
+2. DECIDE_RESPONSE
+3. RESPOND_TO_REQUEST
+4. ANSWER_CLARIFICATION
+5. RESOLVE_CONSTRAINT
+6. CONFIRM_READINESS
+7. NO_ACTION
+```
+
+Keine zufällige Reihenfolge anhand Query-Ergebnis.
+
+---
+
+# 31. Initiale Request-Zustände korrekt
+
+Request wurde an AN übermittelt und AN hat noch nicht geantwortet:
+
+```text
+nextActionOwner = AN
+nextAction = RESPOND_TO_REQUEST
+```
+
+---
+
+# 32. Response wartet auf AG
+
+AN Response liegt vor, aber AG Decision fehlt:
+
+```text
+nextActionOwner = AG
+nextAction = DECIDE_RESPONSE
+```
+
+---
+
+# 33. Change Proposal
+
+AG hat vorgeschlagen:
+
+```text
+nextActionOwner = AN
+```
+
+AN hat vorgeschlagen:
+
+```text
+nextActionOwner = AG
+```
+
+---
+
+# 34. Alle Consumer umstellen
+
+Folgende Bereiche müssen denselben Helper verwenden:
+
+```text
+coordination-task-service
+getCoordination / Detail Coordination
+AG Coordination Board
+AN/AG Listen, soweit nextAction dort berechnet wird
+```
+
+Keine lokale alternative Berechnung stehen lassen.
+
+---
+
+# 35. Readiness-Zustand zwischen Task und Board vereinheitlichen
+
+Fehlender gespeicherter Readiness-Datensatz bedeutet:
+
+```text
+virtueller Default
+alle Kriterien false
+```
+
+Nicht im Board:
+
+```text
+NOT_APPLICABLE
+```
+
+anzeigen, wenn gleichzeitig ein Readiness Task entstehen kann.
+
+---
+
+# 36. Wann ist Readiness `NOT_APPLICABLE`?
+
+Nur wenn fachlich noch keine bestehende Vereinbarung vorliegt:
+
+```text
+agreedStart == null
+OR
+agreedEnd == null
+```
+
+Dann:
+
+```text
+NOT_APPLICABLE
+```
+
+Bei Agreement vorhanden und kein Readiness-Datensatz:
+
+```text
+NOT_READY
+```
+
+---
+
+# 37. `lastChangedAt` im Board korrekt berechnen
+
+Berechne Maximum aus:
+
+```text
+serviceRequest.updatedAt
+latestResponse.updatedAt / createdAt
+decision.createdAt
+latestChangeProposal.updatedAt / createdAt
+latestConstraint.updatedAt / createdAt
+latestClarification.updatedAt / createdAt
+readiness.updatedAt
+```
+
+Nur vorhandene Werte.
+
+---
+
+# BLOCK E – Timeline und Prozess-Doppelungen fachlich korrigieren
+
+# 38. Initial Agreement und spätere Änderung unterscheiden
+
+Timeline darf nicht bei jeder später angenommenen Änderung erneut:
+
+```text
+AGREEMENT_REACHED
+```
+
+als wäre erstmals ein Agreement entstanden erzeugen.
+
+Verwende fachlich:
+
+```text
+AGREEMENT_REACHED
+CHANGE_PROPOSAL_ACCEPTED
+```
+
+getrennt.
+
+---
+
+# 39. Initialer Agreement-Zeitpunkt
+
+`AGREEMENT_REACHED` muss aus der tatsächlichen initialen Entscheidung kommen.
+
+Bevorzugt:
+
+```text
+AG Decision createdAt
+```
+
+Nicht:
+
+```text
+request.createdAt
+```
+
+---
+
+# 40. Accepted Change Proposal
+
+Bei spätem Change Proposal:
+
+```text
+CHANGE_PROPOSAL_ACCEPTED
+at = proposal.resolvedAt
+```
+
+Agreement wird dadurch geändert, aber kein zweites:
+
+```text
+AGREEMENT_REACHED
+```
+
+erzeugen.
+
+---
+
+# 41. Timeline Actor vereinheitlichen
+
+Keine Mischung aus:
+
+```text
+"AG"
+"AN"
+organizationId
+userId
+```
+
+in einem einzigen Feld.
+
+Verwende:
+
+```ts
+actorRole: "AG" | "AN";
+actorOrgId?: string;
+```
+
+Interne `userId` nicht an die Gegenseite ausgeben.
+
+---
+
+# 42. Constraint-/Clarification-/Readiness-Ereignisse einbeziehen
+
+Business Timeline mindestens:
+
+```text
+CONSTRAINT_REPORTED
+CONSTRAINT_RESOLVED
+
+CLARIFICATION_CREATED
+CLARIFICATION_RESOLVED
+
+READINESS_CHANGED
+```
+
+Nur wenn Daten tatsächlich vorhanden.
+
+---
+
+# 43. Drei parallele Historien auf AG-Seite nicht fachlich unterschiedlich halten
+
+Aktuell existieren mehrere Darstellungen wie:
+
+```text
+CoordinationSummary Verlauf
+Timeline
+CoordinationHistory
+```
+
+Für diesen Auftrag noch **keine große UI-Neugestaltung**.
+
+Aber:
+
+Alle drei dürfen nicht unterschiedliche fachliche Daten selbst berechnen.
+
+Erstelle einen einzigen:
+
+```text
+coordinationTimeline
+```
+
+Datensatz.
+
+Alle verbleibenden Darstellungen müssen auf denselben Events basieren.
+
+Keine eigene Eventableitung in React.
+
+---
+
+# 44. Doppelte Darstellung reduzieren, soweit risikolos möglich
+
+Wenn `CoordinationHistory` und `Timeline` praktisch dieselben Informationen anzeigen und eine davon nicht für andere Funktionen benötigt wird:
+
+```text
+eine entfernen
+```
+
+Keine neue Darstellung hinzufügen.
+
+Ziel dieses Auftrags:
+
+```text
+weniger doppelte Prozessanzeige
+```
+
+nicht vollständiges Redesign.
+
+---
+
+# BLOCK F – Dependency-Doppelmodell bereinigen
+
+# 45. Aktuelle Dependency-Modelle inventarisieren
+
+Prüfe:
+
+```text
+leistungsabhaengigkeiten
+taktDependencies
+service_dependencies
+```
+
+Dokumentiere im Code nicht, sondern entscheide konkret, welches Modell fachlich kanonisch ist.
+
+---
+
+# 46. Keine zwei unabhängigen fachlichen Dependency-Wahrheiten
+
+Für diesen PoC soll **eine einzige fachliche Quelle für Finish-to-Start-Abhängigkeiten** verwendet werden.
+
+Bevorzugt:
+
+```text
+bestehende Leistungs-/Projekt-Abhängigkeit
+```
+
+wenn sie bereits in der regulären Projektplanung verwendet wird.
+
+Nicht künstlich die gesamte Projektplanung auf `service_dependencies` migrieren, wenn dies mehr Aufwand erzeugt.
+
+---
+
+# 47. Change Impact auf kanonisches Dependency-Modell umstellen
+
+`change-impact-service.ts` muss genau dieselben Dependencies auswerten, die der AG in der normalen Projektplanung erstellt.
+
+Damit gilt:
+
+```text
+Abhängigkeit in Projektplanung sichtbar
+→ Change Impact kennt sie
+```
+
+---
+
+# 48. `service_dependencies` nicht parallel weiterbefüllen
+
+Wenn nach Prüfung `service_dependencies` redundant ist:
+
+```text
+keine neuen Daten mehr dort schreiben
+```
+
+bestehende Route entweder:
+
+```text
+auf kanonischen Dependency-Service delegieren
+```
+
+oder entfernen, sofern keine produktive Nutzung existiert.
+
+Keine große DB-Migration erforderlich.
+
+---
+
+# 49. Cycle Detection zentral
+
+Die bereits implementierte DFS/BFS-Zyklusprüfung in den kanonischen Dependency-Service verschieben bzw. dort weiterverwenden.
+
+Alle Create-Routen müssen denselben Check verwenden.
+
+---
+
+# 50. Automatische Folgeverschiebung nicht mit Change Impact vermischen
+
+Bestehende alte Funktion:
+
+```text
+Plantermine automatisch anpassen?
+```
+
+nicht vom neuen Change-Proposal-/Impact-Service automatisch aufrufen.
+
+Change Impact:
+
+```text
+nur Hinweise
+```
+
+Keine automatische Successor-Änderung durch Acceptance eines Proposal.
+
+---
+
+# BLOCK G – Constraints, Clarifications und Readiness robust machen
+
+# 51. Constraint Resolve-Rechte korrigieren
+
+Bei:
+
+```text
+status OPEN
+```
+
+darf `resolve` nur:
+
+```text
+responsibleOrgId
+```
+
+ausführen.
+
+---
+
+# 52. Constraint Cancel-Rechte
+
+`cancel` darf nur:
+
+```text
+reportedByOrgId
+```
+
+ausführen.
+
+---
+
+# 53. Gegenseite darf Constraint nicht eigenmächtig schließen
+
+Beispiel:
+
+```text
+AN meldet RESOURCE_CONFLICT
+responsibleOrgId = AN
+```
+
+AG:
+
+```text
+resolve → 403
+```
+
+---
+
+# 54. Clarification Answer Concurrency absichern
+
+Beim Answer:
+
+```text
+UPDATE
+WHERE id = clarificationId
+AND status = OPEN
+RETURNING
+```
+
+Nach Update:
+
+```ts
+if (!updated) {
+  throw 409 CLARIFICATION_ALREADY_RESOLVED;
+}
+```
+
+Erst danach Antwort als erfolgreich behandeln.
+
+---
+
+# 55. Readiness PATCH als Upsert
+
+Kein:
+
+```text
+SELECT
+if none INSERT
+else UPDATE
+```
+
+für ersten Zugriff.
+
+DB-Upsert verwenden:
+
+```text
+INSERT ...
+ON CONFLICT(serviceRequestId)
+DO UPDATE ...
+```
+
+Dabei Rollenrechte weiterhin vor dem Upsert validieren.
+
+---
+
+# BLOCK H – Kalendertagsemantik zentralisieren
+
+# 56. Zentrale Calendar-Date-Helfer verwenden
+
+Erstelle nur falls noch nicht vorhanden einen kleinen Helper:
+
+```text
+calendar-date-utils.ts
+```
+
+Funktionen:
+
+```ts
+compareCalendarDates(a, b)
+differenceInCalendarDays(a, b)
+shiftCalendarDate(date, days)
+```
+
+Keine Zeitzonen-/Millisekundenarithmetik für fachliche Tagesplanung.
+
+---
+
+# 57. Date-only Semantik
+
+Alle Planungstermine fachlich nach:
+
+```text
+YYYY-MM-DD
+```
+
+behandeln.
+
+Start und Ende inklusive.
+
+---
+
+# 58. Validierung überall
+
+Gültig:
+
+```text
+start <= end
+```
+
+Ungültig:
+
+```text
+end < start
+```
+
+Prüfe:
+
+```text
+Change Proposal Backend
+Change Proposal AG UI
+Change Proposal AN UI
+Revision
+Change Impact
+Schedule Delta
+Alternative Dialoge
+```
+
+---
+
+# 59. `calculateScheduleDelta()` korrigieren
+
+Nicht rohe Millisekunden durch 24h teilen.
+
+Berechnen:
+
+```text
+startShiftDays =
+differenceInCalendarDays(proposedStart, agreedStart)
+
+endShiftDays =
+differenceInCalendarDays(proposedEnd, agreedEnd)
+```
+
+Dauer:
+
+```text
+durationDays =
+differenceInCalendarDays(end, start) + 1
+```
+
+Dann:
+
+```text
+durationDeltaDays =
+proposedDurationDays - agreedDurationDays
+```
+
+---
+
+# BLOCK I – Coordination DTO minimieren
+
+# 60. Keine rohen Proposal-DB-Zeilen an andere Organisation zurückgeben
+
+`getCoordination()` soll externe/UI DTOs erzeugen.
+
+Change Proposal DTO:
+
+```ts
+{
+  id: string;
+
+  start: string;
+  end: string;
+
+  proposerRole: "AG" | "AN";
+
+  reasonCode: string;
+  comment: string | null;
+
+  status:
+    | "OPEN"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "SUPERSEDED"
+    | "WITHDRAWN";
+
+  supersedesProposalId: string | null;
+
+  createdAt: string;
+  resolvedAt: string | null;
+}
+```
+
+---
+
+# 61. Nicht ausgeben
+
+```text
+proposerUserId
+resolvedByUserId
+```
+
+auch nicht versteckt in nested raw DB objects.
+
+---
+
+# 62. Gleiches Prinzip prüfen für
+
+```text
+Constraints
+Clarifications
+Timeline
+```
+
+Interne User-ID nur behalten, wenn innerhalb derselben Organisation zwingend erforderlich.
+
+Für organisationsübergreifende Response nicht ausgeben.
+
+---
+
+# BLOCK J – bestehendes Resource-Gantt fachlich korrigieren
+
+Noch keine neue Resource-Capacity-UI bauen.
+
+Nur aktuelle Fehler beseitigen.
+
+# 63. Freie Resources anzeigen
+
+Nicht mehr:
+
+```ts
+if (!booksForThis.length) return;
+```
+
+Freie aktive Resources müssen ebenfalls im Gantt sichtbar bleiben.
+
+---
+
+# 64. Type-Level-Bookings anzeigen
+
+Bookings mit:
+
+```text
+resourceId = null
+resourceTypeId != null
+```
+
+dürfen nicht verworfen werden.
+
+Auf aggregierter ResourceType-Zeile anzeigen.
+
+---
+
+# 65. Konflikte konkreter Resources anhand Utilization berechnen
+
+Nicht:
+
+```text
+jede zeitliche Überlappung = Konflikt
+```
+
+sondern pro Kalendertag:
+
+```text
+sum(activeBooking.utilizationPercent)
+```
+
+Konflikt nur wenn:
+
+```text
+> 100
+```
+
+---
+
+# 66. Beispiele
+
+```text
+50 % + 50 %
+→ kein Konflikt
+```
+
+```text
+60 % + 60 %
+→ Konflikt
+```
+
+---
+
+# BLOCK K – doppelte ResourceRequirement-CRUD-Logik zentralisieren
+
+# 67. Zwei Routen dürfen bleiben
+
+Falls aus Legacy-Gründen benötigt:
+
+```text
+/takt-requests/:id/resource-requirements
+/leistungsanfragen/:id/resource-requirements
+```
+
+dürfen beide bestehen bleiben.
+
+---
+
+# 68. Aber gemeinsame Fachlogik verwenden
+
+Erstelle bzw. nutze zentralen Service:
+
+```text
+resource-requirement-service.ts
+```
+
+Darin:
+
+```text
+list
+create
+update
+delete
+validation
+ownership
+period validation
+resourceType validation
+```
+
+---
+
+# 69. Beide Routes nur Adapter
+
+Routes machen nur:
+
+```text
+auth
+request parsing
+service call
+response mapping
+```
+
+Keine doppelte fachliche Validation.
+
+---
+
+# BLOCK L – alte ungenutzte Detailseiten entfernen
+
+# 70. Prüfe tatsächliche Imports/Routen
+
+Dateien:
+
+```text
+artifacts/ag-app/src/pages/takt-request-detail.tsx
+artifacts/an-app/src/pages/takt-request-detail.tsx
+```
+
+---
+
+# 71. Wenn ungenutzt
+
+Wenn keine produktive Route und kein Import mehr existiert:
+
+```text
+Dateien löschen
+```
+
+Nicht als „Backup“ im Source-Tree behalten.
+
+Git ist das Backup.
+
+---
+
+# 72. Falls noch genutzt
+
+Nicht löschen.
+
+Stattdessen auf die kanonische Detailkomponente delegieren.
+
+Keine zwei 90-%-identischen vollständigen Seiten weiterpflegen.
+
+---
+
+# BLOCK M – Dataspace verbleibende technische Inkonsistenzen
+
+# 73. Inbound-Service produktiv verdrahten
+
+Produktiver Eingang für:
+
+```text
+ExternalServiceRequest
+ExternalServiceResponse
+```
+
+muss über:
+
+```ts
+handleIncomingServiceRequest(...)
+handleIncomingServiceResponse(...)
+```
+
+laufen.
+
+---
+
+# 74. Inbound-Status
+
+Damit müssen tatsächlich genutzt werden:
+
+```text
+RECEIVED
+PROCESSED
+FAILED
+```
+
+und vorhandene `messageId`-Idempotenz.
+
+---
+
+# 75. Wiederholte eingehende Message
+
+Wenn:
+
+```text
+messageId bereits PROCESSED
+```
+
+dann:
+
+```text
+keine zweite Business-Verarbeitung
+```
+
+bestehenden Zustand zurückgeben.
+
+---
+
+# 76. Direkte LocalHubTransport-Aufrufe prüfen
+
+Noch vorhandene:
+
+```ts
+new LocalHubTransport()
+```
+
+in:
+
+```text
+gu-decision-service.ts
+revision-service.ts
+data-publication-service.ts
+deadline-evaluation-service.ts
+routes/messages.ts
+```
+
+einzeln prüfen.
+
+---
+
+# 77. Nur Cross-Org-Nachrichten umstellen
+
+Wenn Nachricht zwischen AG- und AN-Organisation übertragen wird:
+
+```text
+über DataspaceExchange
+```
+
+führen.
+
+Rein interne technische Messages dürfen LocalHub-intern bleiben.
+
+Keine neue EDC-Logik implementieren.
+
+---
+
+# BLOCK N – OpenAPI nur für bereits existierende APIs vervollständigen
+
+# 78. Neue vorhandene Coordination APIs in OpenAPI aufnehmen
+
+Mindestens:
+
+```text
+Coordination
+Change Proposals
+Constraints
+Clarifications
+Readiness
+Change Impact
+Coordination Tasks
+Coordination Board
+```
+
+---
+
+# 79. Schemas konkret definieren
+
+Keine generischen:
+
+```text
+additionalProperties: true
+```
+
+wenn konkrete Typen bekannt sind.
+
+Insbesondere:
+
+```text
+nextActionOwner
+nextAction
+proposal status
+constraint status/type
+clarification status/category
+readiness
+```
+
+als Enums beschreiben.
+
+---
+
+# 80. Generierten Client aktualisieren
+
+Vorhandenen Projektbefehl zur Clientgenerierung verwenden.
+
+Nicht manuell generierte Dateien editieren, wenn sie durch Generator erzeugt werden.
+
+---
+
+# 81. Handgeschriebene Clients nur entfernen, wenn Ersatz vollständig ist
+
+Keine funktionierende App kaputtrefaktorieren.
+
+Nach erfolgreicher Generation:
+
+```text
+betroffene Custom-Fetch-Helfer auf generierte APIs umstellen
+```
+
+nur für diese Coordination-Funktionen.
+
+---
+
+# BLOCK O – gezielte Regressionstests
+
+Diese Tests sind verpflichtend.
+
+# 82. Change Proposal benötigt Agreement
+
+```text
+kein Agreement
+create proposal
+→ 422 CHANGE_PROPOSAL_REQUIRES_AGREEMENT
+```
+
+Den alten widersprechenden Test entfernen/korrigieren.
+
+---
+
+# 83. Change Acceptance Availability
+
+Setup:
+
+```text
+Agreement 01.–05.09.
+neuer Proposal 10.–14.09.
+10.–14.09. inzwischen vollständig belegt
+```
+
+Accept:
+
+```text
+→ 409 CHANGE_PROPOSAL_NOT_FEASIBLE
+```
+
+Agreement und Plan bleiben unverändert.
+
+---
+
+# 84. Successful Change Acceptance
+
+Setup:
+
+```text
+Agreement 01.–05.09.
+Proposal 10.–14.09.
+neuer Zeitraum verfügbar
+```
+
+Nach Accept prüfen:
+
+```text
+proposal = ACCEPTED
+agreement = 10.–14.09.
+plan = 10.–14.09.
+neue Planversion vorhanden
+Bookings = 10.–14.09. bzw. Requirement-Zeiträume
+```
+
+---
+
+# 85. Änderung der Dauer
+
+Alt:
+
+```text
+01.–05.09.
+```
+
+Neu:
+
+```text
+10.–20.09.
+```
+
+Erwartung:
+
+Booking darf nicht nur:
+
+```text
+10.–14.09.
+```
+
+werden.
+
+Es muss dem fachlichen Requirement des neuen Zeitraums entsprechen.
+
+---
+
+# 86. Unterschiedliche Requirement-Zeiträume bleiben getrennt
+
+Requirements:
+
+```text
+A:
+4 Pers., 50 %, 01.–02.
+
+B:
+2 Pers., 100 %, 03.–04.
+```
+
+Nach Availability / Auto-Booking:
+
+```text
+zwei getrennte Booking-Specs
+```
+
+mit korrekter Utilization und Zeitraum.
+
+---
+
+# 87. Mehrere Requirements gleicher Type gleichzeitig
+
+```text
+Capacity = 6
+
+Requirement A = 4
+Requirement B = 3
+
+gleicher Tag
+```
+
+→ Conflict.
+
+---
+
+# 88. Zeitlich getrennte Bookings
+
+```text
+Capacity 6
+Booking A = 2 am 01.–02.
+Booking B = 2 am 04.–05.
+Requirement = 4 am 01.–05.
+```
+
+→ feasible.
+
+---
+
+# 89. Qualification Double Counting
+
+```text
+6 konkrete Resources
+alle besitzen A und B
+
+Requirement A = 4
+Requirement B = 4
+gleicher Zeitraum
+```
+
+System darf nicht fälschlich beide unabhängig mit jeweils 6 verfügbar bestätigen.
+
+---
+
+# 90. Proposal eintägig
+
+```text
+start = 21.08.
+end   = 21.08.
+```
+
+→ gültig Backend.
+
+---
+
+# 91. Schedule Delta
+
+Agreement:
+
+```text
+01.–05.09.
+```
+
+Proposal:
+
+```text
+02.–06.09.
+```
+
+Erwartung:
+
+```text
+startShiftDays = 1
+endShiftDays = 1
+durationDeltaDays = 0
+```
+
+unabhängig von Uhrzeiten.
+
+---
+
+# 92. Accept/Reject Race
+
+Zwei parallele Resolution Requests.
+
+Erwartung:
+
+```text
+genau einer erfolgreich
+zweiter 409
+Agreement entspricht Gewinner
+```
+
+---
+
+# 93. Constraint-Rechte
+
+```text
+responsibleOrgId = AN
+```
+
+AG Resolve:
+
+```text
+403
+```
+
+AN Resolve:
+
+```text
+erfolgreich
+```
+
+Reporter Cancel entsprechend testen.
+
+---
+
+# 94. Clarification-Concurrency
+
+Zwei parallele Answers.
+
+Erwartung:
+
+```text
+erste erfolgreich
+zweite 409
+```
+
+---
+
+# 95. Readiness Parallel-Upsert
+
+Zwei parallele erste PATCHes dürfen keinen unkontrollierten Unique-Constraint-Fehler erzeugen.
+
+Am Ende genau ein Readiness-Datensatz.
+
+---
+
+# 96. Next Action – Request
+
+Request wartet auf AN:
+
+```text
+Task Service = AN / RESPOND_TO_REQUEST
+Coordination Detail = AN / RESPOND_TO_REQUEST
+Board = AN / RESPOND_TO_REQUEST
+```
+
+alle identisch.
+
+---
+
+# 97. Next Action – Response
+
+AN Response wartet auf AG:
+
+alle Consumer:
+
+```text
+AG / DECIDE_RESPONSE
+```
+
+---
+
+# 98. Readiness ohne gespeicherten Datensatz
+
+Agreement vorhanden.
+
+Kein Readiness-Datensatz.
+
+Board:
+
+```text
+NOT_READY
+```
+
+nicht `NOT_APPLICABLE`.
+
+---
+
+# 99. Timeline Initial Agreement
+
+Request:
+
+```text
+created 01.08.
+```
+
+AG Decision:
+
+```text
+05.08.
+```
+
+`AGREEMENT_REACHED`:
+
+```text
+05.08.
+```
+
+---
+
+# 100. Timeline späteres Accepted Proposal
+
+Initial Agreement:
+
+```text
+05.08.
+```
+
+Change Proposal accepted:
+
+```text
+20.08.
+```
+
+Timeline muss enthalten:
+
+```text
+05.08 AGREEMENT_REACHED
+20.08 CHANGE_PROPOSAL_ACCEPTED
+```
+
+Nicht:
+
+```text
+20.08 AGREEMENT_REACHED
+```
+
+als zweites Agreement-Reached-Event.
+
+---
+
+# 101. Gantt Utilization
+
+```text
+50 + 50
+→ kein Konflikt
+```
+
+```text
+60 + 60
+→ Konflikt
+```
+
+---
+
+# 102. Gantt Type-Level Booking
+
+Booking ohne `resourceId`, aber mit `resourceTypeId`:
+
+```text
+sichtbar
+```
+
+---
+
+# 103. Gantt freie Resource
+
+Aktive Resource ohne Booking:
+
+```text
+sichtbar
+```
+
+---
+
+# 104. Dataspace Inbound Idempotency
+
+Gleiche:
+
+```text
+messageId
+```
+
+zweimal empfangen.
+
+Business-Verarbeitung:
+
+```text
+genau einmal
+```
+
+---
+
+# BLOCK P – vollständiger pnpm Build zwingend durchführen
+
+Dies ist ausdrücklich **nicht optional**.
+
+Der Auftrag ist erst beendet, nachdem ein vollständiger Workspace-Durchlauf erfolgt ist.
+
+---
+
+# 105. Vom Repository-Root arbeiten
+
+Zuerst sicherstellen:
+
+```bash
+pwd
+```
+
+muss Repository-Root sein.
+
+Prüfen, dass vorhanden sind:
+
+```text
+package.json
+pnpm-workspace.yaml
+pnpm-lock.yaml
+```
+
+---
+
+# 106. Node- und pnpm-Version prüfen
+
+Ausführen:
+
+```bash
+node --version
+pnpm --version
+```
+
+Falls `pnpm` nicht verfügbar:
+
+```bash
+corepack enable
+```
+
+danach erneut:
+
+```bash
+pnpm --version
+```
+
+Wenn `packageManager` in root `package.json` eine konkrete pnpm-Version definiert, diese Version verwenden.
+
+Nicht eigenmächtig eine andere Major-Version installieren.
+
+---
+
+# 107. Dependency-Installation vollständig durchführen
+
+Vom Root:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+Verbindliche Regel:
+
+Wenn dies wegen eines inkonsistenten Lockfiles fehlschlägt:
+
+```text
+nicht automatisch pnpm install ohne --frozen-lockfile ausführen
+```
+
+zuerst Ursache prüfen.
+
+Falls eine im Auftrag notwendige Änderung tatsächlich eine Dependency-/Workspace-Änderung erfordert und deshalb das Lockfile legitim angepasst werden muss:
+
+1. `package.json` korrekt ändern
+2. Lockfile bewusst aktualisieren
+3. danach erneut
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+erfolgreich ausführen.
+
+Keine unbeabsichtigten Lockfile-Massenänderungen.
+
+---
+
+# 108. Keine Tests gegen zufällige alte node_modules
+
+Nach erfolgreichem `pnpm install --frozen-lockfile` müssen alle folgenden Prüfungen genau mit diesem installierten Workspace erfolgen.
+
+---
+
+# 109. Root-Skripte zuerst prüfen
+
+Prüfe:
+
+```bash
+pnpm run
+```
+
+Wenn Root-Skripte vorhanden sind für:
+
+```text
+typecheck
+test
+build
+lint
+```
+
+diese verwenden.
+
+Zusätzlich trotzdem sicherstellen, dass alle relevanten Workspaces abgedeckt werden.
+
+---
+
+# 110. Vollständiger Workspace-Typecheck
+
+Vom Root:
+
+```bash
+pnpm -r --if-present run typecheck
+```
+
+Muss ohne TypeScript-Fehler durchlaufen.
+
+Kein:
+
+```text
+"bekannter Fehler"
+```
+
+ignorieren, wenn er durch diesen Auftrag entstanden ist oder betroffene Module betrifft.
+
+---
+
+# 111. Explizite Kern-Typechecks zusätzlich
+
+Mindestens erfolgreich:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/an-app typecheck
+```
+
+Falls Workspace-Namen im Repository anders heißen:
+
+die tatsächlich vorhandenen Namen aus den jeweiligen `package.json` verwenden.
+
+Nicht raten.
+
+---
+
+# 112. Vollständige Test-Suite
+
+Nicht nur die neuen Tests.
+
+Vom Root:
+
+```bash
+pnpm -r --if-present run test
+```
+
+Diesmal ausdrücklich **vollständige vorhandene Workspace-Test-Suite** ausführen.
+
+Grund:
+
+Der Auftrag verändert zentrale Fachlogik:
+
+```text
+Availability
+Bookings
+Change Proposals
+Coordination
+Dependencies
+Dataspace
+```
+
+Daher reicht ein gezielter Testlauf nicht.
+
+---
+
+# 113. Keine veralteten Tests einfach deaktivieren
+
+Wenn ein bestehender Test wegen einer bewusst geänderten Fachregel fehlschlägt:
+
+Beispiel:
+
+```text
+Change Proposal darf initiales Agreement erzeugen
+```
+
+diesen Test fachlich korrekt aktualisieren.
+
+Nicht:
+
+```text
+skip
+xit
+describe.skip
+```
+
+setzen.
+
+---
+
+# 114. Kein Test darf still entfernt werden
+
+Nur wenn ein Test exakt eine abgeschaffte doppelte Implementierung testet, darf er entfernt werden.
+
+Dann Ersatztest für den kanonischen Pfad ergänzen.
+
+---
+
+# 115. Vollständiger Workspace-Build
+
+Nach erfolgreichen Tests:
+
+```bash
+pnpm -r --if-present run build
+```
+
+Muss vollständig durchlaufen.
+
+---
+
+# 116. Explizite Kern-Builds
+
+Zusätzlich mindestens:
+
+```bash
+pnpm --filter @workspace/ag-app build
+pnpm --filter @workspace/an-app build
+```
+
+Falls API-Server ein Build-Script besitzt:
+
+```bash
+pnpm --filter @workspace/api-server build
+```
+
+ebenfalls ausführen.
+
+---
+
+# 117. Lint ausführen, falls im Repository vorhanden
+
+Wenn entsprechende Scripts vorhanden:
+
+```bash
+pnpm -r --if-present run lint
+```
+
+Keine neue Lint-Konfiguration einführen.
+
+Bestehende Regeln verwenden.
+
+---
+
+# 118. OpenAPI Client Generation
+
+Falls OpenAPI in diesem Auftrag geändert wurde:
+
+vor finalem Typecheck/Build den bestehenden Generator ausführen.
+
+Befehl aus Repository-Scripts ermitteln, z. B. über:
+
+```bash
+pnpm run
+```
+
+Nicht einen neuen Generator-Befehl erfinden.
+
+Danach erneut:
+
+```bash
+pnpm -r --if-present run typecheck
+pnpm -r --if-present run test
+pnpm -r --if-present run build
+```
+
+---
+
+# 119. Clean Build nach Codegenerierung
+
+Der **letzte** technische Durchlauf muss in dieser Reihenfolge erfolgen:
+
+```bash
+pnpm install --frozen-lockfile
+
+pnpm -r --if-present run typecheck
+
+pnpm -r --if-present run lint
+
+pnpm -r --if-present run test
+
+pnpm -r --if-present run build
+```
+
+Falls kein `lint`-Script existiert:
+
+diesen Schritt auslassen.
+
+Alle anderen vorhandenen Schritte müssen erfolgreich sein.
+
+---
+
+# 120. Keine generierten `.js`-Artefakte im Source Tree
+
+Nach Build prüfen:
+
+```text
+keine versehentlich durch tsc erzeugten .js/.js.map-Dateien
+direkt neben .ts/.tsx-Quelldateien
+```
+
+sofern diese dort nicht bereits bewusst Teil des Repositories sind.
+
+TypeScript-Prüfung darf nicht versehentlich Source-Verzeichnisse verschmutzen.
+
+---
+
+# 121. Git-Diff nach Build prüfen
+
+Am Ende:
+
+```bash
+git status --short
+```
+
+und:
+
+```bash
+git diff --stat
+```
+
+prüfen.
+
+Sicherstellen:
+
+Keine unbeabsichtigten Änderungen durch:
+
+```text
+Build
+Codegen
+Formatter
+Lockfile
+Testfixtures
+```
+
+---
+
+# 122. Kein „Build erfolgreich“, wenn nur einzelne Apps gebaut wurden
+
+Der Abschlussbericht darf nur:
+
+```text
+vollständiger pnpm Build erfolgreich
+```
+
+sagen, wenn tatsächlich der komplette vorhandene Workspace-Durchlauf erfolgt ist.
+
+Nicht ausreichend:
+
+```text
+nur ag-app build
+nur an-app build
+nur api-server typecheck
+```
+
+---
+
+# 123. Falls vollständiger Build fehlschlägt
+
+Nicht abbrechen und nur „Build failed“ berichten.
+
+Jeden Fehler klassifizieren:
+
+```text
+A. durch diese Änderungen verursacht
+B. bereits bestehender Repository-Fehler
+C. Environment-/Dependency-Problem
+```
+
+Kategorie A:
+
+```text
+beheben
+```
+
+Kategorie B:
+
+wenn einfach und sicher behebbar:
+
+```text
+beheben
+```
+
+sonst exakt dokumentieren:
+
+```text
+Workspace
+Datei
+Fehlermeldung
+warum unabhängig von aktueller Änderung
+```
+
+Kategorie C:
+
+exakte Fehlermeldung dokumentieren.
+
+---
+
+# 124. Build ist Definition of Done
+
+Der Auftrag ist nur abgeschlossen, wenn entweder:
+
+## Zustand A
+
+```text
+pnpm install --frozen-lockfile     PASS
+workspace typecheck                PASS
+workspace lint, falls vorhanden    PASS
+workspace tests                    PASS
+workspace build                    PASS
+```
+
+oder
+
+## Zustand B
+
+ein bereits vorher existierender, nicht durch diesen Auftrag verursachter Buildfehler bleibt bestehen und ist im Abschlussbericht mit Datei/Befehl/Fehlermeldung eindeutig dokumentiert.
+
+Keine pauschale Aussage:
+
+```text
+"einige bestehende Fehler"
+```
+
+---
+
+# BLOCK Q – Abschlusskontrolle
+
+# 125. Vor Abschluss statisch suchen
+
+Suche nach:
+
+```text
+CoordinationProposalActions
+ProposalActions
+deriveCoordinationState
+deriveServiceCoordinationState
+new LocalHubTransport
+proposerUserId
+resolvedByUserId
+```
+
+und kontrolliere, dass keine ungewollten Doppelpfade übrig geblieben sind.
+
+---
+
+# 126. ProposalActions-Abnahme
+
+AN-Detailseite:
+
+```text
+genau eine produktive Change-Proposal-Komponente
+```
+
+AG-Detailseite:
+
+```text
+genau eine produktive Change-Proposal-Komponente
+```
+
+---
+
+# 127. Next-Action-Abnahme
+
+Es darf nur eine zentrale Businessfunktion geben, die für:
+
+```text
+Request
+Response
+Change Proposal
+Clarification
+Constraint
+Readiness
+```
+
+den nächsten Bearbeiter bestimmt.
+
+---
+
+# 128. Schedule-Change-Abnahme
+
+Nach accepted Change Proposal müssen konsistent sein:
+
+```text
+Current Agreement
+Plantermin
+Leistungsversion
+ResourceRequirement-Zeiträume
+CONFIRMED Service-Request-Bookings
+```
+
+Kein alter Zeitraum darf fachlich als aktiver Zustand zurückbleiben.
+
+---
+
+# 129. Availability-Abnahme
+
+Machbarkeit und Booking-Spezifikation müssen getrennt sein.
+
+Aggregation für Machbarkeit:
+
+```text
+erlaubt
+```
+
+Verlust von:
+
+```text
+periodStart
+periodEnd
+utilizationPercent
+requiredQualification
+```
+
+bei anschließendem Auto-Booking:
+
+```text
+nicht erlaubt
+```
+
+---
+
+# 130. Dependency-Abnahme
+
+Eine im normalen Projektplan angelegte Abhängigkeit muss vom Change-Impact-Service erkannt werden.
+
+Es darf keine zweite unabhängige Dependency-Wahrheit geben.
+
+---
+
+# 131. Timeline-Abnahme
+
+Initial:
+
+```text
+AGREEMENT_REACHED genau einmal
+```
+
+Spätere Change Acceptance:
+
+```text
+CHANGE_PROPOSAL_ACCEPTED
+```
+
+Keine doppelte Agreement-Historie.
+
+---
+
+# 132. Security-Abnahme
+
+Organisationenübergreifende Coordination Responses enthalten keine:
+
+```text
+proposerUserId
+resolvedByUserId
+interne ResourceBookings
+konkrete interne AN-Ressourcen
+andere AN-Projekte
+```
+
+---
+
+# 133. Abschlussbericht
+
+Am Ende nur strukturiert berichten:
+
+```text
+1. Schedule-Change-Korrekturen
+
+2. Availability-/Booking-Korrekturen
+
+3. entfernte Proposal-Doppelimplementierungen
+
+4. zentrale Next-Action-Logik
+
+5. Timeline-/History-Korrekturen
+
+6. Dependency-Konsolidierung
+
+7. Constraint-/Clarification-/Readiness-Korrekturen
+
+8. Calendar-Date-Korrekturen
+
+9. DTO-/Data-Sovereignty-Korrekturen
+
+10. Gantt-Korrekturen
+
+11. entfernte alte/duplizierte Dateien
+
+12. Dataspace-Korrekturen
+
+13. OpenAPI-/Client-Korrekturen
+
+14. aktualisierte bestehende Tests
+
+15. neu ergänzte Regressionstests
+
+16. pnpm install --frozen-lockfile
+    PASS / FAIL
+
+17. vollständiger Workspace-Typecheck
+    PASS / FAIL
+
+18. vollständiger Workspace-Lint
+    PASS / FAIL / nicht vorhanden
+
+19. vollständige Workspace-Test-Suite
+    PASS / FAIL
+    Anzahl Tests soweit verfügbar nennen
+
+20. vollständiger Workspace-Build
+    PASS / FAIL
+
+21. AG-App Build
+    PASS / FAIL
+
+22. AN-App Build
+    PASS / FAIL
+
+23. API-Server Build bzw. Typecheck
+    PASS / FAIL
+
+24. verbleibende bekannte Fehler
+    jeweils konkret mit Datei und Ursache
+```
+
+Keine neuen Funktionen außerhalb dieses Auftrags implementieren.
