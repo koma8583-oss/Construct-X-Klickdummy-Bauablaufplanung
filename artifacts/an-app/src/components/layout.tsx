@@ -36,7 +36,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/leistungsanfragen", icon: Inbox, label: "Leistungsanfragen" },
+    { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
     { href: "/resources", icon: HardHat, label: "Ressourcen" },
     { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
