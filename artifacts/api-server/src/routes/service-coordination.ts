@@ -22,6 +22,7 @@ const router = Router();
 router.get("/service-requests/:id/change-impact", requireJwt, async (req, res): Promise<void> => {
   const request = await requestForParty(req.params.id as string, req.user!.orgId!);
   if (!request) { res.status(404).json({ error: "Leistungsanfrage nicht gefunden" }); return; }
+  if (request.guOrgId !== req.user!.orgId) { res.status(403).json({ error: "Change Impact ist nur für die AG-Organisation verfügbar" }); return; }
   const start = new Date(String(req.query.proposedStart));
   const end = new Date(String(req.query.proposedEnd));
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
@@ -163,7 +164,20 @@ router.get("/service-requests/:id/readiness", requireJwt, async (req, res): Prom
   if (!request) { res.status(404).json({ error: "Leistungsanfrage nicht gefunden" }); return; }
   let [row] = await db.select().from(serviceReadinessChecksTable).where(eq(serviceReadinessChecksTable.serviceRequestId, request.id)).limit(1);
   if (!row) {
-    [row] = await db.insert(serviceReadinessChecksTable).values({ serviceRequestId: request.id, updatedByOrgId: req.user!.orgId! }).returning();
+    res.json({
+      id: null,
+      serviceRequestId: request.id,
+      scheduleConfirmed: false,
+      siteReady: false,
+      informationComplete: false,
+      agReady: false,
+      anReady: false,
+      updatedByOrgId: null,
+      createdAt: null,
+      updatedAt: null,
+      status: "NOT_READY",
+    });
+    return;
   }
   res.json({ ...row, status: row.scheduleConfirmed && row.siteReady && row.informationComplete && row.agReady && row.anReady ? "READY" : "NOT_READY" });
 });
@@ -207,8 +221,25 @@ router.post("/projects/:projectId/service-dependencies", requireJwt, async (req,
       .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id)).where(inArray(leistungsanfragenTable.id, ids));
     if (rows.length !== 2 || rows.some(({ service }) => service.projectId !== project.id)) { res.status(400).json({ error: "Beide Leistungen müssen zum Projekt gehören" }); return; }
     const existing = await db.select().from(serviceDependenciesTable).where(eq(serviceDependenciesTable.projectId, project.id));
-    if (existing.some((d) => d.predecessorServiceRequestId === parsed.successorServiceRequestId && d.successorServiceRequestId === parsed.predecessorServiceRequestId)) {
-      res.status(400).json({ error: "Diese Abhängigkeit würde eine Schleife erzeugen" }); return;
+    const outgoing = new Map<string, string[]>();
+    for (const dependency of existing) {
+      outgoing.set(dependency.predecessorServiceRequestId, [
+        ...(outgoing.get(dependency.predecessorServiceRequestId) ?? []),
+        dependency.successorServiceRequestId,
+      ]);
+    }
+    const queue = [parsed.successorServiceRequestId];
+    const visited = new Set<string>();
+    let reachesPredecessor = false;
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (current === parsed.predecessorServiceRequestId) { reachesPredecessor = true; break; }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      queue.push(...(outgoing.get(current) ?? []));
+    }
+    if (reachesPredecessor) {
+      res.status(422).json({ error: "DEPENDENCY_CYCLE" }); return;
     }
     if (existing.some((d) => d.predecessorServiceRequestId === parsed.predecessorServiceRequestId && d.successorServiceRequestId === parsed.successorServiceRequestId)) {
       res.status(409).json({ error: "Diese Abhängigkeit existiert bereits" }); return;

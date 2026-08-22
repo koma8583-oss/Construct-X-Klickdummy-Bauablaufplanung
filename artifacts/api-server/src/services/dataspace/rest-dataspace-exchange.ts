@@ -33,6 +33,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
   }
 
   async publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference> {
+    const [existing] = await db.select().from(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+    if (existing?.status === "PUBLISHED") {
+      return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
+    }
     await db.insert(dataspaceExchangesTable).values({
       direction: "OUTBOUND", messageType: "SERVICE_REQUEST",
       messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
@@ -68,6 +72,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
   }
 
   async publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference> {
+    const [existing] = await db.select().from(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+    if (existing?.status === "PUBLISHED") {
+      return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
+    }
     await db.insert(dataspaceExchangesTable).values({
       direction: "OUTBOUND", messageType: "SERVICE_RESPONSE",
       messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,

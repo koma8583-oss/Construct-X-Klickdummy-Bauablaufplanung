@@ -53,6 +53,14 @@ export interface ResourceAvailabilityResult {
     overlapStart: string;
     overlapEnd: string;
   }>;
+  dailyAvailability?: Array<{
+    date: string;
+    totalCapacity: number;
+    confirmedUsed: number;
+    tentativeUsed: number;
+    requiredCapacity: number;
+    availableCapacity: number;
+  }>;
 }
 
 export function shiftRequirementsToWindow<
@@ -108,109 +116,114 @@ export function evaluateResourceRequirements({
     tentativeWarnings: [],
   };
 
+  const daily: NonNullable<ResourceAvailabilityResult["dailyAvailability"]> = [];
+  const groups = new Map<string, ResourceAvailabilityRequirement[]>();
   for (const requirement of requirements) {
     if (!requirement.resourceTypeId) continue;
+    const key = `${requirement.resourceTypeId}:${requirement.requiredQualification?.trim().toLocaleLowerCase() ?? ""}`;
+    groups.set(key, [...(groups.get(key) ?? []), requirement]);
+  }
+  const dayKey = (date: Date) => date.toISOString().slice(0, 10);
+  const daysFor = (start: Date, end: Date) => {
+    const days: Date[] = [];
+    for (const day = new Date(start); day < end; day.setUTCDate(day.getUTCDate() + 1)) {
+      days.push(new Date(day));
+    }
+    return days;
+  };
 
-    const typeResources = resources.filter(
-      (resource) => resource.resourceTypeId === requirement.resourceTypeId,
-    );
+  for (const groupedRequirements of groups.values()) {
+    const requirement = groupedRequirements[0];
+    const typeResources = resources.filter((resource) => resource.resourceTypeId === requirement.resourceTypeId);
     const normalizedQualification = requirement.requiredQualification?.trim().toLocaleLowerCase();
     const eligibleResources = normalizedQualification
-      ? typeResources.filter((resource) =>
-          Array.isArray(resource.qualifications) &&
-          (resource.qualifications as string[]).some(
-            (qualification) =>
-              qualification.trim().toLocaleLowerCase() === normalizedQualification,
-          ),
-        )
+      ? typeResources.filter((resource) => Array.isArray(resource.qualifications) &&
+        (resource.qualifications as string[]).some((qualification) =>
+          qualification.trim().toLocaleLowerCase() === normalizedQualification))
       : typeResources;
-
     if (eligibleResources.length === 0) {
       result.conflicts.push({
-        resourceId: requirement.resourceTypeId,
+        resourceId: requirement.resourceTypeId!,
         resourceName: requirement.notes ?? `ResourceType ${requirement.resourceTypeId}`,
         conflictType: normalizedQualification ? "MISSING_QUALIFICATION" : "MISSING_EQUIPMENT",
-        missingQualification: normalizedQualification
-          ? requirement.requiredQualification!.trim()
-          : "Keine Ressource dieses Typs vorhanden",
+        missingQualification: normalizedQualification ? requirement.requiredQualification!.trim() : "Keine Ressource dieses Typs vorhanden",
         isTentative: false,
         overlapUtilizationSum: 0,
       });
       if (normalizedQualification) result.missingQualifications.push(requirement.requiredQualification!.trim());
       continue;
     }
-
-    const effectiveStart = requirement.periodStart ? parseDate(requirement.periodStart) : windowStart;
-    const effectiveEnd = requirement.periodEnd ? inclusiveEnd(requirement.periodEnd) : windowEnd;
-    const requirementBookings = bookings.filter((booking) =>
-      overlaps(booking.startAt, booking.endAt, effectiveStart, effectiveEnd),
-    );
-    const totalCapacity = eligibleResources.reduce(
-      (sum, resource) => sum + (resource.capacity ?? 1),
-      0,
-    );
-    const requiredCapacity = Number(requirement.requiredCapacity ?? 0);
-    const effectiveRequired = requiredCapacity * requirement.utilizationPercent / 100;
-
-    const usedCapacity = requirementBookings
-      .filter((booking) => booking.status === "CONFIRMED")
-      .reduce((sum, booking) => {
-        if (booking.resourceId === null) {
-          return booking.resourceTypeId === requirement.resourceTypeId
-            ? sum + ((booking.quantity ?? 0) * booking.utilizationPercent) / 100
-            : sum;
-        }
-        const resource = eligibleResources.find((candidate) => candidate.id === booking.resourceId);
-        return resource
-          ? sum + ((resource.capacity ?? 1) * booking.utilizationPercent) / 100
+    const totalCapacity = eligibleResources.reduce((sum, resource) => sum + (resource.capacity ?? 1), 0);
+    const start = new Date(Math.min(...groupedRequirements.map((item) => (item.periodStart ? parseDate(item.periodStart) : windowStart).getTime())));
+    const end = new Date(Math.max(...groupedRequirements.map((item) => (item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd).getTime())));
+    let groupHasConflict = false;
+    for (const day of daysFor(start, end)) {
+      const dayStart = day;
+      const dayEnd = new Date(day);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+      const requiredCapacity = groupedRequirements.reduce((sum, item) => {
+        const itemStart = item.periodStart ? parseDate(item.periodStart) : windowStart;
+        const itemEnd = item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd;
+        return overlaps(itemStart, itemEnd, dayStart, dayEnd)
+          ? sum + Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100
           : sum;
       }, 0);
-
-    if (totalCapacity - usedCapacity < effectiveRequired) {
+      if (requiredCapacity === 0) continue;
+      const dayBookings = bookings.filter((booking) =>
+        booking.resourceTypeId === requirement.resourceTypeId &&
+        overlaps(booking.startAt, booking.endAt, dayStart, dayEnd));
+      const usedFor = (status: "CONFIRMED" | "TENTATIVE") => dayBookings
+        .filter((booking) => booking.status === status)
+        .reduce((sum, booking) => {
+          if (booking.resourceId === null) return sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100;
+          const resource = eligibleResources.find((candidate) => candidate.id === booking.resourceId);
+          return sum + (resource ? (resource.capacity ?? 1) * booking.utilizationPercent / 100 : 0);
+        }, 0);
+      const confirmedUsed = usedFor("CONFIRMED");
+      const tentativeUsed = usedFor("TENTATIVE");
+      daily.push({
+        date: dayKey(day), totalCapacity, confirmedUsed, tentativeUsed,
+        requiredCapacity, availableCapacity: totalCapacity - confirmedUsed,
+      });
+      if (totalCapacity - confirmedUsed < requiredCapacity) {
+        groupHasConflict = true;
+      }
+      if (totalCapacity - confirmedUsed - tentativeUsed < requiredCapacity) {
+        for (const booking of dayBookings.filter((item) => item.status === "TENTATIVE")) {
+          if (!result.tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
+            result.tentativeWarnings.push({
+              resourceId: booking.resourceId ?? requirement.resourceTypeId!,
+              bookingId: booking.id,
+              overlapStart: booking.startAt.toISOString(),
+              overlapEnd: booking.endAt.toISOString(),
+            });
+          }
+        }
+      }
+    }
+    if (groupHasConflict) {
+      const groupDays = daily.filter((item) => item.requiredCapacity > 0 && item.date >= dayKey(start) && item.date < dayKey(end));
       result.conflicts.push({
-        resourceId: requirement.resourceTypeId,
+        resourceId: requirement.resourceTypeId!,
         resourceName: requirement.notes ?? `ResourceType ${requirement.resourceTypeId}`,
         conflictType: "CAPACITY_EXCEEDED",
         isTentative: false,
-        overlapUtilizationSum: Math.round(usedCapacity),
+        overlapUtilizationSum: Math.round(Math.max(...groupDays.map((item) => item.confirmedUsed), 0)),
       });
-      continue;
-    }
-
-    result.availableResources.push({
-      resourceId: null,
-      resourceType: "DTC_TYPE",
-      resourceTypeId: requirement.resourceTypeId,
-      quantity: requiredCapacity,
-      utilizationPercent: requirement.utilizationPercent,
-      periodStart: requirement.periodStart ?? null,
-      periodEnd: requirement.periodEnd ?? null,
-    });
-
-    const tentativeUsed = requirementBookings
-      .filter((booking) => booking.status === "TENTATIVE")
-      .reduce((sum, booking) => {
-        if (booking.resourceId === null) {
-          return booking.resourceTypeId === requirement.resourceTypeId
-            ? sum + ((booking.quantity ?? 0) * booking.utilizationPercent) / 100
-            : sum;
-        }
-        const resource = eligibleResources.find((candidate) => candidate.id === booking.resourceId);
-        return resource
-          ? sum + ((resource.capacity ?? 1) * booking.utilizationPercent) / 100
-          : sum;
-      }, 0);
-    if (usedCapacity + tentativeUsed + effectiveRequired > totalCapacity) {
-      for (const booking of requirementBookings.filter((item) => item.status === "TENTATIVE")) {
-        result.tentativeWarnings.push({
-          resourceId: booking.resourceId ?? requirement.resourceTypeId,
-          bookingId: booking.id,
-          overlapStart: booking.startAt.toISOString(),
-          overlapEnd: booking.endAt.toISOString(),
-        });
-      }
+    } else {
+      const first = groupedRequirements[0];
+      result.availableResources.push({
+        resourceId: null,
+        resourceType: "DTC_TYPE",
+        resourceTypeId: requirement.resourceTypeId!,
+        quantity: groupedRequirements.reduce((sum, item) => sum + Number(item.requiredCapacity ?? 0), 0),
+        utilizationPercent: first.utilizationPercent,
+        periodStart: first.periodStart ?? null,
+        periodEnd: first.periodEnd ?? null,
+      });
     }
   }
+  result.dailyAvailability = daily;
 
   return result;
 }

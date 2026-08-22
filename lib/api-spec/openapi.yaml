@@ -4241,6 +4241,29 @@ components:
           enum: [EMPLOYEE, CREW, EQUIPMENT, MACHINE, OTHER]
         name:
           type: string
+        resourceTypeId:
+          type: string
+          nullable: true
+          description: Link to the AN-owned resource type
+        capacity:
+          type: number
+          exclusiveMinimum: 0
+          nullable: true
+        capacityUnit:
+          type: string
+          enum: [PERSONS, UNITS, HOURS_PER_DAY, PERCENT]
+          nullable: true
+        skills:
+          type: array
+          items: { type: string }
+        qualifications:
+          type: array
+          items: { type: string }
+        calendarId:
+          type: string
+          nullable: true
+        active:
+          type: boolean
         qualification:
           type: string
           nullable: true
@@ -4257,7 +4280,7 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [id, anOrgId, type, name, resourceTypeId, capacity, capacityUnit, skills, qualifications, calendarId, active, createdAt, updatedAt]
+      required: [id, anOrgId, type, name, createdAt, updatedAt]
 
     CreateResourceRequest:
       type: object

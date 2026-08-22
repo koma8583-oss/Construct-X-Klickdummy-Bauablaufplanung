@@ -5,6 +5,7 @@ import {
   serviceChangeProposalsTable,
   type ServiceChangeProposal,
 } from "@workspace/db";
+import { applyAcceptedScheduleChange } from "./schedule-change-service";
 
 export type CoordinationParty = "AG" | "AN";
 
@@ -44,7 +45,7 @@ export function partyForOrg(
 export function deriveCoordinationState(input: {
   openProposal?: Pick<ServiceChangeProposal, "proposerOrgId"> | null;
   currentAgreement?: { start: Date | null; end: Date | null } | null;
-  guOrgId: string;
+  guOrgId?: string;
   nuOrgId: string;
 }): { state: "AGREED" | "AG_ACTION_REQUIRED" | "AN_ACTION_REQUIRED" | "NO_AGREEMENT"; nextActionOwner: CoordinationParty | null } {
   if (!input.currentAgreement?.start || !input.currentAgreement.end) {
@@ -56,6 +57,7 @@ export function deriveCoordinationState(input: {
 }
 
 export function buildCoordinationTimeline(request: {
+  guOrgId?: string;
   createdAt: Date;
   sentAt: Date | null;
   deliveredAt: Date | null;
@@ -66,10 +68,16 @@ export function buildCoordinationTimeline(request: {
     { type: "REQUEST_CREATED", at: request.createdAt, party: "AG" as CoordinationParty },
     ...(request.sentAt ? [{ type: "REQUEST_SENT", at: request.sentAt, party: "AG" as CoordinationParty }] : []),
     ...(request.deliveredAt ? [{ type: "REQUEST_DELIVERED", at: request.deliveredAt, party: "AN" as CoordinationParty }] : []),
-    ...(request.agreedStart && request.agreedEnd ? [{ type: "AGREEMENT_REACHED", at: request.createdAt, party: "AG" as CoordinationParty, start: request.agreedStart, end: request.agreedEnd }] : []),
-    ...proposals.flatMap((p) => [
-      { type: p.action === "COUNTER" ? "COUNTER_PROPOSED" : "PROPOSED", at: p.createdAt, party: p.proposerOrgId, proposalId: p.id, start: p.start, end: p.end },
-      ...(p.resolvedAt ? [{ type: p.status === "ACCEPTED" ? "ACCEPTED" : p.status === "REJECTED" ? "REJECTED" : "SUPERSEDED", at: p.resolvedAt, party: p.resolvedByUserId, proposalId: p.id }] : []),
+    ...(request.agreedStart && request.agreedEnd ? [{
+      type: "AGREEMENT_REACHED",
+      at: proposals.find((p) => p.status === "ACCEPTED")?.resolvedAt ?? request.createdAt,
+      party: "AG" as CoordinationParty,
+      start: request.agreedStart,
+      end: request.agreedEnd,
+    }] : []),
+     ...proposals.flatMap((p) => [
+       { type: p.action === "COUNTER" ? "COUNTER_PROPOSED" : "PROPOSED", at: p.createdAt, party: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty, proposalId: p.id, start: p.start, end: p.end },
+       ...(p.resolvedAt ? [{ type: p.status === "ACCEPTED" ? "ACCEPTED" : p.status === "REJECTED" ? "REJECTED" : "SUPERSEDED", at: p.resolvedAt, proposalId: p.id }] : []),
     ]),
   ];
   return events.sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -109,7 +117,7 @@ export async function createChangeProposal(input: {
   action?: "PROPOSE" | "COUNTER";
   supersedesProposalId?: string | null;
 }) {
-  if (input.end <= input.start) throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
+  if (input.end < input.start) throw Object.assign(new Error("Ende muss am oder nach dem Beginn liegen"), { statusCode: 400 });
   return db.transaction(async (tx) => {
     // Serialize proposal creation per request. The OPEN lookup and insert must
     // be one critical section, otherwise two concurrent submissions can both
@@ -118,6 +126,9 @@ export async function createChangeProposal(input: {
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, input.requestId)).limit(1);
     const party = request && partyForOrg(request, input.orgId);
     if (!request || !party) throw Object.assign(new Error("Leistungsanfrage nicht gefunden"), { statusCode: 404 });
+    if (!request.agreedStart || !request.agreedEnd) {
+      throw Object.assign(new Error("CHANGE_PROPOSAL_REQUIRES_AGREEMENT"), { statusCode: 422 });
+    }
     if (["CANCELLED", "EXPIRED", "SUPERSEDED", "REJECTED"].includes(request.status)) {
       throw Object.assign(new Error("Für diese Anfrage ist keine Änderung mehr möglich"), { statusCode: 409 });
     }
@@ -158,8 +169,8 @@ export async function resolveChangeProposal(input: {
   status: "ACCEPTED" | "REJECTED";
 }) {
   return db.transaction(async (tx) => {
-    const [proposal] = await tx.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, input.proposalId)).limit(1);
-    if (!proposal || proposal.status !== "OPEN") throw Object.assign(new Error("Offener Vorschlag nicht gefunden"), { statusCode: 404 });
+     const [proposal] = await tx.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, input.proposalId)).limit(1);
+     if (!proposal || proposal.status !== "OPEN") throw Object.assign(new Error("Offener Vorschlag nicht gefunden"), { statusCode: 404 });
     if (proposal.leistungsanfrageId !== input.requestId) throw Object.assign(new Error("Vorschlag gehört nicht zu dieser Anfrage"), { statusCode: 404 });
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, proposal.leistungsanfrageId)).limit(1);
     if (!request || !partyForOrg(request, input.orgId) || proposal.proposerOrgId === input.orgId) {
@@ -169,8 +180,17 @@ export async function resolveChangeProposal(input: {
     const [updated] = await tx.update(serviceChangeProposalsTable).set({
       status: input.status, resolvedAt: now, resolvedByUserId: input.userId,
     }).where(and(eq(serviceChangeProposalsTable.id, input.proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).returning();
+     if (!updated) {
+       throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
+     }
     if (input.status === "ACCEPTED") {
-      await tx.update(leistungsanfragenTable).set({ agreedStart: proposal.start, agreedEnd: proposal.end, updatedAt: now }).where(eq(leistungsanfragenTable.id, request.id));
+       await applyAcceptedScheduleChange(tx, {
+         serviceRequestId: request.id,
+         newStart: proposal.start,
+         newEnd: proposal.end,
+         initiatedBy: proposal.proposerOrgId === request.guOrgId ? "AG" : "AN",
+         proposalId: proposal.id,
+       });
     }
     return updated;
   });

@@ -20,7 +20,7 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
     db.select().from(serviceConstraintsTable).where(and(inArray(serviceConstraintsTable.serviceRequestId, ids), eq(serviceConstraintsTable.status, "OPEN"))),
     db.select().from(serviceClarificationsTable).where(and(inArray(serviceClarificationsTable.serviceRequestId, ids), eq(serviceClarificationsTable.status, "OPEN"))),
     db.select().from(serviceReadinessChecksTable).where(inArray(serviceReadinessChecksTable.serviceRequestId, ids)),
-    db.select().from(serviceDependenciesTable).where(inArray(serviceDependenciesTable.successorServiceRequestId, ids)),
+    db.select().from(serviceDependenciesTable).where(inArray(serviceDependenciesTable.predecessorServiceRequestId, ids)),
   ]);
   const proposalsBy = new Map(proposals.map((row) => [row.leistungsanfrageId, row]));
   const readinessBy = new Map(readiness.map((row) => [row.serviceRequestId, row]));
@@ -45,7 +45,7 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
       openConstraintCount: constraints.filter((row) => row.serviceRequestId === request.id).length,
       openClarificationCount: clarifications.filter((row) => row.serviceRequestId === request.id).length,
       readinessStatus,
-      dependencyImpactCount: dependencies.filter((row) => row.successorServiceRequestId === request.id).length,
+      dependencyImpactCount: dependencies.filter((row) => row.predecessorServiceRequestId === request.id).length,
       lastChangedAt: request.updatedAt.toISOString(),
     };
   });

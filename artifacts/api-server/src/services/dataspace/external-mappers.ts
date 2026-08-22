@@ -48,13 +48,14 @@ export function toExternalServiceRequest(input: {
   senderOrgId: string;
   receiverOrgId: string;
   correlationId?: string;
+  messageId?: string;
   resourceRequirements?: ExternalResourceRequirement[];
 }): ExternalServiceRequest {
   if (!input.plannedStart || !input.plannedEnd) {
     throw new Error("Service request cannot be published without plannedStart and plannedEnd");
   }
   const metadata: ExchangeMetadata = {
-    messageId: newMessageId(),
+    messageId: input.messageId ?? newMessageId(),
     correlationId: input.correlationId ?? input.requestId,
     schemaVersion: SCHEMA_VERSION,
     senderOrgId: input.senderOrgId,
@@ -80,11 +81,12 @@ export function toExternalServiceResponse(input: {
   senderOrgId: string;
   receiverOrgId: string;
   correlationId?: string;
+  messageId?: string;
   alternatives?: ExternalAlternativeProposal[];
 }): ExternalServiceResponse {
   return {
     metadata: {
-      messageId: newMessageId(),
+      messageId: input.messageId ?? newMessageId(),
       correlationId: input.correlationId ?? input.requestId,
       schemaVersion: SCHEMA_VERSION,
       senderOrgId: input.senderOrgId,
@@ -113,6 +115,7 @@ export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope):
     senderOrgId: envelope.senderOrgId,
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,
+    messageId: envelope.messageId,
   });
 }
 
@@ -123,10 +126,13 @@ export function toExternalServiceResponseFromEnvelope(envelope: MessageEnvelope)
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
     decision: payload.decision === "REJECTED" ? "REJECTED" :
-      payload.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" : "ACCEPTED",
+      payload.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
+      payload.decision === "ACCEPTED" ? "ACCEPTED" :
+      (() => { throw new Error("Invalid external service response decision"); })(),
     senderOrgId: envelope.senderOrgId,
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,
+    messageId: envelope.messageId,
     alternatives: Array.isArray(payload.alternatives) ? payload.alternatives : undefined,
   });
 }

@@ -15,6 +15,7 @@ import {
   timestamp,
   date,
   integer,
+  numeric,
   index,
   unique,
 } from "drizzle-orm/pg-core";
@@ -201,7 +202,7 @@ export const resourceBookingsTable = pgTable(
      * Number of units of the resource type consumed by this booking.
      * Used for type-level capacity bookings; null for legacy resource-only bookings.
      */
-    quantity: integer("quantity"),
+    quantity: numeric("quantity", { precision: 10, scale: 2 }).$type<number>(),
 
     note: text("note"),
 

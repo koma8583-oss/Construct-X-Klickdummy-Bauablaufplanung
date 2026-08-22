@@ -532,7 +532,7 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     resourceId: z.string().min(1).optional(),
     // type-level capacity booking (DTC ResourceAssignment)
     resourceTypeId: z.string().min(1).optional(),
-    quantity: z.number().int().positive().optional(),
+    quantity: z.number().positive().optional(),
     localProjectId: z.string().optional(),
     sourceType: z.enum(["LOCAL_PROJECT", "TAKT_REQUEST", "MANUAL_BLOCK", "ABSENCE", "MAINTENANCE"]),
     sourceReferenceId: z.string().optional(),
@@ -592,6 +592,10 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     res.status(403).json({ error: "Resource type does not belong to your organisation" });
     return;
   }
+  if (data.sourceType === "LOCAL_PROJECT" && !data.localProjectId) {
+    res.status(422).json({ error: "LOCAL_PROJECT_REQUIRED" });
+    return;
+  }
   if (data.localProjectId && !(await loadOwnLocalProject(data.localProjectId, nuOrgId))) {
     res.status(403).json({ error: "Local project does not belong to your organisation" });
     return;
@@ -634,7 +638,7 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   const schema = z.object({
     resourceId: z.string().min(1).nullable().optional(),
     resourceTypeId: z.string().min(1).nullable().optional(),
-    quantity: z.number().int().positive().nullable().optional(),
+    quantity: z.number().positive().nullable().optional(),
     localProjectId: z.string().nullable().optional(),
     sourceReferenceId: z.string().optional(),
     startAt: z.string().datetime({ offset: true }).optional(),
@@ -699,6 +703,12 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
   }
   if (nextResourceTypeId && !nextResourceType) {
     res.status(403).json({ error: "Resource type does not belong to your organisation" });
+    return;
+  }
+  const nextSourceType = existing.sourceType;
+  const nextLocalProjectId = patchData.localProjectId !== undefined ? patchData.localProjectId : existing.localProjectId;
+  if (nextSourceType === "LOCAL_PROJECT" && !nextLocalProjectId) {
+    res.status(422).json({ error: "LOCAL_PROJECT_REQUIRED" });
     return;
   }
   if (patchData.localProjectId && !(await loadOwnLocalProject(patchData.localProjectId, nuOrgId))) {

@@ -9,7 +9,7 @@
  *     - GU must own the TaktRequest
  *     - A GU decision of REQUEST_REVISION must exist
  *     - No successor request may already exist
- *     - New time window must be valid (start < end, future dates preferred)
+   *     - New time window must be valid (start <= end, future dates preferred)
  *
  *   Atomic transaction:
  *     1. Increment takt version (optimistic lock)
@@ -92,6 +92,7 @@ function buildVersionSnapshotPayload(takt: {
     description:       takt.description  ?? null,
     plannedStart:      takt.plannedStart,
     plannedEnd:        takt.plannedEnd,
+    plannedTimeWindow: { start: takt.plannedStart, end: takt.plannedEnd },
     earliestStart:     takt.earliestStart ?? null,
     latestEnd:         takt.latestEnd     ?? null,
     lvReference:       takt.lvReference   ?? null,
@@ -249,7 +250,7 @@ export async function createRevision(
   const newStart = toDateString(plannedTimeWindow.start);
   const newEnd   = toDateString(plannedTimeWindow.end);
 
-  if (newStart >= newEnd) {
+  if (newStart > newEnd) {
     throw new RevisionError(
       `Invalid time window: start (${newStart}) must be before end (${newEnd})`, 400,
     );
@@ -377,6 +378,7 @@ export async function createRevision(
       description:       mergedTakt.description  ?? null,
       plannedStart:      newStart,
       plannedEnd:        newEnd,
+      plannedTimeWindow: { start: newStart, end: newEnd },
       projectReference:  project?.id ?? takt.projectId,
       ...(subject != null || message != null
         ? { coordinationContext: { subject: subject ?? null, message: message ?? null } }

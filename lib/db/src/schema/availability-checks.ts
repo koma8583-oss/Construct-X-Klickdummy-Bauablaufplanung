@@ -81,6 +81,14 @@ export interface InternalResultPayload {
     overlapStart: string;
     overlapEnd: string;
   }>;
+  dailyAvailability?: Array<{
+    date: string;
+    totalCapacity: number;
+    confirmedUsed: number;
+    tentativeUsed: number;
+    requiredCapacity: number;
+    availableCapacity: number;
+  }>;
   /** Technical error message when status = FAILED */
   errorMessage?: string;
 }
