@@ -6,6 +6,8 @@ import {
   type ServiceChangeProposal,
 } from "@workspace/db";
 import { applyAcceptedScheduleChange } from "./schedule-change-service";
+import { evaluateAvailabilityWindow } from "./availability-check-service";
+import { deriveServiceCoordinationState } from "./service-coordination-state";
 
 export type CoordinationParty = "AG" | "AN";
 
@@ -22,13 +24,16 @@ export function calculateScheduleDelta(
   nextStart: Date | string | null | undefined,
   nextEnd: Date | string | null | undefined,
 ): ScheduleDelta {
-  const values = [baseStart, baseEnd, nextStart, nextEnd].map((v) => v ? new Date(v).getTime() : NaN);
-  if (values.some(Number.isNaN)) return { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };
-  const [a, b, c, d] = values;
+  const dates = [baseStart, baseEnd, nextStart, nextEnd].map((v) => v ? new Date(v).toISOString().slice(0, 10) : null);
+  if (dates.some((v) => !v)) return { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };
+  const [a, b, c, d] = dates as [string, string, string, string];
+  const dayNumber = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10))) / 86_400_000;
+  const baseDuration = dayNumber(b) - dayNumber(a) + 1;
+  const nextDuration = dayNumber(d) - dayNumber(c) + 1;
   return {
-    startDays: Math.round((c - a) / 86_400_000),
-    endDays: Math.round((d - b) / 86_400_000),
-    durationDays: Math.round(((d - c) - (b - a)) / 86_400_000),
+    startDays: dayNumber(c) - dayNumber(a),
+    endDays: dayNumber(d) - dayNumber(b),
+    durationDays: nextDuration - baseDuration,
     hasChange: a !== c || b !== d,
   };
 }
@@ -74,10 +79,18 @@ export function buildCoordinationTimeline(request: {
       party: "AG" as CoordinationParty,
       start: request.agreedStart,
       end: request.agreedEnd,
+      actorRole: "AG" as CoordinationParty,
     }] : []),
      ...proposals.flatMap((p) => [
        { type: p.action === "COUNTER" ? "COUNTER_PROPOSED" : "PROPOSED", at: p.createdAt, party: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty, proposalId: p.id, start: p.start, end: p.end },
-       ...(p.resolvedAt ? [{ type: p.status === "ACCEPTED" ? "ACCEPTED" : p.status === "REJECTED" ? "REJECTED" : "SUPERSEDED", at: p.resolvedAt, proposalId: p.id }] : []),
+        ...(p.resolvedAt ? [{
+          type: p.status === "ACCEPTED"
+            ? (request.agreedStart && request.agreedEnd ? "CHANGE_PROPOSAL_ACCEPTED" : "AGREEMENT_REACHED")
+            : p.status === "REJECTED" ? "REJECTED" : "SUPERSEDED",
+          at: p.resolvedAt,
+          proposalId: p.id,
+          actorRole: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty,
+        }] : []),
     ]),
   ];
   return events.sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -85,39 +98,45 @@ export function buildCoordinationTimeline(request: {
 
 export async function getCoordination(requestId: string, orgId: string) {
   const [request] = await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId)).limit(1);
-  if (!request || !partyForOrg(request, orgId)) return null;
+  const party = request ? partyForOrg(request, orgId) : null;
+  if (!request || !party) return null;
   const proposals = await db.select().from(serviceChangeProposalsTable)
     .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId))
     .orderBy(desc(serviceChangeProposalsTable.createdAt));
   const openProposal = proposals.find((p) => p.status === "OPEN") ?? null;
   const currentAgreement = request.agreedStart && request.agreedEnd ? { start: request.agreedStart, end: request.agreedEnd } : null;
   const state = deriveCoordinationState({ openProposal, currentAgreement, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
-  const party = partyForOrg(request, orgId);
-  const nextActionOwner = state.nextActionOwner ?? (
-    party === "AN" && ["DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(request.status)
-      ? "AN"
-      : party === "AG" && ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED"].includes(request.status)
-        ? "AG"
-        : null
-  );
-  const nextAction =
-    openProposal
-      ? (nextActionOwner === party ? "RESPOND_TO_CHANGE_PROPOSAL" : "NO_ACTION")
-      : party === "AN" && ["DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(request.status)
-        ? "RESPOND_TO_REQUEST"
-        : party === "AG" && ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED"].includes(request.status)
-          ? "DECIDE_RESPONSE"
-          : "NO_ACTION";
+  const action = deriveServiceCoordinationState({
+    party,
+    requestStatus: request.status,
+    openProposalProposer: openProposal
+      ? openProposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
+      : null,
+    hasResponse: ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED", "ACCEPTED", "REJECTED", "REVISION_REQUIRED"].includes(request.status),
+    hasDecision: ["ACCEPTED", "CANCELLED", "SUPERSEDED"].includes(request.status),
+  });
   const delta = openProposal
     ? calculateScheduleDelta(currentAgreement?.start, currentAgreement?.end, openProposal.start, openProposal.end)
     : { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };
+  const publicProposal = (proposal: ServiceChangeProposal | null) => proposal ? {
+    id: proposal.id,
+    start: proposal.start,
+    end: proposal.end,
+    proposerRole: proposal.proposerOrgId === request.guOrgId ? "AG" : "AN",
+    reasonCode: proposal.reasonCode,
+    comment: proposal.comment,
+    action: proposal.action,
+    status: proposal.status,
+    createdAt: proposal.createdAt,
+    resolvedAt: proposal.resolvedAt,
+  } : null;
   return {
     currentAgreement,
-    openProposal,
-    proposals,
+    openProposal: publicProposal(openProposal),
+    proposals: proposals.map(publicProposal),
     coordinationState: state.state,
-    nextActionOwner,
-    nextAction,
+    nextActionOwner: action.nextActionOwner,
+    nextAction: action.nextAction,
     responseRequiredBy: request.responseRequiredBy,
     scheduleDelta: delta,
     timeline: buildCoordinationTimeline(request, proposals),
@@ -135,7 +154,7 @@ export async function createChangeProposal(input: {
   action?: "PROPOSE" | "COUNTER";
   supersedesProposalId?: string | null;
 }) {
-  if (input.end < input.start) throw Object.assign(new Error("Ende muss am oder nach dem Beginn liegen"), { statusCode: 400 });
+  if (input.end <= input.start) throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
   return db.transaction(async (tx) => {
     // Serialize proposal creation per request. The OPEN lookup and insert must
     // be one critical section, otherwise two concurrent submissions can both
@@ -194,7 +213,23 @@ export async function resolveChangeProposal(input: {
     if (!request || !partyForOrg(request, input.orgId) || proposal.proposerOrgId === input.orgId) {
       throw Object.assign(new Error("Nur die Gegenseite darf diesen Vorschlag entscheiden"), { statusCode: 403 });
     }
-    const now = new Date();
+     if (input.status === "ACCEPTED" && request.agreedStart && request.agreedEnd) {
+       const availability = await evaluateAvailabilityWindow(
+         request.id,
+         request.nuOrgId,
+         proposal.start,
+         proposal.end,
+         request.id,
+       );
+       if (availability.conflicts.some((conflict) => !conflict.isTentative)) {
+         throw Object.assign(new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"), {
+           statusCode: 409,
+           code: "CHANGE_PROPOSAL_NOT_FEASIBLE",
+           availability,
+         });
+       }
+     }
+     const now = new Date();
     const [updated] = await tx.update(serviceChangeProposalsTable).set({
       status: input.status, resolvedAt: now, resolvedByUserId: input.userId,
     }).where(and(eq(serviceChangeProposalsTable.id, input.proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).returning();

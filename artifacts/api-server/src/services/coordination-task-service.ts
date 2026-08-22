@@ -12,6 +12,7 @@ import {
   serviceClarificationsTable,
   serviceReadinessChecksTable,
 } from "@workspace/db";
+import { deriveServiceCoordinationState } from "./service-coordination-state";
 
 export type CoordinationTaskType =
   | "RESPOND_TO_REQUEST"
@@ -134,21 +135,8 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
       });
     };
 
-    if (input.role === "AN" && ["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW"].includes(request.status)) {
-      addTask("RESPOND_TO_REQUEST", request.responseRequiredBy ?? request.expiresAt, `Antwort auf ${request.requestNumber} erforderlich`);
-    }
-    if (input.role === "AG" && response && !decisionByResponse.has(response.id)) {
-      addTask("DECIDE_RESPONSE", request.guDecisionRequiredBy, `Antwort von ${partner.name} prüfen`);
-    }
-    if (proposal && proposal.proposerOrgId !== input.orgId) {
-      addTask("RESPOND_TO_CHANGE_PROPOSAL", null, `Änderungsvorschlag von ${partner.name} beantworten`);
-    }
     const constraint = constraintsByRequest.get(request.id);
-    if (constraint) addTask("RESOLVE_CONSTRAINT", null, `Risiko bei ${service.leistungsBezeichnung} bearbeiten`);
     const clarification = clarificationByRequest.get(request.id);
-    if (clarification && clarification.askedByOrgId !== input.orgId) {
-      addTask("ANSWER_CLARIFICATION", null, `Klärungsfrage von ${partner.name} beantworten`);
-    }
     const check = readinessByRequest.get(request.id) ?? {
       scheduleConfirmed: false,
       siteReady: false,
@@ -162,10 +150,32 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
     const withinSevenDays = agreedStart
       && agreedStart.getTime() >= today.getTime()
       && agreedStart.getTime() <= today.getTime() + 7 * 86_400_000;
-    if (withinSevenDays && (input.role === "AG"
+    const readinessNeedsConfirmation = !!withinSevenDays && (input.role === "AG"
       ? !(check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady)
-      : !check.anReady)) {
-      addTask("CONFIRM_READINESS", request.agreedStart, "Ausführungsbereitschaft bestätigen");
+      : !check.anReady);
+    const action = deriveServiceCoordinationState({
+      party: input.role,
+      requestStatus: request.status,
+      hasResponse: !!response,
+      hasDecision: !!response && decisionByResponse.has(response.id),
+      openProposalProposer: proposal
+        ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
+        : null,
+      clarificationNeedsAnswer: !!clarification && clarification.askedByOrgId !== input.orgId,
+      constraintNeedsResolution: !!constraint,
+      readinessNeedsConfirmation,
+    });
+    const taskDetails: Record<Exclude<CoordinationTaskType, "NO_ACTION">, { dueAt: Date | null; summary: string }> = {
+      RESPOND_TO_REQUEST: { dueAt: request.responseRequiredBy ?? request.expiresAt, summary: `Antwort auf ${request.requestNumber} erforderlich` },
+      DECIDE_RESPONSE: { dueAt: request.guDecisionRequiredBy, summary: `Antwort von ${partner.name} prüfen` },
+      RESPOND_TO_CHANGE_PROPOSAL: { dueAt: null, summary: `Änderungsvorschlag von ${partner.name} beantworten` },
+      ANSWER_CLARIFICATION: { dueAt: null, summary: `Klärungsfrage von ${partner.name} beantworten` },
+      RESOLVE_CONSTRAINT: { dueAt: null, summary: `Risiko bei ${service.leistungsBezeichnung} bearbeiten` },
+      CONFIRM_READINESS: { dueAt: request.agreedStart, summary: "Ausführungsbereitschaft bestätigen" },
+    };
+    if (action.nextAction !== "NO_ACTION") {
+      const details = taskDetails[action.nextAction];
+      addTask(action.nextAction, details.dueAt, details.summary);
     }
   }
 

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
 type Proposal = { id: string; start: string; end: string; comment?: string | null } | null;
-type Coordination = { openProposal: Proposal; nextActionOwner?: 'AG' | 'AN' | null };
+type Coordination = { openProposal: Proposal; currentAgreement?: { start: string; end: string } | null; nextActionOwner?: 'AG' | 'AN' | null };
 
 const day = (value: string) => `${value}T00:00:00.000Z`;
 const errorText = (error: unknown) => {
@@ -32,7 +32,7 @@ export function ProposalActions({ requestId }: { requestId: string }) {
     queryFn: () => apiFetch<Coordination>(`/api/leistungsanfragen/${requestId}/coordination`),
   });
   const proposal = data?.openProposal;
-  const canAct = !data?.nextActionOwner || data.nextActionOwner === 'AG';
+  const canAct = !!data?.currentAgreement && (!data?.nextActionOwner || data.nextActionOwner === 'AG');
 
   const refresh = async () => {
     await Promise.all([
@@ -44,6 +44,10 @@ export function ProposalActions({ requestId }: { requestId: string }) {
   };
   const submit = async (action: 'accept' | 'reject' | 'counter' | 'propose') => {
     setError('');
+    if ((action === 'counter' || action === 'propose') && !data?.currentAgreement) {
+      setError('Ein Änderungsvorschlag ist erst nach einer bestätigten Terminvereinbarung möglich.');
+      return;
+    }
     if ((action === 'counter' || action === 'propose') && (!start || !end)) {
       setError('Bitte geben Sie Beginn und Ende des Zeitraums an.');
       return;

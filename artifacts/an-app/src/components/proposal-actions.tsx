@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
 type Proposal = { id: string; start: string; end: string; comment?: string | null } | null;
-type Coordination = { openProposal: Proposal; nextActionOwner?: 'AG' | 'AN' | null };
+type Coordination = { openProposal: Proposal; currentAgreement?: { start: string; end: string } | null; nextActionOwner?: 'AG' | 'AN' | null };
 const day = (value: string) => `${value}T00:00:00.000Z`;
 const errorText = (error: unknown) => {
   const e = error as { data?: { error?: string }; message?: string };
@@ -26,10 +26,11 @@ export function ProposalActions({ requestId }: { requestId: string }) {
     queryKey: ['/api/leistungsanfragen', requestId, 'coordination'],
     queryFn: () => apiFetch<Coordination>(`/api/leistungsanfragen/${requestId}/coordination`),
   });
-  const proposal = data?.openProposal; const canAct = !data?.nextActionOwner || data.nextActionOwner === 'AN';
+  const proposal = data?.openProposal; const canAct = !!data?.currentAgreement && (!data?.nextActionOwner || data.nextActionOwner === 'AN');
   const refresh = async () => { await Promise.all([refetch(), queryClient.invalidateQueries({ queryKey: [`/api/takt-requests/${requestId}/details`] }), queryClient.invalidateQueries({ queryKey: [`/api/leistungsanfragen/${requestId}`] })]); };
   const submit = async (action: 'accept' | 'reject' | 'counter' | 'propose') => {
     setError('');
+    if ((action === 'counter' || action === 'propose') && !data?.currentAgreement) { setError('Ein Änderungsvorschlag ist erst nach einer bestätigten Terminvereinbarung möglich.'); return; }
     if ((action === 'counter' || action === 'propose') && (!start || !end)) { setError('Bitte geben Sie Beginn und Ende des Zeitraums an.'); return; }
     if ((action === 'counter' || action === 'propose') && end <= start) { setError('Das Ende muss nach dem Beginn liegen.'); return; }
     setBusy(true);

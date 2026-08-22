@@ -103,6 +103,7 @@ export async function evaluateAvailabilityWindow(
   nuOrgId: string,
   windowStart: Date,
   windowEnd: Date,
+  excludeSourceReferenceId?: string,
 ): Promise<InternalResultPayload> {
   const [snapshotRow] = await db
     .select()
@@ -111,7 +112,7 @@ export async function evaluateAvailabilityWindow(
     .limit(1);
   if (!snapshotRow) throw new AvailabilityCheckError(`No snapshot found for TaktRequest ${taktRequestId}`, "SNAPSHOT_MISSING");
   const snapshot = snapshotRow.snapshotPayload as unknown as TaktRequestSnapshotPayload;
-  const result = await executeCheckRules(snapshot, windowStart, windowEnd, nuOrgId, taktRequestId);
+  const result = await executeCheckRules(snapshot, windowStart, windowEnd, nuOrgId, taktRequestId, excludeSourceReferenceId);
   return result.internalPayload;
 }
 
@@ -376,6 +377,7 @@ async function executeCheckRules(
   windowEnd: Date,
   nuOrgId: string,
   taktRequestId: string,
+  excludeSourceReferenceId?: string,
 ): Promise<CheckRulesResult> {
   // Load NU's active resources (used by both DTC and legacy paths)
   const nuResources = await db
@@ -446,6 +448,7 @@ async function executeCheckRules(
         ne(resourceBookingsTable.status, "CANCELLED"),
         lt(resourceBookingsTable.startAt, bookingWindowEnd),
         gt(resourceBookingsTable.endAt, bookingWindowStart),
+        ...(excludeSourceReferenceId ? [ne(resourceBookingsTable.sourceReferenceId, excludeSourceReferenceId)] : []),
       ),
     );
 
@@ -529,7 +532,7 @@ async function executeDtcCheck(
     windowStart,
     windowEnd,
   });
-  const { conflicts, tentativeWarnings, missingQualifications, availableResources } = evaluated;
+  const { conflicts, tentativeWarnings, missingQualifications, availableResources, bookingRequirements } = evaluated;
   const unavailableEquipment: string[] = [];
 
   const hardConflicts = conflicts.filter(c => !c.isTentative);
@@ -541,6 +544,7 @@ async function executeDtcCheck(
     missingQualifications,
     unavailableEquipment,
     tentativeWarnings,
+    bookingRequirements,
   };
 
   let publicAlternatives: PublicResultPayload["alternatives"] = [];

@@ -72,6 +72,14 @@ export interface InternalResultPayload {
     periodStart?: string | null;
     periodEnd?: string | null;
   }>;
+  bookingRequirements?: Array<{
+    resourceTypeId: string;
+    quantity: number;
+    utilizationPercent: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+    requiredQualification: string | null;
+  }>;
   missingQualifications: string[];
   unavailableEquipment: string[];
   /** TENTATIVE bookings treated as warnings per task spec */

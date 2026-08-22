@@ -46,6 +46,15 @@ export interface ResourceAvailabilityResult {
     periodStart: string | null;
     periodEnd: string | null;
   }>;
+  /** Unaggregated requirement segments used to create automatic bookings. */
+  bookingRequirements: Array<{
+    resourceTypeId: string;
+    quantity: number;
+    utilizationPercent: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+    requiredQualification: string | null;
+  }>;
   missingQualifications: string[];
   tentativeWarnings: Array<{
     resourceId: string;
@@ -114,6 +123,7 @@ export function evaluateResourceRequirements({
     availableResources: [],
     missingQualifications: [],
     tentativeWarnings: [],
+    bookingRequirements: [],
   };
 
   const daily: NonNullable<ResourceAvailabilityResult["dailyAvailability"]> = [];
@@ -211,6 +221,16 @@ export function evaluateResourceRequirements({
         overlapUtilizationSum: Math.round(Math.max(...groupDays.map((item) => item.confirmedUsed), 0)),
       });
     } else {
+      for (const segment of groupedRequirements) {
+        result.bookingRequirements.push({
+          resourceTypeId: requirement.resourceTypeId!,
+          quantity: Number(segment.requiredCapacity ?? 0),
+          utilizationPercent: segment.utilizationPercent,
+          periodStart: segment.periodStart ?? null,
+          periodEnd: segment.periodEnd ?? null,
+          requiredQualification: segment.requiredQualification ?? null,
+        });
+      }
       const first = groupedRequirements[0];
       result.availableResources.push({
         resourceId: null,

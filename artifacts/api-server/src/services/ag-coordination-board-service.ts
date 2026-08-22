@@ -5,7 +5,7 @@ import {
   organizationsTable, serviceChangeProposalsTable, serviceConstraintsTable, serviceClarificationsTable,
   serviceReadinessChecksTable, serviceDependenciesTable,
 } from "@workspace/db";
-import { deriveCoordinationState } from "./service-change-proposal-service";
+import { deriveServiceCoordinationState } from "./service-coordination-state";
 
 export async function getProjectCoordinationBoard(input: { projectId: string; agOrgId: string }) {
   const rows = await db.select({ request: leistungsanfragenTable, service: leistungenTable, partner: organizationsTable })
@@ -26,7 +26,13 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
   const readinessBy = new Map(readiness.map((row) => [row.serviceRequestId, row]));
   return rows.map(({ request, service, partner }) => {
     const proposal = proposalsBy.get(request.id);
-    const state = deriveCoordinationState({ openProposal: proposal, currentAgreement: { start: request.agreedStart, end: request.agreedEnd }, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
+    const action = deriveServiceCoordinationState({
+      party: "AG",
+      requestStatus: request.status,
+      openProposalProposer: proposal ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN" : null,
+      hasResponse: ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED", "ACCEPTED", "REJECTED", "REVISION_REQUIRED"].includes(request.status),
+      hasDecision: ["ACCEPTED", "CANCELLED", "SUPERSEDED"].includes(request.status),
+    });
     const check = readinessBy.get(request.id);
     const readinessStatus = !check ? "NOT_APPLICABLE" : check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady && check.anReady ? "READY" : "NOT_READY";
     return {
@@ -39,12 +45,12 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
       proposedStart: proposal?.start.toISOString() ?? null,
       proposedEnd: proposal?.end.toISOString() ?? null,
       proposalInitiator: proposal ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN" : null,
-      nextActionOwner: state.nextActionOwner ?? "NONE",
-      nextAction: state.nextActionOwner === "AG" ? "AG entscheiden" : state.nextActionOwner === "AN" ? "AN antworten" : "Keine Aktion",
+       nextActionOwner: action.nextActionOwner ?? "NONE",
+       nextAction: action.nextAction,
       responseRequiredBy: request.responseRequiredBy?.toISOString() ?? null,
       openConstraintCount: constraints.filter((row) => row.serviceRequestId === request.id).length,
       openClarificationCount: clarifications.filter((row) => row.serviceRequestId === request.id).length,
-      readinessStatus,
+       readinessStatus: request.agreedStart && request.agreedEnd && !check ? "NOT_READY" : readinessStatus,
       dependencyImpactCount: dependencies.filter((row) => row.predecessorServiceRequestId === request.id).length,
       lastChangedAt: request.updatedAt.toISOString(),
     };

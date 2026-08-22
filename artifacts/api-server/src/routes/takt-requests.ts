@@ -733,7 +733,7 @@ router.post(
         status: finalRequest?.status ?? "DELIVERED",
         sentAt: finalRequest?.sentAt ?? transportResult.sentAt,
         deliveredAt: finalRequest?.deliveredAt ?? transportResult.deliveredAt,
-        messageId: transportResult.messageId,
+        messageId: notificationMessageId(id),
         taktLifecycleStatus: taktAfter?.lifecycleStatus ?? "IN_COORDINATION",
       });
     } else {
@@ -749,7 +749,7 @@ router.post(
         error: `Transport delivery failed: ${transportResult.error?.message ?? "unknown error"}`,
         requestId: id,
         status: finalRequest?.status ?? "SENT",
-        messageId: transportResult.messageId,
+        messageId: notificationMessageId(id),
       });
     }
   },
