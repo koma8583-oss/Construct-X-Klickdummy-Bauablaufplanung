@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   leistungsanfragenTable,
@@ -111,6 +111,10 @@ export async function createChangeProposal(input: {
 }) {
   if (input.end <= input.start) throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
   return db.transaction(async (tx) => {
+    // Serialize proposal creation per request. The OPEN lookup and insert must
+    // be one critical section, otherwise two concurrent submissions can both
+    // observe an empty OPEN set before either insert commits.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.requestId}, 0))`);
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, input.requestId)).limit(1);
     const party = request && partyForOrg(request, input.orgId);
     if (!request || !party) throw Object.assign(new Error("Leistungsanfrage nicht gefunden"), { statusCode: 404 });

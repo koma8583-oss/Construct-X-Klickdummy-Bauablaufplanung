@@ -41,6 +41,7 @@ const REQUEST_IDS = [
   "t212-request-reject",
   "t212-request-expired",
   "t212-request-mismatch",
+  "t212-request-concurrent",
 ];
 
 function token(userId: string, orgId: string, orgType: "AG" | "AN") {
@@ -103,6 +104,7 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[2], "REJECT");
   await insertRequest(REQUEST_IDS[3], "EXPIRED", true, "EXPIRED");
   await insertRequest(REQUEST_IDS[4], "MISMATCH");
+  await insertRequest(REQUEST_IDS[5], "CONCURRENT");
 });
 
 afterAll(async () => {
@@ -240,6 +242,28 @@ describe("bilateral change proposals", () => {
     const rows = await db.select().from(serviceChangeProposalsTable)
       .where(eq(serviceChangeProposalsTable.id, proposal.id));
     expect(rows[0]?.status).toBe("OPEN");
+  });
+
+  it("leaves at most one open proposal when two submissions race", async () => {
+    const requestId = REQUEST_IDS[5];
+    const results = await Promise.allSettled([
+      createChangeProposal({
+        requestId, orgId: GU_ORG, userId: GU_USER,
+        start: new Date("2026-09-02T08:00:00Z"), end: new Date("2026-09-04T17:00:00Z"),
+      }),
+      createChangeProposal({
+        requestId, orgId: GU_ORG, userId: GU_USER,
+        start: new Date("2026-09-03T08:00:00Z"), end: new Date("2026-09-05T17:00:00Z"),
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({ status: "rejected", reason: { statusCode: 409 } });
+
+    const rows = await db.select().from(serviceChangeProposalsTable)
+      .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId));
+    expect(rows.filter((row) => row.status === "OPEN")).toHaveLength(1);
   });
 });
 
