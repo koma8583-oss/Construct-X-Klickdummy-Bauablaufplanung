@@ -532,7 +532,14 @@ async function executeDtcCheck(
     windowStart,
     windowEnd,
   });
-  const { conflicts, tentativeWarnings, missingQualifications, availableResources, bookingRequirements } = evaluated;
+  const {
+    conflicts,
+    tentativeWarnings,
+    missingQualifications,
+    availableResources,
+    bookingRequirements,
+    dailyAvailability,
+  } = evaluated;
   const unavailableEquipment: string[] = [];
 
   const hardConflicts = conflicts.filter(c => !c.isTentative);
@@ -545,6 +552,7 @@ async function executeDtcCheck(
     unavailableEquipment,
     tentativeWarnings,
     bookingRequirements,
+    dailyAvailability,
   };
 
   let publicAlternatives: PublicResultPayload["alternatives"] = [];

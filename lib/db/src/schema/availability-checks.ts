@@ -73,6 +73,7 @@ export interface InternalResultPayload {
     periodEnd?: string | null;
   }>;
   bookingRequirements?: Array<{
+    resourceRequirementId?: string;
     resourceTypeId: string;
     quantity: number;
     utilizationPercent: number;
@@ -90,12 +91,15 @@ export interface InternalResultPayload {
     overlapEnd: string;
   }>;
   dailyAvailability?: Array<{
+    resourceTypeId: string;
+    requiredQualification: string | null;
     date: string;
     totalCapacity: number;
     confirmedUsed: number;
     tentativeUsed: number;
     requiredCapacity: number;
     availableCapacity: number;
+    projectedAvailableCapacity: number;
   }>;
   /** Technical error message when status = FAILED */
   errorMessage?: string;

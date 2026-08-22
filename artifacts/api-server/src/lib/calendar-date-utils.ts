@@ -14,3 +14,12 @@ export function shiftCalendarDate(value: string, days: number): string {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+/** Inclusive list of date-only values between start and end. */
+export function iterateCalendarDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  for (let current = start; compareCalendarDates(current, end) <= 0; current = shiftCalendarDate(current, 1)) {
+    days.push(current);
+  }
+  return days;
+}

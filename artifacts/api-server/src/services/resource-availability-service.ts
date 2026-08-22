@@ -1,4 +1,7 @@
+import { differenceInCalendarDays, iterateCalendarDays, shiftCalendarDate } from "../lib/calendar-date-utils";
+
 export interface ResourceAvailabilityRequirement {
+  id?: string;
   resourceTypeId: string | null;
   requiredCapacity: string | number | null;
   utilizationPercent: number;
@@ -133,6 +136,7 @@ export interface ResourceAvailabilityResult {
   }>;
   /** Unaggregated requirement segments used to create automatic bookings. */
   bookingRequirements: Array<{
+    resourceRequirementId?: string;
     resourceTypeId: string;
     quantity: number;
     utilizationPercent: number;
@@ -148,26 +152,28 @@ export interface ResourceAvailabilityResult {
     overlapEnd: string;
   }>;
   dailyAvailability?: Array<{
+    resourceTypeId: string;
+    requiredQualification: string | null;
     date: string;
     totalCapacity: number;
     confirmedUsed: number;
     tentativeUsed: number;
     requiredCapacity: number;
     availableCapacity: number;
+    projectedAvailableCapacity: number;
   }>;
 }
 
 export function shiftRequirementsToWindow<
   T extends { periodStart?: string | null; periodEnd?: string | null },
->(requirements: T[], originalWindowStart: Date, targetWindowStart: Date): T[] {
-  const offsetDays = Math.round(
-    (targetWindowStart.getTime() - originalWindowStart.getTime()) / (24 * 60 * 60 * 1000),
+>(requirements: T[], currentWindowStart: Date, targetWindowStart: Date): T[] {
+  const offsetDays = differenceInCalendarDays(
+    currentWindowStart.toISOString().slice(0, 10),
+    targetWindowStart.toISOString().slice(0, 10),
   );
   const shift = (value?: string | null) => {
     if (!value) return value;
-    const date = parseDate(value);
-    date.setUTCDate(date.getUTCDate() + offsetDays);
-    return date.toISOString().slice(0, 10);
+    return shiftCalendarDate(value, offsetDays);
   };
   return requirements.map((requirement) => ({
     ...requirement,
@@ -219,13 +225,9 @@ export function evaluateResourceRequirements({
     groups.set(key, [...(groups.get(key) ?? []), requirement]);
   }
   const dayKey = (date: Date) => date.toISOString().slice(0, 10);
-  const daysFor = (start: Date, end: Date) => {
-    const days: Date[] = [];
-    for (const day = new Date(start); day < end; day.setUTCDate(day.getUTCDate() + 1)) {
-      days.push(new Date(day));
-    }
-    return days;
-  };
+  const daysFor = (start: Date, end: Date) =>
+    iterateCalendarDays(dayKey(start), dayKey(new Date(end.getTime() - 1)))
+      .map((day) => parseDate(day));
 
   for (const groupedRequirements of groups.values()) {
     const requirement = groupedRequirements[0];
@@ -277,8 +279,11 @@ export function evaluateResourceRequirements({
       const confirmedUsed = usedFor("CONFIRMED");
       const tentativeUsed = usedFor("TENTATIVE");
       daily.push({
+        resourceTypeId: requirement.resourceTypeId!,
+        requiredQualification: requirement.requiredQualification ?? null,
         date: dayKey(day), totalCapacity, confirmedUsed, tentativeUsed,
         requiredCapacity, availableCapacity: totalCapacity - confirmedUsed,
+        projectedAvailableCapacity: totalCapacity - confirmedUsed - tentativeUsed,
       });
       if (totalCapacity - confirmedUsed < requiredCapacity) {
         groupHasConflict = true;
@@ -308,6 +313,7 @@ export function evaluateResourceRequirements({
     } else {
       for (const segment of groupedRequirements) {
         result.bookingRequirements.push({
+          ...(segment.id ? { resourceRequirementId: segment.id } : {}),
           resourceTypeId: requirement.resourceTypeId!,
           quantity: Number(segment.requiredCapacity ?? 0),
           utilizationPercent: segment.utilizationPercent,

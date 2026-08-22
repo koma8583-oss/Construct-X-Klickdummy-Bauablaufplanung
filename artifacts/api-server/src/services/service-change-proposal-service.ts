@@ -8,6 +8,7 @@ import {
 import { applyAcceptedScheduleChange } from "./schedule-change-service";
 import { evaluateAvailabilityWindow } from "./availability-check-service";
 import { deriveServiceCoordinationState } from "./service-coordination-state";
+import { compareCalendarDates, differenceInCalendarDays } from "../lib/calendar-date-utils";
 
 export type CoordinationParty = "AG" | "AN";
 
@@ -27,12 +28,11 @@ export function calculateScheduleDelta(
   const dates = [baseStart, baseEnd, nextStart, nextEnd].map((v) => v ? new Date(v).toISOString().slice(0, 10) : null);
   if (dates.some((v) => !v)) return { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };
   const [a, b, c, d] = dates as [string, string, string, string];
-  const dayNumber = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10))) / 86_400_000;
-  const baseDuration = dayNumber(b) - dayNumber(a) + 1;
-  const nextDuration = dayNumber(d) - dayNumber(c) + 1;
+  const baseDuration = differenceInCalendarDays(a, b) + 1;
+  const nextDuration = differenceInCalendarDays(c, d) + 1;
   return {
-    startDays: dayNumber(c) - dayNumber(a),
-    endDays: dayNumber(d) - dayNumber(b),
+    startDays: differenceInCalendarDays(a, c),
+    endDays: differenceInCalendarDays(b, d),
     durationDays: nextDuration - baseDuration,
     hasChange: a !== c || b !== d,
   };
@@ -154,7 +154,9 @@ export async function createChangeProposal(input: {
   action?: "PROPOSE" | "COUNTER";
   supersedesProposalId?: string | null;
 }) {
-  if (input.end <= input.start) throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
+  if (compareCalendarDates(dateOnly(input.end), dateOnly(input.start)) < 0) {
+    throw Object.assign(new Error("Ende muss am oder nach dem Beginn liegen"), { statusCode: 400 });
+  }
   return db.transaction(async (tx) => {
     // Serialize proposal creation per request. The OPEN lookup and insert must
     // be one critical section, otherwise two concurrent submissions can both
