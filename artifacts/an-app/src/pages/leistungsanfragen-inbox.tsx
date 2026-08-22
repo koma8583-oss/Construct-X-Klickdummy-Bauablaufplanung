@@ -166,12 +166,20 @@ function DeadlineBadge({ item }: { item: TaktRequestListItem }) {
 
 type DeadlineFilter = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'EXPIRED';
 type StatusFilter = TaktRequestStatus | 'ALL';
+type CoordinationFilter = 'ALL' | 'AGREED' | 'NO_AGREEMENT' | 'AG_ACTION_REQUIRED' | 'AN_ACTION_REQUIRED';
+type ProposalFilter = 'ALL' | 'OPEN' | 'NONE';
+type ActionOwnerFilter = 'ALL' | 'AG' | 'AN' | 'NONE';
+type ScheduleFilter = 'ALL' | 'CHANGED' | 'UNCHANGED';
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LeistungsanfragenInboxPage() {
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('ALL');
   const [statusFilter, setStatusFilter]     = useState<StatusFilter>('ALL');
+  const [coordinationFilter, setCoordinationFilter] = useState<CoordinationFilter>('ALL');
+  const [proposalFilter, setProposalFilter] = useState<ProposalFilter>('ALL');
+  const [actionOwnerFilter, setActionOwnerFilter] = useState<ActionOwnerFilter>('ALL');
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('ALL');
 
   const {
     data: allItems,
@@ -193,14 +201,22 @@ export default function LeistungsanfragenInboxPage() {
     if (!allItems) return [];
     return allItems.filter((item) => {
       if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
-      if (deadlineFilter === 'ALL') return true;
-      const state = getDeadlineState(item);
-      if (deadlineFilter === 'DUE_SOON')  return state.kind === 'due-soon' || state.kind === 'due-today';
-      if (deadlineFilter === 'OVERDUE')   return state.kind === 'overdue';
-      if (deadlineFilter === 'EXPIRED')   return state.kind === 'expired';
+      if (deadlineFilter !== 'ALL') {
+        const state = getDeadlineState(item);
+        if (deadlineFilter === 'DUE_SOON' && !(state.kind === 'due-soon' || state.kind === 'due-today')) return false;
+        if (deadlineFilter === 'OVERDUE' && state.kind !== 'overdue') return false;
+        if (deadlineFilter === 'EXPIRED' && state.kind !== 'expired') return false;
+      }
+      if (coordinationFilter !== 'ALL' && item.coordinationState !== coordinationFilter) return false;
+      if (proposalFilter === 'OPEN' && !item.openProposal) return false;
+      if (proposalFilter === 'NONE' && item.openProposal) return false;
+      if (actionOwnerFilter === 'NONE' && item.nextActionOwner) return false;
+      if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && item.nextActionOwner !== actionOwnerFilter) return false;
+      if (scheduleFilter === 'CHANGED' && !item.scheduleDelta.hasChange) return false;
+      if (scheduleFilter === 'UNCHANGED' && item.scheduleDelta.hasChange) return false;
       return true;
     });
-  }, [allItems, deadlineFilter, statusFilter]);
+  }, [allItems, deadlineFilter, statusFilter, coordinationFilter, proposalFilter, actionOwnerFilter, scheduleFilter]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -278,6 +294,42 @@ export default function LeistungsanfragenInboxPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <Select value={coordinationFilter} onValueChange={(v) => setCoordinationFilter(v as CoordinationFilter)}>
+          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm"><SelectValue placeholder="Koordination" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle Koordination</SelectItem>
+            <SelectItem value="AGREED">Vereinbart</SelectItem>
+            <SelectItem value="NO_AGREEMENT">Keine Vereinbarung</SelectItem>
+            <SelectItem value="AG_ACTION_REQUIRED">AG muss handeln</SelectItem>
+            <SelectItem value="AN_ACTION_REQUIRED">AN muss handeln</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={proposalFilter} onValueChange={(v) => setProposalFilter(v as ProposalFilter)}>
+          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Vorschlag" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle Vorschläge</SelectItem>
+            <SelectItem value="OPEN">Offener Vorschlag</SelectItem>
+            <SelectItem value="NONE">Kein offener Vorschlag</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={actionOwnerFilter} onValueChange={(v) => setActionOwnerFilter(v as ActionOwnerFilter)}>
+          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Nächste Aktion" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle nächsten Aktionen</SelectItem>
+            <SelectItem value="AG">AG ist am Zug</SelectItem>
+            <SelectItem value="AN">AN ist am Zug</SelectItem>
+            <SelectItem value="NONE">Keine Aktion offen</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={scheduleFilter} onValueChange={(v) => setScheduleFilter(v as ScheduleFilter)}>
+          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Terminänderung" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle Terminstände</SelectItem>
+            <SelectItem value="CHANGED">Mit Terminänderung</SelectItem>
+            <SelectItem value="UNCHANGED">Ohne Terminänderung</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
@@ -326,6 +378,17 @@ export default function LeistungsanfragenInboxPage() {
                             {[(item as any).zone, (item as any).gewerk].filter(Boolean).join(' · ')}
                           </div>
                         )}
+                        {item.openProposal && (
+                          <div className="mt-1 text-xs text-orange-600 font-medium">
+                            Offener Vorschlag · {item.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
+                          </div>
+                        )}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {item.currentAgreement
+                            ? `Vereinbart: ${format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(item.currentAgreement.end), 'dd.MM.yy')}`
+                            : 'Noch keine Vereinbarung'}
+                          {item.scheduleDelta.hasChange && ` · Δ ${item.scheduleDelta.startDays > 0 ? '+' : ''}${item.scheduleDelta.startDays}/${item.scheduleDelta.endDays > 0 ? '+' : ''}${item.scheduleDelta.endDays} Tage`}
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {item.responseRequiredBy

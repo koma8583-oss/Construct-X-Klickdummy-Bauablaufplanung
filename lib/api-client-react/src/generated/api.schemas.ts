@@ -387,6 +387,47 @@ export const DelegationStatus = {
   CANCELLED: 'CANCELLED',
 } as const;
 
+export type DelegationCurrentAgreement = {
+  start: string;
+  end: string;
+} | null;
+
+export type DelegationOpenProposal = {
+  id: string;
+  start: string;
+  end: string;
+  proposerOrgId: string;
+  status: string;
+  reasonCode?: string | null;
+  comment?: string | null;
+  createdAt: string;
+} | null;
+
+export type DelegationCoordinationState = typeof DelegationCoordinationState[keyof typeof DelegationCoordinationState];
+
+
+export const DelegationCoordinationState = {
+  AGREED: 'AGREED',
+  AG_ACTION_REQUIRED: 'AG_ACTION_REQUIRED',
+  AN_ACTION_REQUIRED: 'AN_ACTION_REQUIRED',
+  NO_AGREEMENT: 'NO_AGREEMENT',
+} as const;
+
+export type DelegationNextActionOwner = typeof DelegationNextActionOwner[keyof typeof DelegationNextActionOwner] | null;
+
+
+export const DelegationNextActionOwner = {
+  AG: 'AG',
+  AN: 'AN',
+} as const;
+
+export type DelegationScheduleDelta = {
+  startDays: number;
+  endDays: number;
+  durationDays: number;
+  hasChange: boolean;
+};
+
 export interface Delegation {
   id: string;
   taktId: string;
@@ -407,6 +448,11 @@ export interface Delegation {
   isWithinBuffer?: boolean | null;
   createdAt: string;
   updatedAt: string;
+  currentAgreement?: DelegationCurrentAgreement;
+  openProposal?: DelegationOpenProposal;
+  coordinationState?: DelegationCoordinationState;
+  nextActionOwner?: DelegationNextActionOwner;
+  scheduleDelta?: DelegationScheduleDelta;
 }
 
 export interface AddProjectContractorRequest {
@@ -1104,6 +1150,47 @@ export const MessageOutboxStatus = {
   FAILED: 'FAILED',
 } as const;
 
+export type TaktRequestListItemCurrentAgreement = {
+  start: string;
+  end: string;
+} | null;
+
+export type TaktRequestListItemOpenProposal = {
+  id: string;
+  start: string;
+  end: string;
+  proposerOrgId: string;
+  status: string;
+  reasonCode?: string | null;
+  comment?: string | null;
+  createdAt: string;
+} | null;
+
+export type TaktRequestListItemCoordinationState = typeof TaktRequestListItemCoordinationState[keyof typeof TaktRequestListItemCoordinationState];
+
+
+export const TaktRequestListItemCoordinationState = {
+  AGREED: 'AGREED',
+  AG_ACTION_REQUIRED: 'AG_ACTION_REQUIRED',
+  AN_ACTION_REQUIRED: 'AN_ACTION_REQUIRED',
+  NO_AGREEMENT: 'NO_AGREEMENT',
+} as const;
+
+export type TaktRequestListItemNextActionOwner = typeof TaktRequestListItemNextActionOwner[keyof typeof TaktRequestListItemNextActionOwner] | null;
+
+
+export const TaktRequestListItemNextActionOwner = {
+  AG: 'AG',
+  AN: 'AN',
+} as const;
+
+export type TaktRequestListItemScheduleDelta = {
+  startDays: number;
+  endDays: number;
+  durationDays: number;
+  hasChange: boolean;
+};
+
 /**
  * Enriched TaktRequest row for the GU overview list. Includes Takt name, project name, NU org name, and transport status. Never contains internal NU data.
  */
@@ -1143,6 +1230,11 @@ export interface TaktRequestListItem {
   sentAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  currentAgreement?: TaktRequestListItemCurrentAgreement;
+  openProposal?: TaktRequestListItemOpenProposal;
+  coordinationState: TaktRequestListItemCoordinationState;
+  nextActionOwner?: TaktRequestListItemNextActionOwner;
+  scheduleDelta: TaktRequestListItemScheduleDelta;
 }
 
 /**

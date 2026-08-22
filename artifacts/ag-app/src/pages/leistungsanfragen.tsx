@@ -45,6 +45,10 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type OpenClosedFilter = 'ALL' | 'OPEN' | 'CLOSED';
+type CoordinationFilter = 'ALL' | 'AGREED' | 'NO_AGREEMENT' | 'AG_ACTION_REQUIRED' | 'AN_ACTION_REQUIRED';
+type ProposalFilter = 'ALL' | 'OPEN' | 'NONE';
+type ActionOwnerFilter = 'ALL' | 'AG' | 'AN' | 'NONE';
+type ScheduleFilter = 'ALL' | 'CHANGED' | 'UNCHANGED';
 
 type DeadlineFilter =
   | 'ALL'
@@ -63,6 +67,14 @@ const DEADLINE_FILTER_LABELS: Record<DeadlineFilter, string> = {
   EXPIRED:     'Abgelaufen',
   GU_DECISION: 'GU-Entscheidung ausstehend',
   FAILED:      'Zustellung fehlgeschlagen',
+};
+
+const COORDINATION_LABELS: Record<CoordinationFilter, string> = {
+  ALL: 'Alle Koordination',
+  AGREED: 'Vereinbart',
+  NO_AGREEMENT: 'Keine Vereinbarung',
+  AG_ACTION_REQUIRED: 'AG muss handeln',
+  AN_ACTION_REQUIRED: 'AN muss handeln',
 };
 
 function matchesDeadlineFilter(item: TaktRequestListItem, f: DeadlineFilter): boolean {
@@ -193,6 +205,10 @@ export default function LeistungsanfragenPage() {
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
   const [nuFilter, setNuFilter]           = useState<string>('ALL');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('ALL');
+  const [coordinationFilter, setCoordinationFilter] = useState<CoordinationFilter>('ALL');
+  const [proposalFilter, setProposalFilter] = useState<ProposalFilter>('ALL');
+  const [actionOwnerFilter, setActionOwnerFilter] = useState<ActionOwnerFilter>('ALL');
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('ALL');
 
   // ── Data ─────────────────────────────────────────────────────────────────────
   const apiStatusFilter = statusFilter !== 'ALL' ? statusFilter : undefined;
@@ -223,6 +239,13 @@ export default function LeistungsanfragenPage() {
         if (projectFilter !== 'ALL' && r.projectId !== projectFilter) return false;
         if (nuFilter !== 'ALL' && r.nuOrgId !== nuFilter)       return false;
         if (!matchesDeadlineFilter(r, deadlineFilter))           return false;
+        if (coordinationFilter !== 'ALL' && r.coordinationState !== coordinationFilter) return false;
+        if (proposalFilter === 'OPEN' && !r.openProposal) return false;
+        if (proposalFilter === 'NONE' && r.openProposal) return false;
+        if (actionOwnerFilter === 'NONE' && r.nextActionOwner) return false;
+        if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && r.nextActionOwner !== actionOwnerFilter) return false;
+        if (scheduleFilter === 'CHANGED' && !r.scheduleDelta.hasChange) return false;
+        if (scheduleFilter === 'UNCHANGED' && r.scheduleDelta.hasChange) return false;
         return true;
       })
       .sort((a, b) => {
@@ -231,7 +254,7 @@ export default function LeistungsanfragenPage() {
         if (aOpen !== bOpen) return aOpen - bOpen;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       });
-  }, [allItems, openClosed, statusFilter, projectFilter, nuFilter, deadlineFilter]);
+  }, [allItems, openClosed, statusFilter, projectFilter, nuFilter, deadlineFilter, coordinationFilter, proposalFilter, actionOwnerFilter, scheduleFilter]);
 
   const projects    = useMemo(() => (allItems ? uniqueProjects(allItems)    : []), [allItems]);
   const contractors = useMemo(() => (allItems ? uniqueContractors(allItems) : []), [allItems]);
@@ -372,10 +395,40 @@ export default function LeistungsanfragenPage() {
           </SelectContent>
         </Select>
 
+        <Select value={coordinationFilter} onValueChange={(v) => setCoordinationFilter(v as CoordinationFilter)}>
+          <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Koordination" /></SelectTrigger>
+          <SelectContent>{Object.entries(COORDINATION_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={proposalFilter} onValueChange={(v) => setProposalFilter(v as ProposalFilter)}>
+          <SelectTrigger className="h-8 w-[160px] text-sm"><SelectValue placeholder="Vorschlag" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle Vorschläge</SelectItem>
+            <SelectItem value="OPEN">Offener Vorschlag</SelectItem>
+            <SelectItem value="NONE">Kein offener Vorschlag</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={actionOwnerFilter} onValueChange={(v) => setActionOwnerFilter(v as ActionOwnerFilter)}>
+          <SelectTrigger className="h-8 w-[160px] text-sm"><SelectValue placeholder="Nächste Aktion" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle nächsten Aktionen</SelectItem>
+            <SelectItem value="AG">AG ist am Zug</SelectItem>
+            <SelectItem value="AN">AN ist am Zug</SelectItem>
+            <SelectItem value="NONE">Keine Aktion offen</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={scheduleFilter} onValueChange={(v) => setScheduleFilter(v as ScheduleFilter)}>
+          <SelectTrigger className="h-8 w-[160px] text-sm"><SelectValue placeholder="Terminänderung" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Alle Terminstände</SelectItem>
+            <SelectItem value="CHANGED">Mit Terminänderung</SelectItem>
+            <SelectItem value="UNCHANGED">Ohne Terminänderung</SelectItem>
+          </SelectContent>
+        </Select>
+
         {/* Reset */}
-        {(openClosed !== 'ALL' || statusFilter !== 'ALL' || projectFilter !== 'ALL' || nuFilter !== 'ALL' || deadlineFilter !== 'ALL') && (
+        {(openClosed !== 'ALL' || statusFilter !== 'ALL' || projectFilter !== 'ALL' || nuFilter !== 'ALL' || deadlineFilter !== 'ALL' || coordinationFilter !== 'ALL' || proposalFilter !== 'ALL' || actionOwnerFilter !== 'ALL' || scheduleFilter !== 'ALL') && (
           <button
-            onClick={() => { setOpenClosed('ALL'); setStatusFilter('ALL'); setProjectFilter('ALL'); setNuFilter('ALL'); setDeadlineFilter('ALL'); }}
+            onClick={() => { setOpenClosed('ALL'); setStatusFilter('ALL'); setProjectFilter('ALL'); setNuFilter('ALL'); setDeadlineFilter('ALL'); setCoordinationFilter('ALL'); setProposalFilter('ALL'); setActionOwnerFilter('ALL'); setScheduleFilter('ALL'); }}
             className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
             Filter zurücksetzen
@@ -418,6 +471,11 @@ export default function LeistungsanfragenPage() {
                             <FolderOpen className="w-3 h-3 opacity-60" />
                             {item.projectName}
                           </span>
+                          {item.openProposal && (
+                            <span className="text-xs font-medium text-orange-600 bg-orange-500/10 rounded-full px-2 py-0.5">
+                              Offener Vorschlag · {item.nextActionOwner === 'AG' ? 'AG am Zug' : 'AN am Zug'}
+                            </span>
+                          )}
                           <span className="text-muted-foreground/40 text-xs">·</span>
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Building2 className="w-3 h-3 opacity-60" />
@@ -476,6 +534,18 @@ export default function LeistungsanfragenPage() {
                       <div>
                         <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">Nr.</div>
                         <div className="font-mono text-xs">{item.requestNumber}</div>
+                      </div>
+
+                      <div className="col-span-2 sm:col-span-4 border-t border-border/50 pt-3">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Koordination</div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-medium">{COORDINATION_LABELS[item.coordinationState as CoordinationFilter] ?? item.coordinationState}</span>
+                          {item.currentAgreement ? (
+                            <span className="text-muted-foreground">Vereinbart: {format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–{format(new Date(item.currentAgreement.end), 'dd.MM.yy')}</span>
+                          ) : <span className="text-muted-foreground">Noch keine Vereinbarung</span>}
+                          {item.openProposal && <span className="text-orange-600">Vorschlag: {format(new Date(item.openProposal.start), 'dd.MM.yy')}–{format(new Date(item.openProposal.end), 'dd.MM.yy')}</span>}
+                          {item.scheduleDelta.hasChange && <span className="text-amber-600">Δ {item.scheduleDelta.startDays > 0 ? '+' : ''}{item.scheduleDelta.startDays} / {item.scheduleDelta.endDays > 0 ? '+' : ''}{item.scheduleDelta.endDays} Tage</span>}
+                        </div>
                       </div>
 
                       <div>

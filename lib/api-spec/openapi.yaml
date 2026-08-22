@@ -3777,6 +3777,62 @@ components:
         updatedAt:
           type: string
           format: date-time
+        currentAgreement:
+          type: object
+          nullable: true
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+          required: [start, end]
+        openProposal:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+            proposerOrgId:
+              type: string
+            status:
+              type: string
+            reasonCode:
+              type: string
+              nullable: true
+            comment:
+              type: string
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+          required: [id, start, end, proposerOrgId, status, createdAt]
+        coordinationState:
+          type: string
+          enum: [AGREED, AG_ACTION_REQUIRED, AN_ACTION_REQUIRED, NO_AGREEMENT]
+        nextActionOwner:
+          type: string
+          enum: [AG, AN]
+          nullable: true
+        scheduleDelta:
+          type: object
+          properties:
+            startDays:
+              type: integer
+            endDays:
+              type: integer
+            durationDays:
+              type: integer
+            hasChange:
+              type: boolean
+          required: [startDays, endDays, durationDays, hasChange]
       required: [id, taktId, projectId, agOrgId, anOrgId, requestedStart, requestedEnd, status, createdAt, updatedAt]
 
     AddProjectContractorRequest:
@@ -4930,6 +4986,62 @@ components:
         updatedAt:
           type: string
           format: date-time
+        currentAgreement:
+          type: object
+          nullable: true
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+          required: [start, end]
+        openProposal:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+            proposerOrgId:
+              type: string
+            status:
+              type: string
+            reasonCode:
+              type: string
+              nullable: true
+            comment:
+              type: string
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+          required: [id, start, end, proposerOrgId, status, createdAt]
+        coordinationState:
+          type: string
+          enum: [AGREED, AG_ACTION_REQUIRED, AN_ACTION_REQUIRED, NO_AGREEMENT]
+        nextActionOwner:
+          type: string
+          enum: [AG, AN]
+          nullable: true
+        scheduleDelta:
+          type: object
+          properties:
+            startDays:
+              type: integer
+            endDays:
+              type: integer
+            durationDays:
+              type: integer
+            hasChange:
+              type: boolean
+          required: [startDays, endDays, durationDays, hasChange]
       required:
         - id
         - requestNumber
@@ -4945,6 +5057,8 @@ components:
         - reminderCount
         - createdAt
         - updatedAt
+        - coordinationState
+        - scheduleDelta
 
     # ── Sprint 5 Task 5.4 schemas ────────────────────────────────────────────────
 

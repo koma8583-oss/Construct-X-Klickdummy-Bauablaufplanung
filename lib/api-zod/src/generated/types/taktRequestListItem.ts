@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MessageOutboxStatus } from './messageOutboxStatus';
+import type { TaktRequestListItemCoordinationState } from './taktRequestListItemCoordinationState';
+import type { TaktRequestListItemCurrentAgreement } from './taktRequestListItemCurrentAgreement';
+import type { TaktRequestListItemNextActionOwner } from './taktRequestListItemNextActionOwner';
+import type { TaktRequestListItemOpenProposal } from './taktRequestListItemOpenProposal';
+import type { TaktRequestListItemScheduleDelta } from './taktRequestListItemScheduleDelta';
 import type { TaktRequestStatus } from './taktRequestStatus';
 
 /**
@@ -47,4 +52,9 @@ export interface TaktRequestListItem {
   sentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  currentAgreement?: TaktRequestListItemCurrentAgreement;
+  openProposal?: TaktRequestListItemOpenProposal;
+  coordinationState: TaktRequestListItemCoordinationState;
+  nextActionOwner?: TaktRequestListItemNextActionOwner;
+  scheduleDelta: TaktRequestListItemScheduleDelta;
 }

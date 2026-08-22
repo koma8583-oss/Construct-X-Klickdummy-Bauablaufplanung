@@ -5,6 +5,11 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { DelegationCoordinationState } from './delegationCoordinationState';
+import type { DelegationCurrentAgreement } from './delegationCurrentAgreement';
+import type { DelegationNextActionOwner } from './delegationNextActionOwner';
+import type { DelegationOpenProposal } from './delegationOpenProposal';
+import type { DelegationScheduleDelta } from './delegationScheduleDelta';
 import type { DelegationStatus } from './delegationStatus';
 import type { Organization } from './organization';
 import type { Project } from './project';
@@ -30,4 +35,9 @@ export interface Delegation {
   isWithinBuffer?: boolean | null;
   createdAt: Date;
   updatedAt: Date;
+  currentAgreement?: DelegationCurrentAgreement;
+  openProposal?: DelegationOpenProposal;
+  coordinationState?: DelegationCoordinationState;
+  nextActionOwner?: DelegationNextActionOwner;
+  scheduleDelta?: DelegationScheduleDelta;
 }

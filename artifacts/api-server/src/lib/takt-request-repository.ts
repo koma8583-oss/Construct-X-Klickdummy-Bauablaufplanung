@@ -384,6 +384,20 @@ export interface TaktRequestListItem {
   sentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  currentAgreement: { start: Date; end: Date } | null;
+  openProposal: {
+    id: string;
+    start: Date;
+    end: Date;
+    proposerOrgId: string;
+    status: string;
+    reasonCode: string | null;
+    comment: string | null;
+    createdAt: Date;
+  } | null;
+  coordinationState: "AGREED" | "AG_ACTION_REQUIRED" | "AN_ACTION_REQUIRED" | "NO_AGREEMENT";
+  nextActionOwner: "AG" | "AN" | null;
+  scheduleDelta: { startDays: number; endDays: number; durationDays: number; hasChange: boolean };
 }
 import {
   assertValidTaktRequestTransition,
@@ -566,11 +580,30 @@ export async function listTaktRequestsForGuEnriched(
     )
     .where(and(...conditions));
 
-  return rows.map((r) => ({
-    ...r,
-    status: r.status as TaktRequestStatus,
-    outboxStatus: (r.outboxStatus ?? null) as TaktRequestListItem["outboxStatus"],
-    projectId: r.projectId ?? "",
+  return Promise.all(rows.map(async (r) => {
+    const coordination = await getCoordination(r.id, guOrgId);
+    return {
+      ...r,
+      status: r.status as TaktRequestStatus,
+      outboxStatus: (r.outboxStatus ?? null) as TaktRequestListItem["outboxStatus"],
+      projectId: r.projectId ?? "",
+      currentAgreement: coordination?.currentAgreement ?? null,
+      openProposal: coordination?.openProposal
+        ? {
+            id: coordination.openProposal.id,
+            start: coordination.openProposal.start,
+            end: coordination.openProposal.end,
+            proposerOrgId: coordination.openProposal.proposerOrgId,
+            status: coordination.openProposal.status,
+            reasonCode: coordination.openProposal.reasonCode,
+            comment: coordination.openProposal.comment,
+            createdAt: coordination.openProposal.createdAt,
+          }
+        : null,
+      coordinationState: coordination?.coordinationState ?? "NO_AGREEMENT",
+      nextActionOwner: coordination?.nextActionOwner ?? null,
+      scheduleDelta: coordination?.scheduleDelta ?? { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
+    };
   }));
 }
 
@@ -643,7 +676,7 @@ export async function listTaktRequestsForNuEnriched(
     .where(and(...conditions))
     .orderBy(desc(taktRequestsTable.createdAt));
 
-  return rows.map((r) => {
+  const enriched = await Promise.all(rows.map(async (r) => {
     // The snapshot payload uses the TaktRequestSnapshotPayload schema (v1.0):
     //   workPackage   → taktBezeichnung
     //   trade         → gewerk
@@ -653,6 +686,7 @@ export async function listTaktRequestsForNuEnriched(
     const location = (payload.location ?? {}) as Record<string, unknown>;
     const tw       = (payload.plannedTimeWindow ?? {}) as Record<string, unknown>;
 
+    const coordination = await getCoordination(r.id, nuOrgId);
     return {
       id:                 r.id,
       taktId:             r.taktId,
@@ -680,8 +714,25 @@ export async function listTaktRequestsForNuEnriched(
       gewerk:             (payload.trade        as string | undefined) ?? null,
       plannedStart:       (tw.start             as string | undefined) ?? null,
       plannedEnd:         (tw.end               as string | undefined) ?? null,
+      currentAgreement: coordination?.currentAgreement ?? null,
+      openProposal: coordination?.openProposal
+        ? {
+            id: coordination.openProposal.id,
+            start: coordination.openProposal.start,
+            end: coordination.openProposal.end,
+            proposerOrgId: coordination.openProposal.proposerOrgId,
+            status: coordination.openProposal.status,
+            reasonCode: coordination.openProposal.reasonCode,
+            comment: coordination.openProposal.comment,
+            createdAt: coordination.openProposal.createdAt,
+          }
+        : null,
+      coordinationState: coordination?.coordinationState ?? "NO_AGREEMENT",
+      nextActionOwner: coordination?.nextActionOwner ?? null,
+      scheduleDelta: coordination?.scheduleDelta ?? { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
     };
-  });
+  }));
+  return enriched;
 }
 
 /**

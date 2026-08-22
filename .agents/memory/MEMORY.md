@@ -28,3 +28,4 @@
 - [Canonical schema rename and raw SQL](canonical-rename-raw-sql.md) — adapters cover ORM calls only; migrate direct production and test SQL when physical tables are renamed.
 - [DTC resource semantics](dtc-resource-semantics.md) — type bookings are nullable-resource reservations with positive quantity; DTC class mapping must not invent an OTHER fallback.
 - [Booking requirement metadata](booking-requirement-metadata.md) — auto-bookings retain original quantity/utilization and shift requirement sub-periods with the accepted Takt window.
+- [API Zod codegen exports](api-zod-codegen-exports.md) — keep api-zod exports explicit because broad generated type re-exports can create duplicate symbols.

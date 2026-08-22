@@ -1124,7 +1124,29 @@ export const ListDelegationsResponseItem = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 })
 export const ListDelegationsResponse = zod.array(ListDelegationsResponseItem)
 
@@ -1223,7 +1245,29 @@ export const CreateDelegationResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 })
 
 
@@ -1315,7 +1359,29 @@ export const GetDelegationResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 })
 
 
@@ -1412,7 +1478,29 @@ export const UpdateDelegationResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 })
 
 
@@ -1712,7 +1800,29 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 }).optional(),
   "fromDate": zod.coerce.date(),
   "toDate": zod.coerce.date(),
@@ -1829,7 +1939,29 @@ export const CreateResourceAssignmentResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 }).optional(),
   "fromDate": zod.coerce.date(),
   "toDate": zod.coerce.date(),
@@ -1947,7 +2079,29 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 }).optional(),
   "fromDate": zod.coerce.date(),
   "toDate": zod.coerce.date(),
@@ -2168,7 +2322,29 @@ export const GetAgDashboardResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 }))
 })
 
@@ -2261,7 +2437,29 @@ export const GetAnDashboardResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 })),
   "resourceUtilization": zod.array(zod.object({
   "resource": zod.object({
@@ -2355,7 +2553,29 @@ export const GetAnDashboardResponse = zod.object({
   "message": zod.string().nullish(),
   "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+}).optional()
 }))
 })
 
@@ -2470,7 +2690,29 @@ export const ListTaktRequestsResponseItem = zod.object({
   "reminderCount": zod.number().min(listTaktRequestsResponseReminderCountMin).describe('Total number of reminders dispatched'),
   "sentAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "currentAgreement": zod.object({
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date()
+}).nullish(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerOrgId": zod.string(),
+  "status": zod.string(),
+  "reasonCode": zod.string().nullish(),
+  "comment": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullish(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']),
+  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
+  "scheduleDelta": zod.object({
+  "startDays": zod.number(),
+  "endDays": zod.number(),
+  "durationDays": zod.number(),
+  "hasChange": zod.boolean()
+})
 }).describe('Enriched TaktRequest row for the GU overview list. Includes Takt name, project name, NU org name, and transport status. Never contains internal NU data.\n')
 export const ListTaktRequestsResponse = zod.array(ListTaktRequestsResponseItem)
 
