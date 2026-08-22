@@ -9,5 +9,6 @@ export * from './resource-types';
 export * from './resource-requirements';
 export * from './inbox-messages';
 export * from './project-calendars';
+export * from './coordination-proposals';
 export * from './generated/api';
 export * from './generated/api.schemas';

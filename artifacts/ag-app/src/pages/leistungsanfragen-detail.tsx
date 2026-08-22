@@ -12,7 +12,12 @@ import {
   useListTaktDependencies,
   getListTakteQueryKey,
   getListTaktDependenciesQueryKey,
+  createChangeProposal,
+  counterChangeProposal,
+  acceptChangeProposal,
+  rejectChangeProposal,
 } from '@workspace/api-client-react';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -211,6 +216,7 @@ function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
           Delta: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage, Ende {delta.endDays >= 0 ? '+' : ''}{delta.endDays} Tage
         </p>
       )}
+      <ProposalActions detail={detail} />
       {coordination.coordinationTimeline && coordination.coordinationTimeline.length > 0 && (
         <div className="border-t pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Verlauf</p>
@@ -225,6 +231,70 @@ function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
         </div>
       )}
     </section>
+  );
+}
+
+function ProposalActions({ detail }: { detail: TaktRequestDetail }) {
+  const queryClient = useQueryClient();
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState('');
+  const coordination = detail as TaktRequestDetail & {
+    currentAgreement?: { start: string; end: string } | null;
+    openProposal?: { id: string; start: string; end: string; proposerOrgId: string } | null;
+  };
+  const proposal = coordination.openProposal;
+  const isCounterparty = !!proposal && proposal.proposerOrgId !== detail.guOrgId;
+  const mutation = useMutation({
+    mutationFn: async (action: 'create' | 'counter' | 'accept' | 'reject') => {
+      setError('');
+      if (action === 'accept') return acceptChangeProposal(detail.id, proposal!.id);
+      if (action === 'reject') return rejectChangeProposal(detail.id, proposal!.id);
+      if (!start || !end) throw new Error('Bitte Beginn und Ende angeben.');
+      if (new Date(start) >= new Date(end)) throw new Error('Das Ende muss nach dem Beginn liegen.');
+      const payload = {
+        start: `${start}T00:00:00.000Z`,
+        end: `${end}T23:59:59.000Z`,
+        comment: comment || null,
+      };
+      return action === 'counter'
+        ? counterChangeProposal(detail.id, proposal!.id, payload)
+        : createChangeProposal(detail.id, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailQueryKey(detail.id) });
+      setComment('');
+      setStart('');
+      setEnd('');
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : 'Aktion konnte nicht ausgeführt werden.'),
+  });
+
+  if (!proposal && !coordination.currentAgreement) return null;
+  const initialStart = (proposal?.start ?? coordination.currentAgreement?.start ?? '').slice(0, 10);
+  const initialEnd = (proposal?.end ?? coordination.currentAgreement?.end ?? '').slice(0, 10);
+  return (
+    <div className="border-t pt-3 space-y-3">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="text-xs text-muted-foreground">Neuer Beginn
+          <input type="date" value={start || initialStart} onChange={(e) => setStart(e.target.value)} className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5 text-sm text-foreground" />
+        </label>
+        <label className="text-xs text-muted-foreground">Neues Ende
+          <input type="date" value={end || initialEnd} onChange={(e) => setEnd(e.target.value)} className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5 text-sm text-foreground" />
+        </label>
+      </div>
+      <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Hinweis (optional)" className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm" />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        {!proposal && <Button size="sm" onClick={() => mutation.mutate('create')} disabled={mutation.isPending}>Änderung vorschlagen</Button>}
+        {isCounterparty && <>
+          <Button size="sm" onClick={() => mutation.mutate('accept')} disabled={mutation.isPending}><CheckCircle2 className="mr-1.5 h-4 w-4" />Annehmen</Button>
+          <Button size="sm" variant="outline" onClick={() => mutation.mutate('reject')} disabled={mutation.isPending}><Ban className="mr-1.5 h-4 w-4" />Ablehnen</Button>
+          <Button size="sm" variant="outline" onClick={() => mutation.mutate('counter')} disabled={mutation.isPending}><ArrowRightLeft className="mr-1.5 h-4 w-4" />Gegenvorschlag</Button>
+        </>}
+      </div>
+    </div>
   );
 }
 

@@ -125,6 +125,9 @@ export async function createChangeProposal(input: {
       if (input.action !== "COUNTER" || open.proposerOrgId === input.orgId) {
         throw Object.assign(new Error("Es existiert bereits ein offener Vorschlag"), { statusCode: 409 });
       }
+      if (input.action === "COUNTER" && input.supersedesProposalId && input.supersedesProposalId !== open.id) {
+        throw Object.assign(new Error("Der Gegenvorschlag bezieht sich nicht auf den offenen Vorschlag"), { statusCode: 409 });
+      }
       await tx.update(serviceChangeProposalsTable).set({ status: "SUPERSEDED", resolvedAt: new Date(), resolvedByUserId: input.userId })
         .where(eq(serviceChangeProposalsTable.id, open.id));
     }
@@ -144,6 +147,7 @@ export async function createChangeProposal(input: {
 }
 
 export async function resolveChangeProposal(input: {
+  requestId: string;
   proposalId: string;
   orgId: string;
   userId: string;
@@ -152,6 +156,7 @@ export async function resolveChangeProposal(input: {
   return db.transaction(async (tx) => {
     const [proposal] = await tx.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, input.proposalId)).limit(1);
     if (!proposal || proposal.status !== "OPEN") throw Object.assign(new Error("Offener Vorschlag nicht gefunden"), { statusCode: 404 });
+    if (proposal.leistungsanfrageId !== input.requestId) throw Object.assign(new Error("Vorschlag gehört nicht zu dieser Anfrage"), { statusCode: 404 });
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, proposal.leistungsanfrageId)).limit(1);
     if (!request || !partyForOrg(request, input.orgId) || proposal.proposerOrgId === input.orgId) {
       throw Object.assign(new Error("Nur die Gegenseite darf diesen Vorschlag entscheiden"), { statusCode: 403 });

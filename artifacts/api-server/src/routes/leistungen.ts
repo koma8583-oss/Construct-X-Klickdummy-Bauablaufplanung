@@ -939,6 +939,7 @@ router.post("/leistungsanfragen/:id/change-proposals", requireJwt, async (req, r
 router.post("/leistungsanfragen/:id/change-proposals/:proposalId/accept", requireJwt, async (req, res): Promise<void> => {
   try {
     const proposal = await resolveChangeProposal({
+      requestId: req.params.id as string,
       proposalId: req.params.proposalId as string,
       orgId: req.user!.orgId!,
       userId: req.user!.userId!,
@@ -954,6 +955,7 @@ router.post("/leistungsanfragen/:id/change-proposals/:proposalId/accept", requir
 router.post("/leistungsanfragen/:id/change-proposals/:proposalId/reject", requireJwt, async (req, res): Promise<void> => {
   try {
     const proposal = await resolveChangeProposal({
+      requestId: req.params.id as string,
       proposalId: req.params.proposalId as string,
       orgId: req.user!.orgId!,
       userId: req.user!.userId!,
