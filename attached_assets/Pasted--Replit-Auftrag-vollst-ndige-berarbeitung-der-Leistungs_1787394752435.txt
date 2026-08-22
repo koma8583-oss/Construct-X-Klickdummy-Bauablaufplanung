@@ -1,0 +1,3139 @@
+# Replit-Auftrag – vollständige Überarbeitung der Leistungsanfragen-UI und Benutzerführung
+
+Arbeite im aktuellen Repository-Stand.
+
+Dieser Auftrag betrifft ausschließlich die **Benutzerführung und Darstellung von Leistungsanfragen bei AG und AN** sowie die dafür zwingend erforderlichen kleinen Backend-/DTO-Anpassungen.
+
+Die bestehende Fachlogik für:
+
+* Service Requests
+* Service Responses
+* AG Decisions
+* Current Agreement
+* Change Proposals
+* Constraints
+* Clarifications
+* Readiness
+* Resource Availability
+* Timeline
+
+muss weiterverwendet werden.
+
+Keine parallele Fachlogik im Frontend implementieren.
+
+---
+
+# 1. Übergeordnetes Ziel
+
+Die Leistungsanfragen sollen für AG und AN so dargestellt werden, dass der Benutzer nach dem Öffnen eines Vorgangs unmittelbar versteht:
+
+```text
+Was muss ich jetzt tun?
+
+Was ist aktuell vereinbart?
+
+Gibt es einen offenen Änderungsvorschlag?
+
+Gibt es Risiken oder offene Klärungen?
+
+Was wurde ursprünglich angefragt?
+
+Was hat die Gegenseite geantwortet?
+
+Welche weiteren fachlichen Details sind relevant?
+
+Was ist bisher passiert?
+```
+
+Die Detailseite darf nicht länger durch technische Prozessdarstellungen, mehrfach wiederholte Aktionen oder mehrere konkurrierende Statusblöcke dominiert werden.
+
+---
+
+# 2. Zwingende UX-Grundsätze
+
+Diese Regeln gelten für AG und AN verbindlich.
+
+## Regel 1
+
+Pro Detailseite gibt es genau **eine zentrale Anzeige der aktuellen Aufgabe**.
+
+```text
+CurrentActionCard
+```
+
+Sie steht immer oben.
+
+---
+
+## Regel 2
+
+Eine fachliche Aktion darf auf einer Detailseite nicht mehrfach angeboten werden.
+
+Insbesondere:
+
+```text
+Terminänderung vorschlagen
+Annehmen
+Ablehnen
+Gegenvorschlag
+Anfrage beantworten
+Antwort prüfen
+```
+
+dürfen jeweils nur an einer logisch definierten Stelle erscheinen.
+
+---
+
+## Regel 3
+
+`nextAction` wird nicht im Frontend neu berechnet.
+
+Die Detailseite verwendet ausschließlich den zentralen Coordination-State des Backends.
+
+---
+
+## Regel 4
+
+Die ursprüngliche Leistungsanfrage muss immer als eigener fachlicher Abschnitt vollständig sichtbar sein.
+
+---
+
+## Regel 5
+
+Initiale Abstimmung und spätere Terminänderung werden in der UI strikt getrennt.
+
+Initial:
+
+```text
+Leistungsanfrage
+Antwort des AN
+Entscheidung des AG
+```
+
+Nach Vereinbarung:
+
+```text
+Aktuelle Vereinbarung
+Änderungsvorschlag
+```
+
+---
+
+## Regel 6
+
+Normale Detailseiten besitzen nur die **vertikale Seiten-Scrollbar des Browsers**.
+
+Keine verschachtelten vertikalen Scrollbereiche innerhalb normaler Cards.
+
+---
+
+## Regel 7
+
+Horizontale Scrollbars sind nur zulässig für tatsächlich breite Fachansichten:
+
+```text
+Resource Timeline
+Kapazitätsraster
+sehr breite Datentabellen, falls Card-Darstellung nicht sinnvoll ist
+```
+
+---
+
+## Regel 8
+
+Auf kleinen Displays müssen normale Leistungsanfragen vollständig ohne horizontales Seitenscrolling bedienbar sein.
+
+---
+
+# 3. Zuerst bestehende doppelte UI identifizieren und entfernen
+
+Prüfe insbesondere:
+
+```text
+artifacts/ag-app/src/pages/leistungsanfragen-detail.tsx
+
+artifacts/an-app/src/pages/leistungsanfrage-detail.tsx
+
+ProposalActions
+
+CoordinationProposalActions
+
+CoordinationSummary
+
+Response / Alternative Komponenten
+```
+
+Suche nach allen Renderstellen von:
+
+```text
+ProposalActions
+CoordinationProposalActions
+"Zeitraum vorschlagen"
+"Terminänderung vorschlagen"
+"Annehmen"
+"Ablehnen"
+"Gegenvorschlag"
+```
+
+Erstelle keine zusätzliche Komponente, bevor geklärt ist, welche bestehende Komponente kanonisch weiterverwendet wird.
+
+---
+
+# 4. ProposalActions als einzige Terminänderungs-Komponente
+
+Pro App soll nur eine zentrale Komponente für spätere Terminänderungen verwendet werden.
+
+Bevorzugt:
+
+```text
+ProposalActions
+```
+
+Bestehende parallele Implementierungen wie:
+
+```text
+CoordinationProposalActions
+lokale Proposal-Funktionen
+zweite ProposalActions-Renderstelle
+```
+
+entfernen oder auf die zentrale Komponente reduzieren.
+
+---
+
+# 5. Exakte Renderregel für ProposalActions
+
+`ProposalActions` wird pro Detailseite maximal einmal gerendert.
+
+Nicht:
+
+```text
+einmal in CoordinationSummary
++
+einmal unter PartnerResponse
++
+einmal bei Agreement
+```
+
+sondern ausschließlich im fachlich passenden Abschnitt.
+
+---
+
+# 6. Backend ist Quelle für die aktuelle Aufgabe
+
+Die Detail-API muss mindestens liefern:
+
+```ts
+nextActionOwner: "AG" | "AN" | "NONE";
+
+nextAction:
+  | "RESPOND_TO_REQUEST"
+  | "DECIDE_RESPONSE"
+  | "RESPOND_TO_CHANGE_PROPOSAL"
+  | "ANSWER_CLARIFICATION"
+  | "RESOLVE_CONSTRAINT"
+  | "CONFIRM_READINESS"
+  | "NO_ACTION";
+
+responseRequiredBy: string | null;
+```
+
+Falls die zentrale Funktion aus dem vorherigen Auftrag bereits vorhanden ist:
+
+```text
+deriveServiceCoordinationState(...)
+```
+
+diese verwenden.
+
+Nicht in React erneut anhand von Statusfeldern ableiten.
+
+---
+
+# 7. CurrentActionCard erstellen
+
+Erstelle pro App eine wiederverwendbare Komponente:
+
+```text
+components/current-action-card.tsx
+```
+
+Keine komplexe Shared-Package-Migration durchführen.
+
+Die AG- und AN-App dürfen jeweils ihre eigene kleine Komponente besitzen.
+
+---
+
+# 8. CurrentActionCard steht exakt an Position 1
+
+Seitenreihenfolge:
+
+```text
+Breadcrumb / Zurück
+
+Titel
+
+CurrentActionCard
+
+CurrentAgreementCard
+
+OpenProposalCard
+
+CoordinationAlerts
+
+ServiceRequestDetails
+
+PartnerResponse
+
+Readiness
+
+Timeline
+```
+
+Die `CurrentActionCard` darf nicht weiter unten erscheinen.
+
+---
+
+# 9. Inhalt der CurrentActionCard
+
+Die Card zeigt maximal:
+
+```text
+Statuslabel
+
+klare Überschrift
+
+1–2 Sätze Erklärung
+
+Frist, falls vorhanden
+
+maximal einen Primary Button
+```
+
+Keine weiteren Details.
+
+---
+
+# 10. Darstellung für AG – RESPOND_TO_REQUEST
+
+Dieser Zustand sollte beim AG normalerweise bedeuten:
+
+```text
+Warten auf AN
+```
+
+Anzeige:
+
+```text
+Warten auf AN
+
+Die Leistungsanfrage wurde an den AN übermittelt.
+Der AN muss die Anfrage noch beantworten.
+
+Antwortfrist: 25.08.2026
+```
+
+Kein Button.
+
+---
+
+# 11. Darstellung für AN – RESPOND_TO_REQUEST
+
+```text
+Aktion erforderlich
+
+Leistungsanfrage beantworten
+
+Der AG erwartet Ihre Rückmeldung zur angefragten Leistung.
+
+Antwort bis: 25.08.2026
+
+[Anfrage beantworten]
+```
+
+Der Button scrollt zum vorhandenen Response-Bereich.
+
+Nicht zweiten Response-Dialog neu implementieren.
+
+---
+
+# 12. DECIDE_RESPONSE – AG
+
+```text
+Aktion erforderlich
+
+Antwort des AN prüfen
+
+Der AN hat auf die Leistungsanfrage geantwortet.
+
+[Antwort prüfen]
+```
+
+Button scrollt zu:
+
+```text
+PartnerResponseCard
+```
+
+---
+
+# 13. DECIDE_RESPONSE – AN
+
+```text
+Warten auf AG
+
+Ihre Antwort wurde übermittelt.
+Der AG muss die Abstimmung abschließen.
+```
+
+Kein Primary Button.
+
+---
+
+# 14. RESPOND_TO_CHANGE_PROPOSAL – Gegenseite
+
+Beispiel AG:
+
+```text
+Aktion erforderlich
+
+Terminänderung prüfen
+
+Der AN schlägt eine Änderung des vereinbarten Zeitraums vor.
+
+Aktuell:
+10.–14.09.
+
+Vorgeschlagen:
+16.–20.09.
+
+[Änderung prüfen]
+```
+
+Button:
+
+```text
+scrollIntoView(openProposalCard)
+```
+
+---
+
+# 15. RESPOND_TO_CHANGE_PROPOSAL – Vorschlagende Seite
+
+```text
+Warten auf Partner
+
+Ihr Änderungsvorschlag wurde übermittelt.
+```
+
+Keine zweite „Terminänderung vorschlagen“-Aktion.
+
+---
+
+# 16. ANSWER_CLARIFICATION
+
+```text
+Aktion erforderlich
+
+Klärungsfrage beantworten
+
+Die Gegenseite benötigt zusätzliche Informationen.
+
+[Klärung öffnen]
+```
+
+Button scrollt zum Clarification-Bereich.
+
+---
+
+# 17. RESOLVE_CONSTRAINT
+
+```text
+Aktion erforderlich
+
+Offenes Risiko bearbeiten
+
+Für diese Leistung besteht ein offenes Ausführungshindernis.
+
+[Risiko öffnen]
+```
+
+Nur wenn der Benutzer tatsächlich gemäß Backend der verantwortliche Bearbeiter ist.
+
+---
+
+# 18. CONFIRM_READINESS
+
+```text
+Aktion erforderlich
+
+Ausführungsbereitschaft prüfen
+
+Die Leistung beginnt in Kürze und ist noch nicht vollständig als bereit bestätigt.
+
+[Bereitschaft prüfen]
+```
+
+---
+
+# 19. NO_ACTION
+
+Bei Agreement:
+
+```text
+Keine Aktion erforderlich
+
+Die Leistung ist aktuell abgestimmt.
+```
+
+Bei noch laufender Gegenparteiaktion:
+
+nicht `NO_ACTION`, sondern:
+
+```text
+Warten auf Partner
+```
+
+verwenden.
+
+---
+
+# 20. CurrentActionCard niemals doppelt rendern
+
+Entferne alle bestehenden separaten großen Elemente mit:
+
+```text
+Nächste Aktion
+Aktion erforderlich
+Warten auf ...
+```
+
+falls sie dieselbe Information wie `CurrentActionCard` anzeigen.
+
+Kleine Statushinweise innerhalb fachlicher Cards sind erlaubt.
+
+Beispiel:
+
+```text
+Offener Vorschlag
+Warten auf AG
+```
+
+aber keine zweite große Next-Action-Card.
+
+---
+
+# 21. Primary Action exakt einmal
+
+Auf der gesamten Detailseite darf gleichzeitig nur ein Button als fachliche Primary Action hervorgehoben sein.
+
+Beispiele:
+
+```text
+Anfrage beantworten
+Antwort prüfen
+Änderung prüfen
+Klärung beantworten
+Bereitschaft prüfen
+```
+
+Sekundäre Aktionen dürfen vorhanden sein, aber optisch weniger dominant.
+
+---
+
+# 22. AG-Detailseite vollständig neu ordnen
+
+Ändere:
+
+```text
+artifacts/ag-app/src/pages/leistungsanfragen-detail.tsx
+```
+
+auf folgende verbindliche Reihenfolge:
+
+```text
+1 Header
+2 CurrentActionCard
+3 CurrentAgreementCard
+4 OpenProposalCard
+5 CoordinationAlerts
+6 ServiceRequestDetailsCard
+7 PartnerResponseCard
+8 ReadinessCard
+9 Timeline / Verlauf
+10 TechnicalDetails
+```
+
+---
+
+# 23. AN-Detailseite entsprechend ordnen
+
+Ändere:
+
+```text
+artifacts/an-app/src/pages/leistungsanfrage-detail.tsx
+```
+
+Reihenfolge:
+
+```text
+1 Header
+2 CurrentActionCard
+3 CurrentAgreementCard
+4 OpenProposalCard
+5 CoordinationAlerts
+6 ServiceRequestDetailsCard
+7 ResourceRequirements / Availability
+8 OwnResponseCard
+9 ReadinessCard
+10 Timeline / Verlauf
+11 TechnicalDetails
+```
+
+---
+
+# 24. Header AG
+
+Nur anzeigen:
+
+```text
+← Leistungsanfragen
+
+Leistungsname
+
+Projektname
+
+AN-Name
+
+kompaktes Status-Badge
+```
+
+Keine Proposal-Aktionen im Header.
+
+Keine Response-Aktionen im Header.
+
+---
+
+# 25. Header AN
+
+Nur:
+
+```text
+← Leistungsanfragen
+
+Leistungsname
+
+Projektname
+
+AG-Name
+
+kompaktes Status-Badge
+```
+
+---
+
+# 26. Status im Header nur einmal
+
+Keine Kombination wie:
+
+```text
+Status: AGREED
+Vereinbart
+Abgeschlossen
+Agreement reached
+```
+
+verwenden.
+
+Nur ein fachliches Badge.
+
+Beispiele:
+
+```text
+Neu
+In Abstimmung
+Vereinbart
+Änderung offen
+Ausführung gefährdet
+```
+
+Technische Enums nicht direkt darstellen.
+
+---
+
+# 27. CurrentAgreementCard
+
+Erstelle bzw. konsolidiere:
+
+```text
+CurrentAgreementCard
+```
+
+---
+
+# 28. Agreement vorhanden
+
+Anzeige:
+
+```text
+Aktuelle Vereinbarung
+
+10.09.2026 – 14.09.2026
+
+5 Kalendertage
+
+✓ Vereinbart
+```
+
+Optional darunter:
+
+```text
+Vereinbart am 22.08.2026
+```
+
+nur wenn der echte Zeitpunkt verfügbar ist.
+
+---
+
+# 29. Agreement nicht vorhanden
+
+Anzeige:
+
+```text
+Noch keine Vereinbarung
+
+Angefragter Zeitraum
+10.09.2026 – 14.09.2026
+```
+
+Kein Button:
+
+```text
+Terminänderung vorschlagen
+```
+
+---
+
+# 30. „Terminänderung vorschlagen“ nur hier
+
+Button erscheint ausschließlich in `CurrentAgreementCard`.
+
+Regel:
+
+```text
+Agreement vorhanden
+AND
+kein fremder offener Proposal, auf den Benutzer reagieren muss
+AND
+kein eigener offener Proposal
+```
+
+→ Button:
+
+```text
+[Terminänderung vorschlagen]
+```
+
+---
+
+# 31. Kein Agreement → kein Change Proposal Button
+
+Strikt:
+
+```text
+agreedStart == null
+OR
+agreedEnd == null
+```
+
+→ Button nicht rendern.
+
+Auch wenn Backend aufgrund eines Fehlers etwas anderes liefert.
+
+---
+
+# 32. OpenProposalCard
+
+Nur anzeigen, wenn ein offener Change Proposal existiert.
+
+Struktur:
+
+```text
+Offener Änderungsvorschlag
+
+Aktuelle Vereinbarung
+10.–14.09.
+
+Vorgeschlagener Zeitraum
+16.–20.09.
+
+Änderung
+Start +6 Tage
+Ende +6 Tage
+
+Grund
+Ressourcenkonflikt
+
+Kommentar
+...
+```
+
+---
+
+# 33. Proposal durch Gegenseite
+
+Dann genau hier:
+
+```text
+[Annehmen]
+[Ablehnen]
+[Gegenvorschlag]
+```
+
+Keine Wiederholung an anderer Stelle.
+
+---
+
+# 34. Eigener offener Proposal
+
+Nur:
+
+```text
+Warten auf Partner
+```
+
+anzeigen.
+
+Falls `WITHDRAW` fachlich noch nicht implementiert:
+
+keinen Withdraw-Button erfinden.
+
+---
+
+# 35. Nach Annehmen/Ablehnen
+
+Card soll nach API-Refresh nicht weiter als „offen“ erscheinen.
+
+Keine lokale UI-Manipulation, die dem Backendstatus widerspricht.
+
+Nach Mutation:
+
+```text
+invalidate/refetch coordination detail
+```
+
+durchführen.
+
+---
+
+# 36. CoordinationAlerts als kompakter Überblick
+
+Direkt unter Proposal/Agreement.
+
+Keine drei riesigen Cards direkt nacheinander.
+
+Darstellung:
+
+```text
+Koordination
+
+⚠ 1 offenes Risiko
+? 2 offene Klärungen
+✓ Bereitschaft 4 / 5
+```
+
+---
+
+# 37. Jeder CoordinationAlert ist klickbar
+
+Klick:
+
+```text
+Risiko → ConstraintSection
+Klärung → ClarificationSection
+Bereitschaft → ReadinessSection
+```
+
+mit:
+
+```text
+scrollIntoView({ behavior: "smooth" })
+```
+
+---
+
+# 38. Wenn nichts offen ist
+
+Nicht drei Null-Zähler anzeigen.
+
+Stattdessen:
+
+```text
+Koordination
+
+Keine offenen Risiken oder Klärungen.
+```
+
+Readiness nur ergänzen, wenn fachlich relevant.
+
+---
+
+# 39. ServiceRequestDetailsCard ist verpflichtend
+
+Die ursprüngliche Leistungsanfrage darf nicht hinter:
+
+```text
+Prozess
+Coordination
+Technische Daten
+```
+
+versteckt werden.
+
+Immer als eigener Abschnitt:
+
+```text
+Leistungsanfrage
+```
+
+anzeigen.
+
+---
+
+# 40. AG – sichtbare Request-Details
+
+Mindestens anzeigen, sofern Feld real existiert:
+
+```text
+Leistung
+Projekt
+AN
+Beschreibung
+Leistungsumfang
+angefragter Zeitraum
+Antwortfrist
+Erstellungsdatum
+letzte fachliche Änderung
+Priorität
+Standort / Bereich
+Gewerk
+Referenz
+```
+
+Keine Dummyfelder.
+
+Feld nur anzeigen, wenn Wert vorhanden.
+
+---
+
+# 41. AN – sichtbare Request-Details
+
+Mindestens:
+
+```text
+Leistung
+Projekt
+AG
+Beschreibung
+Leistungsumfang
+angefragter Zeitraum
+Antwortfrist
+Erstellungsdatum
+Priorität
+Standort / Bereich
+Gewerk
+Referenz
+```
+
+zusätzlich ResourceRequirements, sofern vorhanden und für AN bestimmt.
+
+---
+
+# 42. Feldlayout Desktop
+
+Keine riesige zweispaltige Formtabelle mit leerem Platz.
+
+Verwende beispielsweise:
+
+```text
+Zeitraum            10.–14.09.2026
+Antwort bis         25.08.2026
+Projekt             Projekt Alpha
+AN                  Müller Ausbau GmbH
+```
+
+Längere Beschreibung darunter über volle Breite.
+
+---
+
+# 43. Feldlayout Mobile
+
+Alle Label/Wert-Paare untereinander.
+
+Beispiel:
+
+```text
+Zeitraum
+10.–14.09.2026
+
+Antwort bis
+25.08.2026
+
+Projekt
+Projekt Alpha
+```
+
+Keine zu schmalen zwei Spalten.
+
+---
+
+# 44. Keine internen IDs prominent anzeigen
+
+Felder wie:
+
+```text
+requestId
+organizationId
+messageId
+correlationId
+versionId
+```
+
+nicht im normalen Fachbereich darstellen.
+
+Wenn benötigt:
+
+unter:
+
+```text
+Technische Details
+```
+
+eingeklappt.
+
+---
+
+# 45. PartnerResponseCard AG
+
+Wenn AN geantwortet hat:
+
+```text
+Antwort des AN
+```
+
+anzeigen.
+
+Mindestens:
+
+```text
+Entscheidung
+Antwortzeitpunkt
+Kommentar
+Alternativen
+```
+
+---
+
+# 46. Response-Werte fachlich übersetzen
+
+Nicht:
+
+```text
+ALTERNATIVES_PROPOSED
+```
+
+sondern:
+
+```text
+Alternative vorgeschlagen
+```
+
+Nicht:
+
+```text
+ACCEPTED
+```
+
+sondern:
+
+```text
+Anfrage grundsätzlich bestätigt
+```
+
+entsprechend bestehender Fachsemantik.
+
+---
+
+# 47. Alternativen kompakt anzeigen
+
+Beispiel:
+
+```text
+Alternative 1
+16.–20.09.2026
++6 Tage
+
+[Auswählen]
+```
+
+Nur falls AG aktuell entscheiden darf.
+
+Keine Änderungsvorschlags-Komponente hier für spätere Agreements rendern.
+
+---
+
+# 48. AN OwnResponseCard
+
+AN sieht seine bereits übermittelte Antwort:
+
+```text
+Ihre Antwort
+
+Übermittelt am 22.08.2026
+
+Alternative vorgeschlagen
+
+16.–20.09.2026
+```
+
+Kein erneuter Response-Button, sofern Workflow keine Änderung erlaubt.
+
+---
+
+# 49. Ressourcenanforderungen AN
+
+Eigener Abschnitt:
+
+```text
+Ressourcenbedarf
+```
+
+pro Requirement:
+
+```text
+Facharbeiter Trockenbau
+6 Personen
+50 % Auslastung
+10.–14.09.
+Qualifikation: ...
+```
+
+---
+
+# 50. AG-Ressourcensicht strikt begrenzen
+
+AG nur Informationen anzeigen, die gemäß bestehendem Fachmodell AG-sichtbar sind.
+
+Nicht anzeigen:
+
+```text
+konkrete Mitarbeiter
+konkrete Maschinen
+interne ResourceBookings
+andere AN-Projekte
+lokale Gesamtkapazität
+```
+
+---
+
+# 51. Availability AN kompakt einbinden
+
+Falls aktuelle Availability vorhanden:
+
+```text
+Verfügbarkeit
+
+✓ Verfügbar
+```
+
+oder:
+
+```text
+⚠ Gefährdet
+```
+
+oder:
+
+```text
+✕ Konflikt
+```
+
+Details erst beim Aufklappen.
+
+Nicht zehn Availability-Felder im Hauptbereich anzeigen.
+
+---
+
+# 52. Constraints als eigener expandierbarer Abschnitt
+
+Unter `CoordinationAlerts`.
+
+Titel:
+
+```text
+Risiken und Hindernisse
+```
+
+---
+
+# 53. Constraint-Zusammenfassung
+
+Pro offenem Constraint:
+
+```text
+⚠ Ressourcenkonflikt
+
+Verantwortlich
+AN
+
+Gemeldet
+22.08.2026
+
+Beschreibung
+...
+```
+
+---
+
+# 54. Constraint-Aktionen nicht duplizieren
+
+Nur im Constraint-Abschnitt:
+
+```text
+[Als gelöst markieren]
+[Stornieren]
+```
+
+je nach Rollenrecht.
+
+`Terminänderung vorschlagen` nicht hier nochmals als eigener Proposal-Button rendern.
+
+Stattdessen optional kleiner Link:
+
+```text
+Terminänderung erforderlich?
+```
+
+der zum Agreement-Abschnitt scrollt.
+
+---
+
+# 55. Clarification Section
+
+Titel:
+
+```text
+Klärungen
+```
+
+Offene Klärungen zuerst.
+
+Danach gelöste Klärungen eingeklappt.
+
+---
+
+# 56. Clarification Darstellung
+
+```text
+Planung
+
+Welche Planversion ist für Bereich B verbindlich?
+
+Gefragt durch AN
+22.08.2026
+```
+
+Gegenseite:
+
+```text
+[Antworten]
+```
+
+Fragesteller:
+
+```text
+Warten auf Antwort
+```
+
+---
+
+# 57. Neue Klärungsfrage
+
+Sekundärer Button nur im Clarification-Bereich:
+
+```text
+[Klärungsfrage stellen]
+```
+
+Nicht im Header.
+
+Nicht in `CurrentActionCard`, außer aktuelle Hauptaufgabe betrifft eine Clarification.
+
+---
+
+# 58. Readiness Section
+
+Immer alle fünf Kriterien zeigen:
+
+```text
+Termin bestätigt
+Arbeitsbereich bereit
+Informationen vollständig
+AG bereit
+AN bereit
+```
+
+---
+
+# 59. Bearbeitbarkeit sichtbar unterscheiden
+
+Beispiel AN:
+
+```text
+✓ Termin bestätigt               nur lesen
+✓ Arbeitsbereich bereit          nur lesen
+✓ Informationen vollständig      nur lesen
+✓ AG bereit                      nur lesen
+[ ] AN bereit                    bearbeitbar
+```
+
+Keine ausgegrauten Inputs verwenden, die wie kaputte Controls wirken.
+
+Für Read-only besser Statusanzeige.
+
+---
+
+# 60. Readiness-Zusammenfassung
+
+Oben:
+
+```text
+Ausführungsbereitschaft
+
+4 von 5 Kriterien erfüllt
+
+⚠ Noch nicht vollständig bereit
+```
+
+---
+
+# 61. Prozessdarstellung deutlich reduzieren
+
+Wenn aktuell umfangreicher Prozess-Stepper vorhanden:
+
+nicht mehr im oberen Hauptbereich anzeigen.
+
+---
+
+# 62. Nur kompakter Prozessstatus
+
+Falls Stepper beibehalten wird:
+
+maximal vier Stufen:
+
+```text
+Angefragt
+Antwort erhalten
+Vereinbart
+Ausführung
+```
+
+Kein paralleler Stepper für Change Proposals.
+
+---
+
+# 63. Prozessdetails gehören in Timeline
+
+Alles Detailreiche unter:
+
+```text
+Verlauf
+```
+
+darstellen.
+
+---
+
+# 64. Timeline standardmäßig kompakt
+
+Zunächst die letzten z. B. 5 Ereignisse.
+
+Dann:
+
+```text
+[Gesamten Verlauf anzeigen]
+```
+
+falls mehr vorhanden.
+
+Keine 30 Ereignisse direkt auf der Seite.
+
+---
+
+# 65. Timeline-Ereignisse fachlich formulieren
+
+Beispiel:
+
+```text
+22.08.2026 · AN
+Terminänderung vorgeschlagen
+
+20.08.2026 · AG
+Leistungsanfrage bestätigt
+
+19.08.2026 · AN
+Antwort übermittelt
+```
+
+Keine technischen Eventnamen.
+
+---
+
+# 66. Technische Details ganz unten
+
+Optionaler Accordion:
+
+```text
+Technische Details
+```
+
+Standard:
+
+```text
+geschlossen
+```
+
+Dort dürfen technische IDs stehen.
+
+Keine Dataspace-Auditinformationen in normaler Business Timeline.
+
+---
+
+# 67. Leistungsanfragen-Liste AG vollständig überarbeiten
+
+Bestehende AG-Liste weiterverwenden.
+
+Keine parallele neue Liste.
+
+Desktop-Spalten exakt:
+
+```text
+Leistung
+AN
+Zeitraum
+Status
+Nächste Aktion
+Frist
+Hinweise
+Letzte Änderung
+```
+
+---
+
+# 68. AG-Liste – Leistung
+
+Darstellung:
+
+```text
+Trockenbau EG
+Projekt Alpha
+```
+
+zweite Zeile kleiner.
+
+---
+
+# 69. AG-Liste – Zeitraum
+
+Fall 1, kein Agreement:
+
+```text
+10.–14.09.
+Angefragt
+```
+
+Fall 2, Agreement:
+
+```text
+10.–14.09.
+Vereinbart
+```
+
+Fall 3, offener Proposal:
+
+```text
+10.–14.09.
+→ 16.–20.09.
+```
+
+---
+
+# 70. AG-Liste – Nächste Aktion
+
+Nur fachliche Kurztexte:
+
+```text
+AN muss antworten
+Antwort prüfen
+Änderung prüfen
+Warten auf AN
+Keine Aktion
+```
+
+Nicht technische Enums.
+
+---
+
+# 71. AG-Liste – Hinweise
+
+Kompakt:
+
+```text
+⚠ 1   ? 2
+```
+
+Tooltip:
+
+```text
+1 offenes Risiko
+2 offene Klärungen
+```
+
+Readiness optional kleines Symbol:
+
+```text
+✓
+```
+
+oder:
+
+```text
+⚠
+```
+
+---
+
+# 72. AG-Liste – Frist
+
+Wenn überfällig:
+
+```text
+Überfällig
+seit 2 Tagen
+```
+
+Wenn heute:
+
+```text
+Heute
+```
+
+Sonst:
+
+```text
+25.08.
+```
+
+---
+
+# 73. Ganze Zeile klickbar
+
+Desktop:
+
+```text
+onClick → Detailseite
+```
+
+Cursor:
+
+```text
+pointer
+```
+
+Hover-State vorhandenes Theme verwenden.
+
+---
+
+# 74. Expliziter Öffnen-Button
+
+Zusätzlich am Zeilenende bzw. über Row-Aktion:
+
+```text
+Öffnen
+```
+
+für eindeutige Bedienbarkeit.
+
+Keine Accept-/Reject-Aktion direkt in normaler Liste.
+
+---
+
+# 75. AN-Liste vollständig überarbeiten
+
+Desktop-Spalten:
+
+```text
+Leistung
+AG
+Zeitraum
+Ressourcenbedarf
+Verfügbarkeit
+Nächste Aktion
+Frist
+Letzte Änderung
+```
+
+---
+
+# 76. AN-Liste – Ressourcenbedarf kompakt
+
+Nicht:
+
+```text
+3 Anforderungen
+```
+
+sondern beispielsweise:
+
+```text
+6 Personen
+1 Mobilkran
++2 weitere
+```
+
+---
+
+# 77. AN-Liste – Availability
+
+Einheitliche Werte:
+
+```text
+✓ Verfügbar
+⚠ Gefährdet
+✕ Konflikt
+```
+
+---
+
+# 78. AN-Liste – Next Action
+
+Beispiele:
+
+```text
+Anfrage beantworten
+Warten auf AG
+Änderung prüfen
+Klärung beantworten
+Keine Aktion
+```
+
+---
+
+# 79. Detailansicht immer über eigene Seite
+
+Keine vollständige Leistungsanfrage in einem kleinen Modal darstellen.
+
+Listenzeile:
+
+```text
+→ Detailroute
+```
+
+verwenden.
+
+---
+
+# 80. Mobile Listen ab 767 px und kleiner
+
+Normale Tabellen nicht horizontal scrollen lassen.
+
+Bei:
+
+```text
+width < 768px
+```
+
+in Card-Liste wechseln.
+
+---
+
+# 81. AG Mobile Card
+
+Verbindliche Struktur:
+
+```text
+Trockenbau EG
+Projekt Alpha
+
+AN
+Müller Ausbau GmbH
+
+Zeitraum
+10.–14.09.
+✓ Vereinbart
+
+Nächste Aktion
+Änderung prüfen
+
+Frist
+Heute
+
+⚠ 1 Risiko · ? 2 Klärungen
+
+[Öffnen]
+```
+
+---
+
+# 82. AN Mobile Card
+
+```text
+Trockenbau EG
+Projekt Alpha
+
+AG
+Musterbau AG
+
+Zeitraum
+10.–14.09.
+
+Bedarf
+6 Personen · 1 Mobilkran
+
+⚠ Gefährdet
+
+Nächste Aktion
+Anfrage beantworten
+
+[Öffnen]
+```
+
+---
+
+# 83. Mobile Card nicht überladen
+
+Nicht mehr als:
+
+```text
+Name
+Partner
+Zeitraum
+1–2 Statusinformationen
+Nächste Aktion
+Öffnen
+```
+
+direkt anzeigen.
+
+Weitere Details gehören in die Detailansicht.
+
+---
+
+# 84. Breakpoints verbindlich verwenden
+
+Orientierung:
+
+```text
+< 640 px
+Mobile
+
+640–767 px
+großes Mobile / kleines Tablet
+
+768–1023 px
+Tablet
+
+>= 1024 px
+Desktop
+```
+
+Bestehende Tailwind-Breakpoints verwenden.
+
+Keine neuen CSS-Breakpoint-Systeme einführen.
+
+---
+
+# 85. Detailseite <768 px immer einspaltig
+
+Keine:
+
+```text
+grid-cols-2
+```
+
+ohne responsive Rückstufung.
+
+Verbindlich:
+
+```text
+grid-cols-1
+md:grid-cols-2
+```
+
+nur dort, wo zwei Spalten fachlich sinnvoll sind.
+
+---
+
+# 86. Main Content muss shrinken dürfen
+
+Bei Flex/Grid-Containern ausdrücklich prüfen:
+
+```text
+min-w-0
+```
+
+setzen, wenn sonst lange Inhalte die Seite verbreitern.
+
+Das ist besonders wichtig neben Navigation/Sidebar.
+
+---
+
+# 87. Keine feste Seitenbreite
+
+Vermeiden:
+
+```text
+width: 1200px
+min-width: 1000px
+```
+
+für normale Detailbereiche.
+
+Stattdessen:
+
+```text
+w-full
+max-w-...
+min-w-0
+```
+
+entsprechend bestehendem Layout.
+
+---
+
+# 88. Normale Seiten dürfen nicht horizontal scrollen
+
+Prüfen bei:
+
+```text
+390 px
+```
+
+Der Browser darf auf:
+
+```text
+AG Detail
+AN Detail
+AG Liste
+AN Liste
+```
+
+keinen horizontalen Gesamtscroll erzeugen.
+
+---
+
+# 89. Nicht pauschal `overflow-x-hidden` zur Fehlerkaschierung einsetzen
+
+Überbreite Komponenten korrekt reparieren.
+
+`overflow-x-hidden` nur am Layoutcontainer verwenden, wenn danach keine Inhalte abgeschnitten werden.
+
+---
+
+# 90. Scroll-Regel
+
+Ziel:
+
+```text
+Browser:
+eine vertikale Scrollbar
+```
+
+Lokale horizontale Scrollbars nur bei:
+
+```text
+Resource Timeline
+Kapazitätsraster
+```
+
+Keine Card mit eigener vertikaler Scrollbar.
+
+---
+
+# 91. Max-height entfernen
+
+Bei normalen Cards prüfen und entfernen:
+
+```text
+max-h-...
+overflow-y-auto
+```
+
+wenn nicht zwingend nötig.
+
+Content soll Card normal vergrößern.
+
+---
+
+# 92. Dialoge responsive machen
+
+Gilt für:
+
+```text
+Change Proposal
+Constraint
+Clarification
+Readiness
+Response / Alternative
+```
+
+Desktop:
+
+```text
+max-width ca. 560–640 px
+```
+
+Mobile:
+
+```text
+width: calc(100vw - 24px)
+max-height: calc(100vh - 24px)
+overflow-y: auto
+```
+
+---
+
+# 93. Dialogheader und Footer erreichbar
+
+Bei langem Dialog:
+
+```text
+Content scrollt
+Footer bleibt erreichbar
+```
+
+Keine Buttons unterhalb des sichtbaren Viewports ohne Scrollmöglichkeit.
+
+---
+
+# 94. Date Inputs responsive
+
+Desktop:
+
+```text
+Startdatum | Enddatum
+```
+
+Mobile:
+
+```text
+Startdatum
+
+Enddatum
+```
+
+---
+
+# 95. Drei Proposal-Buttons responsive
+
+Desktop:
+
+```text
+[Annehmen] [Ablehnen] [Gegenvorschlag]
+```
+
+Mobile:
+
+entweder:
+
+```text
+[Annehmen]
+[Ablehnen]
+[Gegenvorschlag]
+```
+
+volle Breite untereinander,
+
+oder bei ausreichendem Platz zwei plus eins.
+
+Bevorzugt auf <640 px:
+
+```text
+flex-col
+w-full
+```
+
+---
+
+# 96. Long Text
+
+Listen:
+
+```text
+line-clamp-2
+```
+
+Detail:
+
+vollständig.
+
+Kommentare dürfen keine horizontale Überbreite erzeugen.
+
+---
+
+# 97. Lange technische Werte
+
+Nur im TechnicalDetails-Bereich:
+
+```text
+break-all
+```
+
+für UUIDs etc.
+
+---
+
+# 98. Resource Timeline Sonderregel
+
+Resource Timeline darf horizontal scrollbar sein.
+
+Aber nur der Timeline-Bereich.
+
+Struktur:
+
+```text
+┌──────────────────────────────────────┐
+│ Filter / Zoom                       │
+├───────────────┬──────────────────────┤
+│ Ressource     │ scrollbare Timeline │
+└───────────────┴──────────────────────┘
+```
+
+---
+
+# 99. Timeline linke Spalte sticky
+
+Bei horizontalem Scroll:
+
+```text
+Resource / ResourceType
+```
+
+sichtbar halten.
+
+---
+
+# 100. Timeline Header sticky
+
+Datumsheader beim vertikalen Scroll im Timeline-Bereich sichtbar halten, sofern vorhandene Struktur dies ohne großen Umbau erlaubt.
+
+---
+
+# 101. Keine zweite Seiten-Scrollbar durch Timeline
+
+Timeline darf keine unnötige eigene vertikale Scrollbar erhalten, wenn die normale Seitenhöhe ausreicht.
+
+---
+
+# 102. Empty States verbessern
+
+Keine leeren Cards.
+
+Beispiele:
+
+Keine Response:
+
+```text
+Noch keine Antwort des AN.
+```
+
+Keine Constraints:
+
+```text
+Keine offenen Risiken.
+```
+
+Keine Clarifications:
+
+```text
+Keine offenen Klärungen.
+```
+
+Kein Proposal:
+
+OpenProposalCard gar nicht rendern.
+
+---
+
+# 103. Loading State
+
+Detailseite nicht abschnittsweise wild springen lassen.
+
+Während Hauptdetail geladen wird:
+
+bestehenden Skeleton/Loading-State verwenden.
+
+Nicht gleichzeitig teilweise alte Daten rendern.
+
+---
+
+# 104. Error State
+
+Wenn Request nicht gefunden:
+
+```text
+Leistungsanfrage nicht gefunden
+```
+
+mit:
+
+```text
+[Zurück zu Leistungsanfragen]
+```
+
+---
+
+# 105. Mutation Loading States
+
+Bei:
+
+```text
+Accept
+Reject
+Counter
+Antwort
+Constraint
+Clarification
+Readiness
+```
+
+Button während Request deaktivieren.
+
+Kein mehrfaches Submit.
+
+---
+
+# 106. Nach Mutation immer Detail neu laden
+
+Nach erfolgreicher Mutation:
+
+```text
+invalidate/refetch
+```
+
+für:
+
+```text
+detail
+coordination
+tasks, falls relevant
+board/list, falls Cache vorhanden
+```
+
+Keine stale CurrentActionCard.
+
+---
+
+# 107. Scroll nach erfolgreicher Mutation
+
+Keine aggressive automatische Navigation.
+
+Nutzer bleibt auf Detailseite.
+
+Nach Update wird obere `CurrentActionCard` aktualisiert.
+
+Optional:
+
+```text
+window.scrollTo({ top: 0, behavior: "smooth" })
+```
+
+nur nach großen Workflowentscheidungen wie Accept/Reject, wenn UX bereits konsistent bleibt.
+
+Nicht zwingend.
+
+---
+
+# 108. Zurücknavigation
+
+Oben:
+
+```text
+← Leistungsanfragen
+```
+
+und Browser Back muss funktionieren.
+
+---
+
+# 109. Filterzustand erhalten
+
+Falls Liste Filter besitzt und Nutzer einen Vorgang öffnet:
+
+nach Zurück möglichst ursprüngliche:
+
+```text
+Filter
+Sortierung
+Tab
+```
+
+erhalten.
+
+Bevorzugt bestehende URL-Query-Parameter verwenden.
+
+Keine globale State-Library nur dafür einführen.
+
+---
+
+# 110. Navigation von „Meine Aufgaben“
+
+`targetUrl` muss direkt auf dieselbe Detailansicht führen.
+
+Keine parallele Task-Detailseite.
+
+---
+
+# 111. Aktionsfokus von „Meine Aufgaben“
+
+Optional Query/Hash:
+
+```text
+/service-requests/:id#proposal
+```
+
+oder:
+
+```text
+?focus=proposal
+```
+
+nur wenn leicht integrierbar.
+
+Dann kann Detailseite zum relevanten Abschnitt scrollen.
+
+Nicht zwingend für MVP.
+
+---
+
+# 112. AG Coordination Board öffnet dieselbe Detailansicht
+
+Klick auf Board-Zeile:
+
+```text
+→ AG Service Request Detail
+```
+
+Keine separate Coordination-Detailseite.
+
+---
+
+# 113. AN Ressourcenansicht öffnet dieselbe AN-Detailseite
+
+Klick auf Service Request:
+
+```text
+→ AN Service Request Detail
+```
+
+---
+
+# 114. Keine konkurrierenden Detailansichten
+
+Für eine Rolle darf derselbe Service Request nicht mehrere unterschiedlich strukturierte vollständige Detailseiten besitzen.
+
+Bestehende alte Detailroute entweder:
+
+* auf neue kanonische Seite umleiten
+* oder intern dieselbe Komponente verwenden
+
+Keine doppelte Implementierung pflegen.
+
+---
+
+# 115. AG-Detailseite – verbindliche Sichtbarkeitsmatrix
+
+## Immer sichtbar
+
+```text
+Header
+CurrentActionCard
+CurrentAgreementCard
+ServiceRequestDetailsCard
+```
+
+## Nur wenn vorhanden
+
+```text
+OpenProposalCard
+PartnerResponseCard
+Constraints
+Clarifications
+Readiness, wenn Agreement/Start vorhanden
+Timeline
+```
+
+## Standard eingeklappt
+
+```text
+TechnicalDetails
+alte/erledigte Constraints
+gelöste Clarifications
+vollständige Timeline bei vielen Einträgen
+```
+
+---
+
+# 116. AN-Detailseite – verbindliche Sichtbarkeitsmatrix
+
+## Immer sichtbar
+
+```text
+Header
+CurrentActionCard
+CurrentAgreementCard
+ServiceRequestDetailsCard
+```
+
+## Zusätzlich AN-fachlich
+
+```text
+Resource Requirements
+Availability
+eigene Antwort
+```
+
+## Nur wenn vorhanden
+
+```text
+OpenProposal
+Constraints
+Clarifications
+Readiness
+Timeline
+```
+
+---
+
+# 117. Keine Anzeige fremder AN-Daten
+
+Auf AG-Seite niemals versehentlich aus neuen Detail-DTOs rendern:
+
+```text
+AN concreteResourceName
+internalProjectName
+otherCustomerName
+ResourceBooking details
+localCapacity
+```
+
+---
+
+# 118. Keine Anzeige anderer AG-Projekte beim AN
+
+AN darf intern seine eigenen Projekte in Ressourcenplanung sehen.
+
+Aber in organisationsübergreifenden Detailinformationen nicht versehentlich andere AG-spezifische Daten ausgeben.
+
+---
+
+# 119. Statusfarben zentral verwenden
+
+Keine neuen individuellen Farben pro Komponente.
+
+Bestehende Theme-/Badge-Systeme verwenden.
+
+Semantik:
+
+```text
+normal / erfolgreich
+Warnung
+kritisch
+neutral
+```
+
+---
+
+# 120. Icons konsistent
+
+Beispiel:
+
+```text
+✓ verfügbar / bereit / vereinbart
+⚠ Risiko / gefährdet
+✕ Konflikt
+? Klärung
+```
+
+Nicht unterschiedliche Symbole für denselben Zustand verwenden.
+
+---
+
+# 121. Mobile Touch Targets
+
+Buttons und klickbare Zeilen mindestens ungefähr:
+
+```text
+40–44 px
+```
+
+hoch.
+
+Keine winzigen Icon-only-Aktionen für zentrale Funktionen.
+
+---
+
+# 122. Tooltip nicht als einzige Informationsquelle auf Mobile
+
+Da Hover auf Mobile fehlt:
+
+Wichtige Informationen immer als Text sichtbar.
+
+Tooltip nur ergänzend.
+
+---
+
+# 123. Desktop-Dichte
+
+Die Seite soll trotz besserer Struktur nicht unnötig riesig werden.
+
+Cards kompakt halten:
+
+* moderate Paddingwerte
+* keine riesigen Headerflächen
+* keine übergroßen KPI-Elemente
+
+---
+
+# 124. Keine Dashboard-Optik auf Detailseite
+
+Detailseite soll wie ein fachlicher Vorgang wirken.
+
+Nicht:
+
+```text
+12 große KPI-Cards
+3 Diagramme
+5 Statusboxen
+```
+
+sondern eine klare lineare Informationshierarchie.
+
+---
+
+# 125. Tests – Renderregeln AG
+
+Mindestens gezielte Component-/UI-Tests, sofern bestehendes Testframework dies erlaubt.
+
+## Fall A
+
+```text
+Request wartet auf AN
+```
+
+Erwartung:
+
+```text
+CurrentActionCard = Warten auf AN
+0 × Terminänderung vorschlagen
+```
+
+---
+
+# 126. Fall B
+
+```text
+AN Response vorhanden
+AG muss entscheiden
+```
+
+Erwartung:
+
+```text
+CurrentActionCard genau einmal
+Text = Antwort des AN prüfen
+Primary Action genau einmal
+```
+
+---
+
+# 127. Fall C
+
+```text
+Agreement vorhanden
+kein Proposal
+```
+
+Erwartung:
+
+```text
+CurrentAgreement sichtbar
+Terminänderung vorschlagen genau einmal
+OpenProposalCard nicht vorhanden
+```
+
+---
+
+# 128. Fall D
+
+```text
+AN Proposal offen
+```
+
+Erwartung AG:
+
+```text
+CurrentActionCard = Terminänderung prüfen
+
+OpenProposalCard vorhanden
+
+Annehmen = 1
+Ablehnen = 1
+Gegenvorschlag = 1
+
+Terminänderung vorschlagen = 0
+```
+
+---
+
+# 129. Fall E
+
+```text
+AG Proposal offen
+```
+
+Erwartung AG:
+
+```text
+CurrentActionCard = Warten auf AN
+
+OpenProposalCard vorhanden
+
+Annehmen = 0
+Ablehnen = 0
+Gegenvorschlag = 0
+```
+
+---
+
+# 130. Tests – Renderregeln AN
+
+## Fall F
+
+Neue Anfrage:
+
+```text
+CurrentActionCard = Leistungsanfrage beantworten
+```
+
+Response-Action genau einmal.
+
+---
+
+# 131. Fall G
+
+AN hat geantwortet:
+
+```text
+CurrentActionCard = Warten auf AG
+```
+
+keine zweite Antwortaktion.
+
+---
+
+# 132. Fall H
+
+AG Change Proposal offen:
+
+```text
+CurrentActionCard = Terminänderung prüfen
+```
+
+Accept/Reject/Counter jeweils genau einmal.
+
+---
+
+# 133. Tests – keine doppelten UI-Texte
+
+Gezielt prüfen:
+
+```text
+"Terminänderung vorschlagen"
+```
+
+kommt in erlaubtem Zustand maximal einmal vor.
+
+Ebenso:
+
+```text
+"Annehmen"
+"Ablehnen"
+"Gegenvorschlag"
+```
+
+---
+
+# 134. Responsive Testbreiten
+
+Mindestens prüfen:
+
+```text
+1440 × 900
+1024 × 768
+768 × 1024
+390 × 844
+```
+
+---
+
+# 135. Bei 390 px zwingend prüfen
+
+AG Liste:
+
+```text
+keine horizontale Seiten-Scrollbar
+Cards vollständig
+Öffnen-Button erreichbar
+```
+
+AG Detail:
+
+```text
+CurrentActionCard sichtbar
+kein abgeschnittener Content
+keine doppelten Aktionen
+Dialoge bedienbar
+```
+
+AN Liste:
+
+gleiche Anforderungen.
+
+AN Detail:
+
+gleiche Anforderungen.
+
+---
+
+# 136. Scrollbar-Abnahmekriterium
+
+Auf:
+
+```text
+AG Detail
+AN Detail
+AG normale Leistungsanfragen-Liste Mobile
+AN normale Leistungsanfragen-Liste Mobile
+```
+
+darf keine horizontale Browser-Scrollbar erscheinen.
+
+---
+
+# 137. Erlaubte horizontale Scrollbereiche dokumentieren
+
+Nach Abschluss dürfen idealerweise nur noch explizit breite Komponenten horizontal scrollen:
+
+```text
+Resource Timeline
+Kapazitätsraster
+ggf. Desktop-Datentabelle oberhalb Mobile-Breakpoint
+```
+
+Im Abschlussbericht nennen.
+
+---
+
+# 138. Kein visueller Fix durch abgeschnittene Inhalte
+
+Nicht einfach:
+
+```css
+overflow: hidden
+```
+
+setzen, wenn dadurch Informationen verschwinden.
+
+Root Cause korrigieren:
+
+```text
+min-width
+fixed width
+non-wrapping flex
+table layout
+long text
+```
+
+---
+
+# 139. Accessibility-Grundlagen erhalten
+
+Buttons bleiben echte `<button>`.
+
+Zeilen, die klickbar sind, müssen auch über expliziten:
+
+```text
+Öffnen
+```
+
+Link/Button zugänglich sein.
+
+Nicht nur `div onClick`.
+
+---
+
+# 140. Dialogtitel eindeutig
+
+Nicht:
+
+```text
+Bearbeiten
+Aktion
+Änderung
+```
+
+sondern:
+
+```text
+Terminänderung vorschlagen
+Änderungsvorschlag beantworten
+Risiko melden
+Klärungsfrage stellen
+Klärungsfrage beantworten
+```
+
+---
+
+# 141. Erfolgsfeedback
+
+Bestehendes Toast-System verwenden.
+
+Beispiele:
+
+```text
+Terminänderung vorgeschlagen.
+Änderung angenommen.
+Klärungsfrage übermittelt.
+Risiko als gelöst markiert.
+```
+
+Keine `alert()`-Dialoge.
+
+---
+
+# 142. Fehlerfeedback
+
+Backendfehlermeldungen fachlich übersetzen, soweit bereits bekannte Codes vorhanden.
+
+Beispiel:
+
+```text
+CHANGE_PROPOSAL_REQUIRES_AGREEMENT
+```
+
+UI:
+
+```text
+Eine Terminänderung kann erst nach einer bestehenden Vereinbarung vorgeschlagen werden.
+```
+
+---
+
+# 143. Nicht umsetzen
+
+Kein:
+
+```text
+neues Workflow-System
+Chat
+Kommentare-Thread
+zusätzliche Detailroute
+Drag & Drop
+automatische Terminverschiebung
+neue Resource Allocation
+neue EDC-Funktion
+neues Design-System
+neue State-Management-Bibliothek
+neue Tabellenbibliothek
+```
+
+---
+
+# 144. Implementierungsreihenfolge
+
+Replit soll genau in dieser Reihenfolge arbeiten.
+
+## Schritt 1
+
+Bestehende AG-/AN-Detailseiten analysieren.
+
+Doppelte:
+
+```text
+ProposalActions
+Next Action
+Response Actions
+```
+
+identifizieren.
+
+---
+
+## Schritt 2
+
+`CurrentActionCard` implementieren.
+
+Noch keine anderen Layoutänderungen.
+
+---
+
+## Schritt 3
+
+AG-Detailseite in die definierte Reihenfolge bringen.
+
+---
+
+## Schritt 4
+
+AN-Detailseite in die definierte Reihenfolge bringen.
+
+---
+
+## Schritt 5
+
+Proposal-/Response-Aktionen deduplizieren.
+
+---
+
+## Schritt 6
+
+ServiceRequestDetails vollständig machen.
+
+---
+
+## Schritt 7
+
+Constraints/Clarifications/Readiness als kompakte Sections integrieren.
+
+---
+
+## Schritt 8
+
+Timeline nach unten verschieben und Prozessdarstellung reduzieren.
+
+---
+
+## Schritt 9
+
+AG-Leistungsanfragen-Liste überarbeiten.
+
+---
+
+## Schritt 10
+
+AN-Leistungsanfragen-Liste überarbeiten.
+
+---
+
+## Schritt 11
+
+Mobile Card-Darstellung für beide Listen.
+
+---
+
+## Schritt 12
+
+Responsive Detailseiten und Dialoge korrigieren.
+
+---
+
+## Schritt 13
+
+Scrollbars überprüfen und unnötige lokale Scrollcontainer entfernen.
+
+---
+
+## Schritt 14
+
+Renderregeltests ergänzen.
+
+---
+
+## Schritt 15
+
+Typecheck/Build durchführen.
+
+---
+
+# 145. Technische Prüfung
+
+Am Ende:
+
+```bash
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/ag-app build
+pnpm --filter @workspace/an-app build
+```
+
+Falls `nextAction`-/Detail-DTO im Backend angepasst wurde:
+
+```bash
+pnpm --filter @workspace/api-server typecheck
+```
+
+Nur gezielte neue UI-/Component-Tests ausführen.
+
+Keine vollständige Test-Suite.
+
+---
+
+# 146. Verbindliche manuelle Abnahme AG – Fall 1
+
+Ausgang:
+
+```text
+neue Anfrage
+AN hat noch nicht geantwortet
+```
+
+AG muss sehen:
+
+```text
+Warten auf AN
+```
+
+oben.
+
+Leistungsanfrage vollständig sichtbar.
+
+Kein Change-Proposal-Button.
+
+---
+
+# 147. AG – Fall 2
+
+AN hat geantwortet.
+
+AG sieht oben:
+
+```text
+Aktion erforderlich
+Antwort des AN prüfen
+```
+
+genau einmal.
+
+PartnerResponse weiter unten.
+
+---
+
+# 148. AG – Fall 3
+
+Vereinbarung besteht.
+
+Kein Proposal.
+
+Oben:
+
+```text
+Keine Aktion erforderlich
+```
+
+Agreement prominent.
+
+Genau einmal:
+
+```text
+Terminänderung vorschlagen
+```
+
+---
+
+# 149. AG – Fall 4
+
+AN hat Änderung vorgeschlagen.
+
+Oben:
+
+```text
+Aktion erforderlich
+Terminänderung prüfen
+```
+
+Proposal direkt nach Agreement.
+
+Genau einmal:
+
+```text
+Annehmen
+Ablehnen
+Gegenvorschlag
+```
+
+Kein zusätzlicher „Terminänderung vorschlagen“-Button.
+
+---
+
+# 150. AG – Fall 5
+
+AG hat selbst Änderung vorgeschlagen.
+
+Oben:
+
+```text
+Warten auf AN
+```
+
+Proposal sichtbar.
+
+Keine Accept-/Reject-Aktionen.
+
+Keine zweite Proposal-Aktion.
+
+---
+
+# 151. AN – Fall 1
+
+Neue Anfrage.
+
+Oben:
+
+```text
+Aktion erforderlich
+Leistungsanfrage beantworten
+```
+
+vollständige Anfrage sichtbar.
+
+Ressourcenbedarf sichtbar.
+
+Response-Aktion genau einmal.
+
+---
+
+# 152. AN – Fall 2
+
+AN hat geantwortet.
+
+Oben:
+
+```text
+Warten auf AG
+```
+
+eigene Antwort sichtbar.
+
+Keine zweite Antwortaktion.
+
+---
+
+# 153. AN – Fall 3
+
+AG Change Proposal offen.
+
+Oben:
+
+```text
+Aktion erforderlich
+Terminänderung prüfen
+```
+
+Proposal sichtbar.
+
+Accept/Reject/Counter genau einmal.
+
+---
+
+# 154. Finale Definition of Done
+
+Der Auftrag ist erst abgeschlossen, wenn **alle** folgenden Aussagen zutreffen:
+
+```text
+Die aktuelle Aufgabe steht auf AG- und AN-Detailseite immer direkt oben.
+
+Die aktuelle Aufgabe wird pro Seite genau einmal angezeigt.
+
+Der Frontend-Code berechnet nextAction nicht unabhängig vom Backend.
+
+"Terminänderung vorschlagen" erscheint maximal einmal.
+
+"Annehmen", "Ablehnen" und "Gegenvorschlag" erscheinen jeweils maximal einmal.
+
+Initiale Antwort und spätere Terminänderung sind visuell klar getrennt.
+
+Die ursprüngliche Leistungsanfrage ist als eigener Abschnitt vollständig sichtbar.
+
+AG sieht alle für AG vorgesehenen fachlichen Details.
+
+AN sieht alle für AN vorgesehenen fachlichen Details.
+
+AN-interne Ressourceninformationen bleiben geschützt.
+
+Leistungsanfragen können aus jeder relevanten Liste direkt geöffnet werden.
+
+AG- und AN-Listen zeigen bereits die wichtigsten fachlichen Informationen.
+
+Auf kleinen Displays wechseln normale Tabellen in eine Card-Darstellung.
+
+AG- und AN-Detailseiten sind unter 768 px einspaltig.
+
+Bei 390 px gibt es keine horizontale Gesamtseiten-Scrollbar.
+
+Normale Detail-Cards besitzen keine eigene vertikale Scrollbar.
+
+Resource Timeline und Kapazitätsraster dürfen weiterhin lokal horizontal scrollen.
+
+Dialoge sind auf 390 px vollständig bedienbar.
+
+Keine fachliche Funktion ist durch den UI-Umbau verloren gegangen.
+
+Typecheck und Build beider Apps laufen erfolgreich.
+```
+
+---
+
+# 155. Abschlussbericht von Replit
+
+Nur folgende Punkte berichten:
+
+```text
+1. welche doppelten Komponenten/Renderstellen entfernt wurden
+
+2. welche Komponente jetzt die einzige CurrentActionCard ist
+
+3. welche Komponente jetzt die einzige Change-Proposal-Aktion rendert
+
+4. neue Reihenfolge der AG-Detailseite
+
+5. neue Reihenfolge der AN-Detailseite
+
+6. welche Request-Details AG jetzt sieht
+
+7. welche Request-Details AN jetzt sieht
+
+8. Änderungen an AG-Leistungsanfragen-Liste
+
+9. Änderungen an AN-Leistungsanfragen-Liste
+
+10. Mobile/Card-Darstellung
+
+11. korrigierte Scroll-/Overflow-Probleme
+
+12. bewusst weiterhin horizontal scrollende Komponenten
+
+13. getestete Zustände AG
+
+14. getestete Zustände AN
+
+15. getestete Bildschirmbreiten
+
+16. Typecheck-Ergebnisse
+
+17. Build-Ergebnisse
+
+18. verbleibende bekannte UI-Probleme
+```
+
+Keine weiteren Features oder Architekturänderungen außerhalb dieses Auftrags durchführen.
