@@ -1,12 +1,14 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, ne, or } from "drizzle-orm";
 import {
   leistungenTable,
   leistungsanfragenTable,
   resourceBookingsTable,
   leistungsanfrageResourceRequirementsTable,
   leistungsVersionenTable,
+  resourcesTable,
 } from "@workspace/db";
 import { shiftCalendarDate } from "../lib/calendar-date-utils";
+import { restoreConcreteResourceAssignments } from "./resource-availability-service";
 
 function dateOnly(value: Date | string): string {
   return (value instanceof Date ? value.toISOString() : value).slice(0, 10);
@@ -81,6 +83,52 @@ export async function applyAcceptedScheduleChange(
     eq(resourceBookingsTable.sourceReferenceId, input.serviceRequestId),
     eq(resourceBookingsTable.status, "CONFIRMED"),
   ));
+  const resources = await tx.select({
+    id: resourcesTable.id,
+    resourceTypeId: resourcesTable.resourceTypeId,
+    capacity: resourcesTable.capacity,
+    active: resourcesTable.active,
+  }).from(resourcesTable).where(eq(resourcesTable.anOrgId, requestRow.request.nuOrgId));
+  const otherConfirmedBookings = await tx.select({
+    resourceId: resourceBookingsTable.resourceId,
+    startAt: resourceBookingsTable.startAt,
+    endAt: resourceBookingsTable.endAt,
+  }).from(resourceBookingsTable).where(and(
+    eq(resourceBookingsTable.nuOrgId, requestRow.request.nuOrgId),
+    eq(resourceBookingsTable.status, "CONFIRMED"),
+    or(
+      ne(resourceBookingsTable.sourceReferenceId, input.serviceRequestId),
+      isNull(resourceBookingsTable.sourceReferenceId),
+    ),
+    gt(resourceBookingsTable.endAt, input.newStart),
+    lt(resourceBookingsTable.startAt, input.newEnd),
+  ));
+  const restored = restoreConcreteResourceAssignments(
+    shiftRequirements,
+    ownedBookings
+      .filter((booking: { resourceId: string | null }) => booking.resourceId !== null)
+      .map((booking: {
+        id: string;
+        resourceId: string | null;
+        resourceTypeId: string | null;
+        startAt: Date;
+        endAt: Date;
+        utilizationPercent: number;
+      }) => ({
+        id: booking.id,
+        resourceId: booking.resourceId!,
+        resourceTypeId: booking.resourceTypeId,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        utilizationPercent: booking.utilizationPercent,
+      })),
+    resources,
+    otherConfirmedBookings
+      .filter((booking: { resourceId: string | null }): booking is { resourceId: string; startAt: Date; endAt: Date } => booking.resourceId !== null),
+    new Date(`${oldStartDate}T00:00:00Z`),
+    new Date(`${oldEnd.toISOString().slice(0, 10)}T00:00:00Z`),
+    new Date(`${newStartDate}T00:00:00Z`),
+  );
   await tx.delete(resourceBookingsTable).where(and(
     eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
     eq(resourceBookingsTable.sourceReferenceId, input.serviceRequestId),
@@ -95,22 +143,22 @@ export async function applyAcceptedScheduleChange(
       }).where(eq(leistungsanfrageResourceRequirementsTable.id, requirement.id)),
     ));
   }
-  const bookingValues = shiftRequirements
-    .filter((requirement) => requirement.resourceTypeId && Number(requirement.requiredCapacity ?? 0) > 0)
+  const bookingValues = restored
+    .filter((requirement) => requirement.resourceTypeId && Number(requirement.quantity) > 0)
     .map((requirement) => {
       const startAt = new Date(`${requirement.periodStart ?? newStartDate}T00:00:00Z`);
       const endAt = new Date(`${requirement.periodEnd ?? input.newEnd.toISOString().slice(0, 10)}T00:00:00Z`);
       endAt.setUTCDate(endAt.getUTCDate() + 1);
       return {
         nuOrgId: requestRow.request.nuOrgId,
-        resourceId: null,
+        resourceId: requirement.resourceId,
         resourceTypeId: requirement.resourceTypeId,
         sourceType: "TAKT_REQUEST" as const,
         sourceReferenceId: input.serviceRequestId,
         startAt,
         endAt,
         utilizationPercent: requirement.utilizationPercent,
-        quantity: Number(requirement.requiredCapacity),
+        quantity: requirement.resourceId ? null : Number(requirement.quantity),
         status: "CONFIRMED" as const,
       };
     });
