@@ -59,6 +59,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { ProposalActions } from '@/components/proposal-actions';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -736,6 +737,7 @@ export default function LeistungsanfrageDetailPage() {
       )}
 
       <CoordinationSummary details={details} />
+      <ProposalActions requestId={requestId!} />
 
       {/* Step indicator */}
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />

@@ -47,6 +47,7 @@ import { CoordinationHistory } from '@/components/coordination-history';
 import { DeadlineCard } from '@/components/deadline-card';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
 import { findAlternativeImpacts } from '@/lib/alternative-impact';
+import { ProposalActions } from '@/components/proposal-actions';
 
 // ── Status badge helpers ───────────────────────────────────────────────────────
 
@@ -804,6 +805,7 @@ export default function LeistungsanfragenDetailPage() {
           {/* Response + GU Decision panel */}
           <Section icon={<FileText className="w-4 h-4" />} title={t('taktRequestDetail.response.title')}>
             <ResponsePanel detail={detail} />
+            <ProposalActions requestId={requestId ?? ''} />
             {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Auswirkungen auf Abhängigkeiten</h3>
