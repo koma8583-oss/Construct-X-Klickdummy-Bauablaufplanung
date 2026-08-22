@@ -35,7 +35,13 @@ const NU_USER = "t212-nu-user";
 const OTHER_USER = "t212-other-user";
 const PROJECT = "t212-project";
 const LEISTUNG = "t212-leistung";
-const REQUEST_IDS = ["t212-request-initial", "t212-request-counter", "t212-request-reject"];
+const REQUEST_IDS = [
+  "t212-request-initial",
+  "t212-request-counter",
+  "t212-request-reject",
+  "t212-request-expired",
+  "t212-request-mismatch",
+];
 
 function token(userId: string, orgId: string, orgType: "AG" | "AN") {
   return jwt.sign(
@@ -52,7 +58,7 @@ const otherToken = token(OTHER_USER, OTHER_ORG, "AN");
 const originalStart = new Date("2026-09-01T08:00:00.000Z");
 const originalEnd = new Date("2026-09-05T17:00:00.000Z");
 
-async function insertRequest(id: string, suffix: string, agreed = true) {
+async function insertRequest(id: string, suffix: string, agreed = true, status: "UNDER_REVIEW" | "EXPIRED" = "UNDER_REVIEW") {
   await db.insert(leistungsanfragenTable).values({
     id,
     leistungId: LEISTUNG,
@@ -60,7 +66,7 @@ async function insertRequest(id: string, suffix: string, agreed = true) {
     guOrgId: GU_ORG,
     nuOrgId: NU_ORG,
     requestNumber: `T212-${suffix}`,
-    status: "UNDER_REVIEW",
+    status,
     sentAt: new Date("2026-08-01T09:00:00.000Z"),
     deliveredAt: new Date("2026-08-01T09:05:00.000Z"),
     createdByUserId: GU_USER,
@@ -95,6 +101,8 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[0], "INITIAL", false);
   await insertRequest(REQUEST_IDS[1], "COUNTER");
   await insertRequest(REQUEST_IDS[2], "REJECT");
+  await insertRequest(REQUEST_IDS[3], "EXPIRED", true, "EXPIRED");
+  await insertRequest(REQUEST_IDS[4], "MISMATCH");
 });
 
 afterAll(async () => {
@@ -160,6 +168,13 @@ describe("bilateral change proposals", () => {
       .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId));
     expect(rows.filter((row) => row.status === "OPEN")).toHaveLength(1);
     expect(rows.find((row) => row.id === first.id)?.status).toBe("SUPERSEDED");
+
+    const coordination = await request(app)
+      .get(`/api/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect(coordination.status).toBe(200);
+    expect(coordination.body.currentAgreement.start).toContain("2026-09-01");
+    expect(coordination.body.openProposal.start).toContain("2026-09-04");
   });
 
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {
@@ -187,6 +202,44 @@ describe("bilateral change proposals", () => {
       .set("Authorization", `Bearer ${nuToken}`);
     expect(coordination.body.currentAgreement.start).toContain("2026-09-01");
     expect(coordination.body.proposals).toHaveLength(1);
+  });
+
+  it("rejects inverted date windows with a German validation error", async () => {
+    const response = await request(app)
+      .post(`/api/leistungsanfragen/${REQUEST_IDS[4]}/change-proposals`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({ start: "2026-09-08T17:00:00.000Z", end: "2026-09-08T08:00:00.000Z" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Ende muss nach Beginn liegen");
+  });
+
+  it("does not allow new proposals for expired requests", async () => {
+    const response = await request(app)
+      .post(`/api/leistungsanfragen/${REQUEST_IDS[3]}/change-proposals`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({ start: "2026-09-02T08:00:00.000Z", end: "2026-09-04T17:00:00.000Z" });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("keine Änderung mehr möglich");
+  });
+
+  it("does not resolve a proposal through a different request URL", async () => {
+    const proposal = await createChangeProposal({
+      requestId: REQUEST_IDS[4], orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-02T08:00:00Z"), end: new Date("2026-09-04T17:00:00Z"),
+    });
+
+    const response = await request(app)
+      .post(`/api/leistungsanfragen/${REQUEST_IDS[2]}/change-proposals/${proposal.id}/accept`)
+      .set("Authorization", `Bearer ${nuToken}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toContain("gehört nicht zu dieser Anfrage");
+
+    const rows = await db.select().from(serviceChangeProposalsTable)
+      .where(eq(serviceChangeProposalsTable.id, proposal.id));
+    expect(rows[0]?.status).toBe("OPEN");
   });
 });
 
