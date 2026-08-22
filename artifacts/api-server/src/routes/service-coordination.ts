@@ -84,12 +84,27 @@ router.get("/service-requests/:id/constraints", requireJwt, async (req, res): Pr
 
 async function resolveConstraint(req: any, res: any, status: "RESOLVED" | "CANCELLED") {
   try {
-    const request = await requestForParty(req.params.id as string, req.user!.orgId!);
+    const orgId = req.user!.orgId!;
+    const constraintId = req.params.constraintId as string;
+    const request = await requestForParty(req.params.id as string, orgId);
     if (!request) { res.status(404).json({ error: "Leistungsanfrage nicht gefunden" }); return; }
+
+    // For CANCEL: only the reporting org may cancel their own constraint.
+    if (status === "CANCELLED") {
+      const [constraint] = await db.select().from(serviceConstraintsTable).where(and(
+        eq(serviceConstraintsTable.id, constraintId),
+        eq(serviceConstraintsTable.serviceRequestId, request.id),
+      )).limit(1);
+      if (!constraint) { res.status(404).json({ error: "Risiko nicht gefunden" }); return; }
+      if (constraint.reportedByOrgId !== orgId) {
+        res.status(409).json({ error: "Nur die meldende Organisation darf dieses Risiko stornieren" }); return;
+      }
+    }
+
     const [row] = await db.update(serviceConstraintsTable).set({
       status, resolvedAt: new Date(), updatedAt: new Date(),
     }).where(and(
-      eq(serviceConstraintsTable.id, req.params.constraintId as string),
+      eq(serviceConstraintsTable.id, constraintId),
       eq(serviceConstraintsTable.serviceRequestId, request.id),
       eq(serviceConstraintsTable.status, "OPEN"),
     )).returning();
@@ -141,6 +156,7 @@ router.post("/service-requests/:id/clarifications/:clarificationId/answer", requ
     const [row] = await db.update(serviceClarificationsTable).set({
       answer: parsed.answer, answeredByOrgId: orgId, answeredAt: new Date(), status: "RESOLVED", updatedAt: new Date(),
     }).where(and(eq(serviceClarificationsTable.id, clarification.id), eq(serviceClarificationsTable.status, "OPEN"))).returning();
+    if (!row) { res.status(409).json({ error: "Klärungsfrage wurde bereits beantwortet (parallele Anfrage)" }); return; }
     res.json(row);
   } catch (error) { fail(res, error, "Klärungsfrage konnte nicht beantwortet werden"); }
 });
@@ -193,9 +209,10 @@ router.patch("/service-requests/:id/readiness", requireJwt, async (req, res): Pr
     if (keys.some((key) => !allowed.includes(key) || typeof body[key] !== "boolean")) {
       res.status(403).json({ error: "Diese Bereitschaftsfelder dürfen von Ihrer Organisation nicht geändert werden" }); return;
     }
-    let [row] = await db.select().from(serviceReadinessChecksTable).where(eq(serviceReadinessChecksTable.serviceRequestId, request.id)).limit(1);
-    if (!row) [row] = await db.insert(serviceReadinessChecksTable).values({ serviceRequestId: request.id, updatedByOrgId: orgId }).returning();
-    [row] = await db.update(serviceReadinessChecksTable).set({ ...body, updatedByOrgId: orgId, updatedAt: new Date() }).where(eq(serviceReadinessChecksTable.id, row.id)).returning();
+    // Atomic upsert: INSERT with ON CONFLICT DO NOTHING, then unconditional UPDATE.
+    // This avoids the SELECT→INSERT race condition.
+    await db.insert(serviceReadinessChecksTable).values({ serviceRequestId: request.id, updatedByOrgId: orgId }).onConflictDoNothing();
+    const [row] = await db.update(serviceReadinessChecksTable).set({ ...body, updatedByOrgId: orgId, updatedAt: new Date() }).where(eq(serviceReadinessChecksTable.serviceRequestId, request.id)).returning();
     res.json({ ...row, status: row.scheduleConfirmed && row.siteReady && row.informationComplete && row.agReady && row.anReady ? "READY" : "NOT_READY" });
   } catch (error) { fail(res, error, "Ausführungsbereitschaft konnte nicht gespeichert werden"); }
 });

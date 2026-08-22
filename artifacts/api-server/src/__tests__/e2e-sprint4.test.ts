@@ -44,8 +44,9 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  dataspaceExchangesTable,
 } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import app from "../app";
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -171,32 +172,78 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`
-    DELETE FROM leistungsantworten WHERE leistungsanfrage_id IN (
-      SELECT id FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}'
-    );
-    DELETE FROM leistungsantwort_alternativen WHERE response_id IN (
-      SELECT r.id FROM leistungsantworten r
-      JOIN leistungsanfragen tr ON tr.id = r.leistungsanfrage_id
-      WHERE tr.gu_org_id = '${sql.raw(GU_ORG)}'
-    );
-    DELETE FROM availability_checks     WHERE nu_org_id = '${sql.raw(NU_ORG)}';
-    DELETE FROM resource_bookings       WHERE nu_org_id = '${sql.raw(NU_ORG)}';
-    DELETE FROM message_inbox           WHERE recipient_org_id IN ('${sql.raw(GU_ORG)}', '${sql.raw(NU_ORG)}');
-    DELETE FROM message_outbox          WHERE sender_org_id    IN ('${sql.raw(GU_ORG)}', '${sql.raw(NU_ORG)}');
-    DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
-      SELECT id FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'
-    );
-    DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}' OR nu_org_id = '${sql.raw(NU_ORG)}';
-    DELETE FROM data_publication_recipients WHERE publication_id = '${sql.raw("t49-test-publication")}';
-    DELETE FROM data_publications       WHERE ag_org_id = '${sql.raw(GU_ORG)}';
-    DELETE FROM resources               WHERE an_org_id = '${sql.raw(NU_ORG)}';
-    DELETE FROM project_contractors     WHERE project_id = '${sql.raw(PROJECT)}';
-    DELETE FROM leistungen               WHERE project_id = '${sql.raw(PROJECT)}';
-    DELETE FROM projects                WHERE id = '${sql.raw(PROJECT)}';
-    DELETE FROM users                   WHERE id IN (${sql.raw(`'${GU_USER}', '${NU_USER}'`)});
-    DELETE FROM organizations           WHERE id IN (${sql.raw(`'${GU_ORG}', '${NU_ORG}'`)});
-  `);
+  const testOrgIds = [GU_ORG, NU_ORG] as [string, ...string[]];
+
+  // 1. dataspace_exchanges — FK to organizations (sender_org_id / receiver_org_id)
+  await db.delete(dataspaceExchangesTable)
+    .where(or(
+      inArray(dataspaceExchangesTable.senderOrgId, testOrgIds),
+      inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds),
+    ));
+
+  // 2. takt responses + alternatives (FK to leistungsanfragen via takt_request_id)
+  const ourRequests = await db.select({ id: taktRequestsTable.id })
+    .from(taktRequestsTable)
+    .where(or(
+      eq(taktRequestsTable.guOrgId, GU_ORG),
+      eq(taktRequestsTable.nuOrgId, NU_ORG),
+    ));
+  for (const { id } of ourRequests) {
+    const responses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable)
+      .where(eq(taktResponsesTable.taktRequestId, id));
+    for (const { id: rid } of responses) {
+      await db.execute(sql`DELETE FROM leistungsantwort_alternativen WHERE response_id = ${rid}`);
+    }
+    await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, id));
+  }
+
+  // 3. availability checks
+  await db.delete(availabilityChecksTable)
+    .where(eq(availabilityChecksTable.nuOrgId, NU_ORG));
+
+  // 4. resource bookings
+  await db.delete(resourceBookingsTable)
+    .where(eq(resourceBookingsTable.nuOrgId, NU_ORG));
+
+  // 5. messages
+  await db.delete(messageInboxTable)
+    .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
+  await db.delete(messageOutboxTable)
+    .where(inArray(messageOutboxTable.senderOrgId, testOrgIds));
+
+  // 6. snapshots + requests
+  for (const { id } of ourRequests) {
+    await db.delete(taktRequestSnapshotsTable)
+      .where(eq(taktRequestSnapshotsTable.taktRequestId, id));
+  }
+  await db.delete(taktRequestsTable)
+    .where(or(
+      eq(taktRequestsTable.guOrgId, GU_ORG),
+      eq(taktRequestsTable.nuOrgId, NU_ORG),
+    ));
+
+  // 7. data publication recipients + publications
+  await db.delete(dataPublicationRecipientsTable)
+    .where(eq(dataPublicationRecipientsTable.anOrgId, NU_ORG));
+  await db.delete(dataPublicationsTable)
+    .where(eq(dataPublicationsTable.agOrgId, GU_ORG));
+
+  // 8. resources
+  await db.delete(resourcesTable)
+    .where(eq(resourcesTable.anOrgId, NU_ORG));
+
+  // 9. project fixtures
+  await db.delete(projectContractorsTable)
+    .where(eq(projectContractorsTable.projectId, PROJECT));
+  await db.execute(sql`DELETE FROM leistungen WHERE project_id = ${PROJECT}`);
+  await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
+  await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
+
+  // 10. users + orgs
+  await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
+  await db.delete(usersTable).where(eq(usersTable.id, NU_USER));
+  await db.delete(organizationsTable).where(inArray(organizationsTable.id, testOrgIds));
 });
 
 // ── Full E2E flow: Scenario B (Alternatives) ──────────────────────────────────
@@ -273,7 +320,7 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         resourceId:         CREW_1,
-        sourceType:         "LOCAL_PROJECT",
+        sourceType:         "MANUAL_BLOCK",
         startAt:            "2026-09-14T00:00:00Z",
         endAt:              "2026-09-21T00:00:00Z",
         utilizationPercent: 100,

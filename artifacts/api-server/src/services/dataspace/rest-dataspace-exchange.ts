@@ -36,12 +36,14 @@ export class RestDataspaceExchange implements DataspaceExchange {
     return {
       taktRequestId: payload.requestId,
       leistungsanfrageId: payload.requestId,
+      // Legacy inbox consumers use the Takt reference while Dataspace payloads
+      // call the same identifier projectReference. Keep both public aliases.
+      taktReference: payload.taktReference ?? payload.projectReference,
       projectReference: payload.projectReference,
       taktVersion: payload.requestVersion,
       responseRequiredBy: null,
       plannedStart: payload.plannedStart,
       plannedEnd: payload.plannedEnd,
-      resourceRequirements: payload.resourceRequirements,
       policy: payload.policy ?? null,
     };
   }

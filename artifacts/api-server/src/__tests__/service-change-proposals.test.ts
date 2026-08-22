@@ -195,7 +195,7 @@ describe("bilateral change proposals", () => {
     const response = await request(app)
       .post(`/api/leistungsanfragen/${REQUEST_IDS[4]}/change-proposals`)
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ start: "2026-09-08T17:00:00.000Z", end: "2026-09-08T08:00:00.000Z" });
+      .send({ start: "2026-09-08T17:00:00.000Z", end: "2026-09-07T08:00:00.000Z" });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain("Ende muss nach Beginn liegen");

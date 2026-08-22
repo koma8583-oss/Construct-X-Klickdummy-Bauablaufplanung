@@ -116,7 +116,7 @@ router.get("/ag/projects/overview", async (req, res): Promise<void> => {
       description:              p.description ?? null,
       startDate:                p.startDate,
       endDate:                  p.endDate,
-      assignedAnCount:          ct?.assignedAnCount  ?? 0,
+      assignedAnCount:          Number(ct?.assignedAnCount  ?? 0),
       assignedTrades:           (ct?.assignedTrades  ?? []).filter(Boolean),
       totalTaktRequests:        req?.total            ?? 0,
       openTaktRequests:         req?.open             ?? 0,
@@ -349,13 +349,40 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
     return;
   }
 
+  // Check for exact duplicate (same project + AN + trade) before inserting
+  const tradeValue = trade ?? null;
+  const existingCondition = tradeValue === null
+    ? and(
+        eq(projectContractorsTable.projectId, projectId),
+        eq(projectContractorsTable.anOrgId, anOrgId),
+        sql`${projectContractorsTable.trade} IS NULL`,
+      )
+    : and(
+        eq(projectContractorsTable.projectId, projectId),
+        eq(projectContractorsTable.anOrgId, anOrgId),
+        eq(projectContractorsTable.trade, tradeValue),
+      );
+
+  const [existing] = await db
+    .select({ id: projectContractorsTable.id })
+    .from(projectContractorsTable)
+    .where(existingCondition)
+    .limit(1);
+
+  if (existing) {
+    res.status(409).json({
+      error: "Assignment already exists for this project, AN, trade and work package",
+    });
+    return;
+  }
+
   try {
     const [row] = await db
       .insert(projectContractorsTable)
       .values({
         projectId,
         anOrgId,
-        trade:                trade ?? null,
+        trade:                tradeValue,
         workPackageReference: workPackageReference ?? null,
         assignmentStatus:     assignmentStatus ?? "ACTIVE",
         validFrom:            validFrom ?? null,

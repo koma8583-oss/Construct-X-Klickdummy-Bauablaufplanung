@@ -240,8 +240,10 @@ describe('Retry safety — FAILED reminder does not produce a duplicate row', ()
       expiresAt: new Date(due.getTime() + 48 * 60 * 60 * 1000),
     });
 
-    // Pre-insert a FAILED reminder with the same dedup key the service would produce
-    const deduplicationKey = `${requestNumber}:RESPONSE_DUE_TODAY:${now.toISOString().slice(0, 10)}`;
+    // Pre-insert a FAILED reminder with the same dedup key the service would produce.
+    // The service uses `windowDate = due` (responseRequiredBy) for the date segment,
+    // NOT `now` — so we must mirror that here.
+    const deduplicationKey = `${requestNumber}:RESPONSE_DUE_TODAY:${due.toISOString().slice(0, 10)}`;
     await db.insert(taktRequestRemindersTable).values({
       taktRequestId: id,
       reminderType: 'RESPONSE_DUE_TODAY',

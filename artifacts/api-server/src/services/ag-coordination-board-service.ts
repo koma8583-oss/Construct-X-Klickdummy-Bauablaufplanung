@@ -5,7 +5,7 @@ import {
   organizationsTable, serviceChangeProposalsTable, serviceConstraintsTable, serviceClarificationsTable,
   serviceReadinessChecksTable, serviceDependenciesTable,
 } from "@workspace/db";
-import { deriveServiceCoordinationState } from "./service-coordination-state";
+import { deriveCoordinationFacts } from "./service-coordination-state";
 
 export async function getProjectCoordinationBoard(input: { projectId: string; agOrgId: string }) {
   const rows = await db.select({ request: leistungsanfragenTable, service: leistungenTable, partner: organizationsTable })
@@ -15,23 +15,28 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
     .where(and(eq(leistungenTable.projectId, input.projectId), eq(leistungsanfragenTable.guOrgId, input.agOrgId)));
   const ids = rows.map(({ request }) => request.id);
   if (!ids.length) return [];
-  const [proposals, constraints, clarifications, readiness, dependencies] = await Promise.all([
+  const [proposals, constraints, clarifications, readiness, dependencies, responses, decisions] = await Promise.all([
     db.select().from(serviceChangeProposalsTable).where(and(inArray(serviceChangeProposalsTable.leistungsanfrageId, ids), eq(serviceChangeProposalsTable.status, "OPEN"))),
     db.select().from(serviceConstraintsTable).where(and(inArray(serviceConstraintsTable.serviceRequestId, ids), eq(serviceConstraintsTable.status, "OPEN"))),
     db.select().from(serviceClarificationsTable).where(and(inArray(serviceClarificationsTable.serviceRequestId, ids), eq(serviceClarificationsTable.status, "OPEN"))),
     db.select().from(serviceReadinessChecksTable).where(inArray(serviceReadinessChecksTable.serviceRequestId, ids)),
     db.select().from(serviceDependenciesTable).where(inArray(serviceDependenciesTable.predecessorServiceRequestId, ids)),
+    db.select().from(leistungsantwortenTable).where(inArray(leistungsantwortenTable.leistungsanfrageId, ids)),
+    db.select().from(leistungsantwortEntscheidungenTable).where(inArray(leistungsantwortEntscheidungenTable.leistungsanfrageId, ids)),
   ]);
   const proposalsBy = new Map(proposals.map((row) => [row.leistungsanfrageId, row]));
   const readinessBy = new Map(readiness.map((row) => [row.serviceRequestId, row]));
   return rows.map(({ request, service, partner }) => {
     const proposal = proposalsBy.get(request.id);
-    const action = deriveServiceCoordinationState({
-      party: "AG",
+    const response = responses.find((row) => row.leistungsanfrageId === request.id);
+    const action = deriveCoordinationFacts({
+      guOrgId: request.guOrgId,
       requestStatus: request.status,
-      openProposalProposer: proposal ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN" : null,
-      hasResponse: ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED", "ACCEPTED", "REJECTED", "REVISION_REQUIRED"].includes(request.status),
-      hasDecision: ["ACCEPTED", "CANCELLED", "SUPERSEDED"].includes(request.status),
+      openProposalProposerOrgId: proposal?.proposerOrgId,
+      hasResponse: !!response,
+      hasDecision: !!response && decisions.some((decision) => decision.responseId === response.id),
+      clarificationPendingForAG: clarifications.some((row) => row.serviceRequestId === request.id && row.askedByOrgId !== request.guOrgId),
+      constraintPendingForAG: constraints.some((row) => row.serviceRequestId === request.id && row.responsibleOrgId === request.guOrgId),
     });
     const check = readinessBy.get(request.id);
     const readinessStatus = !check ? "NOT_APPLICABLE" : check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady && check.anReady ? "READY" : "NOT_READY";
@@ -52,7 +57,12 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
       openClarificationCount: clarifications.filter((row) => row.serviceRequestId === request.id).length,
        readinessStatus: request.agreedStart && request.agreedEnd && !check ? "NOT_READY" : readinessStatus,
       dependencyImpactCount: dependencies.filter((row) => row.predecessorServiceRequestId === request.id).length,
-      lastChangedAt: request.updatedAt.toISOString(),
+      lastChangedAt: new Date(Math.max(
+        request.updatedAt.getTime(),
+        proposal?.createdAt.getTime() ?? 0,
+        proposal?.resolvedAt?.getTime() ?? 0,
+        response?.createdAt.getTime() ?? 0,
+      )).toISOString(),
     };
   });
 }

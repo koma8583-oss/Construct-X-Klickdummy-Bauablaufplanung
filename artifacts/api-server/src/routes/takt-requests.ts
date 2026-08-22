@@ -95,6 +95,17 @@ import {
 import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-service";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
 import { validateResourceTypeForOrg } from "../services/resource-domain-service";
+import {
+  listResourceRequirements,
+  createResourceRequirement,
+  updateResourceRequirement,
+  deleteResourceRequirement,
+  requirementCreateSchema,
+  requirementUpdateSchema,
+  ResourceRequirementNotFoundError,
+  InvalidRequirementPeriodError,
+  ResourceTypeNotOwnedError,
+} from "../services/resource-requirements-service";
 
 // Module-level transport singleton — stateless, safe to share across requests.
 const dataspaceExchange = createDataspaceExchange();
@@ -652,11 +663,13 @@ router.post(
         requestId: id,
         requestVersion: existing.taktVersion,
         projectReference: String(snapPayload.projectReference ?? existing.taktId),
+        taktReference: existing.taktId,
         plannedStart: plannedTimeWindow.start,
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
+        messageId: notificationMessageId(id),
         resourceRequirements: toExternalResourceRequirements(requirementRows),
       });
     } catch (error) {
@@ -1901,53 +1914,9 @@ router.get(
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
     const id = req.params.id as string;
-
-    // Verify the request exists and is addressed to this NU
-    const request = await getTaktRequestById(id);
-    if (!request || request.nuOrgId !== nuOrgId) {
-      res.status(404).json({ error: "TaktRequest not found" });
-      return;
-    }
-
-    const rows = await db
-      .select({
-        req: taktRequestResourceRequirementsTable,
-        rt: {
-          name: resourceTypesTable.name,
-          category: resourceTypesTable.category,
-        },
-      })
-      .from(taktRequestResourceRequirementsTable)
-      .leftJoin(
-        resourceTypesTable,
-        eq(taktRequestResourceRequirementsTable.resourceTypeId, resourceTypesTable.id),
-      )
-      .where(
-        and(
-          eq(taktRequestResourceRequirementsTable.taktRequestId, id),
-          eq(taktRequestResourceRequirementsTable.anOrgId, nuOrgId),
-        ),
-      )
-      .orderBy(desc(taktRequestResourceRequirementsTable.createdAt));
-
-    res.json(
-      rows.map(({ req: r, rt }) => ({
-        id: r.id,
-        taktRequestId: r.taktRequestId,
-        anOrgId: r.anOrgId,
-        resourceTypeId: r.resourceTypeId,
-        resourceTypeName: rt?.name ?? null,
-        resourceTypeCategory: rt?.category ?? null,
-        requiredCapacity: r.requiredCapacity,
-        utilizationPercent: r.utilizationPercent,
-        requiredQualification: r.requiredQualification,
-        periodStart: r.periodStart,
-        periodEnd: r.periodEnd,
-        notes: r.notes,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      })),
-    );
+    const rows = await listResourceRequirements(id, nuOrgId);
+    if (rows === null) { res.status(404).json({ error: "TaktRequest not found" }); return; }
+    res.json(rows);
   },
 );
 
@@ -1959,63 +1928,40 @@ router.post(
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
     const id = req.params.id as string;
-
-    const schema = z.object({
-      resourceTypeId:       z.string().min(1),
-      requiredCapacity:     z.number().positive(),
-      utilizationPercent:   z.number().int().min(1).max(100).optional().default(100),
-      requiredQualification: z.string().max(500).nullable().optional(),
-      periodStart:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      periodEnd:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      notes:                z.string().max(1000).nullable().optional(),
-    });
-
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
-    }
-
-    // Verify the request exists and is addressed to this NU
-    const request = await getTaktRequestById(id);
-    if (!request || request.nuOrgId !== nuOrgId) {
-      res.status(404).json({ error: "TaktRequest not found" });
-      return;
-    }
-
+    const parsed = requirementCreateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
     try {
-      await validateResourceTypeForOrg(parsed.data.resourceTypeId, nuOrgId);
-    } catch {
-      res.status(422).json({ error: "RESOURCE_TYPE_NOT_OWNED" });
-      return;
+      const row = await createResourceRequirement(id, nuOrgId, parsed.data);
+      if (row === null) { res.status(404).json({ error: "TaktRequest not found" }); return; }
+      res.status(201).json(row);
+    } catch (err) {
+      if (err instanceof ResourceTypeNotOwnedError) { res.status(422).json({ error: err.code }); return; }
+      if (err instanceof InvalidRequirementPeriodError) { res.status(422).json({ error: err.code }); return; }
+      throw err;
     }
+  },
+);
 
-    const snapshot = (await getTaktRequestWithSnapshot(id))?.snapshot?.snapshotPayload as
-      | { plannedTimeWindow?: { start?: string; end?: string } }
-      | undefined;
-    const periodStart = parsed.data.periodStart ?? snapshot?.plannedTimeWindow?.start ?? null;
-    const periodEnd = parsed.data.periodEnd ?? snapshot?.plannedTimeWindow?.end ?? null;
-    if (!periodStart || !periodEnd || periodStart > periodEnd) {
-      res.status(422).json({ error: "INVALID_REQUIREMENT_PERIOD" });
-      return;
+// ── PATCH /takt-requests/:id/resource-requirements/:reqId ────────────────────
+// NU updates an existing resource requirement (partial update).
+router.patch(
+  "/takt-requests/:id/resource-requirements/:reqId",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const nuOrgId = req.user!.orgId!;
+    const id = req.params.id as string;
+    const reqId = req.params.reqId as string;
+    const parsed = requirementUpdateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+    try {
+      const row = await updateResourceRequirement(id, reqId, nuOrgId, parsed.data);
+      if (row === null) { res.status(404).json({ error: "TaktRequest not found" }); return; }
+      res.json(row);
+    } catch (err) {
+      if (err instanceof ResourceRequirementNotFoundError) { res.status(404).json({ error: err.message }); return; }
+      if (err instanceof InvalidRequirementPeriodError) { res.status(422).json({ error: err.code }); return; }
+      throw err;
     }
-
-    const [inserted] = await db
-      .insert(taktRequestResourceRequirementsTable)
-      .values({
-        taktRequestId:        id,
-        anOrgId:              nuOrgId,
-        resourceTypeId:       parsed.data.resourceTypeId,
-        requiredCapacity:     parsed.data.requiredCapacity.toString(),
-        utilizationPercent:   parsed.data.utilizationPercent ?? 100,
-        requiredQualification: parsed.data.requiredQualification ?? null,
-        periodStart,
-        periodEnd,
-        notes:                parsed.data.notes ?? null,
-      })
-      .returning();
-
-    res.status(201).json(inserted);
   },
 );
 
@@ -2028,24 +1974,13 @@ router.delete(
     const nuOrgId = req.user!.orgId!;
     const id      = req.params.id as string;
     const reqId   = req.params.reqId as string;
-
-    const [deleted] = await db
-      .delete(taktRequestResourceRequirementsTable)
-      .where(
-        and(
-          eq(taktRequestResourceRequirementsTable.id, reqId),
-          eq(taktRequestResourceRequirementsTable.taktRequestId, id),
-          eq(taktRequestResourceRequirementsTable.anOrgId, nuOrgId),
-        ),
-      )
-      .returning();
-
-    if (!deleted) {
-      res.status(404).json({ error: "Resource requirement not found" });
-      return;
+    try {
+      await deleteResourceRequirement(id, reqId, nuOrgId);
+      res.status(204).end();
+    } catch (err) {
+      if (err instanceof ResourceRequirementNotFoundError) { res.status(404).json({ error: err.message }); return; }
+      throw err;
     }
-
-    res.status(204).end();
   },
 );
 

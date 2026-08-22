@@ -13,4 +13,12 @@ export type ExchangeReference = {
 export interface DataspaceExchange {
   publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference>;
   publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference>;
+  receiveServiceRequest(
+    payload: ExternalServiceRequest,
+    process?: (payload: ExternalServiceRequest) => Promise<void>,
+  ): Promise<void>;
+  receiveServiceResponse(
+    payload: ExternalServiceResponse,
+    process?: (payload: ExternalServiceResponse) => Promise<void>,
+  ): Promise<void>;
 }

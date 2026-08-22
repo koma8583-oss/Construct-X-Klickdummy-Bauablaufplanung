@@ -47,8 +47,9 @@ import {
   messageOutboxTable,
   messageInboxTable,
   taktRequestAuditEventsTable,
+  dataspaceExchangesTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, or } from "drizzle-orm";
 import app from "../app";
 
 // ── JWT ───────────────────────────────────────────────────────────────────────
@@ -185,9 +186,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Delete in FK-safe order.
-  // The transport delivers to message_inbox (GU org) and writes message_outbox.
-  // Audit events also reference requests.
+  const testOrgIds = [GU_ORG, NU_ORG, NU_ORG_B] as [string, ...string[]];
+
+  // 1. dataspace_exchanges — FK to organizations (sender_org_id / receiver_org_id)
+  await db.delete(dataspaceExchangesTable)
+    .where(or(
+      inArray(dataspaceExchangesTable.senderOrgId, testOrgIds),
+      inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds),
+    ));
+
+  // 2. Per-request child rows (FK-safe order), filtered to this test's data only
   const ourRequests = await db.select({ id: taktRequestsTable.id })
     .from(taktRequestsTable)
     .where(eq(taktRequestsTable.guOrgId, GU_ORG));
@@ -197,11 +205,9 @@ afterAll(async () => {
     await db.delete(taktRequestAuditEventsTable)
       .where(eq(taktRequestAuditEventsTable.requestId, id));
 
-    // Inbox messages delivered to GU org
+    // Messages (inbox + outbox by correlationId)
     await db.delete(messageInboxTable)
       .where(eq(messageInboxTable.correlationId, id));
-
-    // Outbox entries
     await db.delete(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, id));
 
@@ -221,15 +227,22 @@ afterAll(async () => {
       .where(eq(taktRequestSnapshotsTable.taktRequestId, id));
   }
 
+  // 3. Remaining org-level outbox/inbox messages (e.g. by senderOrgId)
+  await db.delete(messageOutboxTable)
+    .where(inArray(messageOutboxTable.senderOrgId, testOrgIds));
+  await db.delete(messageInboxTable)
+    .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
+
+  // 4. Domain tables
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.guOrgId, GU_ORG));
   await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
+
+  // 5. Users + orgs
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER));
-  await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG));
-  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG));
-  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG_B));
+  await db.delete(organizationsTable).where(inArray(organizationsTable.id, testOrgIds));
 });
 
 // ── [1–4] Legacy create route ────────────────────────────────────────────────

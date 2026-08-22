@@ -220,7 +220,12 @@ describe("GET /resources — API compatibility", () => {
       .post("/api/resources")
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ type: "EMPLOYEE", name: "T43 Org A Resource" });
-    expect(createRes.status).toBe(400);
+    expect(createRes.status).toBe(201);
+    const otherOrgResources = await request(app)
+      .get("/api/resources")
+      .set("Authorization", `Bearer ${nuTokenB}`);
+    expect(otherOrgResources.body.some((resource: { id: string }) => resource.id === createRes.body.id)).toBe(false);
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, createRes.body.id));
   });
 });
 
@@ -231,7 +236,8 @@ describe("POST /resources — CREW type and new fields", () => {
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ type: "CREW", name: "T43 API Crew", capacity: 5, capacityUnit: "PERSONS" });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.body.id));
   });
 
   it("legacy fields still work (backward compat)", async () => {
@@ -246,7 +252,8 @@ describe("POST /resources — CREW type and new fields", () => {
         color: "#00FF00",
       });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.body.id));
   });
 
   it("new fields (trade, skills, qualifications, active) are accepted", async () => {
@@ -264,7 +271,8 @@ describe("POST /resources — CREW type and new fields", () => {
         active: true,
       });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.body.id));
   });
 
   it("returns 401 without auth", async () => {

@@ -12,7 +12,7 @@ import {
   serviceClarificationsTable,
   serviceReadinessChecksTable,
 } from "@workspace/db";
-import { deriveServiceCoordinationState } from "./service-coordination-state";
+import { deriveCoordinationFacts } from "./service-coordination-state";
 
 export type CoordinationTaskType =
   | "RESPOND_TO_REQUEST"
@@ -115,6 +115,12 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
   for (const { request, service, project, partner } of requests) {
     const response = responseByRequest.get(request.id);
     const proposal = proposalByRequest.get(request.id);
+    const lastChangedAt = new Date(Math.max(
+      request.updatedAt.getTime(),
+      response?.createdAt.getTime() ?? 0,
+      proposal?.createdAt.getTime() ?? 0,
+      proposal?.resolvedAt?.getTime() ?? 0,
+    )).toISOString();
     const addTask = (taskType: CoordinationTaskType, dueAt: Date | null, summary: string) => {
       const status = deadlineStatus(dueAt, now);
       tasks.push({
@@ -130,7 +136,7 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
         dueAt: dueAt?.toISOString() ?? null,
         status,
         summary,
-        lastChangedAt: request.updatedAt.toISOString(),
+        lastChangedAt,
         targetUrl: `/leistungsanfragen/${request.id}`,
       });
     };
@@ -153,17 +159,18 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
     const readinessNeedsConfirmation = !!withinSevenDays && (input.role === "AG"
       ? !(check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady)
       : !check.anReady);
-    const action = deriveServiceCoordinationState({
-      party: input.role,
+    const action = deriveCoordinationFacts({
+      guOrgId: request.guOrgId,
       requestStatus: request.status,
       hasResponse: !!response,
       hasDecision: !!response && decisionByResponse.has(response.id),
-      openProposalProposer: proposal
-        ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
-        : null,
-      clarificationNeedsAnswer: !!clarification && clarification.askedByOrgId !== input.orgId,
-      constraintNeedsResolution: !!constraint,
-      readinessNeedsConfirmation,
+      openProposalProposerOrgId: proposal?.proposerOrgId,
+      clarificationPendingForAG: !!clarification && clarification.askedByOrgId !== request.guOrgId,
+      clarificationPendingForAN: !!clarification && clarification.askedByOrgId !== request.nuOrgId,
+      constraintPendingForAG: !!constraint && input.role === "AG",
+      constraintPendingForAN: !!constraint && input.role === "AN",
+      readinessPendingForAG: !!withinSevenDays && !(check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady),
+      readinessPendingForAN: !!withinSevenDays && !check.anReady,
     });
     const taskDetails: Record<Exclude<CoordinationTaskType, "NO_ACTION">, { dueAt: Date | null; summary: string }> = {
       RESPOND_TO_REQUEST: { dueAt: request.responseRequiredBy ?? request.expiresAt, summary: `Antwort auf ${request.requestNumber} erforderlich` },

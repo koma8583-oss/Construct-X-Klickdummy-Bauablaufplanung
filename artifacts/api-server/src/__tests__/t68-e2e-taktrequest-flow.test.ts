@@ -187,8 +187,8 @@ beforeAll(async () => {
       name: `${T}-Project`,
       agOrgId: GU_ORG_ID,
       location: "Berlin",
-      startDate: "2026-01-01",
-      endDate: "2026-12-31",
+      startDate: "2028-01-01",
+      endDate: "2028-12-31",
     })
     .onConflictDoNothing();
 
@@ -316,8 +316,8 @@ async function insertTakt(suffix: string): Promise<string> {
     taktBezeichnung: `${T} Takt ${suffix}`,
     zone: "Zone-A",
     gewerk: "Trockenbau",
-    plannedStart: "2026-03-01",
-    plannedEnd: "2026-03-15",
+    plannedStart: "2028-03-01",
+    plannedEnd: "2028-03-15",
     version: 1,
     lifecycleStatus: "PLANNED" as const,
   });
@@ -348,7 +348,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
       .send({
         taktId,
         nuOrgId: NU_ORG_ID,
-        responseRequiredBy: "2026-04-01T00:00:00Z",
+        responseRequiredBy: "2028-04-01T00:00:00Z",
         subject: "Bitte Takt bestätigen",
         message: "Bitte prüfen und zurückmelden.",
         dataPublicationId: publicationId,
@@ -430,7 +430,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         decision: "ACCEPTED",
-        acceptedTimeWindow: { start: "2026-03-01", end: "2026-03-15" },
+        acceptedTimeWindow: { start: "2028-03-01", end: "2028-03-15" },
       });
 
     expect(res.status).toBe(201);
@@ -493,7 +493,7 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2026-05-01T00:00:00Z", dataPublicationId: publicationId });
+      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-05-01T00:00:00Z", dataPublicationId: publicationId });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
@@ -533,13 +533,13 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
           {
             alternativeId: `ALT-${T}-B1`,
             rank: 1,
-            timeWindow: { start: "2026-04-01", end: "2026-04-15" },
+            timeWindow: { start: "2028-04-01", end: "2028-04-15" },
             crewSize: 4,
           },
           {
             alternativeId: `ALT-${T}-B2`,
             rank: 2,
-            timeWindow: { start: "2026-05-01", end: "2026-05-15" },
+            timeWindow: { start: "2028-05-01", end: "2028-05-15" },
             crewSize: 5,
           },
         ],
@@ -600,9 +600,9 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
 
   it("t68-B5c: Takt dates updated to the accepted alternative's time window", async () => {
     const [takt] = await db.select().from(takteTable).where(eq(takteTable.id, taktId));
-    // Alternative B1 proposed 2026-04-01 → 2026-04-15
-    expect(String(takt.plannedStart)).toContain("2026-04-01");
-    expect(String(takt.plannedEnd)).toContain("2026-04-15");
+    // Alternative B1 proposed 2028-04-01 → 2028-04-15
+    expect(String(takt.plannedStart)).toContain("2028-04-01");
+    expect(String(takt.plannedEnd)).toContain("2028-04-15");
     expect(takt.lifecycleStatus).toBe("CONFIRMED");
     expect(takt.version).toBe(2);
   });
@@ -646,7 +646,7 @@ describe("t68-suiteC: access-control guards on GET /takt-requests/:id/details", 
     const create = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2026-06-01T00:00:00Z" });
+      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-06-01T00:00:00Z" });
     requestId = create.body.id;
 
     await request(app)

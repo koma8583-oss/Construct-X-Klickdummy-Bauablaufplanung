@@ -30,3 +30,4 @@
 - [Booking requirement metadata](booking-requirement-metadata.md) — auto-bookings retain original quantity/utilization and shift requirement sub-periods with the accepted Takt window.
 - [API Zod codegen exports](api-zod-codegen-exports.md) — keep api-zod exports explicit because broad generated type re-exports can create duplicate symbols.
 - [Coordination regression contracts](coordination-regression-contracts.md) — regression fixtures must use canonical Leistungsanfrage states, idempotent response codes, linked resource types, and current UI props.
+- [Concurrent agent edits](concurrent-agent-edits.md) — serialize changes to shared backend services; parallel writers can overwrite each other’s working copy.

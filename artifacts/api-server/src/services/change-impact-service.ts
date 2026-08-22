@@ -1,6 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { leistungenTable, leistungsanfragenTable, serviceDependenciesTable } from "@workspace/db";
+import {
+  leistungenTable,
+  leistungsanfragenTable,
+  leistungsabhaengigkeitenTable,
+} from "@workspace/db";
 
 export type ChangeImpact = {
   affectedServices: Array<{
@@ -18,29 +22,61 @@ export async function evaluateChangeImpact(input: {
   proposedStart: Date;
   proposedEnd: Date;
 }): Promise<ChangeImpact> {
-  const dependencies = await db.select().from(serviceDependenciesTable)
-    .where(eq(serviceDependenciesTable.predecessorServiceRequestId, input.serviceRequestId));
+  // 1. Look up the Leistung associated with the source service request.
+  const [sourceRequest] = await db
+    .select({ leistungId: leistungsanfragenTable.leistungId })
+    .from(leistungsanfragenTable)
+    .where(eq(leistungsanfragenTable.id, input.serviceRequestId))
+    .limit(1);
+
+  if (!sourceRequest) return { affectedServices: [] };
+
+  // 2. Find all Leistung-level successors via leistungsabhaengigkeiten (canonical table).
+  const leistungDeps = await db
+    .select()
+    .from(leistungsabhaengigkeitenTable)
+    .where(eq(leistungsabhaengigkeitenTable.predecessorId, sourceRequest.leistungId));
+
+  if (!leistungDeps.length) return { affectedServices: [] };
+
+  const successorLeistungIds = leistungDeps.map((d) => d.successorId);
+
+  // 3. Find active Leistungsanfragen for those successor Leistungen.
+  const successorRequests = await db
+    .select({
+      request: leistungsanfragenTable,
+      service: leistungenTable,
+    })
+    .from(leistungsanfragenTable)
+    .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
+    .where(inArray(leistungsanfragenTable.leistungId, successorLeistungIds));
+
   const result: ChangeImpact["affectedServices"] = [];
-  for (const dependency of dependencies) {
-    const [successor] = await db.select({ request: leistungsanfragenTable, service: leistungenTable })
-      .from(leistungsanfragenTable)
-      .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
-      .where(eq(leistungsanfragenTable.id, dependency.successorServiceRequestId))
-      .limit(1);
-    if (!successor) continue;
+
+  for (const { request: successor, service } of successorRequests) {
+    // Find the matching leistung dependency for lag days.
+    const dep = leistungDeps.find((d) => d.successorId === successor.leistungId);
+    const lagDays = dep?.lagDays ?? 0;
+
+    // Required earliest start of successor = proposed end of predecessor + lagDays + 1 day.
     const required = new Date(input.proposedEnd);
-    required.setDate(required.getDate() + dependency.lagDays + 1);
-    const currentStart = successor.request.agreedStart;
+    required.setDate(required.getDate() + lagDays + 1);
+
+    const currentStart = successor.agreedStart;
     if (!currentStart || currentStart >= required) continue;
-    const impactDays = Math.ceil((required.getTime() - currentStart.getTime()) / 86_400_000);
+
+    const impactDays = Math.ceil(
+      (required.getTime() - currentStart.getTime()) / 86_400_000,
+    );
     result.push({
-      serviceRequestId: successor.request.id,
-      serviceName: successor.service.leistungsBezeichnung,
+      serviceRequestId: successor.id,
+      serviceName: service.leistungsBezeichnung,
       currentStart: currentStart.toISOString(),
-      currentEnd: successor.request.agreedEnd?.toISOString() ?? null,
+      currentEnd: successor.agreedEnd?.toISOString() ?? null,
       requiredEarliestStart: required.toISOString(),
       impactDays,
     });
   }
+
   return { affectedServices: result };
 }

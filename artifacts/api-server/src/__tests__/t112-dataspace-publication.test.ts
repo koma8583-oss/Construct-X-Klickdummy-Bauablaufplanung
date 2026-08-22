@@ -120,7 +120,40 @@ beforeAll(async () => {
     assignmentStatus: "ACTIVE",
   });
 
-  // Get policy template ID
+  // Get or create the required policy templates (seeded by the server on startup;
+  // in test environments they may not have been seeded yet).
+  const requiredTemplates = [
+    {
+      code: "PROJECT_COORDINATION_READ_ONLY",
+      name: "Project Coordination Read-Only",
+      description: "Read-only access to project coordination data.",
+      purpose: "Allow AN to read project coordination data for coordination purposes.",
+      permissions: ["READ"],
+      prohibitions: ["REDISTRIBUTE"],
+      validityRule: "Until project end",
+    },
+    {
+      code: "TAKT_EXECUTION_USE",
+      name: "Takt Execution Use",
+      description: "Read/download/use for work package.",
+      purpose: "Allow AN to use takt data for work package execution.",
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PROJECT_COORDINATION"],
+      prohibitions: ["REDISTRIBUTE"],
+      validityRule: "Until 30d after Takt end",
+    },
+    {
+      code: "EXTENDED_PROJECT_COLLABORATION",
+      name: "Extended Project Collaboration",
+      description: "Read/download/create derived, until 180d after project end.",
+      purpose: "Allow AN extended collaboration on project data.",
+      permissions: ["READ", "DOWNLOAD", "CREATE_DERIVED"],
+      prohibitions: ["REDISTRIBUTE", "AI_TRAINING"],
+      validityRule: "Until 180d after project end",
+    },
+  ];
+  for (const t of requiredTemplates) {
+    await db.insert(policyTemplatesTable).values(t).onConflictDoNothing();
+  }
   const [pt] = await db
     .select({ id: policyTemplatesTable.id })
     .from(policyTemplatesTable)

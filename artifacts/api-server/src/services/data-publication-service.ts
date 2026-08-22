@@ -50,6 +50,38 @@ export class PublicationRecipientError extends Error {
 // ── Whitelists ────────────────────────────────────────────────────────────────
 
 export const FIELD_WHITELISTS: Record<string, readonly string[]> = {
+  PROJECT_OVERVIEW: [
+    // Core project identity
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
+    // Summary coordination fields
+    "milestones",
+    "documentReferences",
+  ],
+
+  PROJECT_COORDINATION_PACKAGE: [
+    // Core project identity
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
+    // Coordination-specific
+    "milestones",
+    "logisticsConstraints",
+    "coordinationConstraints",
+    "interfaceDescriptions",
+    "relevantTimeWindows",
+    "documentReferences",
+  ],
+
   TAKT_INFORMATION_PACKAGE: [
     // Projektdaten
     "projectReference",
@@ -119,7 +151,11 @@ export async function buildContentSnapshot(
 
   const include = new Set(safeFields);
 
-  return buildTaktSnapshot(project, include, selectedTaktIds ?? []);
+  if (dataProductType === "TAKT_INFORMATION_PACKAGE") {
+    return buildTaktSnapshot(project, include, selectedTaktIds ?? []);
+  }
+  // PROJECT_OVERVIEW and PROJECT_COORDINATION_PACKAGE are project-level only
+  return buildProjectSnapshot(project, include);
 }
 
 function buildProjectSnapshot(
@@ -140,8 +176,8 @@ function buildProjectSnapshot(
   if (include.has("projectStatus")) snap.projectStatus = project.status;
   if (include.has("startDate")) snap.startDate = project.startDate ?? null;
   if (include.has("endDate")) snap.endDate = project.endDate ?? null;
-  if (include.has("assignedTrade")) snap.assignedTrade = null; // populated per-request in future
-  if (include.has("workPackageReference")) snap.workPackageReference = null;
+  if (include.has("projectLocation")) snap.projectLocation = project.location ?? null;
+  if (include.has("projectDescription")) snap.projectDescription = project.description ?? null;
   if (include.has("milestones")) snap.milestones = [];
   if (include.has("logisticsConstraints")) snap.logisticsConstraints = null;
   if (include.has("coordinationConstraints")) snap.coordinationConstraints = null;

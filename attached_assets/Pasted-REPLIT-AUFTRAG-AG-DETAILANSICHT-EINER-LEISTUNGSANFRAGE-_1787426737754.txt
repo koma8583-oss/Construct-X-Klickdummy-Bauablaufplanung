@@ -1,0 +1,2749 @@
+REPLIT-AUFTRAG – AG-DETAILANSICHT EINER LEISTUNGSANFRAGE VOLLSTÄNDIG NEU AUFBAUEN
+
+Arbeite im aktuellen Replit-Codebestand.
+
+Replit ist die maßgebliche Arbeitsumgebung. Git dient der Veröffentlichung und externen Prüfung.
+
+ZIEL DIESES AUFTRAGS:
+
+Die Detailansicht einer Leistungsanfrage auf Seiten des AG soll vollständig neu strukturiert und deutlich einfacher bedienbar werden.
+
+Die neue Ansicht soll:
+
+1. sofort zeigen, was der AG aktuell tun muss,
+2. die aktuelle Abstimmung verständlich darstellen,
+3. die ursprüngliche Leistungsanfrage vollständig zugänglich machen,
+4. Risiken, Klärungen und Bereitschaft kompakt darstellen,
+5. genau einen fachlichen Verlauf besitzen,
+6. alle bisherigen fachlichen und technischen Detailinformationen weiterhin zugänglich machen,
+7. auf kleinen Displays vollständig bedienbar sein,
+8. keine alte parallele AG-Detailansicht mehr verfügbar lassen.
+
+WICHTIG:
+
+Es sollen KEINE fachlichen Informationen verloren gehen.
+
+Das Ziel ist NICHT:
+„weniger Informationen“.
+
+Das Ziel ist:
+
+„weniger Informationen gleichzeitig sichtbar, aber alle Informationen gezielt abrufbar“.
+
+Die neue Seite verwendet deshalb konsequent:
+
+Übersicht
+→ aufklappbare fachliche Details
+→ technische Details
+
+Die größere AN-Detailansicht ist NICHT Bestandteil dieses Auftrags.
+
+Gemeinsam genutzte Komponenten dürfen nur verändert werden, wenn dadurch die AN-Seite nicht unbeabsichtigt verändert oder beschädigt wird.
+
+============================================================
+1. KANONISCHE AG-DETAILSEITE FESTLEGEN
+============================================================
+
+Es darf nach Abschluss genau EINE kanonische Detailansicht für eine AG-Leistungsanfrage geben.
+
+Prüfe zunächst alle aktuellen AG-Routen und Detailseiten.
+
+Insbesondere suchen nach Dateien und Komponenten wie:
+
+artifacts/ag-app/src/pages/leistungsanfragen-detail.tsx
+artifacts/ag-app/src/pages/takt-request-detail.tsx
+
+sowie weiteren vollständigen Detailseiten derselben Leistungsanfrage.
+
+Die aktuelle produktive Route für „Leistungsanfrage öffnen“ soll auf genau eine kanonische Seite zeigen.
+
+Bevorzugt die aktuelle:
+
+leistungsanfragen-detail.tsx
+
+als kanonische Seite weiterverwenden und vollständig refaktorieren.
+
+Keine zusätzliche neue parallele Detailseite erzeugen.
+
+
+============================================================
+2. ALTE AG-DETAILANSICHTEN MÜSSEN DANACH NICHT MEHR VERFÜGBAR SEIN
+============================================================
+
+Dies ist eine verbindliche Anforderung.
+
+Nach Abschluss darf keine alte AG-Detailansicht mehr über:
+
+- Navigation
+- Listen
+- Dashboard
+- Coordination Board
+- „Meine Aufgaben“
+- Browser-Direkt-URL
+- alte Route
+- alte Legacy-Route
+
+erreichbar sein.
+
+
+------------------------------------------------------------
+2.1 ALTE DETAILSEITEN PRÜFEN
+------------------------------------------------------------
+
+Global suchen nach:
+
+takt-request-detail
+leistungsanfragen-detail
+request-detail
+
+und allen AG-Routen, die Request-Detailseiten rendern.
+
+Für jede alte vollständige AG-Detailseite entscheiden:
+
+A) vollständig ungenutzt:
+→ Datei löschen.
+
+B) alte Route existiert noch:
+→ alte Route auf die kanonische neue AG-Detailroute umleiten.
+
+C) alte Seite wird noch von einer Route importiert:
+→ Route auf kanonische Detailseite umstellen
+→ alten Import entfernen
+→ alte Seite löschen.
+
+
+------------------------------------------------------------
+2.2 KEINE ALTE SEITE HINTER LEGACY-URL RENDERN
+------------------------------------------------------------
+
+Wenn aus Kompatibilitätsgründen eine alte URL erhalten bleiben muss:
+
+NICHT die alte Detailseite rendern.
+
+Stattdessen:
+
+legacy route
+→ Redirect zur kanonischen AG-Detailroute
+
+Dabei Request-ID übernehmen.
+
+Beispiel sinngemäß:
+
+/ag/takt-requests/:id
+→ redirect
+/ag/leistungsanfragen/:id
+
+Die tatsächlichen vorhandenen Routes verwenden.
+
+Keine neue URL-Struktur erfinden, wenn bereits eine kanonische Route existiert.
+
+
+------------------------------------------------------------
+2.3 DIREKTE LINKS UMRÜSTEN
+------------------------------------------------------------
+
+Alle AG-Einstiegspunkte prüfen:
+
+- Leistungsanfragenliste
+- Coordination Board
+- Meine Aufgaben
+- Projektansicht
+- Dashboard
+- Suchergebnisse
+- Benachrichtigungen
+- sonstige Links zu einer Leistungsanfrage
+
+Jeder dieser Links muss dieselbe kanonische Detailseite öffnen.
+
+
+------------------------------------------------------------
+2.4 ABSCHLUSSPRÜFUNG
+------------------------------------------------------------
+
+Am Ende global prüfen:
+
+Es darf keine Route mehr geben, die eine alte vollständige AG-Request-Detailkomponente rendert.
+
+Ungenutzte alte vollständige Seiten löschen.
+
+Git ist das Backup.
+
+Keine alten Seiten als „Reserve“ im Source Tree behalten.
+
+
+============================================================
+3. NEUES INFORMATIONSARCHITEKTUR-PRINZIP
+============================================================
+
+Die neue Seite beantwortet genau diese fünf fachlichen Fragen:
+
+1. Was muss ich jetzt tun?
+2. Was ist aktuell abgestimmt bzw. vorgeschlagen?
+3. Was wurde ursprünglich angefragt?
+4. Gibt es Risiken, Klärungen oder fehlende Bereitschaft?
+5. Was ist bisher passiert?
+
+Technische Informationen werden nicht mehr in den normalen Hauptfluss gemischt.
+
+Die Seite erhält folgende feste Hauptstruktur:
+
+1. Header
+2. Aktuelle Aufgabe
+3. Abstimmung
+4. Leistungsanfrage
+5. Koordination
+6. Verlauf
+7. Weitere fachliche Details
+8. Technische Details & Übertragung
+
+Keine zweite Prozessspalte.
+
+Keine parallele Timeline.
+
+Keine parallele Agreement-/Response-/Proposal-Darstellung.
+
+
+============================================================
+4. ZIELSTRUKTUR DER SEITE
+============================================================
+
+Desktop und Mobile folgen derselben Reihenfolge:
+
+← Leistungsanfragen
+
+[Leistungsname]                         [Businessstatus]
+[Projekt] · [AN]
+[Request-Referenz]
+
+
+AKTUELLE AUFGABE
+
+
+ABSTIMMUNG
+
+
+LEISTUNGSANFRAGE
+
+
+KOORDINATION
+
+
+VERLAUF
+
+
+WEITERE FACHLICHE DETAILS
+
+
+TECHNISCHE DETAILS & ÜBERTRAGUNG
+
+
+Die Seite soll auf Desktop grundsätzlich einspaltig aufgebaut sein.
+
+Empfohlen:
+
+w-full
+max-w-5xl
+mx-auto
+min-w-0
+
+Keine gesamte Seitenaufteilung:
+
+linke Prozessspalte | rechte Detailspalte
+
+mehr verwenden.
+
+
+============================================================
+5. HEADER RADIKAL VEREINFACHEN
+============================================================
+
+Der Header enthält nur fachlich relevante Informationen.
+
+Anzeigen:
+
+← Leistungsanfragen
+
+Leistungsbezeichnung
+
+Projekt
+
+AN
+
+Request-Referenz, falls fachlich hilfreich
+
+genau EINEN Businessstatus
+
+
+Beispiel:
+
+← Leistungsanfragen
+
+Trockenbau EG                         [In Abstimmung]
+Projekt Alpha · Müller Ausbau GmbH
+Leistungsanfrage LA-0042
+
+
+------------------------------------------------------------
+5.1 BUSINESSSTATUS
+------------------------------------------------------------
+
+Keine technischen Backend-Enums direkt anzeigen.
+
+Benutzerfreundliche Statuswerte, z. B.:
+
+Neu
+In Abstimmung
+Vereinbart
+Änderung offen
+Ausführung gefährdet
+Abgeschlossen
+
+Bestehende Status-Mapping-Logik wiederverwenden, falls vorhanden.
+
+
+------------------------------------------------------------
+5.2 NICHT MEHR IM HEADER
+------------------------------------------------------------
+
+Nicht dauerhaft im Header anzeigen:
+
+Message Status
+Outbox Status
+DELIVERED
+READ
+SENT
+Live
+Snapshot-Version
+Correlation ID
+Retry Count
+Dataspace Status
+
+Diese Informationen gehören später zu:
+
+Technische Details & Übertragung.
+
+
+============================================================
+6. AKTUELLE AUFGABE ALS ERSTER FACHLICHER BLOCK
+============================================================
+
+Direkt nach dem Header:
+
+CurrentActionCard
+
+Diese Komponente soll, sofern bereits vorhanden, weiterverwendet bzw. angepasst werden.
+
+Es darf auf der gesamten Seite genau EINEN prominenten Bereich:
+
+„Aktuelle Aufgabe“
+
+geben.
+
+
+------------------------------------------------------------
+6.1 INHALT
+------------------------------------------------------------
+
+Maximal:
+
+- Statuskennzeichnung
+- klare Überschrift
+- kurze Erklärung
+- relevante Frist
+- genau eine primäre Aktion
+
+
+------------------------------------------------------------
+6.2 BEISPIEL: AG MUSS ANTWORT PRÜFEN
+------------------------------------------------------------
+
+AKTION ERFORDERLICH
+
+Antwort des AN prüfen
+
+Der AN hat die Leistungsanfrage beantwortet.
+Bitte prüfen Sie den vorgeschlagenen Zeitraum.
+
+Entscheidung bis: 25.08.2026
+
+[Antwort prüfen]
+
+
+------------------------------------------------------------
+6.3 BUTTON-VERHALTEN
+------------------------------------------------------------
+
+„Antwort prüfen“
+
+scrollt per:
+
+scrollIntoView({ behavior: "smooth" })
+
+zum Abschnitt:
+
+ABSTIMMUNG
+
+Keine zusätzliche Antwort-Prüf-Card erzeugen.
+
+
+------------------------------------------------------------
+6.4 WARTEN AUF AN
+------------------------------------------------------------
+
+WARTEN AUF AN
+
+Die Leistungsanfrage wurde an den AN übermittelt.
+Eine Antwort liegt noch nicht vor.
+
+Antwort erwartet bis:
+25.08.2026
+
+Kein Primary Button.
+
+
+------------------------------------------------------------
+6.5 OFFENER ÄNDERUNGSVORSCHLAG DES AN
+------------------------------------------------------------
+
+AKTION ERFORDERLICH
+
+Terminänderung prüfen
+
+Der AN schlägt eine Änderung der aktuellen Vereinbarung vor.
+
+[Änderung prüfen]
+
+Button scrollt zu ABSTIMMUNG.
+
+
+------------------------------------------------------------
+6.6 EIGENER AG-VORSCHLAG OFFEN
+------------------------------------------------------------
+
+WARTEN AUF AN
+
+Ihr Änderungsvorschlag wurde übermittelt.
+Der AN muss darauf reagieren.
+
+Kein zweiter Proposal-Button.
+
+
+------------------------------------------------------------
+6.7 KEINE AKTION
+------------------------------------------------------------
+
+KEINE AKTION ERFORDERLICH
+
+Die Leistung ist aktuell abgestimmt.
+
+Keine unnötigen Buttons.
+
+
+============================================================
+7. TECHNISCHER ÜBERTRAGUNGSFEHLER ALS AUSNAHME
+============================================================
+
+Normaler Transportstatus wird NICHT oben gezeigt.
+
+Nur wenn ein echter aktueller Übertragungsfehler besteht:
+
+direkt unter CurrentActionCard eine Warnung anzeigen.
+
+Beispiel:
+
+⚠ Übertragung fehlgeschlagen
+
+Die Leistungsanfrage konnte nicht an den AN übermittelt werden.
+
+Letzter Versuch:
+22.08.2026 · 14:31
+
+[Erneut senden]
+[Details anzeigen]
+
+„Details anzeigen“ öffnet bzw. scrollt später zu:
+
+Technische Details & Übertragung.
+
+
+============================================================
+8. NEUER ZENTRALER BEREICH „ABSTIMMUNG“
+============================================================
+
+Dies ist die wichtigste Änderung.
+
+Die heute getrennten fachlichen Bereiche:
+
+CoordinationSummary
+ResponsePanel
+GUDecisionPanel
+ProposalActions
+AlternativeImpactInfo
+Current Agreement
+Open Proposal
+
+dürfen auf der AG-Seite nicht mehr als mehrere konkurrierende Hauptblöcke gerendert werden.
+
+Stattdessen gibt es genau EINEN fachlichen Hauptbereich:
+
+ABSTIMMUNG
+
+
+------------------------------------------------------------
+8.1 KANONISCHE KOMPONENTE
+------------------------------------------------------------
+
+Erstelle oder refaktoriere eine AG-spezifische Komponente, z. B.:
+
+AgCoordinationPanel
+
+oder vorhandene passende Komponente entsprechend.
+
+Sie erhält die bereits vorhandenen Daten:
+
+- Service Request
+- AN Response
+- AG Decision
+- Current Agreement
+- Open Change Proposal
+- Alternatives
+- Change Impact
+- Next Action
+
+Keine neue Businesslogik im Frontend implementieren.
+
+Frontend rendert ausschließlich den vom Backend gelieferten Zustand.
+
+
+============================================================
+9. ABSTIMMUNG – ZUSTAND: AN HAT NOCH NICHT GEANTWORTET
+============================================================
+
+Darstellung:
+
+ABSTIMMUNG
+
+Angefragter Zeitraum
+10.–14.09.2026
+
+Status
+Antwort des AN steht noch aus.
+
+Antwort erwartet bis
+25.08.2026
+
+Keine leere Response-Card.
+
+Keine leere Agreement-Card.
+
+Keine Proposal-Aktionen.
+
+
+============================================================
+10. ABSTIMMUNG – ZUSTAND: AN-ANTWORT LIEGT VOR
+============================================================
+
+Wenn der AG entscheiden muss:
+
+ABSTIMMUNG
+
+Angefragt                    Antwort des AN
+
+10.–14.09.2026                16.–20.09.2026
+                              +6 Tage
+
+Antwort
+Alternative vorgeschlagen
+
+Grund
+Ressourcenkonflikt
+
+Kommentar
+„Unsere Kolonne steht erst ab dem 16.09. zur Verfügung.“
+
+Auswirkungen
+⚠ 2 nachgelagerte Leistungen möglicherweise betroffen
+
+
+[Alternative bestätigen]
+[Überarbeitung anfordern]
+[ggf. vorhandene weitere fachlich zulässige Entscheidung]
+
+
+------------------------------------------------------------
+10.1 NUR TATSÄCHLICH VORHANDENE AKTIONEN
+------------------------------------------------------------
+
+Keine neue Fachaktion erfinden.
+
+Bestehenden AG-Decision-Workflow verwenden.
+
+Wenn der aktuelle Workflow z. B. nur:
+
+Accept
+Reject
+Alternative auswählen
+
+kennt, genau diese vorhandenen Aktionen verwenden.
+
+UI-Texte deutsch und verständlich.
+
+
+============================================================
+11. MEHRERE ALTERNATIVEN ALS CARDS
+============================================================
+
+Keine breite Tabelle als primäre Darstellung.
+
+Stattdessen pro Alternative eine kompakte Card.
+
+Beispiel:
+
+○ Alternative 1
+
+16.–20.09.2026
+
+Verschiebung
++6 Tage
+
+Ressourcen
+6 Personen
+
+Bedingungen
+Keine
+
+
+○ Alternative 2
+
+18.–22.09.2026
+
+Verschiebung
++8 Tage
+
+Ressourcen
+5 Personen
+
+Bedingung
+Materialbereitstellung vorgezogen
+
+
+AG kann eine Alternative auswählen, soweit der bestehende Workflow dies vorsieht.
+
+Desktop:
+
+maximal zwei Cards nebeneinander.
+
+Mobile:
+
+immer untereinander.
+
+Keine horizontale Scrollbar.
+
+
+============================================================
+12. CHANGE IMPACT DIREKT IN ABSTIMMUNG
+============================================================
+
+Wenn Change Impact vorhanden:
+
+direkt im Abstimmungsbereich anzeigen.
+
+Kompakt:
+
+⚠ 2 nachgelagerte Leistungen könnten betroffen sein
+
+[Auswirkungen anzeigen]
+
+
+Beim Aufklappen:
+
+Leistung
+aktueller Start
+frühester Start
+Verschiebung
+
+Keine automatische Folgeverschiebung.
+
+Nur Information.
+
+
+============================================================
+13. ZUSTAND: VEREINBARUNG BESTEHT
+============================================================
+
+Wenn kein Proposal offen ist:
+
+ABSTIMMUNG
+
+Aktuelle Vereinbarung
+
+10.–14.09.2026
+
+✓ Vereinbart am 22.08.2026
+
+
+[Terminänderung vorschlagen]
+
+
+„Terminänderung vorschlagen“ darf auf der gesamten Seite maximal einmal erscheinen.
+
+
+------------------------------------------------------------
+13.1 DETAILS
+------------------------------------------------------------
+
+Darunter:
+
+▾ Details zur Vereinbarung
+
+Aufgeklappt:
+
+Ursprüngliche Anfrage
+10.–14.09.2026
+
+Antwort des AN
+10.–14.09.2026
+
+Entscheidung des AG
+Bestätigt
+
+Vereinbart am
+22.08.2026 · 11:14
+
+Version
+3
+
+Nur reale Daten anzeigen.
+
+
+============================================================
+14. ZUSTAND: AN HAT SPÄTEREN CHANGE PROPOSAL GESTELLT
+============================================================
+
+Darstellung:
+
+ABSTIMMUNG
+
+Aktuelle Vereinbarung         Vorschlag des AN
+
+10.–14.09.2026                16.–20.09.2026
+                              +6 Tage
+
+Grund
+Ressourcenkonflikt
+
+Kommentar
+...
+
+Auswirkungen
+⚠ 2 nachgelagerte Leistungen möglicherweise betroffen
+
+
+[Annehmen]
+[Ablehnen]
+[Gegenvorschlag]
+
+
+Diese drei Aktionen erscheinen exakt einmal.
+
+
+------------------------------------------------------------
+14.1 WICHTIG
+------------------------------------------------------------
+
+Solange ein fremder Change Proposal offen ist:
+
+KEIN zusätzlicher Button:
+
+„Terminänderung vorschlagen“
+
+anzeigen.
+
+
+============================================================
+15. ZUSTAND: AG HAT SELBST CHANGE PROPOSAL GESTELLT
+============================================================
+
+ABSTIMMUNG
+
+Aktuelle Vereinbarung         Ihr Vorschlag
+
+10.–14.09.2026                16.–20.09.2026
+
+                              Warten auf AN
+
+Grund
+...
+
+Kommentar
+...
+
+
+Keine:
+
+Annehmen
+Ablehnen
+Gegenvorschlag
+
+für den eigenen Proposal.
+
+Kein zweiter:
+
+Terminänderung vorschlagen
+
+Button.
+
+
+============================================================
+16. DETAILS ZUR ABSTIMMUNG
+============================================================
+
+Jeder Abstimmungszustand kann zusätzliche Details besitzen.
+
+Am Ende des Bereichs:
+
+▾ Details zur Abstimmung
+
+
+Aufgeklappt alle vorhandenen fachlichen Informationen anzeigen.
+
+
+------------------------------------------------------------
+16.1 MÖGLICHE DETAILFELDER
+------------------------------------------------------------
+
+Nur wenn vorhanden:
+
+Ursprünglicher angefragter Zeitraum
+
+AN Response Type
+
+Antwortzeitpunkt
+
+AN-Kommentar
+
+vorgeschlagener Zeitraum
+
+Startverschiebung
+
+Endverschiebung
+
+Daueränderung
+
+Alternativen
+
+Bedingungen
+
+Entscheidungsfrist
+
+AG Decision
+
+Entscheidungszeitpunkt
+
+Current Agreement
+
+vorherige Vereinbarung
+
+Change Proposal Reason
+
+Change Proposal Comment
+
+Proposal Created At
+
+Proposal Resolved At
+
+Change Impact
+
+
+------------------------------------------------------------
+16.2 KEINE INTERNEN USER-IDs
+------------------------------------------------------------
+
+Nicht anzeigen:
+
+proposerUserId
+resolvedByUserId
+interne AN-User-IDs
+
+Rollenbezogen anzeigen:
+
+AG
+AN
+
+
+============================================================
+17. NEUER BEREICH „LEISTUNGSANFRAGE“
+============================================================
+
+Die ursprüngliche fachliche Anfrage muss wieder klar sichtbar sein.
+
+Nicht nur über SnapshotPreview darstellen.
+
+Neue Card:
+
+LEISTUNGSANFRAGE
+
+
+============================================================
+18. LEISTUNGSANFRAGE – KOMPAKTE STANDARDANSICHT
+============================================================
+
+Standardmäßig anzeigen:
+
+Zeitraum
+Gewerk
+Bereich / Ort
+Antwortfrist
+kurze Beschreibung
+
+Beispiel:
+
+LEISTUNGSANFRAGE
+
+Zeitraum
+10.–14.09.2026
+
+Gewerk
+Trockenbau
+
+Bereich
+EG · Achse A–D
+
+Antwort bis
+22.08.2026
+
+Beschreibung
+Herstellung der Trockenbauwände gemäß Ausführungsplanung ...
+
+
+▾ Alle Details der Leistungsanfrage
+
+
+============================================================
+19. ALLE ANFRAGEDETAILS AUFKLAPPBAR
+============================================================
+
+Unter:
+
+▾ Alle Details der Leistungsanfrage
+
+alle tatsächlich vorhandenen fachlichen Informationen anzeigen.
+
+
+------------------------------------------------------------
+19.1 ALLGEMEIN
+------------------------------------------------------------
+
+Falls vorhanden:
+
+Leistungsbezeichnung
+
+Projekt
+
+AN
+
+Gewerk
+
+Arbeitspaket
+
+Standort
+
+Bereich
+
+Priorität
+
+fachliche Referenz
+
+Erstellungsdatum
+
+fachlich relevante letzte Änderung
+
+Version
+
+
+------------------------------------------------------------
+19.2 TERMININFORMATIONEN
+------------------------------------------------------------
+
+Falls vorhanden:
+
+angefragter Start
+
+angefragtes Ende
+
+Antwortfrist
+
+aktueller vereinbarter Zeitraum
+
+fachlich relevante Fristen
+
+
+------------------------------------------------------------
+19.3 BESCHREIBUNG
+------------------------------------------------------------
+
+Beschreibung
+
+Leistungsumfang
+
+Randbedingungen
+
+Hinweise
+
+Referenzen
+
+
+------------------------------------------------------------
+19.4 DOKUMENTE
+------------------------------------------------------------
+
+Wenn Dokument-/Referenzinformationen vorhanden:
+
+Dokumentname
+Referenz
+Version
+
+Keine neuen Upload-Funktionen implementieren.
+
+
+============================================================
+20. RESSOURCENANFORDERUNGEN DER ANFRAGE
+============================================================
+
+Unter der Leistungsanfrage eigener aufklappbarer Unterbereich:
+
+▾ Ressourcenanforderungen
+
+
+Pro Requirement anzeigen:
+
+Ressourcentyp
+
+Bedarf
+
+Einheit
+
+Auslastung
+
+Zeitraum
+
+Qualifikation
+
+Hinweis
+
+
+Beispiel:
+
+Facharbeiter Trockenbau
+
+6 Personen
+50 %
+10.–14.09.2026
+
+Qualifikation
+Trockenbau
+
+
+Materiallift
+
+1 Einheit
+100 %
+10.–14.09.2026
+
+
+------------------------------------------------------------
+20.1 DATA SOVEREIGNTY
+------------------------------------------------------------
+
+Der AG darf NICHT sehen:
+
+konkrete AN-Mitarbeiter
+
+konkrete Maschinen, wenn intern geschützt
+
+interne Resource IDs
+
+andere AN-Projekte
+
+lokale ResourceBookings
+
+interne Gesamtkapazität des AN
+
+interne Availability-Berechnungsdetails
+
+Nur die für den AG bestimmten Resource Requirements.
+
+
+============================================================
+21. KOORDINATION ALS KOMPAKTE ÜBERSICHT
+============================================================
+
+Der bisherige große ServiceCoordinationTools-Bereich soll nicht mehr vollständig aufgeklappt im normalen Hauptfluss stehen.
+
+Stattdessen:
+
+KOORDINATION
+
+⚠ 1 Risiko      ? 2 Klärungen      ✓ 4/5 bereit
+
+
+Darunter gezielte aufklappbare Bereiche:
+
+▾ Risiken und Hindernisse
+
+▾ Klärungen
+
+▾ Ausführungsbereitschaft
+
+
+============================================================
+22. RISIKEN UND HINDERNISSE
+============================================================
+
+Standardmäßig zunächst nur Anzahl/Status.
+
+Beim Öffnen alle vorhandenen Constraints anzeigen.
+
+Offene zuerst.
+
+Pro Constraint:
+
+Typ
+
+Beschreibung
+
+gemeldet von:
+AG / AN
+
+verantwortlich:
+AG / AN
+
+Status
+
+gemeldet am
+
+ggf. gelöst am
+
+
+------------------------------------------------------------
+22.1 AKTIONEN
+------------------------------------------------------------
+
+Nur vorhandene erlaubte Backend-Aktionen anzeigen.
+
+Beispiel:
+
+[Als gelöst markieren]
+
+nur wenn AG tatsächlich responsibleOrg ist.
+
+[Stornieren]
+
+nur wenn AG Reporter ist.
+
+Keine eigene Rechteberechnung erfinden, wenn Backend entsprechende Rechte/Status liefert.
+
+
+============================================================
+23. KLÄRUNGEN
+============================================================
+
+Beim Öffnen:
+
+Offene Klärungen zuerst.
+
+Pro Klärung:
+
+Kategorie
+
+Frage
+
+gestellt von:
+AG / AN
+
+gestellt am
+
+Antwort, falls vorhanden
+
+beantwortet am
+
+Status
+
+
+Bestehende Aktionen:
+
+Antworten
+Stornieren
+Klärungsfrage stellen
+
+nur entsprechend bestehendem Workflow und Rolle anzeigen.
+
+
+============================================================
+24. AUSFÜHRUNGSBEREITSCHAFT
+============================================================
+
+Beim Öffnen immer alle fünf Kriterien darstellen:
+
+Termin bestätigt
+
+Arbeitsbereich bereit
+
+Informationen vollständig
+
+AG bereit
+
+AN bereit
+
+
+Beispiel:
+
+✓ Termin bestätigt
+✓ Arbeitsbereich bereit
+✓ Informationen vollständig
+✓ AG bereit
+○ AN bereit
+
+
+Zusammenfassung:
+
+4 von 5 Kriterien erfüllt
+
+⚠ Noch nicht vollständig bereit
+
+
+AG darf nur die im Backend erlaubten AG-Felder ändern.
+
+AN-Bereitschaft auf AG-Seite read-only.
+
+
+============================================================
+25. NUR NOCH EIN FACHLICHER VERLAUF
+============================================================
+
+Es darf auf der AG-Detailseite nach Abschluss nur noch EINE fachliche Timeline geben.
+
+Bereich:
+
+VERLAUF
+
+
+============================================================
+26. STANDARDANSICHT VERLAUF
+============================================================
+
+Zunächst nur die letzten 3 bis maximal 5 Business Events anzeigen.
+
+Beispiel:
+
+22.08. · AN
+Änderungsvorschlag übermittelt
+
+20.08. · AN
+Anfrage beantwortet
+
+18.08. · AG
+Leistungsanfrage gesendet
+
+
+[Gesamten Verlauf anzeigen]
+
+
+============================================================
+27. GESAMTER VERLAUF
+============================================================
+
+Beim Öffnen vollständige zentrale Business Timeline anzeigen.
+
+Beispiele:
+
+Leistungsanfrage erstellt
+
+Leistungsanfrage gesendet
+
+AN hat geantwortet
+
+AG hat Vereinbarung bestätigt
+
+Change Proposal erstellt
+
+Change Proposal angenommen
+
+Change Proposal abgelehnt
+
+Risiko gemeldet
+
+Risiko gelöst
+
+Klärung gestellt
+
+Klärung beantwortet
+
+Bereitschaft geändert
+
+
+Keine Roh-Enums anzeigen.
+
+Deutsche fachliche Texte verwenden.
+
+
+============================================================
+28. KEINE PARALLELE FRONTEND-EVENTREKONSTRUKTION
+============================================================
+
+Die neue Seite muss ausschließlich die zentrale vom Backend bereitgestellte:
+
+coordinationTimeline
+
+bzw. entsprechende aktuelle zentrale Business-Timeline verwenden.
+
+Keine zweite Timeline in React aus:
+
+request.status
+response
+proposal
+decision
+
+rekonstruieren.
+
+
+============================================================
+29. BESTEHENDE HISTORY-KOMPONENTEN BEREINIGEN
+============================================================
+
+Prüfe insbesondere:
+
+CoordinationSummary
+Timeline
+CoordinationHistory
+
+und vergleichbare Komponenten.
+
+Wenn eine davon bisher eigene historische Business Events darstellt:
+
+nicht mehr parallel auf der neuen AG-Seite rendern.
+
+Es darf nur eine Business Timeline sichtbar sein.
+
+
+------------------------------------------------------------
+29.1 SHARED COMPONENTS
+------------------------------------------------------------
+
+Wenn alte Komponenten noch von AN oder anderen Seiten benötigt werden:
+
+Datei nicht global löschen.
+
+Aber:
+
+AG-Detailseite darf sie nicht mehr rendern.
+
+Wenn Komponente ausschließlich für alte AG-Ansicht existiert und sonst ungenutzt:
+→ löschen.
+
+
+============================================================
+30. FRÜHERE REQUEST-REVISIONEN NICHT MIT TIMELINE VERMISCHEN
+============================================================
+
+Falls Vorgänger-/Revision-Beziehungen existieren, z. B.:
+
+supersedesRequestId
+
+diese separat darstellen.
+
+Unter Verlauf:
+
+▾ Frühere Anfrageversionen
+
+
+Beispiel:
+
+LA-0038 · Version 1 · ersetzt
+
+LA-0040 · Version 2 · ersetzt
+
+LA-0042 · aktuelle Version
+
+
+Diese Liste ist keine zweite Timeline.
+
+
+============================================================
+31. FRISTEN NICHT MEHR ALS GROSSE SEPARATE HAUPTCARD
+============================================================
+
+Die aktuell handlungsrelevante Frist gehört in:
+
+CurrentActionCard.
+
+Beispiele:
+
+Antwort erwartet bis 25.08.
+
+Entscheidung heute
+
+Überfällig seit 2 Tagen
+
+
+============================================================
+32. WEITERE FRISTDETAILS AUFKLAPPBAR
+============================================================
+
+Bereich:
+
+▾ Fristen und Erinnerungen
+
+
+Nur wenn entsprechende Informationen existieren:
+
+Antwortfrist
+
+Entscheidungsfrist
+
+Ablaufzeitpunkt
+
+letzte Erinnerung
+
+Anzahl Erinnerungen
+
+letzter Reminder
+
+
+Die heutige große DeadlineCard im Hauptfluss nicht zusätzlich rendern.
+
+
+============================================================
+33. SNAPSHOT AUS HAUPTFLUSS ENTFERNEN
+============================================================
+
+SnapshotPreview darf nicht mehr als normale große Hauptcard zwischen Anfrage und Antwort erscheinen.
+
+Snapshotinformationen bleiben erhalten unter:
+
+TECHNISCHE DETAILS & ÜBERTRAGUNG
+
+→ Snapshot
+
+
+============================================================
+34. NOTIFICATION AUS HAUPTFLUSS ENTFERNEN
+============================================================
+
+NotificationPreview nicht mehr als eigene Hauptcard rendern.
+
+Informationen unter:
+
+TECHNISCHE DETAILS & ÜBERTRAGUNG
+
+→ Nachricht / Benachrichtigung
+
+
+============================================================
+35. TECHNISCHE DETAILS & ÜBERTRAGUNG
+============================================================
+
+Ganz am Ende der Seite ein standardmäßig geschlossenes Accordion:
+
+▸ Technische Details & Übertragung
+
+
+Dieser Bereich muss weiterhin alle bisher angezeigten technischen Informationen zugänglich machen.
+
+
+============================================================
+36. TECHNISCHE DETAILS – IDENTIFIKATION
+============================================================
+
+Falls vorhanden:
+
+Service Request ID
+
+Leistung ID
+
+Projekt ID
+
+Version
+
+Organisation IDs
+
+fachlich relevante externe Referenz
+
+
+Technische UUIDs mit:
+
+break-all
+
+darstellen.
+
+
+============================================================
+37. TECHNISCHE DETAILS – SNAPSHOT
+============================================================
+
+Unterbereich:
+
+Snapshot
+
+anzeigen:
+
+Snapshot ID
+
+Snapshot-Version
+
+Schema-Version
+
+Created At
+
+Payload / Daten
+
+
+Falls vollständiges JSON vorhanden:
+
+[JSON anzeigen]
+
+oder vorhandene geeignete Darstellung weiterverwenden.
+
+Standardmäßig geschlossen.
+
+
+============================================================
+38. TECHNISCHE DETAILS – NACHRICHT
+============================================================
+
+Unterbereich:
+
+Nachricht / Benachrichtigung
+
+anzeigen, falls vorhanden:
+
+Subject
+
+Message
+
+Project Reference
+
+Service Reference
+
+Details Reference
+
+Message ID
+
+Correlation ID
+
+Sender
+
+Receiver
+
+Created At
+
+
+============================================================
+39. TECHNISCHE DETAILS – ÜBERTRAGUNG
+============================================================
+
+Unterbereich:
+
+Übertragung
+
+anzeigen:
+
+Status
+
+versendet am
+
+zugestellt am
+
+gelesen am
+
+Versuche / Retry Count
+
+letzter Versuch
+
+letzter Fehler
+
+
+Bestehende Aktion:
+
+[Erneut senden]
+
+nur wenn fachlich/technisch erlaubt.
+
+
+============================================================
+40. TECHNISCHE DETAILS – DATASPACE / AUDIT
+============================================================
+
+Nur soweit bereits vorhanden und für AG sichtbar:
+
+Exchange ID
+
+Purpose
+
+Transport
+
+Schema Version
+
+Auditstatus
+
+Created At
+
+
+Keine neuen Dataspace-Funktionen implementieren.
+
+
+============================================================
+41. DREI INFORMATIONSEBENEN KONSEQUENT UMSETZEN
+============================================================
+
+EBENE 1 – SOFORT SICHTBAR
+
+Nur:
+
+Header
+
+Aktuelle Aufgabe
+
+aktueller Abstimmungsstand
+
+Kerninformationen der Leistungsanfrage
+
+Koordinationszusammenfassung
+
+letzte Timeline-Ereignisse
+
+
+EBENE 2 – FACHLICHE DETAILS
+
+Über Accordions:
+
+Details zur Abstimmung
+
+Alle Details der Leistungsanfrage
+
+Ressourcenanforderungen
+
+Risiken
+
+Klärungen
+
+Ausführungsbereitschaft
+
+vollständiger Verlauf
+
+frühere Anfrageversionen
+
+Fristen und Erinnerungen
+
+
+EBENE 3 – TECHNISCHE DETAILS
+
+Technische IDs
+
+Snapshot
+
+Notification
+
+Message
+
+Transport
+
+Dataspace / Audit
+
+
+============================================================
+42. KEIN EINZIGES RIESIGES „DETAILS“-ACCORDION
+============================================================
+
+Nicht alles unter:
+
+„Weitere Details“
+
+zusammenwerfen.
+
+Verwende getrennte fachliche Gruppen:
+
+ABSTIMMUNG
+  ▾ Details zur Abstimmung
+
+LEISTUNGSANFRAGE
+  ▾ Alle Details der Leistungsanfrage
+  ▾ Ressourcenanforderungen
+
+KOORDINATION
+  ▾ Risiken und Hindernisse
+  ▾ Klärungen
+  ▾ Ausführungsbereitschaft
+
+VERLAUF
+  ▾ Gesamten Verlauf
+  ▾ Frühere Anfrageversionen
+
+WEITERE FACHLICHE DETAILS
+  ▾ Fristen und Erinnerungen
+
+TECHNISCHE DETAILS & ÜBERTRAGUNG
+  ▾ Identifikation
+  ▾ Snapshot
+  ▾ Nachricht
+  ▾ Übertragung
+  ▾ Dataspace / Audit
+
+
+============================================================
+43. RESPONSIVE LAYOUT
+============================================================
+
+Breakpoints des bestehenden Tailwind-Setups verwenden.
+
+Keine neue Breakpoint-Logik.
+
+
+------------------------------------------------------------
+43.1 UNTER 768 PX
+------------------------------------------------------------
+
+Alles einspaltig.
+
+Reihenfolge:
+
+Header
+Aktuelle Aufgabe
+Abstimmung
+Leistungsanfrage
+Koordination
+Verlauf
+Weitere Details
+Technische Details
+
+
+------------------------------------------------------------
+43.2 KEINE HORIZONTALE SEITEN-SCROLLBAR
+------------------------------------------------------------
+
+Bei 390 px Browserbreite:
+
+keine horizontale Gesamtseiten-Scrollbar.
+
+Nicht durch:
+
+overflow-hidden
+
+kaschieren.
+
+Ursachen korrigieren:
+
+min-width
+fixed widths
+non-wrapping flex
+zu breite Tabellen
+lange UUIDs
+
+
+------------------------------------------------------------
+43.3 ALTERNATIVEN
+------------------------------------------------------------
+
+Keine breite Tabelle unter 768 px.
+
+Cards untereinander.
+
+
+------------------------------------------------------------
+43.4 BUTTONS
+------------------------------------------------------------
+
+Unter 640 px:
+
+mehrere Workflow-Buttons vorzugsweise:
+
+w-full
+
+untereinander.
+
+Beispiel:
+
+[Annehmen]
+[Ablehnen]
+[Gegenvorschlag]
+
+
+------------------------------------------------------------
+43.5 ACCORDIONS
+------------------------------------------------------------
+
+Accordion Header mindestens ungefähr 44 px Touch Target.
+
+Gesamter Header klickbar.
+
+
+============================================================
+44. SCROLLBAR-REGEL
+============================================================
+
+Normale Detailseite:
+
+nur Browser-Vertikalscrollbar.
+
+Keine nested:
+
+max-h-* overflow-y-auto
+
+in normalen Cards.
+
+Technische JSON-Anzeige darf bei sehr langen strukturierten Daten lokal horizontal scrollen.
+
+Ansonsten keine lokale horizontale Scrollbar.
+
+
+============================================================
+45. ACTION-DOPPLUNGEN VERHINDERN
+============================================================
+
+Auf der neuen Seite darf eine fachliche Aktion nur einmal erscheinen.
+
+Insbesondere:
+
+„Terminänderung vorschlagen“
+→ maximal einmal
+
+„Annehmen“
+→ maximal einmal
+
+„Ablehnen“
+→ maximal einmal
+
+„Gegenvorschlag“
+→ maximal einmal
+
+„Antwort prüfen“
+→ eine primäre Navigation/Aktion
+
+„Erneut senden“
+→ nur im tatsächlichen Fehlerkontext
+
+
+============================================================
+46. RESPONSE / AGREEMENT / PROPOSAL NICHT PARALLEL RENDERN
+============================================================
+
+Nicht mehr gleichzeitig als Hauptcards:
+
+ResponsePanel
+CurrentAgreementCard
+ProposalActions
+GUDecisionPanel
+CoordinationSummary
+
+untereinander darstellen.
+
+Diese Informationen werden im neuen:
+
+ABSTIMMUNG
+
+zusammengeführt.
+
+Bestehende interne Komponenten dürfen teilweise wiederverwendet werden, aber der Benutzer sieht nur EINEN Abstimmungsbereich.
+
+
+============================================================
+47. KEINE FRONTEND-BUSINESSLOGIK DUPLIZIEREN
+============================================================
+
+Das Frontend soll nicht selbst neu entscheiden:
+
+wer als Nächstes handeln muss.
+
+Verwende bestehende zentrale Backendfelder:
+
+nextActionOwner
+nextAction
+currentAgreement
+openChangeProposal
+response
+decision
+
+bzw. die aktuelle zentrale Coordination API.
+
+Keine zweite Workflow Engine im React-Code.
+
+
+============================================================
+48. LOADING
+============================================================
+
+Bestehende Skeleton-Komponenten verwenden.
+
+Page Skeleton ungefähr in Reihenfolge:
+
+Header
+Current Action
+Abstimmung
+Anfrage
+
+
+============================================================
+49. REQUEST NICHT GEFUNDEN
+============================================================
+
+Klare Seite:
+
+Leistungsanfrage nicht gefunden.
+
+[Zurück zu Leistungsanfragen]
+
+
+Keine leere Detailseite.
+
+
+============================================================
+50. EMPTY STATES
+============================================================
+
+Keine leeren Cards.
+
+Beispiele:
+
+Keine Antwort:
+
+„Der AN hat die Leistungsanfrage noch nicht beantwortet.“
+
+Keine Risiken:
+
+„Keine offenen Risiken.“
+
+Keine Klärungen:
+
+„Keine offenen Klärungen.“
+
+Kein Proposal:
+
+keine Proposal-Untercard anzeigen.
+
+Kein technischer Datensatz:
+
+entsprechenden technischen Unterbereich ausblenden.
+
+
+============================================================
+51. MUTATIONEN
+============================================================
+
+Bei:
+
+Accept
+Reject
+Counter
+AG Decision
+Constraint
+Clarification
+Readiness
+Resend
+
+Buttons während Mutation deaktivieren.
+
+Keine Doppelklick-Mutation.
+
+
+------------------------------------------------------------
+51.1 NACH ERFOLGREICHER MUTATION
+------------------------------------------------------------
+
+Relevante Queries invalidieren/refetchen:
+
+Detail
+
+Coordination
+
+Tasks
+
+Board
+
+Leistungsanfragenliste
+
+soweit betroffen.
+
+Die neue Seite bleibt geöffnet.
+
+Danach müssen insbesondere:
+
+CurrentActionCard
+Abstimmung
+Koordination
+Timeline
+
+den neuen Serverzustand anzeigen.
+
+
+============================================================
+52. KEINE NEUEN DETAIL-UNTERSEITEN
+============================================================
+
+Nicht neu anlegen:
+
+/request/:id/response
+/request/:id/history
+/request/:id/snapshot
+/request/:id/readiness
+/request/:id/technical
+
+Alles bleibt auf derselben kanonischen Detailseite.
+
+Progressive Disclosure per Accordion.
+
+
+============================================================
+53. DATENSOUVERÄNITÄT
+============================================================
+
+Beim Umbau keine zusätzlichen AN-internen Daten verfügbar machen.
+
+AG darf insbesondere nicht sehen:
+
+konkrete interne AN-Personalressourcen
+
+interne Maschinenbezeichnungen, sofern nicht geteilt
+
+andere AN-Projekte
+
+lokale ResourceBookings
+
+interne Gesamtkapazität
+
+dailyAvailability intern
+
+interne Konfliktberechnungen
+
+interne User IDs
+
+
+Die neue UI darf nur bereits AG-zulässige Daten zeigen.
+
+
+============================================================
+54. KOMPONENTENSTRUKTUR
+============================================================
+
+Bevor neue Komponenten angelegt werden:
+
+bestehende Komponenten prüfen und wiederverwenden, soweit sinnvoll.
+
+Empfohlene logische Struktur:
+
+AgRequestHeader
+
+CurrentActionCard
+
+AgCoordinationPanel
+
+ServiceRequestDetailsCard
+
+CoordinationOverview
+
+BusinessTimeline
+
+AdditionalBusinessDetails
+
+TechnicalDetailsAccordion
+
+
+Die Namen sind Empfehlungen, keine Pflicht.
+
+Wichtig ist die klare Verantwortlichkeit.
+
+
+------------------------------------------------------------
+54.1 AgRequestHeader
+------------------------------------------------------------
+
+Nur:
+
+Back Link
+Leistung
+Projekt
+AN
+Request-Referenz
+Businessstatus
+
+
+------------------------------------------------------------
+54.2 CurrentActionCard
+------------------------------------------------------------
+
+Nur aktuelle Hauptaktion.
+
+
+------------------------------------------------------------
+54.3 AgCoordinationPanel
+------------------------------------------------------------
+
+Enthält:
+
+Request-Zeitraum
+
+AN Response
+
+Alternativen
+
+AG Decision
+
+Agreement
+
+Open Change Proposal
+
+Change Impact
+
+Details zur Abstimmung
+
+
+------------------------------------------------------------
+54.4 ServiceRequestDetailsCard
+------------------------------------------------------------
+
+Enthält:
+
+fachliche Originalanfrage
+
+vollständige Anfragedetails
+
+Resource Requirements
+
+
+------------------------------------------------------------
+54.5 CoordinationOverview
+------------------------------------------------------------
+
+Enthält:
+
+Risiken
+Klärungen
+Readiness
+
+
+------------------------------------------------------------
+54.6 BusinessTimeline
+------------------------------------------------------------
+
+Einzige fachliche Timeline.
+
+
+------------------------------------------------------------
+54.7 TechnicalDetailsAccordion
+------------------------------------------------------------
+
+Enthält:
+
+IDs
+Snapshot
+Notification
+Transport
+Dataspace
+
+
+============================================================
+55. BESTEHENDE KOMPONENTEN NICHT BLIND LÖSCHEN
+============================================================
+
+Komponenten wie:
+
+CoordinationSummary
+ResponsePanel
+GUDecisionPanel
+ProposalActions
+ServiceCoordinationTools
+CoordinationHistory
+SnapshotPreview
+NotificationPreview
+DeadlineCard
+
+zunächst global auf andere Verwendung prüfen.
+
+Wenn noch auf AN oder anderen Seiten benötigt:
+→ Komponente erhalten.
+
+Aber:
+→ auf der neuen AG-Detailseite nicht mehr als alte parallele Hauptansicht rendern.
+
+Wenn ausschließlich von der alten AG-Seite verwendet und nach Refactoring ungenutzt:
+→ löschen.
+
+
+============================================================
+56. VERBINDLICHE DESKTOP-ZIELANSICHT
+============================================================
+
+Bei 1440 × 900 soll unmittelbar sichtbar sein:
+
+Header
+
+CurrentActionCard
+
+wesentlicher Teil der Abstimmung
+
+Beginn der Leistungsanfrage
+
+Der Nutzer soll NICHT zuerst durch:
+
+Snapshot
+Notification
+technische Timeline
+Transportstatus
+
+scrollen müssen, bevor er die Antwort des AN sieht.
+
+
+============================================================
+57. VERBINDLICHE MOBILE-ZIELANSICHT
+============================================================
+
+Bei 390 × 844:
+
+keine horizontale Browser-Scrollbar.
+
+Direkt sichtbar:
+
+Header
+Aktuelle Aufgabe
+Beginn Abstimmung
+
+Alle Accordions bedienbar.
+
+Alle Workflow-Buttons erreichbar.
+
+Keine abgeschnittenen Dialoge.
+
+Keine breite Alternativen-Tabelle.
+
+
+============================================================
+58. RENDER-TESTS FÜR DIE WICHTIGSTEN ZUSTÄNDE
+============================================================
+
+Gezielte UI-/Component-Tests ergänzen.
+
+
+------------------------------------------------------------
+TEST A – WARTEN AUF AN
+------------------------------------------------------------
+
+Request gesendet.
+
+Keine AN Response.
+
+Erwartung:
+
+Current Action:
+„Warten auf AN“
+
+Abstimmung:
+angefragter Zeitraum sichtbar
+
+Text:
+Antwort steht noch aus
+
+Keine:
+Accept
+Reject
+Counter
+Terminänderung vorschlagen
+
+Keine leere Response-Card.
+
+
+------------------------------------------------------------
+TEST B – AN RESPONSE WARTET AUF AG
+------------------------------------------------------------
+
+AN Response vorhanden.
+
+AG Decision fehlt.
+
+Erwartung:
+
+Current Action:
+„Antwort des AN prüfen“
+
+Abstimmung enthält:
+Anfrage
+AN Antwort
+Kommentar
+Alternativen, soweit vorhanden
+
+genau ein zulässiger Decision-Aktionsbereich.
+
+
+------------------------------------------------------------
+TEST C – VEREINBARUNG BESTEHT
+------------------------------------------------------------
+
+Agreement vorhanden.
+
+Kein offener Proposal.
+
+Erwartung:
+
+Abstimmung zeigt:
+Aktuelle Vereinbarung
+
+„Terminänderung vorschlagen“
+genau einmal.
+
+
+------------------------------------------------------------
+TEST D – AN CHANGE PROPOSAL OFFEN
+------------------------------------------------------------
+
+Agreement vorhanden.
+
+AN Proposal OPEN.
+
+Erwartung:
+
+Current Action:
+„Terminänderung prüfen“
+
+Abstimmung:
+
+Current Agreement
+Proposal
+Delta
+Grund
+Kommentar
+
+genau:
+
+1 × Annehmen
+1 × Ablehnen
+1 × Gegenvorschlag
+
+0 × Terminänderung vorschlagen
+
+
+------------------------------------------------------------
+TEST E – AG EIGENER PROPOSAL OFFEN
+------------------------------------------------------------
+
+Erwartung:
+
+Current Action:
+„Warten auf AN“
+
+Abstimmung zeigt:
+Current Agreement
+Ihr Vorschlag
+
+Keine:
+Annehmen
+Ablehnen
+Gegenvorschlag
+neuer Proposal-Button
+
+
+------------------------------------------------------------
+TEST F – TECHNISCHE DETAILS
+------------------------------------------------------------
+
+Normalzustand:
+
+Snapshot nicht als Hauptcard sichtbar.
+
+Notification nicht als Hauptcard sichtbar.
+
+Message Details nicht als Hauptcard sichtbar.
+
+Accordion:
+„Technische Details & Übertragung“
+vorhanden.
+
+Nach Öffnen:
+
+bisher vorhandene technische Informationen erreichbar.
+
+
+------------------------------------------------------------
+TEST G – VERLAUF
+------------------------------------------------------------
+
+Genau eine sichtbare Business Timeline.
+
+Keine zweite:
+CoordinationHistory
+Process Timeline
+CoordinationSummary History
+
+parallel.
+
+
+------------------------------------------------------------
+TEST H – ALTE ROUTE
+------------------------------------------------------------
+
+Alte AG-Detail-URL aufrufen.
+
+Erwartung:
+
+entweder:
+Redirect auf neue kanonische Detailseite
+
+oder:
+Route existiert nicht mehr.
+
+Unter keinen Umständen:
+alte Detailansicht wird gerendert.
+
+
+============================================================
+59. INFORMATION-PRESERVATION-TEST
+============================================================
+
+Vor dem Entfernen alter Hauptkomponenten eine Liste aller bisher sichtbaren Datenfelder erstellen.
+
+Für jedes Feld feststellen:
+
+A) bleibt direkt sichtbar
+B) wandert in fachliches Accordion
+C) wandert in technische Details
+D) darf aufgrund Rollen-/Datensouveränität nicht dargestellt werden
+
+Nach dem Umbau sicherstellen:
+
+Kein bisher legitim sichtbares relevantes Feld ist versehentlich vollständig verschwunden.
+
+
+============================================================
+60. KEINE VERSTECKTE FUNKTIONSREDUKTION
+============================================================
+
+Insbesondere sicherstellen, dass weiterhin erreichbar/funktionsfähig sind:
+
+AG Decision
+
+Alternative auswählen
+
+Change Proposal erstellen
+
+Change Proposal akzeptieren
+
+Change Proposal ablehnen
+
+Gegenvorschlag
+
+Constraint bearbeiten
+
+Clarification bearbeiten
+
+Readiness bearbeiten
+
+Resend bei Übertragungsfehler
+
+vollständige fachliche Anfrage
+
+Resource Requirements
+
+vollständiger Verlauf
+
+Snapshot
+
+Notification
+
+Transportstatus
+
+technische IDs
+
+Revisionen
+
+
+Nur deren Darstellung ändert sich.
+
+
+============================================================
+61. KEINE ALTE ANSICHT IM MODAL
+============================================================
+
+Die alte Detailansicht darf nicht einfach in:
+
+Modal
+Drawer
+Dialog
+
+weiterleben.
+
+Details werden in der neuen Seite strukturiert integriert.
+
+
+============================================================
+62. KEIN „ALT / NEU“-TOGGLE
+============================================================
+
+Nicht implementieren:
+
+„Neue Ansicht“
+„Klassische Ansicht“
+„Legacy View“
+
+Es gibt nach Abschluss nur die neue AG-Detailansicht.
+
+
+============================================================
+63. FEATURE FLAGS
+============================================================
+
+Kein permanentes Feature Flag erstellen, mit dem alte Ansicht wieder aktiviert werden kann.
+
+Falls temporär für Entwicklung nötig:
+→ vor Abschluss entfernen.
+
+Produktiver Zustand:
+nur neue Ansicht.
+
+
+============================================================
+64. ROUTE- UND IMPORT-BEREINIGUNG
+============================================================
+
+Nach Umbau global suchen nach:
+
+takt-request-detail
+CoordinationSummary
+CoordinationHistory
+SnapshotPreview
+NotificationPreview
+DeadlineCard
+ResponsePanel
+GUDecisionPanel
+ProposalActions
+ServiceCoordinationTools
+
+Für jeden Treffer entscheiden:
+
+- wird noch außerhalb der AG-Detailseite benötigt?
+- wenn nein: löschen
+- wenn ja: behalten, aber kein alter AG-Detailpfad
+
+
+============================================================
+65. TYPESCRIPT / BUILD
+============================================================
+
+Nach Implementierung mindestens:
+
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/ag-app build
+
+ausführen.
+
+Wenn API-/DTO-Änderungen notwendig wurden:
+
+pnpm --filter @workspace/api-server typecheck
+
+und vorhandene relevante Tests.
+
+
+============================================================
+66. VOLLSTÄNDIGER WORKSPACE-DURCHLAUF
+============================================================
+
+Da alte Routes, Komponenten und Imports entfernt werden, abschließend vollständigen Workspace prüfen.
+
+Vom Repository Root:
+
+pnpm install --frozen-lockfile
+
+pnpm -r --if-present run typecheck
+
+pnpm -r --if-present run lint
+
+pnpm -r --if-present run test
+
+pnpm -r --if-present run build
+
+Lint nur auslassen, wenn kein Lint-Script existiert.
+
+
+============================================================
+67. DEFINITION OF DONE
+============================================================
+
+Der Auftrag ist erst abgeschlossen, wenn ALLE folgenden Aussagen wahr sind:
+
+1. Es gibt genau eine kanonische AG-Detailansicht für eine Leistungsanfrage.
+
+2. Alle AG-Listen, Tasks, Boards und Projektlinks öffnen diese Seite.
+
+3. Alte vollständige AG-Detailseiten sind gelöscht oder nicht mehr renderbar.
+
+4. Alte URLs zeigen entweder per Redirect auf die neue Ansicht oder existieren nicht mehr.
+
+5. Es existiert kein Alt/Neu-Toggle.
+
+6. Es existiert kein Feature Flag für die alte Ansicht.
+
+7. Der Header enthält nur fachlich relevante Informationen.
+
+8. CurrentActionCard ist der erste fachliche Hauptblock.
+
+9. Die aktuelle Hauptaktion wird genau einmal angezeigt.
+
+10. Antwort, Agreement, Proposal und AG Decision sind in einem einzigen Bereich „Abstimmung“ zusammengeführt.
+
+11. „Terminänderung vorschlagen“ erscheint maximal einmal.
+
+12. Accept/Reject/Counter erscheinen jeweils maximal einmal.
+
+13. Die ursprüngliche Leistungsanfrage besitzt einen klaren eigenen Bereich.
+
+14. Alle bisherigen fachlichen Anfragedetails sind weiterhin abrufbar.
+
+15. Resource Requirements sind weiterhin abrufbar.
+
+16. Alle bisherigen zulässigen AN-Response-Details sind weiterhin abrufbar.
+
+17. Risiken, Klärungen und Readiness sind kompakt sichtbar und vollständig aufklappbar.
+
+18. Es gibt genau eine fachliche Business Timeline.
+
+19. Frühere Revisionen sind separat von der Timeline zugänglich.
+
+20. Snapshot ist weiterhin zugänglich, aber nicht mehr im Hauptfluss.
+
+21. Notification ist weiterhin zugänglich, aber nicht mehr im Hauptfluss.
+
+22. Transportinformationen sind weiterhin zugänglich, aber nur Fehler werden prominent angezeigt.
+
+23. Technische IDs sind weiterhin zugänglich.
+
+24. Dataspace-/Auditinformationen bleiben zugänglich, soweit vorhanden und zulässig.
+
+25. Keine legitime bisher sichtbare Information ist unbeabsichtigt verloren gegangen.
+
+26. Keine AN-internen Daten wurden zusätzlich offengelegt.
+
+27. Desktop ist einspaltig und klar lesbar.
+
+28. Bei 390 px gibt es keine horizontale Gesamtseiten-Scrollbar.
+
+29. Alternativen sind auf kleinen Displays ohne horizontale Tabelle bedienbar.
+
+30. Normale Cards besitzen keine eigene vertikale Scrollbar.
+
+31. Alle Workflow-Mutationen funktionieren weiterhin.
+
+32. Nach Mutation wird die Seite aus Serverzustand aktualisiert.
+
+33. Alte AG-Detail-Komponenten sind nicht mehr über alte Routes erreichbar.
+
+34. AG-App Typecheck PASS.
+
+35. AG-App Build PASS.
+
+36. vollständiger Workspace Typecheck PASS.
+
+37. vollständige Tests PASS.
+
+38. vollständiger Workspace Build PASS.
+
+
+============================================================
+68. ABSCHLUSSBERICHT
+============================================================
+
+Am Ende nur folgende Punkte berichten:
+
+1. Kanonische AG-Detailroute
+   → Route nennen
+
+2. Alte AG-Detailrouten
+   → ENTFERNT / REDIRECT
+   → alle alten Routes nennen
+
+3. Alte vollständige AG-Detailseiten
+   → GELÖSCHT / NOCH VORHANDEN
+   → Dateinamen nennen
+
+4. Neue Hauptstruktur
+   → verwendete Hauptkomponenten nennen
+
+5. Current Action
+   → zentrale Komponente nennen
+
+6. Abstimmung
+   → neue/überarbeitete Komponente nennen
+
+7. Leistungsanfrage
+   → neue/überarbeitete Komponente nennen
+
+8. Ressourcenanforderungen
+   → wo abrufbar
+
+9. Koordination
+   → Risiken / Klärungen / Readiness nennen
+
+10. Business Timeline
+    → zentrale Datenquelle und Komponente nennen
+
+11. entfernte parallele Verlaufsdarstellungen
+    → Komponenten nennen
+
+12. frühere Anfrageversionen
+    → wo abrufbar
+
+13. Snapshot
+    → wo jetzt abrufbar
+
+14. Notification
+    → wo jetzt abrufbar
+
+15. Transportstatus
+    → wo jetzt abrufbar
+
+16. technische IDs
+    → wo jetzt abrufbar
+
+17. Dataspace/Audit
+    → wo jetzt abrufbar
+
+18. bisherige Informationen
+    → VOLLSTÄNDIG ERHALTEN / FEHLENDE FELDER NENNEN
+
+19. Action-Dopplungen
+    → BESEITIGT / RESTLICHE NENNEN
+
+20. alte Ansicht über Direkt-URL
+    → NICHT MEHR VERFÜGBAR / PROBLEM NENNEN
+
+21. Responsive Test 1440×900
+    → PASS / FAIL
+
+22. Responsive Test 1024×768
+    → PASS / FAIL
+
+23. Responsive Test 768×1024
+    → PASS / FAIL
+
+24. Responsive Test 390×844
+    → PASS / FAIL
+
+25. horizontale Gesamtseiten-Scrollbar bei 390 px
+    → NEIN / JA
+
+26. AG-App Typecheck
+    → PASS / FAIL
+
+27. AG-App Build
+    → PASS / FAIL
+
+28. Workspace Typecheck
+    → PASS / FAIL
+
+29. Workspace Tests
+    → PASS / FAIL
+
+30. Workspace Build
+    → PASS / FAIL
+
+31. verbleibende bekannte UI-Probleme
+    → jeweils Datei + Komponente + konkrete Ursache
+
+Keine neue parallele AG-Detailansicht erstellen.
+Keine alte Ansicht erhalten.
+Keine Funktionen außerhalb dieses Auftrags hinzufügen.

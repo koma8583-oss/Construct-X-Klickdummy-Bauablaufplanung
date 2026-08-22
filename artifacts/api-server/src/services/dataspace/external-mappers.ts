@@ -43,6 +43,7 @@ export function toExternalServiceRequest(input: {
   requestId: string;
   requestVersion: number;
   projectReference: string;
+  taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   senderOrgId: string;
@@ -67,6 +68,7 @@ export function toExternalServiceRequest(input: {
     requestId: input.requestId,
     requestVersion: input.requestVersion,
     projectReference: input.projectReference,
+    taktReference: input.taktReference,
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
     resourceRequirements: input.resourceRequirements ?? [],

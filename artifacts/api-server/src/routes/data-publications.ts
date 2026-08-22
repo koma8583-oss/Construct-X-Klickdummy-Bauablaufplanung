@@ -220,7 +220,7 @@ router.post(
     const agOrgId = project.agOrgId;
 
     const bodySchema = z.object({
-      dataProductType: z.literal("TAKT_INFORMATION_PACKAGE"),
+      dataProductType: z.enum(["PROJECT_OVERVIEW", "PROJECT_COORDINATION_PACKAGE", "TAKT_INFORMATION_PACKAGE"]),
       title: z.string().min(1).max(255),
       description: z.string().max(2000).optional(),
       policyTemplateId: z.string().min(1),

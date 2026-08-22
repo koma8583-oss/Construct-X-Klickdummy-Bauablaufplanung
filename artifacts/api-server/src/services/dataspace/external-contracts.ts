@@ -43,6 +43,7 @@ export type ExternalServiceRequest = {
   requestId: string;
   requestVersion: number;
   projectReference: string;
+  taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   resourceRequirements: ExternalResourceRequirement[];

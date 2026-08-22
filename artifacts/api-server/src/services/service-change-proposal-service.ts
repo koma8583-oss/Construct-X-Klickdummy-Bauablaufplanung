@@ -2,6 +2,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   leistungsanfragenTable,
+  leistungsantwortenTable,
+  leistungsantwortEntscheidungenTable,
   serviceChangeProposalsTable,
   type ServiceChangeProposal,
 } from "@workspace/db";
@@ -17,6 +19,10 @@ export interface ScheduleDelta {
   endDays: number;
   durationDays: number;
   hasChange: boolean;
+}
+
+function dateOnly(value: Date | string): string {
+  return (value instanceof Date ? value.toISOString() : value).slice(0, 10);
 }
 
 export function calculateScheduleDelta(
@@ -61,6 +67,14 @@ export function deriveCoordinationState(input: {
   return { state: nextActionOwner === "AG" ? "AG_ACTION_REQUIRED" : "AN_ACTION_REQUIRED", nextActionOwner };
 }
 
+export type CoordinationTimelineExtras = {
+  responseAt?: Date | null;
+  decisionAt?: Date | null;
+  clarifications?: Array<{ id: string; askedByOrgId: string; createdAt: Date; answeredAt: Date | null; status: string }>;
+  constraints?: Array<{ id: string; createdAt: Date; resolvedAt: Date | null; reportedByRole: CoordinationParty; status: string }>;
+  readiness?: { updatedAt: Date } | null;
+};
+
 export function buildCoordinationTimeline(request: {
   guOrgId?: string;
   createdAt: Date;
@@ -68,14 +82,17 @@ export function buildCoordinationTimeline(request: {
   deliveredAt: Date | null;
   agreedStart: Date | null;
   agreedEnd: Date | null;
-}, proposals: ServiceChangeProposal[]) {
+}, proposals: ServiceChangeProposal[], extras: CoordinationTimelineExtras = {}) {
+  const agreementAt = proposals.find((proposal) => proposal.status === "ACCEPTED" && proposal.resolvedAt)?.resolvedAt
+    ?? extras.decisionAt
+    ?? null;
   const events = [
     { type: "REQUEST_CREATED", at: request.createdAt, party: "AG" as CoordinationParty },
     ...(request.sentAt ? [{ type: "REQUEST_SENT", at: request.sentAt, party: "AG" as CoordinationParty }] : []),
     ...(request.deliveredAt ? [{ type: "REQUEST_DELIVERED", at: request.deliveredAt, party: "AN" as CoordinationParty }] : []),
-    ...(request.agreedStart && request.agreedEnd ? [{
+    ...(request.agreedStart && request.agreedEnd && agreementAt ? [{
       type: "AGREEMENT_REACHED",
-      at: proposals.find((p) => p.status === "ACCEPTED")?.resolvedAt ?? request.createdAt,
+      at: agreementAt,
       party: "AG" as CoordinationParty,
       start: request.agreedStart,
       end: request.agreedEnd,
@@ -92,6 +109,16 @@ export function buildCoordinationTimeline(request: {
           actorRole: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty,
         }] : []),
     ]),
+    ...(extras.responseAt ? [{ type: "RESPONSE_SUBMITTED", at: extras.responseAt, party: "AN" as CoordinationParty }] : []),
+    ...(extras.clarifications ?? []).flatMap((clarification) => [
+      { type: "CLARIFICATION_ASKED", at: clarification.createdAt, clarificationId: clarification.id },
+      ...(clarification.answeredAt ? [{ type: "CLARIFICATION_ANSWERED", at: clarification.answeredAt, clarificationId: clarification.id }] : []),
+    ]),
+    ...(extras.constraints ?? []).flatMap((constraint) => [
+      { type: "CONSTRAINT_REPORTED", at: constraint.createdAt, constraintId: constraint.id },
+      ...(constraint.resolvedAt ? [{ type: "CONSTRAINT_RESOLVED", at: constraint.resolvedAt, constraintId: constraint.id }] : []),
+    ]),
+    ...(extras.readiness ? [{ type: "READINESS_UPDATED", at: extras.readiness.updatedAt }] : []),
   ];
   return events.sort((a, b) => a.at.getTime() - b.at.getTime());
 }
@@ -100,20 +127,25 @@ export async function getCoordination(requestId: string, orgId: string) {
   const [request] = await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId)).limit(1);
   const party = request ? partyForOrg(request, orgId) : null;
   if (!request || !party) return null;
-  const proposals = await db.select().from(serviceChangeProposalsTable)
-    .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId))
-    .orderBy(desc(serviceChangeProposalsTable.createdAt));
+  const [proposals, responses, decisions] = await Promise.all([
+    db.select().from(serviceChangeProposalsTable)
+      .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId))
+      .orderBy(desc(serviceChangeProposalsTable.createdAt)),
+    db.select().from(leistungsantwortenTable).where(eq(leistungsantwortenTable.leistungsanfrageId, requestId)),
+    db.select().from(leistungsantwortEntscheidungenTable),
+  ]);
   const openProposal = proposals.find((p) => p.status === "OPEN") ?? null;
   const currentAgreement = request.agreedStart && request.agreedEnd ? { start: request.agreedStart, end: request.agreedEnd } : null;
   const state = deriveCoordinationState({ openProposal, currentAgreement, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
+  const response = responses[0];
   const action = deriveServiceCoordinationState({
     party,
     requestStatus: request.status,
     openProposalProposer: openProposal
       ? openProposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
       : null,
-    hasResponse: ["UNDER_REVIEW", "ALTERNATIVES_PROPOSED", "ACCEPTED", "REJECTED", "REVISION_REQUIRED"].includes(request.status),
-    hasDecision: ["ACCEPTED", "CANCELLED", "SUPERSEDED"].includes(request.status),
+    hasResponse: !!response,
+    hasDecision: !!response && decisions.some((decision) => decision.responseId === response.id),
   });
   const delta = openProposal
     ? calculateScheduleDelta(currentAgreement?.start, currentAgreement?.end, openProposal.start, openProposal.end)
@@ -139,7 +171,12 @@ export async function getCoordination(requestId: string, orgId: string) {
     nextAction: action.nextAction,
     responseRequiredBy: request.responseRequiredBy,
     scheduleDelta: delta,
-    timeline: buildCoordinationTimeline(request, proposals),
+    lastChangedAt: new Date(Math.max(
+      request.updatedAt.getTime(),
+      response?.createdAt.getTime() ?? 0,
+      ...proposals.flatMap((proposal) => [proposal.createdAt.getTime(), proposal.resolvedAt?.getTime() ?? 0]),
+    )).toISOString(),
+    timeline: buildCoordinationTimeline(request, proposals, { responseAt: response?.createdAt }),
   };
 }
 
@@ -155,7 +192,7 @@ export async function createChangeProposal(input: {
   supersedesProposalId?: string | null;
 }) {
   if (compareCalendarDates(dateOnly(input.end), dateOnly(input.start)) < 0) {
-    throw Object.assign(new Error("Ende muss am oder nach dem Beginn liegen"), { statusCode: 400 });
+    throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
   }
   return db.transaction(async (tx) => {
     // Serialize proposal creation per request. The OPEN lookup and insert must

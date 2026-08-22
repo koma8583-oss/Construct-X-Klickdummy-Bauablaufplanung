@@ -122,6 +122,17 @@ import {
 import { desc } from "drizzle-orm";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
 import { validateResourceTypeForOrg } from "../services/resource-domain-service";
+import {
+  listResourceRequirements,
+  createResourceRequirement,
+  updateResourceRequirement,
+  deleteResourceRequirement,
+  requirementCreateSchema,
+  requirementUpdateSchema,
+  ResourceRequirementNotFoundError,
+  InvalidRequirementPeriodError,
+  ResourceTypeNotOwnedError,
+} from "../services/resource-requirements-service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -932,7 +943,11 @@ router.post("/leistungsanfragen/:id/change-proposals", requireJwt, async (req, r
     res.status(201).json(proposal);
   } catch (error) {
     const status = (error as { statusCode?: number }).statusCode ?? 500;
-    res.status(status).json({ error: error instanceof Error ? error.message : "Vorschlag konnte nicht erstellt werden" });
+    const message = error instanceof Error ? error.message : "Vorschlag konnte nicht erstellt werden";
+    res.status(status).json({
+      error: message,
+      ...(/^[A-Z][A-Z0-9_]+$/.test(message) ? { code: message } : {}),
+    });
   }
 });
 
@@ -1408,11 +1423,13 @@ router.post(
         requestId: id,
         requestVersion: existing.taktVersion,
         projectReference: String(snapPayload.projectReference ?? existing.taktId),
+        taktReference: existing.taktId,
         plannedStart: plannedTimeWindow.start,
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
+        messageId: notificationMessageId(id),
         resourceRequirements: toExternalResourceRequirements(requirementRows),
       });
     } catch (error) {
@@ -2266,53 +2283,9 @@ router.get(
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
     const id = req.params.id as string;
-
-    const request = await getTaktRequestById(id);
-    if (!request || request.nuOrgId !== nuOrgId) {
-      res.status(404).json({ error: "Leistungsanfrage not found" });
-      return;
-    }
-
-    const rows = await db
-      .select({
-        req: leistungsanfrageResourceRequirementsTable,
-        rt: {
-          name:     resourceTypesTable.name,
-          category: resourceTypesTable.category,
-        },
-      })
-      .from(leistungsanfrageResourceRequirementsTable)
-      .leftJoin(
-        resourceTypesTable,
-        eq(leistungsanfrageResourceRequirementsTable.resourceTypeId, resourceTypesTable.id),
-      )
-      .where(
-        and(
-          eq(leistungsanfrageResourceRequirementsTable.leistungsanfrageId, id),
-          eq(leistungsanfrageResourceRequirementsTable.anOrgId, nuOrgId),
-        ),
-      )
-      .orderBy(desc(leistungsanfrageResourceRequirementsTable.createdAt));
-
-    res.json(
-      rows.map(({ req: r, rt }) => ({
-        id:                    r.id,
-        leistungsanfrageId:    r.leistungsanfrageId,
-        taktRequestId:         r.leistungsanfrageId,  // legacy alias
-        anOrgId:               r.anOrgId,
-        resourceTypeId:        r.resourceTypeId,
-        resourceTypeName:      rt?.name     ?? null,
-        resourceTypeCategory:  rt?.category ?? null,
-        requiredCapacity:      r.requiredCapacity,
-        utilizationPercent:    r.utilizationPercent,
-        requiredQualification: r.requiredQualification,
-        periodStart:           r.periodStart,
-        periodEnd:             r.periodEnd,
-        notes:                 r.notes,
-        createdAt:             r.createdAt,
-        updatedAt:             r.updatedAt,
-      })),
-    );
+    const rows = await listResourceRequirements(id, nuOrgId);
+    if (rows === null) { res.status(404).json({ error: "Leistungsanfrage not found" }); return; }
+    res.json(rows);
   },
 );
 
@@ -2323,66 +2296,40 @@ router.post(
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
     const id = req.params.id as string;
-
-    const schema = z.object({
-      resourceTypeId:        z.string().min(1),
-      requiredCapacity:      z.number().positive(),
-      utilizationPercent:    z.number().int().min(1).max(100).optional().default(100),
-      requiredQualification: z.string().max(500).nullable().optional(),
-      periodStart:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      periodEnd:             z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      notes:                 z.string().max(1000).nullable().optional(),
-    });
-
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
-      return;
-    }
-
-    const request = await getTaktRequestById(id);
-    if (!request || request.nuOrgId !== nuOrgId) {
-      res.status(404).json({ error: "Leistungsanfrage not found" });
-      return;
-    }
-
+    const parsed = requirementCreateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
     try {
-      await validateResourceTypeForOrg(parsed.data.resourceTypeId, nuOrgId);
-    } catch {
-      res.status(422).json({ error: "RESOURCE_TYPE_NOT_OWNED" });
-      return;
+      const row = await createResourceRequirement(id, nuOrgId, parsed.data);
+      if (row === null) { res.status(404).json({ error: "Leistungsanfrage not found" }); return; }
+      res.status(201).json(row);
+    } catch (err) {
+      if (err instanceof ResourceTypeNotOwnedError) { res.status(422).json({ error: err.code }); return; }
+      if (err instanceof InvalidRequirementPeriodError) { res.status(422).json({ error: err.code }); return; }
+      throw err;
     }
+  },
+);
 
-    const snapshot = (await getTaktRequestWithSnapshot(id))?.snapshot?.snapshotPayload as
-      | { plannedTimeWindow?: { start?: string; end?: string } }
-      | undefined;
-    const periodStart = parsed.data.periodStart ?? snapshot?.plannedTimeWindow?.start ?? null;
-    const periodEnd = parsed.data.periodEnd ?? snapshot?.plannedTimeWindow?.end ?? null;
-    if (!periodStart || !periodEnd || periodStart > periodEnd) {
-      res.status(422).json({ error: "INVALID_REQUIREMENT_PERIOD" });
-      return;
+// ── PATCH /leistungsanfragen/:id/resource-requirements/:reqId ─────────────────
+// NU updates an existing resource requirement (partial update).
+router.patch(
+  "/leistungsanfragen/:id/resource-requirements/:reqId",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const nuOrgId = req.user!.orgId!;
+    const id = req.params.id as string;
+    const reqId = req.params.reqId as string;
+    const parsed = requirementUpdateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+    try {
+      const row = await updateResourceRequirement(id, reqId, nuOrgId, parsed.data);
+      if (row === null) { res.status(404).json({ error: "Leistungsanfrage not found" }); return; }
+      res.json(row);
+    } catch (err) {
+      if (err instanceof ResourceRequirementNotFoundError) { res.status(404).json({ error: err.message }); return; }
+      if (err instanceof InvalidRequirementPeriodError) { res.status(422).json({ error: err.code }); return; }
+      throw err;
     }
-
-    const [inserted] = await db
-      .insert(leistungsanfrageResourceRequirementsTable)
-      .values({
-        leistungsanfrageId:   id,
-        anOrgId:              nuOrgId,
-        resourceTypeId:       parsed.data.resourceTypeId,
-        requiredCapacity:     parsed.data.requiredCapacity.toString(),
-        utilizationPercent:   parsed.data.utilizationPercent   ?? 100,
-        requiredQualification: parsed.data.requiredQualification ?? null,
-        periodStart,
-        periodEnd,
-        notes:                parsed.data.notes                ?? null,
-      })
-      .returning();
-
-    res.status(201).json({
-      ...inserted,
-      leistungsanfrageId: inserted.leistungsanfrageId,
-      taktRequestId:      inserted.leistungsanfrageId,  // legacy alias
-    });
   },
 );
 
@@ -2394,24 +2341,13 @@ router.delete(
     const nuOrgId = req.user!.orgId!;
     const id      = req.params.id   as string;
     const reqId   = req.params.reqId as string;
-
-    const [deleted] = await db
-      .delete(leistungsanfrageResourceRequirementsTable)
-      .where(
-        and(
-          eq(leistungsanfrageResourceRequirementsTable.id, reqId),
-          eq(leistungsanfrageResourceRequirementsTable.leistungsanfrageId, id),
-          eq(leistungsanfrageResourceRequirementsTable.anOrgId, nuOrgId),
-        ),
-      )
-      .returning();
-
-    if (!deleted) {
-      res.status(404).json({ error: "Resource requirement not found" });
-      return;
+    try {
+      await deleteResourceRequirement(id, reqId, nuOrgId);
+      res.status(204).end();
+    } catch (err) {
+      if (err instanceof ResourceRequirementNotFoundError) { res.status(404).json({ error: err.message }); return; }
+      throw err;
     }
-
-    res.status(204).end();
   },
 );
 
