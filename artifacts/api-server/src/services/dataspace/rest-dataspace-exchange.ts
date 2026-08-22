@@ -4,9 +4,33 @@ import { eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
+import {
+  handleIncomingServiceRequest,
+  handleIncomingServiceResponse,
+} from "./inbound-exchange-service";
 
 export class RestDataspaceExchange implements DataspaceExchange {
   constructor(private readonly transport = new LocalHubTransport()) {}
+
+  /**
+   * REST/webhook adapters call these entry points for inbound deliveries.
+   * Keeping the state machine in inbound-exchange-service prevents REST from
+   * accidentally bypassing idempotency and the RECEIVED → PROCESSED/FAILED
+   * audit trail.
+   */
+  async receiveServiceRequest(
+    payload: ExternalServiceRequest,
+    process?: (payload: ExternalServiceRequest) => Promise<void>,
+  ): Promise<void> {
+    return handleIncomingServiceRequest(payload, process);
+  }
+
+  async receiveServiceResponse(
+    payload: ExternalServiceResponse,
+    process?: (payload: ExternalServiceResponse) => Promise<void>,
+  ): Promise<void> {
+    return handleIncomingServiceResponse(payload, process);
+  }
 
   private requestPayload(payload: ExternalServiceRequest): Record<string, unknown> {
     return {
