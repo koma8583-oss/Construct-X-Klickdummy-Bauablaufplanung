@@ -4,13 +4,14 @@ import {
   projectsTable,
   takteTable,
   projectMembershipsTable,
-  messageOutboxTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
 } from "./dataspace/dataspace-participant-resolver";
+import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
+import type { ExternalProjectInvitation, ExternalProjectInvitationResponse } from "./dataspace/external-contracts";
 
 export class ProjectMembershipError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -123,35 +124,33 @@ export async function inviteParticipant(input: {
       invitationExpiresAt: input.validUntil ?? null,
       invitedAt: now,
     }).returning();
-    await tx.insert(messageOutboxTable).values({
-      messageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION",
-      senderOrgId: input.agOrgId,
-      recipientOrgId: input.anOrgId,
-      correlationId,
-      causationId: null,
-      payload: {
-        invitationId,
-        project: {
-          projectReference: project.id,
-          projectName: project.name,
-          ...(project.description ? { description: project.description } : {}),
-          ...(project.location ? { location: project.location } : {}),
-        },
-        requestedRole: "CONTRACTOR",
-        purpose: "PROJECT_COLLABORATION",
-        ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
-        ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
-        policy: {
-          usagePurpose: "PROJECT_MEMBERSHIP",
-          allowedConsumerParticipantId: participant.participantId,
-        },
-        senderParticipantId: `local:${input.agOrgId}`,
-        recipientParticipantId: participant.participantId,
-      },
-    });
     return [created];
+  });
+  const exchange = createDataspaceExchange();
+  await exchange.publishProjectInvitation({
+    metadata: {
+      messageId,
+      correlationId,
+      schemaVersion: "1.0",
+      senderOrgId: input.agOrgId,
+      receiverOrgId: input.anOrgId,
+      createdAt: now.toISOString(),
+    },
+    invitationId,
+    project: {
+      projectReference: project.id,
+      projectName: project.name,
+      ...(project.description ? { description: project.description } : {}),
+      ...(project.location ? { location: project.location } : {}),
+    },
+    requestedRole: "CONTRACTOR",
+    purpose: "PROJECT_COLLABORATION",
+    ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
+    ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+    policy: {
+      usagePurpose: "PROJECT_MEMBERSHIP",
+      allowedConsumerParticipantId: participant.participantId,
+    },
   });
   return membership;
 }
@@ -182,25 +181,23 @@ async function resolveInvitation(id: string, anOrgId: string, decision: "ACTIVE"
       eq(projectMembershipsTable.status, "INVITED"),
     )).returning();
     if (!row) throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
-    await tx.insert(messageOutboxTable).values({
-      messageId: responseMessageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION_RESPONSE",
-      senderOrgId: anOrgId,
-      recipientOrgId: membership.agOrgId,
-      correlationId: membership.correlationId,
-      causationId: `project-invitation-${membership.invitationId}`,
-      payload: {
-        invitationId: membership.invitationId,
-        projectReference: membership.projectId,
-        decision: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
-        ...(message ? { message } : {}),
-        respondedAt: now.toISOString(),
-        senderParticipantId: membership.anParticipantId,
-        recipientParticipantId: `local:${membership.agOrgId}`,
-      },
-    }).onConflictDoNothing();
     return [row];
+  });
+  const exchange = createDataspaceExchange();
+  await exchange.publishProjectInvitationResponse({
+    metadata: {
+      messageId: responseMessageId,
+      correlationId: membership.correlationId,
+      schemaVersion: "1.0",
+      senderOrgId: anOrgId,
+      receiverOrgId: membership.agOrgId,
+      createdAt: now.toISOString(),
+    },
+    invitationId: membership.invitationId,
+    projectReference: membership.projectId,
+    decision: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
+    ...(message ? { message } : {}),
+    respondedAt: now.toISOString(),
   });
   return updated;
 }

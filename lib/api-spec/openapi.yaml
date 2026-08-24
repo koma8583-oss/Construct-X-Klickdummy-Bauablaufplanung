@@ -80,6 +80,72 @@ paths:
         "400":
           description: Invalid message
 
+  /dataspace/inbound/project-invitations:
+    post:
+      operationId: receiveInboundProjectInvitation
+      tags: [dataspace-inbound]
+      summary: Receive an inbound project invitation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInvitation"
+      responses:
+        "202":
+          description: Accepted and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "200":
+          description: Duplicate delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "400":
+          description: Invalid message
+        "403":
+          description: Receiver organisation mismatch
+        "422":
+          description: Invalid invitation payload
+
+  /dataspace/inbound/project-invitation-responses:
+    post:
+      operationId: receiveInboundProjectInvitationResponse
+      tags: [dataspace-inbound]
+      summary: Receive an inbound project invitation response
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInvitationResponse"
+      responses:
+        "202":
+          description: Accepted and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "200":
+          description: Duplicate delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "400":
+          description: Invalid message
+        "403":
+          description: Receiver organisation mismatch
+        "422":
+          description: Invalid response payload
+
   /dataspace/inbound/service-responses:
     post:
       operationId: receiveInboundServiceResponse
@@ -3308,6 +3374,42 @@ components:
           type: array
           items: { type: object, additionalProperties: true }
         policy: { type: object, additionalProperties: true }
+
+    ProjectInvitation:
+      type: object
+      required: [metadata, invitationId, project, requestedRole, purpose, policy]
+      properties:
+        metadata: { $ref: "#/components/schemas/InboundExchangeMetadata" }
+        invitationId: { type: string, minLength: 1 }
+        project:
+          type: object
+          required: [projectReference, projectName]
+          properties:
+            projectReference: { type: string }
+            projectName: { type: string }
+            description: { type: string }
+            location: { type: string }
+        requestedRole: { type: string, enum: [CONTRACTOR] }
+        purpose: { type: string, enum: [PROJECT_COLLABORATION] }
+        invitationMessage: { type: string }
+        validUntil: { type: string, format: date-time }
+        policy:
+          type: object
+          required: [usagePurpose, allowedConsumerParticipantId]
+          properties:
+            usagePurpose: { type: string, enum: [PROJECT_MEMBERSHIP] }
+            allowedConsumerParticipantId: { type: string }
+
+    ProjectInvitationResponse:
+      type: object
+      required: [metadata, invitationId, projectReference, decision, respondedAt]
+      properties:
+        metadata: { $ref: "#/components/schemas/InboundExchangeMetadata" }
+        invitationId: { type: string, minLength: 1 }
+        projectReference: { type: string }
+        decision: { type: string, enum: [ACCEPTED, REJECTED] }
+        message: { type: string }
+        respondedAt: { type: string, format: date-time }
 
     InboundServiceResponse:
       type: object

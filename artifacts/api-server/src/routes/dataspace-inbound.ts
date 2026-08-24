@@ -19,11 +19,13 @@ import type { Request, Response } from "express";
 import { requireJwt } from "../middlewares/requireJwt";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import type {
+  ExternalProjectInvitation,
+  ExternalProjectInvitationResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "../services/dataspace/external-contracts";
 import pino from "pino";
-import { processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
+import { processIncomingProjectInvitation, processIncomingProjectInvitationResponse, processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
 
 const logger = pino({ name: "dataspace-inbound" });
 const router = Router();
@@ -52,6 +54,46 @@ function validateMetadataShape(
     typeof m.createdAt === "string"
   );
 }
+
+function isProjectInvitation(body: Record<string, unknown>): body is ExternalProjectInvitation {
+  return typeof body.invitationId === "string" && typeof body.project === "object" && body.project !== null &&
+    (body as any).requestedRole === "CONTRACTOR" && (body as any).purpose === "PROJECT_COLLABORATION";
+}
+
+function isProjectInvitationResponse(body: Record<string, unknown>): body is ExternalProjectInvitationResponse {
+  return typeof body.invitationId === "string" && typeof body.projectReference === "string" &&
+    ["ACCEPTED", "REJECTED"].includes(body.decision as string) && typeof body.respondedAt === "string";
+}
+
+router.post("/dataspace/inbound/project-invitations", requireJwt, async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  if (!validateMetadataShape(body.metadata)) { res.status(400).json({ error: "Invalid or missing metadata" }); return; }
+  const metadata = body.metadata as ExternalProjectInvitation["metadata"];
+  if (req.user?.orgId !== metadata.receiverOrgId) { res.status(403).json({ error: "Authenticated organisation does not match metadata.receiverOrgId" }); return; }
+  if (!isProjectInvitation(body)) { res.status(422).json({ error: "Missing or invalid project invitation fields" }); return; }
+  try {
+    const result = await exchange.receiveProjectInvitation({ ...body, metadata } as ExternalProjectInvitation, processIncomingProjectInvitation);
+    res.status(result.duplicate ? 200 : 202).json({ messageId: metadata.messageId, status: result.status });
+  } catch (error) {
+    logger.error({ err: error, messageId: metadata.messageId }, "receiveProjectInvitation failed");
+    res.status(500).json({ error: "Internal error processing inbound project invitation" });
+  }
+});
+
+router.post("/dataspace/inbound/project-invitation-responses", requireJwt, async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  if (!validateMetadataShape(body.metadata)) { res.status(400).json({ error: "Invalid or missing metadata" }); return; }
+  const metadata = body.metadata as ExternalProjectInvitationResponse["metadata"];
+  if (req.user?.orgId !== metadata.receiverOrgId) { res.status(403).json({ error: "Authenticated organisation does not match metadata.receiverOrgId" }); return; }
+  if (!isProjectInvitationResponse(body)) { res.status(422).json({ error: "Missing or invalid project invitation response fields" }); return; }
+  try {
+    const result = await exchange.receiveProjectInvitationResponse({ ...body, metadata } as ExternalProjectInvitationResponse, processIncomingProjectInvitationResponse);
+    res.status(result.duplicate ? 200 : 202).json({ messageId: metadata.messageId, status: result.status });
+  } catch (error) {
+    logger.error({ err: error, messageId: metadata.messageId }, "receiveProjectInvitationResponse failed");
+    res.status(500).json({ error: "Internal error processing inbound project invitation response" });
+  }
+});
 
 // ── POST /dataspace/inbound/service-requests ───────────────────────────────────
 

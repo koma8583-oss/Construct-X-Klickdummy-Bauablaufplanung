@@ -3,10 +3,17 @@ import { db, dataspaceExchangesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
-import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
+import type {
+  ExternalProjectInvitation,
+  ExternalProjectInvitationResponse,
+  ExternalServiceRequest,
+  ExternalServiceResponse,
+} from "./external-contracts";
 import {
   handleIncomingServiceRequest,
   handleIncomingServiceResponse,
+  handleIncomingProjectInvitation,
+  handleIncomingProjectInvitationResponse,
 } from "./inbound-exchange-service";
 
 export class RestDataspaceExchange implements DataspaceExchange {
@@ -23,6 +30,62 @@ export class RestDataspaceExchange implements DataspaceExchange {
     process?: (payload: ExternalServiceRequest) => Promise<void>,
   ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
     return handleIncomingServiceRequest(payload, process);
+  }
+
+  async receiveProjectInvitation(payload: ExternalProjectInvitation, process?: (payload: ExternalProjectInvitation) => Promise<void>) {
+    return handleIncomingProjectInvitation(payload, process);
+  }
+
+  async receiveProjectInvitationResponse(payload: ExternalProjectInvitationResponse, process?: (payload: ExternalProjectInvitationResponse) => Promise<void>) {
+    return handleIncomingProjectInvitationResponse(payload, process);
+  }
+
+  private async publishInvitation(
+    payload: ExternalProjectInvitation | ExternalProjectInvitationResponse,
+    messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
+  ): Promise<ExchangeReference> {
+    const [existing] = await db.select().from(dataspaceExchangesTable)
+      .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+    if (existing?.status === "PUBLISHED") {
+      return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
+    }
+    await db.insert(dataspaceExchangesTable).values({
+      direction: "OUTBOUND", messageType, messageId: payload.metadata.messageId,
+      correlationId: payload.metadata.correlationId, senderOrgId: payload.metadata.senderOrgId,
+      receiverOrgId: payload.metadata.receiverOrgId, businessObjectId: payload.invitationId,
+      businessObjectVersion: 1, status: "CREATED",
+    }).onConflictDoNothing();
+    try {
+      const result = await this.transport.send({
+        messageId: payload.metadata.messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType: messageType as DataspaceMessageType,
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        createdAt: new Date(payload.metadata.createdAt),
+        causationId: null,
+        payload: payload as unknown as Record<string, unknown>,
+      });
+      await db.update(dataspaceExchangesTable).set({
+        status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
+        externalReference: result.messageId, updatedAt: new Date(),
+      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
+    } catch (error) {
+      await db.update(dataspaceExchangesTable).set({
+        status: "FAILED", errorCode: error instanceof Error ? error.name : "TRANSPORT_FAILURE", updatedAt: new Date(),
+      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      throw error;
+    }
+  }
+
+  publishProjectInvitation(payload: ExternalProjectInvitation) {
+    return this.publishInvitation(payload, "PROJECT_INVITATION");
+  }
+
+  publishProjectInvitationResponse(payload: ExternalProjectInvitationResponse) {
+    return this.publishInvitation(payload, "PROJECT_INVITATION_RESPONSE");
   }
 
   async receiveServiceResponse(
