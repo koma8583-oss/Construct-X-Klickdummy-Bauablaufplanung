@@ -17,10 +17,11 @@ import {
 } from "@workspace/db";
 import { eq, and, count, gte, lte, inArray, ne, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
+import { requireOrganizationType } from "../../middlewares/requireOrganization";
 
 const router = Router();
 
-router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
+router.get("/dashboard/an", requireJwt, requireOrganizationType("AN"), async (req, res): Promise<void> => {
   const orgId = req.user!.orgId!;
   const now   = new Date();
   const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000);

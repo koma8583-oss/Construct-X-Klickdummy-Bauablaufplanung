@@ -9,13 +9,14 @@ import {
   resourcesTable,
   resourceAssignmentsTable,
 } from "@workspace/db";
-import { eq, and, count, gte, lte } from "drizzle-orm";
+import { eq, and, count, gte, lte, inArray } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
+import { requireOrganizationType } from "../middlewares/requireOrganization";
 
 const router = Router();
 
 // GET /dashboard/ag
-router.get("/dashboard/ag", requireJwt, async (req, res): Promise<void> => {
+router.get("/dashboard/ag", requireJwt, requireOrganizationType("AG"), async (req, res): Promise<void> => {
   const orgId = req.user!.orgId!;
 
   const [totalProjectsRow] = await db
@@ -105,7 +106,8 @@ router.get("/dashboard/ag", requireJwt, async (req, res): Promise<void> => {
           .where(
             and(
               gte(takteTable.plannedStart, today),
-              lte(takteTable.plannedStart, in7Days),
+               lte(takteTable.plannedStart, in7Days),
+               inArray(takteTable.projectId, projectIds as [string, ...string[]]),
             ),
           )
           .limit(10)
@@ -134,7 +136,7 @@ router.get("/dashboard/ag", requireJwt, async (req, res): Promise<void> => {
 });
 
 // GET /dashboard/an
-router.get("/dashboard/an", requireJwt, async (req, res): Promise<void> => {
+router.get("/dashboard/an", requireJwt, requireOrganizationType("AN"), async (req, res): Promise<void> => {
   const orgId = req.user!.orgId!;
 
   const [pendingRow] = await db

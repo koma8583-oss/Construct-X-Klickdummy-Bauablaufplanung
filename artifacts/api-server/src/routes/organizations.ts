@@ -5,32 +5,53 @@ import {
   userOrganizationsTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, ilike, or } from "drizzle-orm";
+import { eq, and, ilike } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
+import { requireOrganizationType, requireOwnOrganization } from "../middlewares/requireOrganization";
+import { requireRole } from "../middlewares/requireRole";
 import { z } from "zod";
 
 const router = Router();
 
 // GET /organizations
-router.get("/organizations", requireJwt, async (req, res): Promise<void> => {
+router.get("/organizations", requireJwt, requireOrganizationType("AG", "AN"), async (req, res): Promise<void> => {
   const type = req.query.type as "AG" | "AN" | undefined;
   const search = req.query.search as string | undefined;
 
-  let query = db.select().from(organizationsTable).$dynamic();
+  let query = db
+    .select({ organization: organizationsTable })
+    .from(userOrganizationsTable)
+    .innerJoin(
+      organizationsTable,
+      eq(userOrganizationsTable.orgId, organizationsTable.id),
+    )
+    .where(eq(userOrganizationsTable.userId, req.user!.userId!))
+    .$dynamic();
 
   if (type) {
-    query = query.where(eq(organizationsTable.type, type));
+    query = query.where(and(
+      eq(userOrganizationsTable.userId, req.user!.userId!),
+      eq(organizationsTable.type, type),
+    ));
   }
   if (search) {
-    query = query.where(ilike(organizationsTable.name, `%${search}%`));
+    query = query.where(and(
+      eq(userOrganizationsTable.userId, req.user!.userId!),
+      ilike(organizationsTable.name, `%${search}%`),
+    ));
   }
 
   const orgs = await query;
-  res.json(orgs);
+  res.json(orgs.map(({ organization }) => organization));
 });
 
 // POST /organizations
-router.post("/organizations", requireJwt, async (req, res): Promise<void> => {
+router.post(
+  "/organizations",
+  requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireRole("AG_ADMIN", "AN_ADMIN"),
+  async (req, res): Promise<void> => {
   const schema = z.object({
     name: z.string().min(1),
     type: z.enum(["AG", "AN"]),
@@ -41,6 +62,10 @@ router.post("/organizations", requireJwt, async (req, res): Promise<void> => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (parsed.data.type !== req.user!.orgType) {
+    res.status(403).json({ error: "Forbidden: organization type does not match caller" });
     return;
   }
 
@@ -58,12 +83,14 @@ router.post("/organizations", requireJwt, async (req, res): Promise<void> => {
   }
 
   res.status(201).json(org);
-});
+  },
+);
 
 // GET /organizations/me
 router.get(
   "/organizations/me",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
   async (req, res): Promise<void> => {
     const memberships = await db
       .select({
@@ -92,6 +119,8 @@ router.get(
 router.get(
   "/organizations/:orgId",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireOwnOrganization(),
   async (req, res): Promise<void> => {
     const [org] = await db
       .select()
@@ -112,6 +141,9 @@ router.get(
 router.patch(
   "/organizations/:orgId",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireOwnOrganization(),
+  requireRole("AG_ADMIN", "AN_ADMIN"),
   async (req, res): Promise<void> => {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -144,6 +176,8 @@ router.patch(
 router.get(
   "/organizations/:orgId/members",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireOwnOrganization(),
   async (req, res): Promise<void> => {
     const members = await db
       .select({
@@ -168,6 +202,9 @@ router.get(
 router.post(
   "/organizations/:orgId/members",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireOwnOrganization(),
+  requireRole("AG_ADMIN", "AN_ADMIN"),
   async (req, res): Promise<void> => {
     const schema = z.object({
       email: z.string().email(),
@@ -220,6 +257,9 @@ router.post(
 router.delete(
   "/organizations/:orgId/members/:userId",
   requireJwt,
+  requireOrganizationType("AG", "AN"),
+  requireOwnOrganization(),
+  requireRole("AG_ADMIN", "AN_ADMIN"),
   async (req, res): Promise<void> => {
     await db
       .delete(userOrganizationsTable)
