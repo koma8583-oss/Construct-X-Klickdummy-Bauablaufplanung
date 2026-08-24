@@ -16,6 +16,11 @@ import {
   evaluateResourceRequirements,
   shiftRequirementsToWindow,
 } from "./resource-availability-service";
+import {
+  addCalendarDays,
+  differenceInCalendarDays,
+  toCalendarDate,
+} from "../lib/calendar-date-utils";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -85,19 +90,17 @@ function parseDate(d: string): Date {
 
 /** Format a Date as a date-only string (YYYY-MM-DD) */
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return toCalendarDate(d);
 }
 
 /** Add calendar days to a Date */
 function addDays(d: Date, days: number): Date {
-  const result = new Date(d.getTime());
-  result.setUTCDate(result.getUTCDate() + days);
-  return result;
+  return parseDate(addCalendarDays(formatDate(d), days));
 }
 
 /** Difference in calendar days between two dates (end - start, integer) */
 function diffDays(start: Date, end: Date): number {
-  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  return differenceInCalendarDays(formatDate(start), formatDate(end));
 }
 
 /**
@@ -221,7 +224,8 @@ export function generateAlternatives(
 
   const plannedStart = parseDate(snapshot.plannedTimeWindow.start);
   const plannedEnd   = parseDate(snapshot.plannedTimeWindow.end);
-  const plannedDurationDays = diffDays(plannedStart, plannedEnd);
+  // Date-only windows are inclusive: 2026-08-24..2026-08-24 is one day.
+  const plannedDurationDays = diffDays(plannedStart, plannedEnd) + 1;
   const hasDtcRequirements = requirements.some((requirement) => requirement.resourceTypeId);
 
   if (plannedDurationDays < 0) return [];
@@ -254,13 +258,14 @@ export function generateAlternatives(
   {
     let cursor = skipWeekend(plannedStart);
     while (cursor <= searchHorizonEnd && alternatives.length < maximumAlternatives) {
-      const windowEnd = addDays(cursor, plannedDurationDays);
+      const windowEndExclusive = addDays(cursor, plannedDurationDays);
+      const windowEnd = addDays(windowEndExclusive, -1);
       // Skip if this is the original window (that's where the conflict is)
       if (formatDate(cursor) !== formatDate(plannedStart)) {
         const key = windowKey(cursor, windowEnd);
         const clear = requirements.some((r) => r.resourceTypeId)
-          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
-          : isWindowClear(allIds, cursor, windowEnd, bookings);
+          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEndExclusive)
+          : isWindowClear(allIds, cursor, windowEndExclusive, bookings);
         if (!seenWindows.has(key) && clear) {
           seenWindows.add(key);
           const outsideBuffer = cursor > bufferLatest || windowEnd < bufferEarliest;
@@ -300,11 +305,12 @@ export function generateAlternatives(
 
       let cursor = skipWeekend(plannedStart);
       while (cursor <= searchHorizonEnd && alternatives.length < maximumAlternatives) {
-        const windowEnd = addDays(cursor, extendedDuration);
+      const windowEndExclusive = addDays(cursor, extendedDuration);
+      const windowEnd = addDays(windowEndExclusive, -1);
         const key = windowKey(cursor, windowEnd);
         const clear = requirements.some((r) => r.resourceTypeId)
-          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
-          : isWindowClear(idsToCheck, cursor, windowEnd, bookings);
+          ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEndExclusive)
+          : isWindowClear(idsToCheck, cursor, windowEndExclusive, bookings);
         if (!seenWindows.has(key) && clear) {
           seenWindows.add(key);
           alternatives.push({
@@ -330,12 +336,13 @@ export function generateAlternatives(
     let nextAvailable: Date | null = null;
 
     while (cursor <= searchHorizonEnd) {
-      const windowEnd = addDays(cursor, plannedDurationDays);
+      const windowEndExclusive = addDays(cursor, plannedDurationDays);
+      const windowEnd = addDays(windowEndExclusive, -1);
       const key = windowKey(cursor, windowEnd);
 
        const clear = requirements.some((r) => r.resourceTypeId)
-         ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEnd)
-         : isWindowClear(allIds, cursor, windowEnd, bookings);
+         ? isDtcWindowClear(requirements, resources, bookings as any, plannedStart, cursor, windowEndExclusive)
+         : isWindowClear(allIds, cursor, windowEndExclusive, bookings);
        if (!seenWindows.has(key) && clear) {
         nextAvailable = cursor;
         break;
@@ -344,7 +351,8 @@ export function generateAlternatives(
     }
 
     if (nextAvailable) {
-      const windowEnd = addDays(nextAvailable, plannedDurationDays);
+      const windowEndExclusive = addDays(nextAvailable, plannedDurationDays);
+      const windowEnd = addDays(windowEndExclusive, -1);
       const key = windowKey(nextAvailable, windowEnd);
       if (!seenWindows.has(key)) {
         seenWindows.add(key);

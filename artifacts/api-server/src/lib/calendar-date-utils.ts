@@ -15,6 +15,21 @@ export function shiftCalendarDate(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Convert a Date to its UTC calendar date without retaining a time-of-day. */
+export function toCalendarDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+/** Add calendar days to a date-only value, independent of timezone/DST. */
+export function addCalendarDays(value: string, days: number): string {
+  return shiftCalendarDate(value, days);
+}
+
+/** Inclusive date-only range validation used at domain boundaries. */
+export function isValidCalendarRange(start: string, end: string): boolean {
+  return compareCalendarDates(start, end) <= 0;
+}
+
 /** Inclusive list of date-only values between start and end. */
 export function iterateCalendarDays(start: string, end: string): string[] {
   const days: string[] = [];

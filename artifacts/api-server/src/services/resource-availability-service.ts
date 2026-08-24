@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, iterateCalendarDays, shiftCalendarDate } from "../lib/calendar-date-utils";
+import { addCalendarDays, differenceInCalendarDays, iterateCalendarDays } from "../lib/calendar-date-utils";
 
 export interface ResourceAvailabilityRequirement {
   id?: string;
@@ -69,6 +69,7 @@ export function restoreConcreteResourceAssignments<
   oldWindowStart: Date,
   oldWindowEnd: Date,
   newWindowStart: Date,
+  options: { requireConcreteAssignments?: boolean } = {},
 ): Array<T & { resourceId: string | null; quantity: number }> {
   const shiftDays = differenceInCalendarDays(
     oldWindowStart.toISOString().slice(0, 10),
@@ -106,6 +107,12 @@ export function restoreConcreteResourceAssignments<
         overlaps(shiftedStart, shiftedEnd, other.startAt, other.endAt));
     });
     if (!candidate) {
+      if (options.requireConcreteAssignments) {
+        throw Object.assign(
+          new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"),
+          { code: "CHANGE_PROPOSAL_NOT_FEASIBLE" },
+        );
+      }
       output.push({ ...requirement, resourceId: null, quantity: Number(requirement.requiredCapacity) });
       continue;
     }
@@ -117,7 +124,7 @@ export function restoreConcreteResourceAssignments<
     output.push({
       ...requirement,
       resourceId: candidate.resourceId,
-      quantity: Math.max(0, required - covered / utilization),
+      quantity: Math.max(0, required - covered),
     });
   }
   return output;
@@ -180,7 +187,7 @@ export function shiftRequirementsToWindow<
   );
   const shift = (value?: string | null) => {
     if (!value) return value;
-    return shiftCalendarDate(value, offsetDays);
+    return addCalendarDays(value, offsetDays);
   };
   return requirements.map((requirement) => ({
     ...requirement,

@@ -9,9 +9,10 @@ import {
 } from "@workspace/db";
 import { evaluateAvailabilityWindow } from "./availability-check-service";
 import { shiftRequirementsToWindow, restoreConcreteResourceAssignments } from "./resource-availability-service";
+import { addCalendarDays, toCalendarDate } from "../lib/calendar-date-utils";
 
 function dateOnly(value: Date | string): string {
-  return (value instanceof Date ? value.toISOString() : value).slice(0, 10);
+  return value instanceof Date ? toCalendarDate(value) : value.slice(0, 10);
 }
 
 type ScheduleRequirement = {
@@ -119,7 +120,7 @@ export async function prepareAcceptedScheduleChange(
       isNull(resourceBookingsTable.sourceReferenceId),
     ),
     gt(resourceBookingsTable.endAt, input.newStart),
-    lt(resourceBookingsTable.startAt, input.newEnd),
+    lt(resourceBookingsTable.startAt, new Date(`${addCalendarDays(dateOnly(input.newEnd), 1)}T00:00:00Z`)),
   ));
 
   const availability = await evaluateAvailabilityWindow(
@@ -159,6 +160,7 @@ export async function prepareAcceptedScheduleChange(
     new Date(`${currentStartDate}T00:00:00Z`),
     new Date(`${dateOnly(requestRow.request.agreedEnd)}T00:00:00Z`),
     new Date(`${targetStartDate}T00:00:00Z`),
+    { requireConcreteAssignments: true },
   );
 
   return {

@@ -17,6 +17,7 @@ import { takteTable, taktDependenciesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import { withCanonicalTakt } from "./legacy-takt-mappers";
+import { addCalendarDays, differenceInCalendarDays } from "./calendar-date-utils";
 
 // Derive the Drizzle transaction type from db.transaction's callback signature
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -29,19 +30,9 @@ export type RescheduleResult = {
 const MOVEABLE = new Set(["GEPLANT", "ABGELEHNT", "STORNIERT"]);
 
 /** Add `days` calendar days to an ISO date string (YYYY-MM-DD) */
-function addDays(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 /** Duration in whole days between two ISO date strings */
 function durDays(start: string, end: string): number {
-  return Math.round(
-    (new Date(end + "T00:00:00Z").getTime() -
-      new Date(start + "T00:00:00Z").getTime()) /
-      86_400_000,
-  );
+  return differenceInCalendarDays(start, end);
 }
 
 /** Kahn's topological sort — throws "CYCLE_DETECTED" on cycles */
@@ -154,13 +145,13 @@ export async function rescheduleTakte(
       const pE = E.get(dep.predecessorId)!;
 
       if (dep.type === "EA") {
-        const r = addDays(pE, dep.lagDays);
+        const r = addCalendarDays(pE, dep.lagDays);
         if (!minStart || r > minStart) minStart = r;
       } else if (dep.type === "AA") {
-        const r = addDays(pS, dep.lagDays);
+        const r = addCalendarDays(pS, dep.lagDays);
         if (!minStart || r > minStart) minStart = r;
       } else if (dep.type === "EE") {
-        const r = addDays(pE, dep.lagDays);
+        const r = addCalendarDays(pE, dep.lagDays);
         if (!minEnd || r > minEnd) minEnd = r;
       }
     }
@@ -170,11 +161,11 @@ export async function rescheduleTakte(
 
     if (minStart && minStart > ns) {
       ns = minStart;
-      ne = addDays(ns, dur);
+      ne = addCalendarDays(ns, dur);
     }
     if (minEnd && minEnd > ne) {
       ne = minEnd;
-      ns = addDays(ne, -dur);
+      ns = addCalendarDays(ne, -dur);
     }
 
     reqS.set(id, ns);
