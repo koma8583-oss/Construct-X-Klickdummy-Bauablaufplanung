@@ -1,4 +1,4 @@
-import { db, leistungsantwortenTable, taktRequestsTable, projectMembershipsTable, projectsTable } from "@workspace/db";
+import { db, taktRequestsTable, takteTable, projectMembershipsTable, projectsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 import { processNuResponse } from "../nu-response-service";
@@ -14,6 +14,11 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
   if (request.guOrgId !== payload.metadata.senderOrgId || request.nuOrgId !== payload.metadata.receiverOrgId) {
     throw new Error("Inbound service request organisations do not match the coordination request");
   }
+  const [takt] = await db.select({ projectId: takteTable.projectId })
+    .from(takteTable)
+    .where(and(eq(takteTable.id, request.taktId), eq(takteTable.projectId, payload.projectReference)))
+    .limit(1);
+  if (!takt) throw new Error("Inbound service request project does not match the coordination request");
   if (payload.requestVersion < request.taktVersion) {
     throw new Error("Inbound service request version is older than the current request");
   }

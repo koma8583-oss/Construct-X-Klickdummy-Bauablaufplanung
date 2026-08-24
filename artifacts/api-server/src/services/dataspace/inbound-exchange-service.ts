@@ -6,6 +6,12 @@ import type {
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "./external-contracts";
+import {
+  externalProjectInvitationSchema,
+  externalProjectInvitationResponseSchema,
+  externalServiceRequestSchema,
+  externalServiceResponseSchema,
+} from "./external-contracts";
 
 export type InboundProcessResult = {
   duplicate: boolean;
@@ -19,12 +25,29 @@ function validateMetadata(payload: { metadata: ExternalServiceRequest["metadata"
   }
 }
 
+function validatePayload(
+  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse,
+): void {
+  const result =
+    "invitationId" in payload
+      ? ("decision" in payload
+        ? externalProjectInvitationResponseSchema.safeParse(payload)
+        : externalProjectInvitationSchema.safeParse(payload))
+      : ("decision" in payload
+        ? externalServiceResponseSchema.safeParse(payload)
+        : externalServiceRequestSchema.safeParse(payload));
+  if (!result.success) {
+    throw new Error("Invalid external exchange payload");
+  }
+}
+
 async function processIncoming<T extends ExternalServiceRequest | ExternalServiceResponse>(
   payload: T,
   messageType: "SERVICE_REQUEST" | "SERVICE_RESPONSE",
   process?: (payload: T) => Promise<void>,
 ): Promise<InboundProcessResult> {
   validateMetadata(payload);
+  validatePayload(payload);
 
   // The insert is the claim. Only its winner may execute business logic, so two
   // simultaneous deliveries cannot both produce side effects. A FAILED row is
@@ -45,7 +68,18 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   if (!exchange) {
     const [existing] = await db.select().from(dataspaceExchangesTable)
       .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
-    if (!existing || existing.status === "PROCESSED" || existing.status === "RECEIVED") {
+    if (!existing) {
+      return { duplicate: true, status: "DUPLICATE" };
+    }
+    if (
+      existing.messageType !== messageType ||
+      existing.correlationId !== payload.metadata.correlationId ||
+      existing.senderOrgId !== payload.metadata.senderOrgId ||
+      existing.receiverOrgId !== payload.metadata.receiverOrgId ||
+      existing.businessObjectId !== payload.requestId ||
+      existing.businessObjectVersion !== payload.requestVersion
+    ) throw new Error("Inbound messageId conflicts with an existing exchange");
+    if (existing.status === "PROCESSED" || existing.status === "RECEIVED") {
       return { duplicate: true, status: "DUPLICATE" };
     }
 
@@ -79,6 +113,7 @@ async function processIncomingInvitation<T extends ExternalProjectInvitation | E
   process?: (payload: T) => Promise<void>,
 ): Promise<InboundProcessResult> {
   validateMetadata(payload);
+  validatePayload(payload);
   const [inserted] = await db.insert(dataspaceExchangesTable).values({
     direction: "INBOUND",
     messageType,
@@ -95,7 +130,17 @@ async function processIncomingInvitation<T extends ExternalProjectInvitation | E
   if (!exchange) {
     const [existing] = await db.select().from(dataspaceExchangesTable)
       .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
-    if (!existing || existing.status === "PROCESSED" || existing.status === "RECEIVED") {
+    if (!existing) {
+      return { duplicate: true, status: "DUPLICATE" };
+    }
+    if (
+      existing.messageType !== messageType ||
+      existing.correlationId !== payload.metadata.correlationId ||
+      existing.senderOrgId !== payload.metadata.senderOrgId ||
+      existing.receiverOrgId !== payload.metadata.receiverOrgId ||
+      existing.businessObjectId !== payload.invitationId
+    ) throw new Error("Inbound messageId conflicts with an existing exchange");
+    if (existing.status === "PROCESSED" || existing.status === "RECEIVED") {
       return { duplicate: true, status: "DUPLICATE" };
     }
     const [claimed] = await db.update(dataspaceExchangesTable)
