@@ -5,6 +5,8 @@ pnpm install --frozen-lockfile
 if [[ -n "${DATABASE_URL:-}" ]]; then
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0001_leistungen_canonical_rename.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0002_project_memberships.sql
 
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
