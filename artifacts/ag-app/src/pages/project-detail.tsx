@@ -2004,9 +2004,6 @@ export default function ProjectDetail() {
             </div>
           );
         })()}
-      </div>
-      </details>
-
         {/* ── Kalender panel ────────────────────────────────────────────── */}
         {activeChartTab === 'kalender' && (() => {
           const cal = projectCalendar;
@@ -2122,6 +2119,9 @@ export default function ProjectDetail() {
             </div>
           );
         })()}
+
+      </div>
+      </details>
 
       {/* ── Info Side Panel ─────────────────────────────────────────────────── */}
       <Sheet open={!!selectedTaktId} onOpenChange={(open) => { if (!open) { setSelectedTaktId(null); setIsVergabeOpen(false); } }}>
