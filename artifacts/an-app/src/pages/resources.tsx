@@ -30,19 +30,11 @@ import {
   type ResourceCapacityUnit,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -400,71 +392,51 @@ function ResourceTypesTab() {
           </Button>
         </div>
       ) : (
-        <Card className="bg-card border-border">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border">
-                    <TableHead className="text-xs">Bezeichnung</TableHead>
-                    <TableHead className="text-xs">DTC-Klasse</TableHead>
-                    <TableHead className="text-xs">Code</TableHead>
-                    <TableHead className="text-xs">Einheit</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs w-[80px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((rt) => (
-                    <TableRow
-                      key={rt.id}
-                      className="border-border hover:bg-muted/30 transition-colors"
+        <Card className="bg-card border-border p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((rt) => (
+              <article
+                key={rt.id}
+                className="flex min-w-0 flex-col rounded-xl border border-border bg-background/30 p-4 transition-colors hover:border-primary/50 hover:bg-muted/20"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold" title={rt.name}>{rt.name}</h3>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">{rt.code ?? "Ohne Code"}</p>
+                  </div>
+                  <ActiveBadge active={rt.active} />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <CategoryBadge category={rt.category} />
+                  <span className="text-xs text-muted-foreground">
+                    {rt.capacityUnit ? CAPACITY_UNIT_LABELS[rt.capacityUnit] : "Keine Einheit"}
+                  </span>
+                </div>
+                <div className="mt-auto flex justify-end gap-1 pt-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Bearbeiten"
+                    onClick={() => setEditItem(rt)}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  {rt.active && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-amber-600"
+                      title="Deaktivieren"
+                      onClick={() => handleDeactivate(rt)}
                     >
-                      <TableCell className="font-medium text-sm">{rt.name}</TableCell>
-                      <TableCell>
-                        <CategoryBadge category={rt.category} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs font-mono">
-                        {rt.code ?? "–"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {rt.capacityUnit
-                          ? CAPACITY_UNIT_LABELS[rt.capacityUnit]
-                          : "–"}
-                      </TableCell>
-                      <TableCell>
-                        <ActiveBadge active={rt.active} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Bearbeiten"
-                            onClick={() => setEditItem(rt)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          {rt.active && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-amber-600"
-                              title="Deaktivieren"
-                              onClick={() => handleDeactivate(rt)}
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
+                      <Archive className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -792,70 +764,63 @@ function ResourcesTab() {
           </Button>
         </div>
       ) : (
-        <Card className="bg-card border-border">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border">
-                    <TableHead className="text-xs">Name</TableHead>
-                    <TableHead className="text-xs">Ressourcentyp</TableHead>
-                    <TableHead className="text-xs">Kapazität</TableHead>
-                    <TableHead className="text-xs">Farbe</TableHead>
-                    <TableHead className="text-xs w-[80px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      className="border-border hover:bg-muted/30 transition-colors"
-                    >
-                      <TableCell className="font-medium text-sm">{r.name}</TableCell>
-                      <TableCell className="text-sm">
-                        {getResourceTypeName((r as Resource & { resourceTypeId?: string }).resourceTypeId)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {(r as Resource & { capacity?: number }).capacity ?? "–"}
-                      </TableCell>
-                      <TableCell>
-                        {r.color ? (
-                          <div
-                            className="w-5 h-5 rounded border border-border"
-                            style={{ backgroundColor: r.color }}
-                          />
-                        ) : (
-                          <span className="text-muted-foreground text-sm">–</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Bearbeiten"
-                            onClick={() => setEditItem(r)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-amber-600"
-                            title="Deaktivieren"
-                            onClick={() => handleDelete(r)}
-                          >
-                            <Archive className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
+        <Card className="bg-card border-border p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((r) => (
+              <article
+                key={r.id}
+                className="flex min-w-0 flex-col rounded-xl border border-border bg-background/30 p-4 transition-colors hover:border-primary/50 hover:bg-muted/20"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold" title={r.name}>{r.name}</h3>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">
+                      {getResourceTypeName((r as Resource & { resourceTypeId?: string }).resourceTypeId)}
+                    </p>
+                  </div>
+                  {r.color ? (
+                    <div
+                      className="h-7 w-7 shrink-0 rounded-md border border-border"
+                      style={{ backgroundColor: r.color }}
+                      title={`Farbe ${r.color}`}
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Keine Farbe</span>
+                  )}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border/70 py-3 text-sm">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Kapazität</p>
+                    <p className="mt-1">{(r as Resource & { capacity?: number }).capacity ?? "–"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Status</p>
+                    <p className="mt-1">{r.active ? "Aktiv" : "Inaktiv"}</p>
+                  </div>
+                </div>
+                <div className="mt-auto flex justify-end gap-1 pt-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Bearbeiten"
+                    onClick={() => setEditItem(r)}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-amber-600"
+                    title="Deaktivieren"
+                    onClick={() => handleDelete(r)}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
         </Card>
       )}
 

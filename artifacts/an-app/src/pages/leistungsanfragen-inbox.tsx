@@ -36,14 +36,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -332,109 +324,117 @@ export default function LeistungsanfragenInboxPage() {
         </Select>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Anfrage-Nr.</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">Auftraggeber</TableHead>
-                <TableHead className="text-xs">Leistung</TableHead>
-                <TableHead className="text-xs">Antwortfrist</TableHead>
-                <TableHead className="text-xs">Anfragestatus</TableHead>
-                <TableHead className="text-xs hidden sm:table-cell">Erinnerungen</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    Keine Leistungsanfragen für diese Filter
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((item) => {
-                  const isExpired  = item.status === 'EXPIRED' || !!(item as any).expiredAt;
-                  const respond    = canRespond(item);
-                  const remCount   = (item as any).reminderCount as number | undefined;
-
-                  return (
-                    <TableRow
-                      key={item.id}
-                      className={`border-border hover:bg-muted/30 transition-colors ${isExpired ? 'opacity-60' : ''}`}
-                    >
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {item.requestNumber}
-                      </TableCell>
-                      <TableCell className="text-sm max-w-[130px] truncate hidden sm:table-cell" title={(item as any).agOrgName ?? '–'}>
-                        {(item as any).agOrgName ?? <span className="text-muted-foreground">–</span>}
-                      </TableCell>
-                      <TableCell className="text-sm max-w-[160px]">
-                        <div className="truncate font-medium" title={item.taktBezeichnung ?? undefined}>{item.taktBezeichnung ?? '–'}</div>
-                        {((item as any).zone || (item as any).gewerk) && (
-                          <div className="text-xs text-muted-foreground truncate">
-                            {[(item as any).zone, (item as any).gewerk].filter(Boolean).join(' · ')}
-                          </div>
-                        )}
-                        {item.openProposal && (
-                          <div className="mt-1 text-xs text-orange-600 font-medium">
-                            Offener Vorschlag · {item.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
-                          </div>
-                        )}
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {item.currentAgreement
-                            ? `Vereinbart: ${format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(item.currentAgreement.end), 'dd.MM.yy')}`
-                            : 'Noch keine Vereinbarung'}
-                          {item.scheduleDelta.hasChange && ` · Δ ${item.scheduleDelta.startDays > 0 ? '+' : ''}${item.scheduleDelta.startDays}/${item.scheduleDelta.endDays > 0 ? '+' : ''}${item.scheduleDelta.endDays} Tage`}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {item.responseRequiredBy
-                          ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
-                          : '–'}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={item.status} />
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {typeof remCount === 'number' && remCount > 0 ? (
-                          <span className="flex items-center gap-1 text-xs text-orange-500">
-                            <Bell size={11} aria-hidden />
-                            {remCount}×
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">–</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {respond ? (
-                          <Link href={`/leistungsanfragen/${item.id}`}>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Antworten">
-                              <ChevronRight size={14} />
-                            </Button>
-                          </Link>
-                        ) : isExpired ? (
-                          <span
-                            className="text-xs text-muted-foreground"
-                            title="Die Antwortfrist und der Ablaufzeitpunkt sind überschritten. Eine reguläre Antwort ist nicht mehr möglich."
-                            aria-label="Abgelaufen – Antwort nicht mehr möglich"
-                          >
-                            <Ban size={14} />
-                          </span>
-                        ) : (
-                          <ChevronRight size={14} className="text-muted-foreground/30" />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+      {/* Request cards */}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
+          Keine Leistungsanfragen für diese Filter
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filtered.map((item) => {
+            const isExpired = item.status === 'EXPIRED' || !!(item as any).expiredAt;
+            const respond = canRespond(item);
+            const remCount = (item as any).reminderCount as number | undefined;
+            const agOrgName = (item as any).agOrgName as string | null | undefined;
+            const zone = (item as any).zone as string | null | undefined;
+            const gewerk = (item as any).gewerk as string | null | undefined;
+
+            return (
+              <article
+                key={item.id}
+                className={`flex min-w-0 flex-col rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-muted-foreground">{item.requestNumber}</p>
+                    <Link
+                      href={`/leistungsanfragen/${item.id}`}
+                      className="mt-1 block truncate text-base font-semibold hover:text-primary"
+                      title={item.taktBezeichnung ?? undefined}
+                    >
+                      {item.taktBezeichnung ?? 'Leistungsanfrage'}
+                    </Link>
+                    <p className="mt-1 truncate text-sm text-muted-foreground" title={agOrgName ?? undefined}>
+                      {agOrgName ?? 'Auftraggeber nicht angegeben'}
+                    </p>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+
+                {(zone || gewerk) && (
+                  <p className="mt-3 truncate text-xs text-muted-foreground">
+                    {[zone, gewerk].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+
+                {item.openProposal && (
+                  <div className="mt-3 rounded-lg bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-600">
+                    Offener Vorschlag · {item.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
+                  </div>
+                )}
+
+                <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border/70 py-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Antwortfrist</p>
+                    <p className="mt-1 text-sm">
+                      {item.responseRequiredBy
+                        ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
+                        : '–'}
+                    </p>
+                    <div className="mt-1">
+                      <DeadlineBadge item={item} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Vereinbarung</p>
+                    <p className="mt-1 text-sm">
+                      {item.currentAgreement
+                        ? `${format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(item.currentAgreement.end), 'dd.MM.yy')}`
+                        : 'Noch keine'}
+                    </p>
+                    {item.scheduleDelta.hasChange && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Δ {item.scheduleDelta.startDays > 0 ? '+' : ''}{item.scheduleDelta.startDays}/
+                        {item.scheduleDelta.endDays > 0 ? '+' : ''}{item.scheduleDelta.endDays} Tage
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {typeof remCount === 'number' && remCount > 0 ? (
+                      <span className="flex items-center gap-1 text-orange-500">
+                        <Bell size={12} aria-hidden />
+                        {remCount}× erinnert
+                      </span>
+                    ) : (
+                      <span>Keine Erinnerungen</span>
+                    )}
+                  </div>
+                  {respond ? (
+                    <Link href={`/leistungsanfragen/${item.id}`}>
+                      <Button size="sm" className="gap-1">
+                        Antworten <ChevronRight size={14} />
+                      </Button>
+                    </Link>
+                  ) : isExpired ? (
+                    <span
+                      className="flex items-center gap-1 text-xs text-muted-foreground"
+                      title="Die Antwortfrist und der Ablaufzeitpunkt sind überschritten. Eine reguläre Antwort ist nicht mehr möglich."
+                      aria-label="Abgelaufen – Antwort nicht mehr möglich"
+                    >
+                      <Ban size={14} /> Antwort nicht möglich
+                    </span>
+                  ) : (
+                    <ChevronRight size={16} className="text-muted-foreground/30" aria-hidden />
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
       <p className="text-xs text-muted-foreground">
         {filtered.length} von {allItems.length} Leistungsanfragen

@@ -29,20 +29,12 @@ import {
   X,
   Archive,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -384,79 +376,76 @@ export default function LocalProjectsPage() {
           </Button>
         </div>
       ) : (
-        <Card className="bg-card border-border">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border">
-                    <TableHead className="text-xs">Projektnr.</TableHead>
-                    <TableHead className="text-xs">Bezeichnung</TableHead>
-                    <TableHead className="text-xs hidden sm:table-cell">Auftraggeber (intern)</TableHead>
-                    <TableHead className="text-xs hidden sm:table-cell">Zeitraum</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs w-20 sm:w-[140px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((p) => (
-                    <TableRow key={p.id} className="border-border hover:bg-muted/30 transition-colors">
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {p.localProjectCode}
-                      </TableCell>
-                      <TableCell className="font-medium text-sm">{p.displayName}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                        {p.customerAlias ?? "–"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap hidden sm:table-cell">
-                        {p.startDate || p.endDate
-                          ? `${fmtDate(p.startDate)} – ${fmtDate(p.endDate)}`
-                          : "–"}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={p.status} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Bearbeiten"
-                            onClick={() => setEditProject(p)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          {p.status === "ACTIVE" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-amber-600"
-                              title="Abschließen"
-                              onClick={() => handleDeactivate(p, "COMPLETED")}
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {(p.status === "PLANNED" || p.status === "ACTIVE") && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-red-500 hover:bg-red-500/10"
-                              title="Stornieren"
-                              onClick={() => handleDeactivate(p, "CANCELLED")}
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
+        <Card className="bg-card border-border p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((p) => (
+              <article
+                key={p.id}
+                className="flex min-w-0 flex-col rounded-xl border border-border bg-background/30 p-4 transition-colors hover:border-primary/50 hover:bg-muted/20"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-muted-foreground">{p.localProjectCode}</p>
+                    <h3 className="mt-1 truncate font-semibold" title={p.displayName}>
+                      {p.displayName}
+                    </h3>
+                  </div>
+                  <StatusBadge status={p.status} />
+                </div>
+
+                <div className="mt-4 space-y-3 border-y border-border/70 py-3 text-sm">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Auftraggeber (intern)
+                    </p>
+                    <p className="mt-1 truncate">{p.customerAlias ?? "–"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Zeitraum</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {p.startDate || p.endDate
+                        ? `${fmtDate(p.startDate)} – ${fmtDate(p.endDate)}`
+                        : "–"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-auto flex justify-end gap-1 pt-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    title="Bearbeiten"
+                    onClick={() => setEditProject(p)}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  {p.status === "ACTIVE" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-amber-600"
+                      title="Abschließen"
+                      onClick={() => handleDeactivate(p, "COMPLETED")}
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  {(p.status === "PLANNED" || p.status === "ACTIVE") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:bg-red-500/10"
+                      title="Stornieren"
+                      onClick={() => handleDeactivate(p, "CANCELLED")}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
         </Card>
       )}
 
