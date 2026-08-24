@@ -28,7 +28,7 @@ import {
   availabilityChecksTable,
   taktRequestResourceRequirementsTable,
 } from "@workspace/db";
-import { and, eq, lt, gt, ne, max, desc, sql } from "drizzle-orm";
+import { and, eq, lt, gt, ne, max, desc, sql, or, isNull } from "drizzle-orm";
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
 import type {
   AvailabilityCheck,
@@ -104,15 +104,35 @@ export async function evaluateAvailabilityWindow(
   windowStart: Date,
   windowEnd: Date,
   excludeSourceReferenceId?: string,
+  requirementsOverride?: Array<{
+    id: string;
+    resourceTypeId: string | null;
+    requiredCapacity: string | null;
+    utilizationPercent: number;
+    requiredQualification: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+    notes: string | null;
+  }>,
+  executor: typeof db = db,
 ): Promise<InternalResultPayload> {
-  const [snapshotRow] = await db
+  const [snapshotRow] = await executor
     .select()
     .from(taktRequestSnapshotsTable)
     .where(eq(taktRequestSnapshotsTable.taktRequestId, taktRequestId))
     .limit(1);
   if (!snapshotRow) throw new AvailabilityCheckError(`No snapshot found for TaktRequest ${taktRequestId}`, "SNAPSHOT_MISSING");
   const snapshot = snapshotRow.snapshotPayload as unknown as TaktRequestSnapshotPayload;
-  const result = await executeCheckRules(snapshot, windowStart, windowEnd, nuOrgId, taktRequestId, excludeSourceReferenceId);
+  const result = await executeCheckRules(
+    snapshot,
+    windowStart,
+    windowEnd,
+    nuOrgId,
+    taktRequestId,
+    excludeSourceReferenceId,
+    requirementsOverride,
+    executor,
+  );
   return result.internalPayload;
 }
 
@@ -378,9 +398,20 @@ async function executeCheckRules(
   nuOrgId: string,
   taktRequestId: string,
   excludeSourceReferenceId?: string,
+  requirementsOverride?: Array<{
+    id: string;
+    resourceTypeId: string | null;
+    requiredCapacity: string | null;
+    utilizationPercent: number;
+    requiredQualification: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+    notes: string | null;
+  }>,
+  executor: typeof db = db,
 ): Promise<CheckRulesResult> {
   // Load NU's active resources (used by both DTC and legacy paths)
-  const nuResources = await db
+  const nuResources = await executor
     .select({
       id: resourcesTable.id,
       type: resourcesTable.type,
@@ -397,7 +428,7 @@ async function executeCheckRules(
 
   // Load requirements before bookings so requirement-specific periods and the
   // complete alternative search horizon are included in the query.
-  const dtcRequirements = await db
+  const dtcRequirements = requirementsOverride ?? await executor
     .select()
     .from(taktRequestResourceRequirementsTable)
     .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId));
@@ -448,7 +479,12 @@ async function executeCheckRules(
         ne(resourceBookingsTable.status, "CANCELLED"),
         lt(resourceBookingsTable.startAt, bookingWindowEnd),
         gt(resourceBookingsTable.endAt, bookingWindowStart),
-        ...(excludeSourceReferenceId ? [ne(resourceBookingsTable.sourceReferenceId, excludeSourceReferenceId)] : []),
+        ...(excludeSourceReferenceId
+          ? [or(
+            ne(resourceBookingsTable.sourceReferenceId, excludeSourceReferenceId),
+            isNull(resourceBookingsTable.sourceReferenceId),
+          )]
+          : []),
       ),
     );
 
@@ -456,11 +492,9 @@ async function executeCheckRules(
 
   if (hasDtcRequirements) {
     const originalWindowStart = new Date(`${snapshot.plannedTimeWindow.start}T00:00:00Z`);
-    const effectiveRequirements = shiftRequirementsToWindow(
-      dtcRequirements,
-      originalWindowStart,
-      windowStart,
-    );
+    const effectiveRequirements = requirementsOverride
+      ? dtcRequirements
+      : shiftRequirementsToWindow(dtcRequirements, originalWindowStart, windowStart);
     return executeDtcCheck(
       effectiveRequirements,
       nuResources,

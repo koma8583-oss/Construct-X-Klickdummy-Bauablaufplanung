@@ -70,8 +70,15 @@ export function restoreConcreteResourceAssignments<
   oldWindowEnd: Date,
   newWindowStart: Date,
 ): Array<T & { resourceId: string | null; quantity: number }> {
-  const shiftMs = newWindowStart.getTime() - oldWindowStart.getTime();
-  const shift = (date: Date) => new Date(date.getTime() + shiftMs);
+  const shiftDays = differenceInCalendarDays(
+    oldWindowStart.toISOString().slice(0, 10),
+    newWindowStart.toISOString().slice(0, 10),
+  );
+  const shift = (date: Date) => {
+    const shifted = new Date(date);
+    shifted.setUTCDate(shifted.getUTCDate() + shiftDays);
+    return shifted;
+  };
   const date = (value: string) => new Date(`${value}T00:00:00Z`);
   const inclusiveEnd = (value: string) => {
     const result = date(value);

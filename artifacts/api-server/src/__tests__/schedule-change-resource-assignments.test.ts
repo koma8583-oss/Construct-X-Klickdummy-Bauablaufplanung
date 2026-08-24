@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { restoreConcreteResourceAssignments } from "../services/resource-availability-service";
+import {
+  restoreConcreteResourceAssignments,
+  shiftRequirementsToWindow,
+} from "../services/resource-availability-service";
 
 const oldStart = new Date("2026-09-01T00:00:00Z");
 const oldEnd = new Date("2026-09-06T00:00:00Z");
@@ -88,5 +91,33 @@ describe("restoreConcreteResourceAssignments", () => {
     );
 
     expect(result).toMatchObject([{ resourceId: null, quantity: 1 }]);
+  });
+});
+
+describe("shiftRequirementsToWindow", () => {
+  it("shifts from the currently stored agreement, including on a second change", () => {
+    const first = shiftRequirementsToWindow(
+      [{ periodStart: "2026-09-02", periodEnd: "2026-09-03" }],
+      new Date("2026-09-01T08:00:00Z"),
+      new Date("2026-09-06T08:00:00Z"),
+    );
+    expect(first).toEqual([{ periodStart: "2026-09-07", periodEnd: "2026-09-08" }]);
+
+    const second = shiftRequirementsToWindow(
+      first,
+      new Date("2026-09-06T08:00:00Z"),
+      new Date("2026-09-11T08:00:00Z"),
+    );
+    expect(second).toEqual([{ periodStart: "2026-09-12", periodEnd: "2026-09-13" }]);
+    expect(second).not.toEqual([{ periodStart: "2026-09-17", periodEnd: "2026-09-18" }]);
+  });
+
+  it("uses calendar days rather than elapsed milliseconds", () => {
+    const shifted = shiftRequirementsToWindow(
+      [{ periodStart: "2026-10-24", periodEnd: "2026-10-25" }],
+      new Date("2026-10-24T08:00:00+02:00"),
+      new Date("2026-10-26T08:00:00+01:00"),
+    );
+    expect(shifted).toEqual([{ periodStart: "2026-10-26", periodEnd: "2026-10-27" }]);
   });
 });

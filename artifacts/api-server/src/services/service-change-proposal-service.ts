@@ -7,8 +7,7 @@ import {
   serviceChangeProposalsTable,
   type ServiceChangeProposal,
 } from "@workspace/db";
-import { applyAcceptedScheduleChange } from "./schedule-change-service";
-import { evaluateAvailabilityWindow } from "./availability-check-service";
+import { applyAcceptedScheduleChange, prepareAcceptedScheduleChange } from "./schedule-change-service";
 import { deriveServiceCoordinationState } from "./service-coordination-state";
 import { compareCalendarDates, differenceInCalendarDays } from "../lib/calendar-date-utils";
 
@@ -252,22 +251,13 @@ export async function resolveChangeProposal(input: {
     if (!request || !partyForOrg(request, input.orgId) || proposal.proposerOrgId === input.orgId) {
       throw Object.assign(new Error("Nur die Gegenseite darf diesen Vorschlag entscheiden"), { statusCode: 403 });
     }
-     if (input.status === "ACCEPTED" && request.agreedStart && request.agreedEnd) {
-       const availability = await evaluateAvailabilityWindow(
-         request.id,
-         request.nuOrgId,
-         proposal.start,
-         proposal.end,
-         request.id,
-       );
-       if (availability.conflicts.some((conflict) => !conflict.isTentative)) {
-         throw Object.assign(new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"), {
-           statusCode: 409,
-           code: "CHANGE_PROPOSAL_NOT_FEASIBLE",
-           availability,
-         });
-       }
-     }
+      const prepared = input.status === "ACCEPTED"
+        ? await prepareAcceptedScheduleChange(tx, {
+          serviceRequestId: request.id,
+          newStart: proposal.start,
+          newEnd: proposal.end,
+        })
+        : undefined;
      const now = new Date();
     const [updated] = await tx.update(serviceChangeProposalsTable).set({
       status: input.status, resolvedAt: now, resolvedByUserId: input.userId,
@@ -282,6 +272,7 @@ export async function resolveChangeProposal(input: {
          newEnd: proposal.end,
          initiatedBy: proposal.proposerOrgId === request.guOrgId ? "AG" : "AN",
          proposalId: proposal.id,
+          prepared,
        });
     }
     return updated;

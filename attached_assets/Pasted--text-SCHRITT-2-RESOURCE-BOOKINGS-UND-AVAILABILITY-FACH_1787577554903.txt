@@ -1,0 +1,1108 @@
+```text
+SCHRITT 2 – RESOURCE BOOKINGS UND AVAILABILITY FACHLICH KORRIGIEREN
+
+ZIEL
+
+Availability-Ergebnis und tatsächlich erzeugte ResourceBookings müssen exakt dieselbe fachliche Anforderung repräsentieren.
+
+Insbesondere müssen folgende Fehler vollständig beseitigt werden:
+
+- Auto-Booking verwendet noch aggregierte availableResources statt bookingRequirements.
+- unterschiedliche Requirement-Zeiträume bzw. utilizationPercent können dadurch verloren gehen.
+- bestehende konkrete Resource-Zuordnungen können bei Terminänderungen verschwinden.
+- Restbedarf eines Requirements kann bei konkreter Resource-Zuordnung verloren gehen.
+- Legacy Requests ohne ResourceRequirements können ihre Bookings verlieren.
+- Qualification Capacity kann mehrfach gezählt werden.
+- Legacy Availability arbeitet noch nicht konsequent tagesbezogen.
+
+Prüfe insbesondere die aktuell vorhandenen Bereiche für:
+
+- resource-availability-service.ts
+- gu-decision-service.ts
+- schedule-change-service.ts
+- ResourceBooking-Erzeugung
+- ResourceRequirement-Auswertung
+- konkrete Resource-Zuordnung
+- Legacy Availability
+
+Falls Funktions- oder Dateinamen inzwischen abweichen, die vorhandene aktuelle Struktur verwenden und keine zweite parallele Implementierung anlegen.
+
+
+1. bookingRequirements ALS KANONISCHE BOOKING-SPEZIFIKATION VERWENDEN
+
+Der Availability-Service liefert bereits bzw. soll liefern:
+
+bookingRequirements
+
+Diese Struktur muss die fachliche Quelle für automatisch erzeugte Bookings sein.
+
+availableResources darf weiterhin verwendet werden für:
+
+- Anzeige
+- Zusammenfassung
+- allgemeine verfügbare Kapazität
+
+availableResources darf NICHT mehr verwendet werden, um ResourceBookings zu erzeugen.
+
+
+2. ALLE AUTO-BOOKING-STELLEN FINDEN
+
+Global nach:
+
+availableResources
+
+suchen.
+
+Jeden Treffer prüfen.
+
+Insbesondere alle Stellen identifizieren, an denen sinngemäß:
+
+availableResources.map(...)
+
+oder:
+
+latestCheck.internalResultPayload.availableResources
+
+verwendet wird, um:
+
+ResourceBookings
+
+anzulegen.
+
+Besonders prüfen:
+
+gu-decision-service.ts
+
+sowie alle Pfade für:
+
+- initiale AG Acceptance
+- ACCEPT_ALTERNATIVE
+- CONFIRM_ACCEPTED
+- vergleichbare Decision-Pfade
+
+Diese Booking-Erzeugung vollständig auf bookingRequirements umstellen.
+
+
+3. bookingRequirements MUSS REQUIREMENT-SEGMENTE UNVERÄNDERT ERHALTEN
+
+Die kanonische Struktur soll mindestens enthalten:
+
+type BookingRequirement = {
+  resourceRequirementId?: string;
+  resourceTypeId: string;
+  quantity: number;
+  utilizationPercent: number;
+  periodStart: string;
+  periodEnd: string;
+  requiredQualification: string | null;
+};
+
+Falls resourceRequirementId vorhanden ist:
+→ unbedingt erhalten und weiterreichen.
+
+Dies erleichtert die eindeutige Zuordnung zwischen:
+
+ResourceRequirement
+und
+ResourceBooking.
+
+
+4. KEINE UNZULÄSSIGE VERDICHTUNG
+
+Beispiel:
+
+Requirement A:
+
+resourceTypeId = WORKER
+quantity = 4
+utilizationPercent = 50
+periodStart = 01.09.
+periodEnd = 02.09.
+
+Requirement B:
+
+resourceTypeId = WORKER
+quantity = 2
+utilizationPercent = 100
+periodStart = 03.09.
+periodEnd = 04.09.
+
+Das Ergebnis muss zwei separate bookingRequirements enthalten:
+
+[
+  {
+    resourceTypeId: "WORKER",
+    quantity: 4,
+    utilizationPercent: 50,
+    periodStart: "01.09.",
+    periodEnd: "02.09."
+  },
+  {
+    resourceTypeId: "WORKER",
+    quantity: 2,
+    utilizationPercent: 100,
+    periodStart: "03.09.",
+    periodEnd: "04.09."
+  }
+]
+
+NICHT:
+
+{
+  resourceTypeId: "WORKER",
+  quantity: 6,
+  utilizationPercent: 50,
+  periodStart: "01.09.",
+  periodEnd: "02.09."
+}
+
+Unterschiedliche:
+
+- Zeiträume
+- utilizationPercent
+- Qualification
+- Requirement-Segmente
+
+dürfen nicht unkontrolliert zusammengefasst werden.
+
+
+5. ZENTRALEN BOOKING-APPLICATION-HELPER EINFÜHREN ODER VORHANDENEN HELPER KONSOLIDIEREN
+
+Initial Acceptance und Change Acceptance dürfen nicht zwei voneinander unabhängige Booking-Erzeugungslogiken besitzen.
+
+Falls bereits ein geeigneter zentraler Service vorhanden ist:
+→ diesen erweitern.
+
+Ansonsten einen kleinen fokussierten Service/Helper einführen, beispielsweise:
+
+resource-booking-application-service.ts
+
+mit sinngemäß:
+
+applyConfirmedBookingsFromRequirements({
+  tx,
+  serviceRequestId,
+  orgId,
+  bookingRequirements,
+  existingBookings?,
+  preserveConcreteAssignments?
+})
+
+Dieser Helper ist ausschließlich verantwortlich für:
+
+BookingRequirement
+→ ResourceBooking DB Rows
+
+Er ist NICHT verantwortlich für:
+
+- Proposal Acceptance
+- Availability-Entscheidung
+- Workflowstatus
+- AG Decision
+- Change-Impact-Berechnung
+
+Diese Businessentscheidungen bleiben in den übergeordneten Services.
+
+
+6. INITIAL ACCEPTANCE AUF bookingRequirements UMRÜSTEN
+
+Im GU-/AG-Decision-Pfad:
+
+nicht mehr:
+
+const bookings =
+  availableResources.map(...)
+
+verwenden.
+
+Stattdessen:
+
+const bookingRequirements =
+  reevaluated.bookingRequirements
+
+und anschließend den zentralen Booking-Application-Helper aufrufen.
+
+Dasselbe gilt für einen bereits gespeicherten Availability Check:
+
+nicht:
+
+latestCheck.internalResultPayload.availableResources
+
+als Booking-Quelle verwenden.
+
+Sondern:
+
+latestCheck.internalResultPayload.bookingRequirements
+
+
+7. CHANGE ACCEPTANCE DENSELBEN BOOKING-HELPER VERWENDEN LASSEN
+
+Der Schedule-Change-Service aus Schritt 1 erzeugt bzw. besitzt nach erfolgreicher Vorbereitung bereits:
+
+shiftedRequirements
+
+bzw. daraus resultierende:
+
+bookingRequirements
+
+Diese müssen durch denselben zentralen Booking-Application-Mechanismus in ResourceBookings überführt werden.
+
+Damit gilt:
+
+Initial Acceptance
+und
+Accepted Change Proposal
+
+verwenden denselben fachlichen Booking-Erzeugungspfad.
+
+
+8. BESTEHENDE KONKRETE RESOURCE-ZUORDNUNGEN KORREKT ERHALTEN
+
+Bei Schedule Change müssen bestehende request-eigene CONFIRMED Bookings vor der Änderung geladen werden.
+
+Nur relevante Bookings:
+
+status = CONFIRMED
+sourceReferenceId = serviceRequestId
+
+und passender SourceType.
+
+Nicht verändern:
+
+- fremde Service Requests
+- LOCAL_PROJECT
+- MANUAL_BLOCK
+- ABSENCE
+- MAINTENANCE
+
+
+9. KONKRETE RESOURCE NICHT AN BEREITS VERSCHOBENEM ZEITRAUM MATCHEN
+
+Der bisherige Fehler darf nicht wieder auftreten:
+
+Altes Booking:
+
+02.–03.09.
+
+shifted Requirement:
+
+12.–13.09.
+
+Dann darf die Zuordnung NICHT dadurch gesucht werden, ob das alte Booking zeitlich mit:
+
+12.–13.09.
+
+überlappt.
+
+Das kann niemals funktionieren.
+
+Stattdessen muss die Zuordnung anhand stabiler fachlicher Merkmale erfolgen.
+
+Bevorzugte Reihenfolge:
+
+1. resourceRequirementId, falls vorhanden
+2. ansonsten ResourceType + ursprüngliches Requirement-Segment
+3. ansonsten explizite bestehende Booking-to-Requirement-Referenz, falls im Modell vorhanden
+
+Falls eine solche stabile Referenz aktuell fehlt:
+
+den Mapping-Schritt VOR der Verschiebung durchführen.
+
+Beispiel:
+
+const bookingAssignments =
+  matchExistingBookingsToCurrentRequirements(
+    existingBookings,
+    currentRequirements
+  );
+
+Danach:
+
+const shiftedRequirements =
+  shiftRequirementsToWindow(...);
+
+Anschließend die bereits bekannte Zuordnung auf das verschobene Requirement übertragen.
+
+Nicht versuchen, alte Bookings gegen bereits neue Zeiträume zu matchen.
+
+
+10. KONKRETE RESOURCE IM NEUEN ZEITRAUM VERFÜGBARKEITSPRÜFEN
+
+Wenn ein bestehendes Booking:
+
+resourceId = X
+
+besitzt:
+
+prüfen, ob X im neuen Requirement-Zeitraum weiterhin die erforderliche Nutzung tragen kann.
+
+Dabei das alte eigene Booking dieses Service Requests nicht gegen sich selbst rechnen.
+
+Wenn verfügbar:
+
+resourceId = X
+
+beibehalten.
+
+Wenn nicht verfügbar:
+
+nicht automatisch eine andere konkrete Resource suchen.
+
+Für diesen PoC:
+
+409 CHANGE_PROPOSAL_NOT_FEASIBLE
+
+sofern kein bereits bestehender fachlich definierter Fallback existiert.
+
+
+11. KEIN STILLSCHWEIGENDER FALLBACK AUF TYPE-LEVEL
+
+Nicht automatisch:
+
+resourceId = X
+→ Konflikt
+→ resourceId = null
+
+setzen.
+
+Das würde eine bewusste konkrete Ressourcenbindung stillschweigend entfernen.
+
+Wenn eine konkrete Bindung existiert und nicht aufrechterhalten werden kann:
+
+Change Acceptance abbrechen.
+
+Nur wenn das vorhandene Fachmodell ausdrücklich bereits einen Fallback erlaubt, diesen vorhandenen Mechanismus nutzen.
+
+
+12. RESTBEDARF EINES REQUIREMENTS DARF NICHT VERLOREN GEHEN
+
+Besonders wichtig:
+
+Requirement:
+
+quantity = 4
+
+bestehende konkrete Resource:
+
+Resource A
+capacity = 1
+
+Daraus darf NICHT am Ende nur ein Booking:
+
+resourceId = A
+quantity = null
+
+entstehen und der Restbedarf von 3 verschwinden.
+
+Wenn ein Requirement nur teilweise konkret gebunden ist, müssen alle fachlichen Kapazitätsanteile erhalten bleiben.
+
+Mögliche korrekte Darstellung:
+
+Booking 1:
+resourceId = A
+quantity = null
+entspricht konkreter Kapazität 1
+
+Booking 2:
+resourceId = null
+resourceTypeId = X
+quantity = 3
+
+oder eine bereits vorhandene äquivalente Repräsentation des Datenmodells.
+
+Wichtig:
+
+Gesamter Booking-Bedarf nach Anwendung muss exakt dem Requirement entsprechen.
+
+
+13. MEHRERE KONKRETE RESOURCES PRO REQUIREMENT UNTERSTÜTZEN
+
+Falls ein Requirement beispielsweise:
+
+quantity = 4
+
+und bereits vier konkrete Einzelresources zugewiesen sind:
+
+Resource A
+Resource B
+Resource C
+Resource D
+
+dürfen bei der Terminänderung nicht drei davon verschwinden.
+
+Der Matching-/Booking-Helper muss:
+
+0..n konkrete ResourceAssignments
+
+pro Requirement unterstützen.
+
+Nicht:
+
+resourceId?: string
+
+als einzige mögliche konkrete Zuordnung behandeln, wenn mehrere bestehende Bookings vorhanden sind.
+
+Bevorzugt intern:
+
+type RequirementBookingAssignment = {
+  requirementId;
+  concreteBookings: ExistingBooking[];
+  remainingTypeLevelQuantity: number;
+};
+
+oder äquivalente vorhandene Struktur.
+
+
+14. KONSISTENZPRÜFUNG DER BOOKING-MENGE
+
+Nach Erstellung der neuen Bookings je Requirement prüfen:
+
+effectiveBookedCapacity
+
+muss der fachlich benötigten Requirement-Kapazität entsprechen.
+
+Mindestens für Type-Level-Quantity:
+
+sum(typeLevelBooking.quantity)
+
+plus konkrete Resource-Kapazitäten entsprechend vorhandener Semantik.
+
+Falls die erzeugte Booking-Kapazität kleiner als das Requirement ist:
+
+nicht speichern.
+
+Das ist ein interner Fehler und muss sichtbar werden.
+
+Keine stille Unterbuchung.
+
+
+15. LEGACY REQUESTS OHNE ResourceRequirements
+
+Wenn:
+
+currentRequirements.length === 0
+
+aber:
+
+existingRequestBookings.length > 0
+
+dann vorhandene request-eigene CONFIRMED Bookings NICHT löschen.
+
+Stattdessen Legacy-Fallback verwenden.
+
+
+16. LEGACY BOOKING FALLBACK
+
+Shift ausschließlich kalenderbasiert:
+
+const shiftDays =
+  differenceInCalendarDays(
+    targetAgreementStart,
+    currentAgreementStart
+  );
+
+Dann je bestehendem Booking:
+
+newStart =
+  shiftCalendarDate(
+    oldBooking.start,
+    shiftDays
+  );
+
+newEnd =
+  shiftCalendarDate(
+    oldBooking.end,
+    shiftDays
+  );
+
+Beibehalten:
+
+- resourceId
+- resourceTypeId
+- quantity
+- utilizationPercent
+- sourceType
+- sourceReferenceId
+- sonstige fachlich notwendige Bookingattribute
+
+Availability für diese verschobenen Legacy Bookings vor Mutation prüfen.
+
+Kein Delete-and-create-empty.
+
+
+17. DELETE-REIHENFOLGE ABSICHERN
+
+Kein:
+
+DELETE existing bookings
+
+bevor klar ist, welche neuen Bookings erzeugt werden.
+
+Bevorzugte Reihenfolge innerhalb der bereits bestehenden Transaktion:
+
+1. bestehende Bookings laden
+2. neue Booking-Spezifikation vollständig berechnen
+3. Availability prüfen
+4. neue Booking-Spezifikation validieren
+5. erst dann alte request-eigene Bookings löschen/aktualisieren
+6. neue Bookings erzeugen
+
+Alternativ gezielte UPDATEs verwenden, wenn passend.
+
+Keine Zwischenphase, in der Daten bei Fehler dauerhaft verloren gehen können.
+
+
+18. dailyAvailability VOLLSTÄNDIG ERHALTEN
+
+Der DTC Availability-Pfad soll mindestens liefern:
+
+{
+  conflicts,
+  tentativeWarnings,
+  missingQualifications,
+  availableResources,
+  bookingRequirements,
+  dailyAvailability
+}
+
+dailyAvailability darf nicht in einem nachgelagerten Service durch Destructuring verloren gehen.
+
+Falls Availability-Ergebnis intern persistiert wird:
+→ dailyAvailability im internen Payload erhalten.
+
+
+19. DailyAvailability STRUKTUR PRÜFEN
+
+Pro Eintrag mindestens:
+
+{
+  resourceTypeId;
+  requiredQualification;
+
+  date;
+
+  totalCapacity;
+  confirmedUsed;
+  tentativeUsed;
+  requiredCapacity;
+
+  availableCapacity;
+  projectedAvailableCapacity;
+}
+
+Damit jeder Tageswert eindeutig einem ResourceType/Qualification-Kontext zugeordnet werden kann.
+
+
+20. Qualification Double Counting BESEITIGEN
+
+Problemfall:
+
+6 konkrete Resources.
+
+Jede besitzt:
+
+Qualification A
+Qualification B
+
+Gleichzeitig:
+
+Requirement A:
+4
+
+Requirement B:
+4
+
+Der aktuelle Ansatz darf nicht unabhängig rechnen:
+
+A sieht 6
+→ 4 <= 6
+→ feasible
+
+B sieht 6
+→ 4 <= 6
+→ feasible
+
+Denn dieselben 6 Resources werden zweimal verwendet.
+
+
+21. KONSERVATIVE KAPAZITÄTSALLOKATION IMPLEMENTIEREN
+
+Keine komplexe Optimierungs-Engine.
+
+Für den MVP genügt eine deterministische konservative Greedy-Prüfung.
+
+Pro:
+
+resourceTypeId + calendar day
+
+eine gemeinsame Resource-Kapazitätsmenge aufbauen.
+
+Beispielsweise:
+
+Map<resourceId, remainingCapacity>
+
+
+22. remainingCapacity INITIALISIEREN
+
+Für jede konkrete Resource:
+
+remainingCapacity =
+  resource.capacity
+  - confirmedUsageOnDay
+
+Falls Kapazität bereits durch andere CONFIRMED Bookings teilweise belegt:
+
+entsprechend reduzieren.
+
+Eigene auszuschließende Request-Bookings gemäß Schritt 1 nicht mitrechnen.
+
+
+23. QUALIFICATION REQUIREMENTS SORTIEREN
+
+Alle Requirements desselben:
+
+resourceTypeId + day
+
+mit requiredQualification != null
+
+nach Knappheit sortieren.
+
+Bevorzugt:
+
+Requirements mit den wenigsten geeigneten Resources zuerst.
+
+Sinngemäß:
+
+requirements.sort(
+  (a, b) =>
+    eligibleResourceCount(a)
+    - eligibleResourceCount(b)
+);
+
+
+24. KAPAZITÄT KONSUMIEREN
+
+Für jedes Requirement:
+
+effectiveRequired =
+  requiredCapacity
+  * utilizationPercent
+  / 100
+
+Dann:
+
+1. geeignete Resources bestimmen
+2. Resource mit remainingCapacity > 0 verwenden
+3. benötigte Kapazität konsumieren
+4. remainingCapacity reduzieren
+5. bis Requirement erfüllt oder keine Kapazität mehr vorhanden
+
+Wenn Requirement nicht vollständig erfüllt:
+
+CONFLICT
+
+
+25. DIESELBE RESOURCE NICHT MEHRFACH VOLL VERWENDEN
+
+Wenn Resource A für Qualification A bereits vollständig konsumiert wurde:
+
+remainingCapacity = 0
+
+Dann darf dieselbe Resource nicht noch einmal für Qualification B mit voller Kapazität verwendet werden.
+
+Bei Teilkapazität darf nur die verbleibende Restkapazität verwendet werden.
+
+
+26. GENERISCHE TYPE-LEVEL CAPACITY NICHT AUTOMATISCH ALS QUALIFIZIERT BEHANDELN
+
+Wenn:
+
+requiredQualification != null
+
+darf unbekannte/generische Type-Level-Kapazität nicht automatisch als qualifiziert gelten.
+
+Nur nachweislich geeignete Ressourcen berücksichtigen.
+
+Bei Unsicherheit konservativ:
+
+CONFLICT
+
+statt fälschlich FEASIBLE.
+
+
+27. REQUIREMENTS OHNE QUALIFICATION
+
+Requirements ohne requiredQualification dürfen die verbleibende allgemeine ResourceType-Kapazität verwenden.
+
+Wichtig:
+
+bereits für qualifizierte Requirements verbrauchte Kapazität muss vorher abgezogen sein.
+
+Bevorzugte Reihenfolge:
+
+zuerst spezifische Qualification Requirements,
+danach generische Requirements.
+
+
+28. LEGACY AVAILABILITY AUF TAGESLOGIK UMRÜSTEN
+
+Falls weiterhin:
+
+executeLegacyCheck(...)
+
+oder äquivalente Funktion existiert:
+
+die aktuelle Gesamtoverlap-Summierung entfernen.
+
+Nicht:
+
+alle Bookings auswählen, die irgendwann mit dem gesamten Fenster überlappen,
+und diese alle gleichzeitig summieren.
+
+
+29. LEGACY AVAILABILITY PRO KALENDERTAG
+
+Für jeden Kalendertag innerhalb:
+
+start..end inklusive
+
+separat berechnen:
+
+confirmedUsed(day)
+tentativeUsed(day)
+required(day)
+available(day)
+
+Gemeinsame Calendar-Date-Helper verwenden.
+
+
+30. LEGACY TESTBEISPIEL
+
+Capacity:
+6
+
+Booking A:
+quantity 2
+01.–02.09.
+
+Booking B:
+quantity 2
+04.–05.09.
+
+Requirement:
+quantity 4
+01.–05.09.
+
+Erwartung:
+
+FEASIBLE
+
+weil an keinem Tag mehr als 2 bestehende Einheiten gleichzeitig belegt sind.
+
+Die alte Gesamtsummierung 2 + 2 über das gesamte Fenster darf nicht zu einem falschen Konflikt führen.
+
+
+31. VERPFLICHTENDE TESTS – bookingRequirements
+
+TEST A:
+
+Requirements:
+
+4 @ 50 % vom 01.–02.
+2 @ 100 % vom 03.–04.
+
+Erwartung:
+
+genau zwei bookingRequirements.
+
+Nach Auto-Booking:
+
+genau zwei fachlich passende ResourceBookings.
+
+Perioden und utilization exakt erhalten.
+
+
+32. VERPFLICHTENDER TEST – INITIAL AG ACCEPTANCE
+
+Kompletten echten Decision-Pfad testen.
+
+Availability liefert:
+
+availableResources
+und
+bookingRequirements
+
+Beide absichtlich so wählen, dass eine Aggregation unterschiedliche Resultate erzeugen würde.
+
+Erwartung:
+
+ResourceBookings entsprechen bookingRequirements.
+
+Nicht availableResources.
+
+
+33. VERPFLICHTENDER TEST – CHANGE ACCEPTANCE
+
+Kompletten echten Change-Acceptance-Pfad testen.
+
+Nach Accepted Schedule Change:
+
+ResourceBookings entsprechen exakt den shifted bookingRequirements.
+
+
+34. VERPFLICHTENDER TEST – KONKRETE RESOURCE BLEIBT ERHALTEN
+
+Ausgang:
+
+Requirement vorhanden.
+
+Bestehendes request-owned CONFIRMED Booking:
+
+resourceId = RESOURCE_A
+
+Neuer Zeitraum:
+
+RESOURCE_A ist verfügbar.
+
+Erwartung:
+
+nach Change:
+
+resourceId weiterhin RESOURCE_A.
+
+
+35. VERPFLICHTENDER TEST – KONKRETE RESOURCE NICHT VERFÜGBAR
+
+Ausgang:
+
+resourceId = RESOURCE_A
+
+Neuer Zeitraum:
+
+RESOURCE_A besitzt echten Fremdkonflikt.
+
+Erwartung:
+
+Change Acceptance:
+
+409 CHANGE_PROPOSAL_NOT_FEASIBLE
+
+Nicht:
+
+resourceId = null
+
+Nicht:
+
+automatisch RESOURCE_B
+
+
+36. VERPFLICHTENDER TEST – RESTBEDARF
+
+Requirement:
+
+quantity = 4
+
+eine konkrete Resource deckt effektiv nur 1 Einheit.
+
+Erwartung:
+
+nach Booking-Erzeugung ist der Gesamtbedarf weiterhin 4 abgebildet.
+
+Kein Restbedarf verschwindet.
+
+
+37. VERPFLICHTENDER TEST – MEHRERE KONKRETE RESOURCES
+
+Requirement:
+
+quantity = 4
+
+bestehende konkrete Bookings:
+
+RESOURCE_A
+RESOURCE_B
+RESOURCE_C
+RESOURCE_D
+
+alle im neuen Zeitraum verfügbar.
+
+Erwartung:
+
+alle vier konkreten Zuordnungen bleiben erhalten.
+
+Nicht nur die erste.
+
+
+38. VERPFLICHTENDER TEST – LEGACY OHNE REQUIREMENTS
+
+Service Request:
+
+keine ResourceRequirements
+
+aber mindestens ein request-owned CONFIRMED Booking.
+
+Nach Schedule Change:
+
+Booking weiterhin vorhanden.
+
+Zeitraum korrekt kalenderbasiert verschoben.
+
+resourceId/resourceTypeId/quantity/utilization erhalten.
+
+
+39. VERPFLICHTENDER TEST – QUALIFICATION DOUBLE COUNTING
+
+6 Resources.
+
+Alle besitzen:
+
+Qualification A
+Qualification B
+
+Gleichzeitig:
+
+4 × A
+4 × B
+
+Erwartung:
+
+nicht FEASIBLE.
+
+Test muss dieselbe produktive Availability-Funktion verwenden, die auch der echte Request-Check verwendet.
+
+
+40. VERPFLICHTENDER TEST – TEILKAPAZITÄT
+
+Beispiel:
+
+2 Resources
+je Kapazität 1
+
+Requirements gleichzeitig:
+
+A:
+1 Resource @ 50 %
+
+B:
+1 Resource @ 50 %
+
+wenn beide Resources jeweils A+B qualifiziert sind:
+
+muss die verbleibende Kapazität korrekt berücksichtigt werden.
+
+Dieser Test soll verhindern, dass der Greedy-Mechanismus Ressourcen nach der ersten Teilnutzung vollständig entfernt, obwohl Restkapazität vorhanden ist.
+
+
+41. VERPFLICHTENDER TEST – LEGACY DAILY AVAILABILITY
+
+Zeitlich getrennte Bookings dürfen nicht als gleichzeitig behandelt werden.
+
+Den oben beschriebenen 01.–02. / 04.–05.-Fall testen.
+
+
+42. KEINE TESTS NUR AUF ISOLIERTEN HELFER BESCHRÄNKEN
+
+Helper-Unit-Tests sind sinnvoll.
+
+Zusätzlich aber mindestens:
+
+- ein kompletter Initial-Acceptance-Test
+- ein kompletter Change-Acceptance-Test
+- ein kompletter Availability-Test
+
+damit falsche Parameterübergaben zwischen Services erkannt werden.
+
+
+43. ABSCHLUSSKONTROLLE FÜR DIESEN SCHRITT
+
+Vor Abschluss global suchen nach:
+
+availableResources
+
+und prüfen:
+
+Wird es irgendwo noch zum Erzeugen von ResourceBookings verwendet?
+
+Wenn ja:
+→ korrigieren.
+
+
+44. WEITERE ABSCHLUSSKONTROLLE
+
+Global suchen nach:
+
+bookingRequirements
+
+Prüfen:
+
+- initiale Acceptance verwendet sie
+- Change Acceptance verwendet sie
+- gespeicherte Availability behält sie
+- keine nachgelagerte Aggregation zerstört Perioden/utilization
+
+
+45. KONKRETE RESOURCE RESTORATION PRÜFEN
+
+Prüfen:
+
+- Wird altes Booking gegen aktuelle/unverschobene Requirements gematcht?
+- Oder fälschlich gegen bereits neue Zeiträume?
+
+Nur erstere Variante ist zulässig.
+
+
+46. KAPAZITÄTSERHALTUNG PRÜFEN
+
+Für jedes Requirement muss nach Booking-Erzeugung gelten:
+
+gebuchte fachliche Kapazität
+=
+erforderliche fachliche Kapazität
+
+Keine Unterbuchung.
+
+Keine verlorene Restmenge.
+
+
+47. LEGACY DELETE PRÜFEN
+
+Es darf keinen Pfad mehr geben:
+
+requirements.length === 0
+→ alte Bookings löschen
+→ keine neuen erzeugen
+
+
+48. QUALIFICATION-POOL PRÜFEN
+
+Es darf keinen Pfad mehr geben, der dieselbe konkrete Resource innerhalb desselben Tages unabhängig vollständig in mehreren Qualification-Gruppen zählt.
+
+
+49. LEGACY AVAILABILITY PRÜFEN
+
+Es darf keine Gesamtsummenlogik mehr geben, die zeitlich getrennte Bookings als gleichzeitig behandelt.
+
+
+50. ERGEBNIS NACH DIESEM SCHRITT
+
+Nach Abschluss dieses Schritts muss gelten:
+
+ResourceRequirements
+→ bookingRequirements
+→ Availability
+→ ResourceBookings
+
+bilden eine konsistente fachliche Kette.
+
+Initial Acceptance und Change Acceptance verwenden dieselbe Booking-Logik.
+
+Konkrete Ressourcenzuordnungen bleiben erhalten, sofern sie weiterhin verfügbar sind.
+
+Kein Requirement-Bedarf verschwindet.
+
+Qualification-Kapazität wird nicht mehrfach verwendet.
+
+Legacy Requests bleiben funktionsfähig.
+
+Availability wird auf Calendar-Day-Basis berechnet.
+```

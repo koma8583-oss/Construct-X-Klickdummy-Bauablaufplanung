@@ -7,28 +7,56 @@ import {
   leistungsVersionenTable,
   resourcesTable,
 } from "@workspace/db";
-import { shiftCalendarDate } from "../lib/calendar-date-utils";
-import { restoreConcreteResourceAssignments } from "./resource-availability-service";
+import { evaluateAvailabilityWindow } from "./availability-check-service";
+import { shiftRequirementsToWindow, restoreConcreteResourceAssignments } from "./resource-availability-service";
 
 function dateOnly(value: Date | string): string {
   return (value instanceof Date ? value.toISOString() : value).slice(0, 10);
 }
 
+type ScheduleRequirement = {
+  id: string;
+  resourceTypeId: string | null;
+  requiredCapacity: string | null;
+  utilizationPercent: number;
+  requiredQualification: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  notes: string | null;
+};
+
+export type PreparedScheduleChange = {
+  request: typeof leistungsanfragenTable.$inferSelect;
+  service: typeof leistungenTable.$inferSelect;
+  currentAgreementStart: Date;
+  currentAgreementEnd: Date;
+  targetStart: Date;
+  targetEnd: Date;
+  shiftedRequirements: ScheduleRequirement[];
+  ownedBookings: Array<typeof resourceBookingsTable.$inferSelect>;
+  restoredBookings: Array<{
+    resourceId: string | null;
+    resourceTypeId: string | null;
+    quantity: number;
+    utilizationPercent: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+  }>;
+};
+
 /**
- * Applies an accepted service-request schedule change as one transaction.
- * The transaction is supplied by the caller so proposal status, agreement,
- * plan dates and request-owned bookings cannot be partially committed.
+ * Loads and validates the complete target state without changing business
+ * data. The returned shifted requirements are the single source of truth for
+ * availability, persistence and booking recreation.
  */
-export async function applyAcceptedScheduleChange(
+export async function prepareAcceptedScheduleChange(
   tx: any,
   input: {
     serviceRequestId: string;
     newStart: Date;
     newEnd: Date;
-    initiatedBy: "AG" | "AN";
-    proposalId?: string;
   },
-) {
+): Promise<PreparedScheduleChange> {
   const [requestRow] = await tx.select({
     request: leistungsanfragenTable,
     service: leistungenTable,
@@ -44,39 +72,29 @@ export async function applyAcceptedScheduleChange(
     throw Object.assign(new Error("Ende muss am oder nach dem Beginn liegen"), { statusCode: 400 });
   }
 
-  const oldStart = requestRow.request.agreedStart;
-  const oldEnd = requestRow.request.agreedEnd;
-  const oldStartDate = oldStart.toISOString().slice(0, 10);
-  const newStartDate = input.newStart.toISOString().slice(0, 10);
-  const requirements: Array<{
-    id: string;
-    resourceTypeId: string | null;
-    requiredCapacity: string | null;
-    utilizationPercent: number;
-    periodStart: string | null;
-    periodEnd: string | null;
-  }> = await tx.select({
+  const requirements: ScheduleRequirement[] = await tx.select({
     id: leistungsanfrageResourceRequirementsTable.id,
     resourceTypeId: leistungsanfrageResourceRequirementsTable.resourceTypeId,
     requiredCapacity: leistungsanfrageResourceRequirementsTable.requiredCapacity,
     utilizationPercent: leistungsanfrageResourceRequirementsTable.utilizationPercent,
+    requiredQualification: leistungsanfrageResourceRequirementsTable.requiredQualification,
     periodStart: leistungsanfrageResourceRequirementsTable.periodStart,
     periodEnd: leistungsanfrageResourceRequirementsTable.periodEnd,
+    notes: leistungsanfrageResourceRequirementsTable.notes,
   }).from(leistungsanfrageResourceRequirementsTable)
     .where(eq(leistungsanfrageResourceRequirementsTable.leistungsanfrageId, input.serviceRequestId));
-  const shiftRequirements = requirements.map((requirement) => ({
+
+  const currentStartDate = dateOnly(requestRow.request.agreedStart);
+  const targetStartDate = dateOnly(input.newStart);
+  const shiftedRequirements = shiftRequirementsToWindow(
+    requirements,
+    requestRow.request.agreedStart,
+    input.newStart,
+  ).map((requirement) => ({
     ...requirement,
-    periodStart: requirement.periodStart ? shiftCalendarDate(requirement.periodStart, calendarDayDelta(oldStartDate, newStartDate)) : newStartDate,
-    periodEnd: requirement.periodEnd ? shiftCalendarDate(requirement.periodEnd, calendarDayDelta(oldStartDate, newStartDate)) : input.newEnd.toISOString().slice(0, 10),
+    periodStart: requirement.periodStart ?? targetStartDate,
+    periodEnd: requirement.periodEnd ?? dateOnly(input.newEnd),
   }));
-  const [service] = await tx.update(leistungenTable).set({
-    plannedStart: dateOnly(input.newStart),
-    plannedEnd: dateOnly(input.newEnd),
-    version: requestRow.service.version + 1,
-    lifecycleStatus: "CONFIRMED",
-    status: "BESTAETIGT",
-    updatedAt: new Date(),
-  }).where(eq(leistungenTable.id, requestRow.service.id)).returning();
 
   const ownedBookings = await tx.select().from(resourceBookingsTable).where(and(
     eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
@@ -103,18 +121,29 @@ export async function applyAcceptedScheduleChange(
     gt(resourceBookingsTable.endAt, input.newStart),
     lt(resourceBookingsTable.startAt, input.newEnd),
   ));
-  const restored = restoreConcreteResourceAssignments(
-    shiftRequirements,
+
+  const availability = await evaluateAvailabilityWindow(
+    input.serviceRequestId,
+    requestRow.request.nuOrgId,
+    input.newStart,
+    input.newEnd,
+    input.serviceRequestId,
+    shiftedRequirements,
+    tx,
+  );
+  if (availability.conflicts.some((conflict) => !conflict.isTentative)) {
+    throw Object.assign(new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"), {
+      statusCode: 409,
+      code: "CHANGE_PROPOSAL_NOT_FEASIBLE",
+      availability,
+    });
+  }
+
+  const restoredBookings = restoreConcreteResourceAssignments(
+    shiftedRequirements,
     ownedBookings
       .filter((booking: { resourceId: string | null }) => booking.resourceId !== null)
-      .map((booking: {
-        id: string;
-        resourceId: string | null;
-        resourceTypeId: string | null;
-        startAt: Date;
-        endAt: Date;
-        utilizationPercent: number;
-      }) => ({
+      .map((booking: typeof ownedBookings[number]) => ({
         id: booking.id,
         resourceId: booking.resourceId!,
         resourceTypeId: booking.resourceTypeId,
@@ -123,19 +152,63 @@ export async function applyAcceptedScheduleChange(
         utilizationPercent: booking.utilizationPercent,
       })),
     resources,
-    otherConfirmedBookings
-      .filter((booking: { resourceId: string | null }): booking is { resourceId: string; startAt: Date; endAt: Date } => booking.resourceId !== null),
-    new Date(`${oldStartDate}T00:00:00Z`),
-    new Date(`${oldEnd.toISOString().slice(0, 10)}T00:00:00Z`),
-    new Date(`${newStartDate}T00:00:00Z`),
+    otherConfirmedBookings.filter(
+      (booking: { resourceId: string | null }): booking is { resourceId: string; startAt: Date; endAt: Date } =>
+        booking.resourceId !== null,
+    ),
+    new Date(`${currentStartDate}T00:00:00Z`),
+    new Date(`${dateOnly(requestRow.request.agreedEnd)}T00:00:00Z`),
+    new Date(`${targetStartDate}T00:00:00Z`),
   );
+
+  return {
+    request: requestRow.request,
+    service: requestRow.service,
+    currentAgreementStart: requestRow.request.agreedStart,
+    currentAgreementEnd: requestRow.request.agreedEnd,
+    targetStart: input.newStart,
+    targetEnd: input.newEnd,
+    shiftedRequirements,
+    ownedBookings,
+    restoredBookings,
+  };
+}
+
+/**
+ * Applies an accepted service-request schedule change as one transaction.
+ * The transaction is supplied by the caller so proposal status, agreement,
+ * plan dates and request-owned bookings cannot be partially committed.
+ */
+export async function applyAcceptedScheduleChange(
+  tx: any,
+  input: {
+    serviceRequestId: string;
+    newStart: Date;
+    newEnd: Date;
+    initiatedBy: "AG" | "AN";
+    proposalId?: string;
+    prepared?: PreparedScheduleChange;
+  },
+) {
+  const prepared = input.prepared ?? await prepareAcceptedScheduleChange(tx, input);
+  const requestRow = { request: prepared.request, service: prepared.service };
+  const newStartDate = dateOnly(prepared.targetStart);
+  const [service] = await tx.update(leistungenTable).set({
+      plannedStart: dateOnly(prepared.targetStart),
+      plannedEnd: dateOnly(prepared.targetEnd),
+    version: requestRow.service.version + 1,
+    lifecycleStatus: "CONFIRMED",
+    status: "BESTAETIGT",
+    updatedAt: new Date(),
+  }).where(eq(leistungenTable.id, requestRow.service.id)).returning();
+
   await tx.delete(resourceBookingsTable).where(and(
     eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
     eq(resourceBookingsTable.sourceReferenceId, input.serviceRequestId),
     eq(resourceBookingsTable.status, "CONFIRMED"),
   ));
-  if (shiftRequirements.length > 0) {
-    await Promise.all(shiftRequirements.map((requirement) =>
+  if (prepared.shiftedRequirements.length > 0) {
+    await Promise.all(prepared.shiftedRequirements.map((requirement) =>
       tx.update(leistungsanfrageResourceRequirementsTable).set({
         periodStart: requirement.periodStart,
         periodEnd: requirement.periodEnd,
@@ -143,11 +216,11 @@ export async function applyAcceptedScheduleChange(
       }).where(eq(leistungsanfrageResourceRequirementsTable.id, requirement.id)),
     ));
   }
-  const bookingValues = restored
+  const bookingValues = prepared.restoredBookings
     .filter((requirement) => requirement.resourceTypeId && Number(requirement.quantity) > 0)
     .map((requirement) => {
       const startAt = new Date(`${requirement.periodStart ?? newStartDate}T00:00:00Z`);
-      const endAt = new Date(`${requirement.periodEnd ?? input.newEnd.toISOString().slice(0, 10)}T00:00:00Z`);
+      const endAt = new Date(`${requirement.periodEnd ?? dateOnly(prepared.targetEnd)}T00:00:00Z`);
       endAt.setUTCDate(endAt.getUTCDate() + 1);
       return {
         nuOrgId: requestRow.request.nuOrgId,
@@ -173,21 +246,16 @@ export async function applyAcceptedScheduleChange(
     sourceRequestId: input.serviceRequestId,
     snapshotPayload: {
       ...(requestRow.service as unknown as Record<string, unknown>),
-      plannedStart: input.newStart.toISOString().slice(0, 10),
-      plannedEnd: input.newEnd.toISOString().slice(0, 10),
+      plannedStart: prepared.targetStart.toISOString().slice(0, 10),
+      plannedEnd: prepared.targetEnd.toISOString().slice(0, 10),
       version: requestRow.service.version + 1,
     },
     createdByUserId: null,
   });
   const [request] = await tx.update(leistungsanfragenTable).set({
-    agreedStart: input.newStart,
-    agreedEnd: input.newEnd,
+    agreedStart: prepared.targetStart,
+    agreedEnd: prepared.targetEnd,
     updatedAt: new Date(),
   }).where(eq(leistungsanfragenTable.id, input.serviceRequestId)).returning();
   return { request, service, updatedBookingCount: bookingValues.length };
-}
-
-function calendarDayDelta(from: string, to: string): number {
-  const parse = (value: string) => Date.UTC(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1, Number(value.slice(8, 10)));
-  return Math.round((parse(to) - parse(from)) / 86_400_000);
 }

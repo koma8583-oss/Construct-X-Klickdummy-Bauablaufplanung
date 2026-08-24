@@ -1,0 +1,1236 @@
+SCHRITT 3 – NEXT ACTION UND COORDINATION STATE VOLLSTÄNDIG ZENTRALISIEREN
+
+ZIEL
+
+Für denselben Service Request müssen Detailansicht, Coordination Board, Task-Cockpit und Listen immer denselben objektiven fachlichen Zustand liefern.
+
+Der aktuell noch vorhandene Fehler muss beseitigt werden, dass sich der Next Action State abhängig davon ändern kann, ob AG oder AN die Daten abfragt.
+
+Außerdem darf nicht mehr aus request.status geraten werden, ob bereits eine AN Response oder eine AG Decision existiert.
+
+Prüfe insbesondere die aktuell vorhandenen Bereiche für:
+
+- service-coordination-state.ts
+- deriveServiceCoordinationState(...)
+- deriveCoordinationFacts(...)
+- coordination-task-service.ts
+- getCoordination(...)
+- ag-coordination-board-service.ts
+- AG Leistungsanfragenliste
+- AN Leistungsanfragenliste
+- CurrentActionCard
+- sämtliche Mapper für nextAction / nextActionOwner
+
+Falls einzelne Funktions- oder Dateinamen inzwischen anders sind, die vorhandene aktuelle Struktur verwenden.
+
+Keine zweite neue State Engine daneben implementieren.
+
+
+1. EINEN OBJEKTIVEN COORDINATION STATE DEFINIEREN
+
+Der Coordination State beschreibt den fachlichen Zustand des Service Requests.
+
+Er darf NICHT davon abhängen, welche Partei die Information gerade betrachtet.
+
+Beispiel:
+
+Service Request wurde an AN gesendet.
+
+AN hat noch nicht geantwortet.
+
+Dann ist der objektive Zustand immer:
+
+nextActionOwner = "AN"
+nextAction = "RESPOND_TO_REQUEST"
+
+Auch wenn der AG den Request öffnet.
+
+Falsch wäre:
+
+AG sieht:
+nextAction = NO_ACTION
+
+AN sieht:
+nextAction = RESPOND_TO_REQUEST
+
+Der Zustand selbst muss für beide identisch sein.
+
+
+2. party / viewer NICHT MEHR FÜR DIE STATE-ENTSCHEIDUNG VERWENDEN
+
+Prüfe deriveServiceCoordinationState(...).
+
+Falls dort derzeit Bedingungen existieren wie:
+
+if (
+  input.party === "AG" &&
+  input.hasResponse &&
+  !input.hasDecision
+)
+
+oder:
+
+if (
+  input.party === "AN" &&
+  ...
+)
+
+diese Logik aus der objektiven State-Berechnung entfernen.
+
+Die Funktion darf nicht fragen:
+
+"Wer schaut?"
+
+sondern ausschließlich:
+
+"Wer muss fachlich als Nächstes handeln?"
+
+
+3. VIEWER UND WORKFLOW STATE TRENNEN
+
+Falls für die UI weiterhin wichtig ist, ob der aktuelle Benutzer selbst handeln kann:
+
+dies erst NACH der objektiven State-Berechnung ableiten.
+
+Beispiel:
+
+const state =
+  deriveServiceCoordinationState(facts);
+
+const viewerHasAction =
+  state.nextActionOwner === viewerRole;
+
+Das darf aber state.nextActionOwner selbst nicht verändern.
+
+Beispiel:
+
+objektiver State:
+
+nextActionOwner = "AN"
+nextAction = "RESPOND_TO_REQUEST"
+
+AG-Darstellung:
+
+viewerHasAction = false
+
+AN-Darstellung:
+
+viewerHasAction = true
+
+Der State bleibt in beiden Fällen identisch.
+
+
+4. TATSÄCHLICHE RESPONSE-DATEN VERWENDEN
+
+Nicht aus request.status ableiten:
+
+hasResponse
+
+Beispiel einer zu entfernenden Logik:
+
+const hasResponse =
+  request.status === "UNDER_REVIEW"
+  || request.status === "ACCEPTED"
+  || request.status === "ALTERNATIVES_PROPOSED"
+  || ...
+
+Stattdessen tatsächliche Response-Daten laden.
+
+Sinngemäß:
+
+const latestResponse =
+  await loadLatestResponseForRequest(
+    request.id
+  );
+
+const hasResponse =
+  latestResponse != null;
+
+
+5. TATSÄCHLICHE AG DECISION VERWENDEN
+
+Ebenso nicht aus request.status ableiten:
+
+hasDecision
+
+Stattdessen echte AG Decision laden:
+
+const decision =
+  await loadDecisionForRequest(
+    request.id
+  );
+
+const hasDecision =
+  decision != null;
+
+Wichtig:
+
+Ein Request kann beispielsweise aufgrund einer AN Response bereits einen Status wie ACCEPTED besitzen, obwohl der AG noch überhaupt keine Decision gespeichert hat.
+
+Deshalb ist request.status keine zuverlässige Decision-Quelle.
+
+
+6. EINE ZENTRALE FACTS-STRUKTUR VERWENDEN
+
+Falls deriveCoordinationFacts(...) bereits vorhanden und fachlich aktueller ist:
+
+diesen Mechanismus zur zentralen Grundlage machen.
+
+Bevorzugte Struktur sinngemäß:
+
+type ServiceCoordinationFacts = {
+  requestStatus;
+
+  hasAgreement: boolean;
+
+  hasResponse: boolean;
+  hasDecision: boolean;
+
+  openChangeProposal:
+    | {
+        id: string;
+        proposerRole: "AG" | "AN";
+        status: "OPEN";
+      }
+    | null;
+
+  openClarification:
+    | {
+        waitingForRole: "AG" | "AN";
+      }
+    | null;
+
+  openConstraint:
+    | {
+        responsibleRole: "AG" | "AN";
+      }
+    | null;
+
+  readinessActionRequiredBy:
+    | "AG"
+    | "AN"
+    | null;
+
+  responseRequiredBy?: string | null;
+  decisionRequiredBy?: string | null;
+};
+
+Die konkreten Typen an das bestehende Datenmodell anpassen.
+
+
+7. KEINE DB-ROWS IN DEN PURE STATE HELPER GEBEN, WENN NICHT NÖTIG
+
+Der zentrale State-Helper soll möglichst eine pure Funktion sein.
+
+Also bevorzugt:
+
+DB / Service Layer
+→ Facts laden
+→ Facts normalisieren
+→ deriveServiceCoordinationState(facts)
+
+Nicht:
+
+deriveServiceCoordinationState()
+führt selbst viele DB Queries aus.
+
+Dadurch kann dieselbe Funktion zuverlässig in:
+
+- Detail
+- Board
+- Tasks
+- Listen
+- Tests
+
+verwendet werden.
+
+
+8. PRIORITÄTSREIHENFOLGE EXPLIZIT FESTLEGEN
+
+Wenn mehrere offene Sachverhalte gleichzeitig existieren, muss eindeutig definiert sein, welche primäre Next Action angezeigt wird.
+
+Verwende folgende Prioritätsreihenfolge, sofern nicht bereits eine bewusst dokumentierte und fachlich bessere zentrale Reihenfolge existiert:
+
+1. RESPOND_TO_CHANGE_PROPOSAL
+2. DECIDE_RESPONSE
+3. RESPOND_TO_REQUEST
+4. ANSWER_CLARIFICATION
+5. RESOLVE_CONSTRAINT
+6. CONFIRM_READINESS
+7. NO_ACTION
+
+Wichtig:
+
+Alle Consumer verwenden dieselbe Reihenfolge.
+
+Nicht:
+
+Board Priorität A
+Detail Priorität B
+Task Service Priorität C
+
+
+9. CHANGE PROPOSAL STATE
+
+Wenn ein Change Proposal OPEN ist:
+
+proposerRole = AG
+
+dann:
+
+nextActionOwner = "AN"
+nextAction = "RESPOND_TO_CHANGE_PROPOSAL"
+
+Wenn:
+
+proposerRole = AN
+
+dann:
+
+nextActionOwner = "AG"
+nextAction = "RESPOND_TO_CHANGE_PROPOSAL"
+
+Ein offener Change Proposal hat Vorrang vor normalen Readiness-/Clarification-Aktionen.
+
+
+10. RESPONSE STATE
+
+Wenn:
+
+latestResponse vorhanden
+
+und:
+
+AG Decision nicht vorhanden
+
+und kein höher priorisierter offener Change Proposal existiert:
+
+nextActionOwner = "AG"
+nextAction = "DECIDE_RESPONSE"
+
+
+11. REQUEST RESPONSE STATE
+
+Wenn:
+
+keine latestResponse
+
+und der Request fachlich an AN übermittelt wurde bzw. auf Response wartet:
+
+nextActionOwner = "AN"
+nextAction = "RESPOND_TO_REQUEST"
+
+Nicht abhängig davon, ob AG oder AN die Funktion aufruft.
+
+
+12. CLARIFICATION STATE
+
+Wenn eine offene Clarification existiert und eine konkrete Gegenpartei antworten muss:
+
+nextActionOwner =
+  waitingForRole
+
+nextAction =
+  "ANSWER_CLARIFICATION"
+
+Beispiel:
+
+AG stellt Frage an AN.
+
+Dann:
+
+nextActionOwner = AN
+
+Nicht:
+
+AG_ACTION_REQUIRED
+
+nur weil AG die Detailseite öffnet.
+
+
+13. CONSTRAINT STATE
+
+Wenn ein offenes Constraint existiert und die verantwortliche Partei eine fachliche Aktion ausführen muss:
+
+nextActionOwner =
+  responsibleRole
+
+nextAction =
+  "RESOLVE_CONSTRAINT"
+
+Dabei ausschließlich das tatsächlich verantwortliche Org/Role verwenden.
+
+
+14. READINESS STATE
+
+Wenn kein höher priorisierter Vorgang offen ist und Readiness noch eine Aktion erfordert:
+
+nextActionOwner =
+  readinessActionRequiredBy
+
+nextAction =
+  "CONFIRM_READINESS"
+
+Keine Readiness-Aktion anzeigen, wenn beispielsweise noch ein Change Proposal oder eine Response-Entscheidung offen ist.
+
+
+15. NO_ACTION STATE
+
+Nur wenn tatsächlich keine fachliche Aktion offen ist:
+
+nextActionOwner = "NONE"
+nextAction = "NO_ACTION"
+
+Nicht NO_ACTION verwenden als:
+
+"Der andere muss etwas tun."
+
+Das ist fachlich falsch.
+
+Wenn die Gegenseite etwas tun muss:
+
+nextActionOwner = Gegenseite
+nextAction = konkrete Aktion
+
+
+16. ALTEN deriveCoordinationState(...) NICHT MEHR ALS ZWEITE BUSINESSLOGIK VERWENDEN
+
+Falls weiterhin ein älterer Helper existiert, der Werte liefert wie:
+
+AGREED
+AG_ACTION_REQUIRED
+AN_ACTION_REQUIRED
+NO_AGREEMENT
+
+darf dieser keine eigene unabhängige Workflowinterpretation mehr besitzen.
+
+Nur noch aus dem zentralen neuen State ableiten.
+
+Beispiel:
+
+function mapToLegacyCoordinationState(
+  state,
+  hasAgreement
+) {
+  if (state.nextActionOwner === "AG") {
+    return "AG_ACTION_REQUIRED";
+  }
+
+  if (state.nextActionOwner === "AN") {
+    return "AN_ACTION_REQUIRED";
+  }
+
+  if (hasAgreement) {
+    return "AGREED";
+  }
+
+  return "NO_AGREEMENT";
+}
+
+Keine eigene Proposal-/Response-/Statuslogik mehr in diesem Legacy-Mapping.
+
+
+17. getCoordination(...) AUF DEN ZENTRALEN STATE UMRÜSTEN
+
+Der Coordination-Detail-Endpoint muss exakt dieselben Facts verwenden wie Board/Tasks.
+
+Insbesondere:
+
+- echte latestResponse laden
+- echte decision laden
+- openProposal laden
+- relevante Clarification laden
+- relevante Constraint-Daten laden
+- Readiness laden
+
+Danach:
+
+const facts = ...
+const coordinationState =
+  deriveServiceCoordinationState(facts);
+
+Nicht weiterhin den alten betrachterabhängigen Helper verwenden.
+
+
+18. coordination-task-service AUF DIESELBE QUELLE AUSRICHTEN
+
+Falls coordination-task-service bereits deriveCoordinationFacts(...) verwendet:
+
+prüfen, ob dessen Bedingungen exakt der zentralen State-Berechnung entsprechen.
+
+Task Service darf zusätzliche einzelne Tasks erzeugen.
+
+Das ist erlaubt.
+
+Aber:
+
+Die primäre Next Action muss konsistent mit dem zentralen State sein.
+
+Beispiel:
+
+State:
+AG / DECIDE_RESPONSE
+
+Dann darf Task-Cockpit nicht ausschließlich einen AN-Task als primäre Aktion erzeugen.
+
+
+19. COORDINATION BOARD UMRÜSTEN
+
+ag-coordination-board-service.ts muss dieselbe Facts-/State-Quelle verwenden.
+
+Nicht erneut eigene hasResponse/hasDecision-Heuristik implementieren.
+
+Jede Board-Zeile bekommt:
+
+nextActionOwner
+nextAction
+
+aus derselben zentralen Funktion.
+
+
+20. AG-LISTE UMRÜSTEN
+
+Die AG-Leistungsanfragenliste darf Next Action nicht selbst aus:
+
+request.status
+responseStatus
+agreement
+
+ableiten.
+
+Wenn Next Action dort angezeigt wird:
+
+zentrale Facts + zentralen State verwenden.
+
+
+21. AN-LISTE UMRÜSTEN
+
+Dasselbe für AN.
+
+Wichtig:
+
+Der objektive State bleibt identisch.
+
+Nur die Darstellung darf unterschiedlich sein.
+
+Beispiel:
+
+State:
+nextActionOwner = AG
+nextAction = DECIDE_RESPONSE
+
+AN-Liste kann anzeigen:
+
+"Warten auf AG"
+
+AG-Liste kann anzeigen:
+
+"Antwort prüfen"
+
+Beide basieren auf demselben State.
+
+
+22. BATCH-LOADER STATT N+1 IMPLEMENTIEREN
+
+Die Listen-/Board-Pfade dürfen nicht für jeden Request einzeln getCoordination() aufrufen und dabei jeweils mehrere DB Queries erzeugen.
+
+Bevorzugt zentralen Loader einführen oder vorhandenen Loader erweitern:
+
+loadCoordinationFactsForRequests(
+  requestIds
+)
+
+Dieser soll möglichst gesammelt laden:
+
+- latest Responses
+- Decisions
+- Open Proposals
+- Open Clarifications
+- Open Constraints
+- Readiness
+
+Danach in Memory gruppieren:
+
+Map<serviceRequestId, CoordinationFactsData>
+
+
+23. LATEST RESPONSE PRO REQUEST KORREKT BESTIMMEN
+
+Falls mehrere Responses möglich sind:
+
+pro Request den fachlich aktuellen/latest Response bestimmen.
+
+Bevorzugt DB Query mit:
+
+ORDER BY createdAt DESC
+
+bzw. bestehender Versions-/Latest-Semantik.
+
+Nicht zufällig erste gefundene Row.
+
+
+24. DECISION QUERY FILTERN
+
+Prüfe insbesondere getCoordination().
+
+Es darf nicht für jede Coordination-Abfrage die komplette Decision-Tabelle laden.
+
+Nicht:
+
+SELECT * FROM leistungsantwort_ent scheidungen
+
+und danach in JS suchen.
+
+Stattdessen:
+
+WHERE serviceRequestId = ...
+
+bzw. für Batch:
+
+WHERE serviceRequestId IN (...)
+
+Damit gleichzeitig den aktuellen Performancefehler beseitigen.
+
+
+25. CURRENT ACTION CARD AUF OBJEKTIVEN STATE UMRÜSTEN
+
+CurrentActionCard darf nicht mehr erwarten:
+
+nextAction = NO_ACTION
+nextActionOwner = AN
+
+Diese Kombination sollte durch die neue State-Logik grundsätzlich nicht mehr für echte Wartezustände entstehen.
+
+
+26. DARSTELLUNG: AG WARTET AUF AN
+
+Wenn:
+
+nextActionOwner = AN
+
+und aktueller Viewer = AG
+
+bei:
+
+RESPOND_TO_REQUEST
+
+anzeigen:
+
+"Warten auf AN"
+
+Text beispielsweise:
+
+"Der AN muss die Leistungsanfrage beantworten."
+
+Nicht:
+
+"Keine Aktion erforderlich – Leistung ist abgestimmt."
+
+
+27. DARSTELLUNG: AN WARTET AUF AG
+
+Wenn:
+
+nextActionOwner = AG
+
+und aktueller Viewer = AN
+
+beispielsweise:
+
+DECIDE_RESPONSE
+
+anzeigen:
+
+"Warten auf AG"
+
+Text:
+
+"Der AG muss die Antwort prüfen und entscheiden."
+
+
+28. DARSTELLUNG: VIEWER HAT AKTION
+
+Wenn:
+
+nextActionOwner === viewerRole
+
+dann:
+
+"Aktion erforderlich"
+
+mit aktionsspezifischem Titel.
+
+
+29. AKTIONSSPEZIFISCHE UI-TEXTE
+
+Für AG beispielsweise:
+
+DECIDE_RESPONSE
+→ "Antwort des AN prüfen"
+
+RESPOND_TO_CHANGE_PROPOSAL
+→ "Terminänderung prüfen"
+
+ANSWER_CLARIFICATION
+→ "Klärungsfrage beantworten"
+
+RESOLVE_CONSTRAINT
+→ "Risiko / Hindernis bearbeiten"
+
+CONFIRM_READINESS
+→ "Ausführungsbereitschaft prüfen"
+
+Für Wartezustände sinngemäß entsprechende Gegenparteitexte.
+
+
+30. CURRENT ACTION FOKUS NICHT IMMER AUF partner-response
+
+Die AG-Detailseite darf nicht mehr unabhängig von nextAction immer:
+
+document.getElementById("partner-response")
+
+anscrollen.
+
+Aktionsabhängige Section IDs definieren.
+
+Beispiel:
+
+DECIDE_RESPONSE
+→ "coordination"
+
+RESPOND_TO_CHANGE_PROPOSAL
+→ "coordination"
+
+ANSWER_CLARIFICATION
+→ "clarifications"
+
+RESOLVE_CONSTRAINT
+→ "constraints"
+
+CONFIRM_READINESS
+→ "readiness"
+
+RESPOND_TO_REQUEST
+→ kein AG-Button, da AG wartet
+
+
+31. ZENTRALEN HELPER FÜR SECTION TARGET VERWENDEN
+
+Beispielsweise frontendseitig:
+
+function getActionTarget(
+  nextAction
+) {
+  switch (nextAction) {
+    case "DECIDE_RESPONSE":
+    case "RESPOND_TO_CHANGE_PROPOSAL":
+      return "coordination";
+
+    case "ANSWER_CLARIFICATION":
+      return "clarifications";
+
+    case "RESOLVE_CONSTRAINT":
+      return "constraints";
+
+    case "CONFIRM_READINESS":
+      return "readiness";
+
+    default:
+      return null;
+  }
+}
+
+Keine Business-State-Berechnung darin.
+
+Nur Navigation.
+
+
+32. FRISTEN NICHT PAUSCHAL AUS responseRequiredBy ABLEITEN
+
+Prüfe die aktuelle Coordination API.
+
+Es darf nicht jede Current Action einfach:
+
+responseRequiredBy
+
+als relevante Frist anzeigen.
+
+
+33. AKTIONSSPEZIFISCHE DEADLINE
+
+Bevorzugt im zentralen State oder Coordination DTO:
+
+actionRequiredBy
+
+bereitstellen.
+
+Beispielsweise:
+
+type ServiceCoordinationState = {
+  nextActionOwner;
+  nextAction;
+  actionRequiredBy: string | null;
+}
+
+Dann kann der Backend-State die korrekte Frist der aktuellen Aktion bestimmen.
+
+
+34. BEISPIEL DEADLINES
+
+RESPOND_TO_REQUEST:
+→ responseRequiredBy
+
+DECIDE_RESPONSE:
+→ guDecisionRequiredBy, falls vorhanden
+
+RESPOND_TO_CHANGE_PROPOSAL:
+→ Proposal-Deadline, falls fachlich vorhanden
+
+ANSWER_CLARIFICATION:
+→ Clarification-Deadline, falls vorhanden
+
+RESOLVE_CONSTRAINT:
+→ Constraint-Deadline, falls vorhanden
+
+CONFIRM_READINESS:
+→ readiness-relevante Deadline, falls vorhanden
+
+Wenn keine echte Frist existiert:
+
+actionRequiredBy = null
+
+
+35. KEINE FALSCHE FRIST ERFINDEN
+
+Insbesondere nicht:
+
+AN hat bereits geantwortet
+AG muss entscheiden
+
+aber CurrentAction zeigt weiterhin:
+
+"Antwortfrist des AN"
+
+Das ist fachlich falsch.
+
+
+36. API DTO KONSISTENT MACHEN
+
+Coordination DTO sollte für Next Action mindestens liefern:
+
+{
+  nextActionOwner,
+  nextAction,
+  actionRequiredBy
+}
+
+Falls responseRequiredBy aus Kompatibilitätsgründen weiterhin gebraucht wird:
+
+darf zusätzlich bestehen bleiben.
+
+Aber Current Action soll actionRequiredBy verwenden.
+
+
+37. KEINE INTERNEN USERDATEN FÜR STATE BENÖTIGEN
+
+Die State-Logik arbeitet nur mit:
+
+AG
+AN
+Status
+fachlichen Objekten
+
+Keine internen User IDs organisationsübergreifend übertragen.
+
+
+38. PFLICHTTEST – REQUEST WARTET AUF AN
+
+Setup:
+
+Request wurde gesendet.
+
+Keine Response.
+
+Kein Proposal.
+
+Erwartung zentraler State:
+
+nextActionOwner = "AN"
+nextAction = "RESPOND_TO_REQUEST"
+
+Diesen State einmal berechnen.
+
+Dann prüfen:
+
+Detail:
+identisch
+
+Board:
+identisch
+
+Liste:
+identisch
+
+Task-Service:
+entsprechender AN-Task vorhanden
+
+
+39. PFLICHTTEST – RESPONSE WARTET AUF AG
+
+Setup:
+
+latestResponse vorhanden.
+
+Keine AG Decision.
+
+Kein offener Proposal.
+
+Erwartung:
+
+nextActionOwner = "AG"
+nextAction = "DECIDE_RESPONSE"
+
+Detail, Board, Liste müssen exakt übereinstimmen.
+
+
+40. PFLICHTTEST – STATUS DARF DECISION NICHT VORTÄUSCHEN
+
+Setup:
+
+Request.status beispielsweise ACCEPTED
+
+weil AN eine ACCEPTED-Response abgegeben hat.
+
+Response vorhanden.
+
+AG Decision Row fehlt.
+
+Erwartung:
+
+hasDecision = false
+
+und:
+
+nextActionOwner = AG
+nextAction = DECIDE_RESPONSE
+
+Dieser Test ist besonders wichtig, um die alte Status-Heuristik dauerhaft zu verhindern.
+
+
+41. PFLICHTTEST – AG CHANGE PROPOSAL
+
+Agreement vorhanden.
+
+OPEN Proposal:
+
+proposerRole = AG
+
+Erwartung:
+
+nextActionOwner = AN
+nextAction = RESPOND_TO_CHANGE_PROPOSAL
+
+Bei AG-Darstellung:
+
+"Warten auf AN"
+
+Bei AN-Darstellung:
+
+"Terminänderung prüfen"
+
+
+42. PFLICHTTEST – AN CHANGE PROPOSAL
+
+Agreement vorhanden.
+
+OPEN Proposal:
+
+proposerRole = AN
+
+Erwartung:
+
+nextActionOwner = AG
+nextAction = RESPOND_TO_CHANGE_PROPOSAL
+
+
+43. PFLICHTTEST – CLARIFICATION
+
+AG stellt Clarification an AN.
+
+OPEN.
+
+Erwartung:
+
+nextActionOwner = AN
+nextAction = ANSWER_CLARIFICATION
+
+Nicht abhängig vom Viewer.
+
+
+44. PFLICHTTEST – CONSTRAINT
+
+Constraint:
+
+responsibleOrg = AG
+
+OPEN.
+
+Keine höher priorisierte Aktion.
+
+Erwartung:
+
+nextActionOwner = AG
+nextAction = RESOLVE_CONSTRAINT
+
+
+45. PFLICHTTEST – READINESS
+
+Keine Response-/Proposal-/Clarification-/Constraint-Aktion offen.
+
+Readiness benötigt Aktion von AN.
+
+Erwartung:
+
+nextActionOwner = AN
+nextAction = CONFIRM_READINESS
+
+
+46. PFLICHTTEST – PRIORITÄT
+
+Agreement vorhanden.
+
+Gleichzeitig:
+
+AN Proposal OPEN
+
+und:
+
+AG Constraint OPEN
+
+Erwartung:
+
+RESPOND_TO_CHANGE_PROPOSAL
+
+hat Vorrang.
+
+
+47. PFLICHTTEST – CurrentActionCard WARTEN AUF AN
+
+Input:
+
+viewerRole = AG
+
+state:
+
+nextActionOwner = AN
+nextAction = RESPOND_TO_REQUEST
+
+Erwartung Text enthält:
+
+"Warten auf AN"
+
+Nicht:
+
+"Keine Aktion erforderlich"
+
+
+48. PFLICHTTEST – CurrentActionCard EIGENE AKTION
+
+viewerRole = AG
+
+state:
+
+nextActionOwner = AG
+nextAction = DECIDE_RESPONSE
+
+Erwartung:
+
+"Antwort des AN prüfen"
+
+und genau ein Primary Action Button.
+
+
+49. PFLICHTTEST – ACTION TARGET
+
+DECIDE_RESPONSE:
+
+Focus target =
+coordination
+
+ANSWER_CLARIFICATION:
+
+Focus target =
+clarifications
+
+RESOLVE_CONSTRAINT:
+
+Focus target =
+constraints
+
+CONFIRM_READINESS:
+
+Focus target =
+readiness
+
+Nicht alle partner-response.
+
+
+50. PFLICHTTEST – actionRequiredBy
+
+Response wartet auf AN:
+
+actionRequiredBy =
+responseRequiredBy
+
+Response liegt vor, AG Decision erforderlich:
+
+actionRequiredBy =
+guDecisionRequiredBy oder null
+
+Explizit prüfen:
+
+alte responseRequiredBy wird nicht fälschlich als AG-Decision-Deadline ausgegeben.
+
+
+51. ALTE TESTS KORRIGIEREN
+
+Falls bestehender CurrentActionCard-Test aktuell erwartet:
+
+nextAction = NO_ACTION
+nextActionOwner = AN
+
+→ "Keine Aktion erforderlich"
+
+diesen Test entfernen oder fachlich korrigieren.
+
+Diese Kombination soll nicht mehr den Wartezustand repräsentieren.
+
+
+52. KEINE DOPPELTE LOGIK IN TEST-MOCKS
+
+Tests sollen möglichst den echten zentralen State-Helper verwenden.
+
+Nicht in jedem Consumer-Test eigene Mock-State-Bedingungen nachbauen, die später vom Backend divergieren können.
+
+
+53. ABSCHLUSSKONTROLLE – State Helper
+
+Global suchen nach:
+
+deriveServiceCoordinationState
+deriveCoordinationFacts
+deriveCoordinationState
+
+Für jeden Treffer prüfen:
+
+- ist das zentrale Businesslogik?
+- ist es nur Mapping?
+- existieren zwei konkurrierende Interpretationen?
+
+Am Ende darf es nur EINE fachliche Quelle für nextAction/nextActionOwner geben.
+
+
+54. ABSCHLUSSKONTROLLE – hasResponse
+
+Global suchen nach:
+
+hasResponse
+
+Prüfen:
+
+Wird irgendwo noch aus request.status geraten?
+
+Wenn ja:
+→ entfernen.
+
+
+55. ABSCHLUSSKONTROLLE – hasDecision
+
+Global suchen nach:
+
+hasDecision
+
+Prüfen:
+
+Wird irgendwo noch aus request.status geraten?
+
+Wenn ja:
+→ entfernen.
+
+
+56. ABSCHLUSSKONTROLLE – Decision Query
+
+Prüfen:
+
+Lädt getCoordination() weiterhin die komplette Decision-Tabelle?
+
+Wenn ja:
+→ filtern bzw. Batch Loader verwenden.
+
+
+57. ABSCHLUSSKONTROLLE – N+1
+
+Prüfen:
+
+Rufen AG-/AN-Listen für jeden einzelnen Request getCoordination() auf?
+
+Wenn ja:
+
+Facts gesammelt laden.
+
+Nicht durch neue zusätzliche N+1 Queries verschlimmern.
+
+
+58. ABSCHLUSSKONTROLLE – CurrentActionCard
+
+Prüfen:
+
+Kann die Karte noch "Keine Aktion erforderlich" anzeigen, obwohl nextActionOwner die Gegenseite ist?
+
+Wenn ja:
+→ korrigieren.
+
+
+59. ABSCHLUSSKONTROLLE – Deadline
+
+Prüfen:
+
+Wird responseRequiredBy noch pauschal für jede Aktion verwendet?
+
+Wenn ja:
+→ actionRequiredBy einführen bzw. korrekt mappen.
+
+
+60. ERGEBNIS NACH DIESEM SCHRITT
+
+Nach Abschluss muss für jeden Service Request ein objektiver zentraler Coordination State existieren.
+
+Beispiel:
+
+Request wartet auf AN:
+
+State:
+AN / RESPOND_TO_REQUEST
+
+AG sieht:
+"Warten auf AN"
+
+AN sieht:
+"Anfrage beantworten"
+
+Response wartet auf AG:
+
+State:
+AG / DECIDE_RESPONSE
+
+AG sieht:
+"Antwort des AN prüfen"
+
+AN sieht:
+"Warten auf AG"
+
+Der fachliche State bleibt identisch.
+
+Nur die rollenabhängige Darstellung unterscheidet sich.
+
+Detail, Board, Task-Cockpit und Listen müssen denselben State verwenden.
