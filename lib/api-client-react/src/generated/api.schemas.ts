@@ -21,6 +21,46 @@ export interface InboundExchangeMetadata {
   createdAt: string;
 }
 
+export type ProjectMembershipStatus = typeof ProjectMembershipStatus[keyof typeof ProjectMembershipStatus];
+
+
+export const ProjectMembershipStatus = {
+  INVITED: 'INVITED',
+  ACTIVE: 'ACTIVE',
+  REJECTED: 'REJECTED',
+  REVOKED: 'REVOKED',
+} as const;
+
+/**
+ * Bilateral project relationship and invitation lifecycle state
+ */
+export interface ProjectMembership {
+  id: string;
+  projectId: string;
+  agOrgId: string;
+  anOrgId: string;
+  anParticipantId?: string | null;
+  status: ProjectMembershipStatus;
+  invitationMessage?: string | null;
+  invitationId: string;
+  correlationId: string;
+  invitationExpiresAt?: string | null;
+  invitedAt: string;
+  respondedAt?: string | null;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  revokedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InviteProjectParticipantRequest {
+  anOrgId: string;
+  /** @maxLength 4000 */
+  invitationMessage?: string;
+  validUntil?: string;
+}
+
 export type InboundServiceRequestResourceRequirementsItem = { [key: string]: unknown };
 
 export type InboundServiceRequestPolicy = { [key: string]: unknown };
@@ -35,6 +75,69 @@ export interface InboundServiceRequest {
   plannedEnd: string;
   resourceRequirements: InboundServiceRequestResourceRequirementsItem[];
   policy?: InboundServiceRequestPolicy;
+}
+
+export type ProjectInvitationProject = {
+  projectReference: string;
+  projectName: string;
+  description?: string;
+  location?: string;
+};
+
+export type ProjectInvitationRequestedRole = typeof ProjectInvitationRequestedRole[keyof typeof ProjectInvitationRequestedRole];
+
+
+export const ProjectInvitationRequestedRole = {
+  CONTRACTOR: 'CONTRACTOR',
+} as const;
+
+export type ProjectInvitationPurpose = typeof ProjectInvitationPurpose[keyof typeof ProjectInvitationPurpose];
+
+
+export const ProjectInvitationPurpose = {
+  PROJECT_COLLABORATION: 'PROJECT_COLLABORATION',
+} as const;
+
+export type ProjectInvitationPolicyUsagePurpose = typeof ProjectInvitationPolicyUsagePurpose[keyof typeof ProjectInvitationPolicyUsagePurpose];
+
+
+export const ProjectInvitationPolicyUsagePurpose = {
+  PROJECT_MEMBERSHIP: 'PROJECT_MEMBERSHIP',
+} as const;
+
+export type ProjectInvitationPolicy = {
+  usagePurpose: ProjectInvitationPolicyUsagePurpose;
+  allowedConsumerParticipantId: string;
+};
+
+export interface ProjectInvitation {
+  metadata: InboundExchangeMetadata;
+  /** @minLength 1 */
+  invitationId: string;
+  project: ProjectInvitationProject;
+  requestedRole: ProjectInvitationRequestedRole;
+  purpose: ProjectInvitationPurpose;
+  invitationMessage?: string;
+  validUntil?: string;
+  policy: ProjectInvitationPolicy;
+}
+
+export type ProjectInvitationResponseDecision = typeof ProjectInvitationResponseDecision[keyof typeof ProjectInvitationResponseDecision];
+
+
+export const ProjectInvitationResponseDecision = {
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export interface ProjectInvitationResponse {
+  metadata: InboundExchangeMetadata;
+  /** @minLength 1 */
+  invitationId: string;
+  projectReference: string;
+  decision: ProjectInvitationResponseDecision;
+  message?: string;
+  respondedAt: string;
 }
 
 export type InboundServiceResponseDecision = typeof InboundServiceResponseDecision[keyof typeof InboundServiceResponseDecision];
@@ -993,6 +1096,8 @@ export const DataspaceMessageType = {
   TAKT_REQUEST_EXPIRED: 'TAKT_REQUEST_EXPIRED',
   TAKT_REQUEST_REMINDER: 'TAKT_REQUEST_REMINDER',
   DATA_OFFER_PUBLISHED: 'DATA_OFFER_PUBLISHED',
+  PROJECT_INVITATION: 'PROJECT_INVITATION',
+  PROJECT_INVITATION_RESPONSE: 'PROJECT_INVITATION_RESPONSE',
 } as const;
 
 /**

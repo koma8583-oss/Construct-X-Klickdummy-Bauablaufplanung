@@ -45,6 +45,72 @@ export const ReceiveInboundServiceRequestResponse = zod.object({
 
 
 /**
+ * @summary Receive an inbound project invitation
+ */
+
+
+
+export const ReceiveInboundProjectInvitationBody = zod.object({
+  "metadata": zod.object({
+  "messageId": zod.string(),
+  "correlationId": zod.string(),
+  "schemaVersion": zod.enum(['1.0']),
+  "senderOrgId": zod.string(),
+  "receiverOrgId": zod.string(),
+  "createdAt": zod.coerce.date()
+}),
+  "invitationId": zod.string().min(1),
+  "project": zod.object({
+  "projectReference": zod.string(),
+  "projectName": zod.string(),
+  "description": zod.string().optional(),
+  "location": zod.string().optional()
+}),
+  "requestedRole": zod.enum(['CONTRACTOR']),
+  "purpose": zod.enum(['PROJECT_COLLABORATION']),
+  "invitationMessage": zod.string().optional(),
+  "validUntil": zod.coerce.date().optional(),
+  "policy": zod.object({
+  "usagePurpose": zod.enum(['PROJECT_MEMBERSHIP']),
+  "allowedConsumerParticipantId": zod.string()
+})
+})
+
+export const ReceiveInboundProjectInvitationResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PROCESSED', 'DUPLICATE'])
+})
+
+
+/**
+ * @summary Receive an inbound project invitation response
+ */
+
+
+
+export const ReceiveInboundProjectInvitationResponseBody = zod.object({
+  "metadata": zod.object({
+  "messageId": zod.string(),
+  "correlationId": zod.string(),
+  "schemaVersion": zod.enum(['1.0']),
+  "senderOrgId": zod.string(),
+  "receiverOrgId": zod.string(),
+  "createdAt": zod.coerce.date()
+}),
+  "invitationId": zod.string().min(1),
+  "projectReference": zod.string(),
+  "decision": zod.enum(['ACCEPTED', 'REJECTED']),
+  "message": zod.string().optional(),
+  "respondedAt": zod.coerce.date()
+})
+
+export const ReceiveInboundProjectInvitationResponseResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PROCESSED', 'DUPLICATE'])
+})
+
+
+/**
  * @summary Receive an inbound service response
  */
 export const ReceiveInboundServiceResponseBody = zod.object({
@@ -442,6 +508,101 @@ export const RemoveProjectContractorParams = zod.object({
 })
 
 export const RemoveProjectContractorResponse = zod.void()
+
+
+/**
+ * @summary List project participants and membership lifecycle states
+ */
+export const ListProjectMembershipsParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const ListProjectMembershipsResponseItem = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "agOrgId": zod.string(),
+  "anOrgId": zod.string(),
+  "anParticipantId": zod.string().nullish(),
+  "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
+  "invitationMessage": zod.string().nullish(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "invitedAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "acceptedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Bilateral project relationship and invitation lifecycle state')
+export const ListProjectMembershipsResponse = zod.array(ListProjectMembershipsResponseItem)
+
+
+/**
+ * @summary Invite an AN participant to the project
+ */
+export const InviteProjectParticipantParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const inviteProjectParticipantBodyInvitationMessageMax = 4000;
+
+
+
+export const InviteProjectParticipantBody = zod.object({
+  "anOrgId": zod.string(),
+  "invitationMessage": zod.string().max(inviteProjectParticipantBodyInvitationMessageMax).optional(),
+  "validUntil": zod.coerce.date().optional()
+})
+
+export const InviteProjectParticipantResponse = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "agOrgId": zod.string(),
+  "anOrgId": zod.string(),
+  "anParticipantId": zod.string().nullish(),
+  "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
+  "invitationMessage": zod.string().nullish(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "invitedAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "acceptedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Bilateral project relationship and invitation lifecycle state')
+
+
+/**
+ * @summary Revoke a pending invitation or active project membership
+ */
+export const RevokeProjectMembershipParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RevokeProjectMembershipResponse = zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "agOrgId": zod.string(),
+  "anOrgId": zod.string(),
+  "anParticipantId": zod.string().nullish(),
+  "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
+  "invitationMessage": zod.string().nullish(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "invitedAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "acceptedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Bilateral project relationship and invitation lifecycle state')
 
 
 /**

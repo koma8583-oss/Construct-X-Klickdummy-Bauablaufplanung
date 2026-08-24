@@ -34,3 +34,5 @@ export * from './project-calendars';
 export * from './coordination-proposals';
 export * from './coordination-tasks';
 export * from './service-coordination';
+export * from './generated/api';
+export * from './generated/api.schemas';

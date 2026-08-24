@@ -522,6 +522,69 @@ paths:
         "204":
           description: Removed
 
+  /projects/{projectId}/memberships:
+    get:
+      operationId: listProjectMemberships
+      tags: [projects]
+      summary: List project participants and membership lifecycle states
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectMembership"
+    post:
+      operationId: inviteProjectParticipant
+      tags: [projects]
+      summary: Invite an AN participant to the project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteProjectParticipantRequest"
+      responses:
+        "201":
+          description: Project invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembership"
+
+  /project-memberships/{id}/revoke:
+    post:
+      operationId: revokeProjectMembership
+      tags: [projects]
+      summary: Revoke a pending invitation or active project membership
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Revoked membership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembership"
+
   # ──────────── AG Project Overview (Task 9.2) ────────────
   /ag/projects/overview:
     get:
@@ -3358,6 +3421,37 @@ components:
         senderOrgId: { type: string }
         receiverOrgId: { type: string }
         createdAt: { type: string, format: date-time }
+
+    ProjectMembership:
+      type: object
+      description: Bilateral project relationship and invitation lifecycle state
+      required: [id, projectId, agOrgId, anOrgId, status, invitationId, correlationId, invitedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        agOrgId: { type: string }
+        anOrgId: { type: string }
+        anParticipantId: { type: string, nullable: true }
+        status: { type: string, enum: [INVITED, ACTIVE, REJECTED, REVOKED] }
+        invitationMessage: { type: string, nullable: true }
+        invitationId: { type: string }
+        correlationId: { type: string }
+        invitationExpiresAt: { type: string, format: date-time, nullable: true }
+        invitedAt: { type: string, format: date-time }
+        respondedAt: { type: string, format: date-time, nullable: true }
+        acceptedAt: { type: string, format: date-time, nullable: true }
+        rejectedAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    InviteProjectParticipantRequest:
+      type: object
+      required: [anOrgId]
+      properties:
+        anOrgId: { type: string }
+        invitationMessage: { type: string, maxLength: 4000 }
+        validUntil: { type: string, format: date-time }
 
     InboundServiceRequest:
       type: object

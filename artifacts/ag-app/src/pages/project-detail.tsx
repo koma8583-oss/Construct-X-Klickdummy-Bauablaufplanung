@@ -10,8 +10,6 @@ import {
   useUpdateTakt,
   useDeleteTakt,
   useListProjectContractors,
-  useAddProjectContractor,
-  useRemoveProjectContractor,
   useListOrganizations,
   useListTaktRequests,
   useCreateTaktRequestWithSnapshot,
@@ -27,13 +25,17 @@ import {
   getGetProjectQueryKey,
   getGetAgProjectsOverviewQueryKey,
   getListProjectContractorsQueryKey,
+  useListProjectMemberships,
+  useInviteProjectParticipant,
+  useRevokeProjectMembership,
+  getListProjectMembershipsQueryKey,
   getListOrganizationsQueryKey,
   getListTaktDependenciesQueryKey,
   TaktStatus,
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult, ProjectMembership } from '@workspace/api-client-react';
 import { useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -403,8 +405,8 @@ export default function ProjectDetail() {
   const [isVergabeOpen, setIsVergabeOpen] = useState(false);
 
   // Contractor management dialog
-  const [isContractorMgmtOpen, setIsContractorMgmtOpen] = useState(false);
-  const [contractorSearch, setContractorSearch] = useState('');
+  const [isParticipantDirectoryOpen, setIsParticipantDirectoryOpen] = useState(false);
+  const [participantSearch, setParticipantSearch] = useState('');
 
   // Dependency form state (shared between info panel read and edit dialog write)
   const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
@@ -508,6 +510,9 @@ export default function ProjectDetail() {
   const { data: contractors } = useListProjectContractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectContractorsQueryKey(projectId) },
   });
+  const { data: memberships } = useListProjectMemberships(projectId, {
+    query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
+  });
   const { data: allAnOrgs } = useListOrganizations(
     { type: 'AN' },
     { query: { queryKey: getListOrganizationsQueryKey({ type: 'AN' }) } },
@@ -545,8 +550,8 @@ export default function ProjectDetail() {
   const createTaktRequest = useCreateTaktRequestWithSnapshot();
   const sendTaktRequest = useSendTaktRequest();
   const closeRequest = useCreateGuDecision();
-  const addContractor = useAddProjectContractor();
-  const removeContractor = useRemoveProjectContractor();
+  const inviteParticipant = useInviteProjectParticipant();
+  const revokeMembership = useRevokeProjectMembership();
   const createDep = useCreateTaktDependency();
   const createDepSkip = useCreateTaktDependencySkipReschedule();
   const deleteDep = useDeleteTaktDependency();
@@ -560,7 +565,7 @@ export default function ProjectDetail() {
 
   // Confirm-dialogs für destruktive Aktionen
   const [confirmDeleteTakt, setConfirmDeleteTakt] = useState(false);
-  const [confirmRemoveContractor, setConfirmRemoveContractor] = useState<string | null>(null);
+  const [confirmRevokeMembership, setConfirmRevokeMembership] = useState<ProjectMembership | null>(null);
   const [confirmCloseRequest, setConfirmCloseRequest] = useState(false);
   const [confirmDeleteDep, setConfirmDeleteDep] = useState<string | null>(null);
   const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
@@ -1110,34 +1115,31 @@ export default function ProjectDetail() {
     });
   };
 
-  const handleAddContractor = (anOrgId: string) => {
-    void fetch(`/api/projects/${projectId}/invitations`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anOrgId }),
-    }).then(async response => {
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? 'Einladung konnte nicht gesendet werden.');
-      queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
-      toast({ title: 'Projekteinladung gesendet' });
-    }).catch(err => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }));
-  };
-
-  const handleRemoveContractor = (anOrgId: string) => {
-    setConfirmRemoveContractor(anOrgId);
-  };
-
-  const doRemoveContractor = () => {
-    if (!confirmRemoveContractor) return;
-    removeContractor.mutate({ projectId, anOrgId: confirmRemoveContractor }, {
+  const handleInviteParticipant = (anOrgId: string) => {
+    inviteParticipant.mutate({ projectId, data: { anOrgId } }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
-        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
-        toast({ title: 'Nachunternehmer entfernt' });
-        setConfirmRemoveContractor(null);
+        queryClient.invalidateQueries({ queryKey: getListProjectMembershipsQueryKey(projectId) });
+        toast({ title: 'Projekteinladung gesendet' });
+      },
+      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
+    });
+  };
+
+  const handleRevokeMembership = (membership: ProjectMembership) => {
+    setConfirmRevokeMembership(membership);
+  };
+
+  const doRevokeMembership = () => {
+    if (!confirmRevokeMembership) return;
+    revokeMembership.mutate({ id: confirmRevokeMembership.id }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectMembershipsQueryKey(projectId) });
+        toast({ title: 'Projektmitgliedschaft widerrufen' });
+        setConfirmRevokeMembership(null);
       },
       onError: (err) => {
         toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
-        setConfirmRemoveContractor(null);
+        setConfirmRevokeMembership(null);
       },
     });
   };
@@ -1377,12 +1379,12 @@ export default function ProjectDetail() {
             </Button>
           </Link>
           {canManageContractors && (
-          <Button variant="outline" onClick={() => setIsContractorMgmtOpen(true)}>
+          <Button variant="outline" onClick={() => setIsParticipantDirectoryOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
-            Nachunternehmer
-            {contractors && contractors.length > 0 && (
+            Teilnehmer
+            {memberships && memberships.length > 0 && (
               <span className="ml-1.5 text-xs bg-primary/15 text-primary rounded-full px-1.5 py-0.5 font-semibold">
-                {contractors.length}
+                {memberships.filter(m => m.status === 'ACTIVE').length}
               </span>
             )}
           </Button>
@@ -2370,7 +2372,7 @@ export default function ProjectDetail() {
                             <button
                               type="button"
                               className="font-medium text-primary hover:underline"
-                              onClick={() => setIsContractorMgmtOpen(true)}
+                              onClick={() => setIsParticipantDirectoryOpen(true)}
                             >
                               Jetzt verknüpfen
                             </button>
@@ -3087,74 +3089,83 @@ export default function ProjectDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Nachunternehmer verwalten ──────────────────────────────────────────── */}
-      <Dialog open={isContractorMgmtOpen} onOpenChange={setIsContractorMgmtOpen}>
+      {/* ── Participant Directory ─────────────────────────────────────────────── */}
+      <Dialog open={isParticipantDirectoryOpen} onOpenChange={setIsParticipantDirectoryOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
-              Nachunternehmer — {project?.projectName}
+              Teilnehmer — {project?.projectName}
             </DialogTitle>
           </DialogHeader>
 
-          {/* Verknüpfte Nachunternehmer */}
+          {/* Membership lifecycle */}
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Verknüpft ({contractors?.length ?? 0})
+              Projektmitglieder ({memberships?.length ?? 0})
             </p>
-            {!contractors?.length ? (
-              <p className="text-sm text-muted-foreground italic py-2">Noch keine Nachunternehmer verknüpft.</p>
+            {!memberships?.length ? (
+              <p className="text-sm text-muted-foreground italic py-2">Noch keine Teilnehmer eingeladen.</p>
             ) : (
               <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
-                {contractors.map(c => (
-                  <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card">
+                {memberships.map(membership => {
+                  const org = allAnOrgs?.find(candidate => candidate.id === membership.anOrgId);
+                  const status = ({
+                    INVITED: { label: 'Einladung ausstehend', className: 'text-amber-600 bg-amber-500/10 border-amber-500/20' },
+                    ACTIVE: { label: 'Aktiv', className: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' },
+                    REVOKED: { label: 'Widerrufen', className: 'text-red-600 bg-red-500/10 border-red-500/20' },
+                    REJECTED: { label: 'Abgelehnt', className: 'text-muted-foreground bg-muted' },
+                  } as Record<string, { label: string; className: string }>)[membership.status] ?? { label: membership.status, className: 'text-muted-foreground bg-muted' };
+                  return (
+                  <div key={membership.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                        {c.name.charAt(0).toUpperCase()}
+                        {(org?.name ?? membership.anOrgId).charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{c.name}</div>
-                        {c.contactEmail && <div className="text-[11px] text-muted-foreground truncate">{c.contactEmail}</div>}
+                        <div className="text-sm font-medium truncate">{org?.name ?? membership.anOrgId}</div>
+                        <span className={`inline-flex mt-0.5 text-[10px] px-1.5 py-0.5 rounded border ${status.className}`}>
+                          {status.label}
+                        </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleRemoveContractor(c.id)}
-                      disabled={removeContractor.isPending}
-                      className="ml-3 p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
-                      title="Entfernen"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {(['INVITED', 'ACTIVE'].includes(membership.status)) && (
+                      <Button size="sm" variant="ghost" onClick={() => handleRevokeMembership(membership)}
+                        disabled={revokeMembership.isPending} className="ml-3 text-xs text-red-600 hover:text-red-700 shrink-0">
+                        Widerrufen
+                      </Button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Hinzufügen aus globalem AN-Pool */}
+          {/* Invite from the participant pool */}
           {(() => {
-            const linkedIds = new Set(contractors?.map(c => c.id) ?? []);
+            const linkedIds = new Set(memberships?.map(m => m.anOrgId) ?? []);
             const available = (allAnOrgs ?? []).filter(
               org => !linkedIds.has(org.id) &&
-                (!contractorSearch || org.name.toLowerCase().includes(contractorSearch.toLowerCase()))
+                (!participantSearch || org.name.toLowerCase().includes(participantSearch.toLowerCase()))
             );
             return (
               <div className="space-y-2 border-t border-border pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Hinzufügen
+                  Teilnehmer einladen
                 </p>
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <Input
-                    placeholder="Nachunternehmer suchen…"
-                    value={contractorSearch}
-                    onChange={e => setContractorSearch(e.target.value)}
+                    placeholder="Teilnehmer suchen…"
+                    value={participantSearch}
+                    onChange={e => setParticipantSearch(e.target.value)}
                     className="pl-8 h-8 text-sm"
                   />
                 </div>
                 {available.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic py-2">
-                    {contractorSearch ? 'Kein Treffer.' : allAnOrgs?.length === 0 ? 'Noch keine Nachunternehmer im System.' : 'Alle verfügbaren Nachunternehmer bereits verknüpft.'}
+                    {participantSearch ? 'Kein Treffer.' : allAnOrgs?.length === 0 ? 'Noch keine AN-Teilnehmer im System.' : 'Alle verfügbaren Teilnehmer sind bereits eingeladen.'}
                   </p>
                 ) : (
                   <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
@@ -3173,11 +3184,11 @@ export default function ProjectDetail() {
                           size="sm"
                           variant="outline"
                           className="ml-3 h-7 text-xs shrink-0"
-                          onClick={() => handleAddContractor(org.id)}
-                          disabled={addContractor.isPending}
+                          onClick={() => handleInviteParticipant(org.id)}
+                          disabled={inviteParticipant.isPending}
                         >
                           <Plus className="w-3 h-3 mr-1" />
-                          Verknüpfen
+                          Einladen
                         </Button>
                       </div>
                     ))}
@@ -3515,24 +3526,24 @@ export default function ProjectDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Bestätigungsdialog: Nachunternehmer entfernen ────────────────── */}
-      <AlertDialog open={!!confirmRemoveContractor} onOpenChange={(o) => !o && setConfirmRemoveContractor(null)}>
+      {/* ── Bestätigungsdialog: Projektmitgliedschaft widerrufen ──────────── */}
+      <AlertDialog open={!!confirmRevokeMembership} onOpenChange={(o) => !o && setConfirmRevokeMembership(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Nachunternehmer entfernen?</AlertDialogTitle>
+            <AlertDialogTitle>Projektmitgliedschaft widerrufen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Der Nachunternehmer wird aus der Projektliste entfernt. Bereits
-              gestellte Anfragen bleiben im System erhalten.
+              Die Einladung oder aktive Projektmitgliedschaft wird widerrufen.
+              Bereits gestellte Anfragen bleiben im System erhalten.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction
-              onClick={doRemoveContractor}
-              disabled={removeContractor.isPending}
+              onClick={doRevokeMembership}
+              disabled={revokeMembership.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {removeContractor.isPending ? 'Entfernt…' : 'Entfernen'}
+              {revokeMembership.isPending ? 'Widerruft…' : 'Widerrufen'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
