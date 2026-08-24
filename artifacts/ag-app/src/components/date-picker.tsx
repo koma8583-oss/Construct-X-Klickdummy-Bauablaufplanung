@@ -72,29 +72,35 @@ export function DatePicker({
   };
 
   return (
-    <div className="relative">
-      {name && <input type="hidden" name={name} value={currentValue} />}
+    <div className={cn('relative flex gap-2', className)}>
+      <input
+        id={id}
+        name={name}
+        type={includeTime ? 'datetime-local' : 'date'}
+        value={currentValue}
+        onChange={(event) => {
+          setInternalValue(event.target.value);
+          onChange(event.target.value);
+        }}
+        min={min}
+        max={max}
+        required={required}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            id={id}
+            id={id ? `${id}-picker` : undefined}
             type="button"
             variant="outline"
             disabled={disabled}
-            aria-label={ariaLabel}
+            aria-label={`${ariaLabel ?? placeholder} im Kalender auswählen`}
             aria-haspopup="dialog"
-            className={cn(
-              'w-full justify-start text-left font-normal',
-              !currentValue && 'text-muted-foreground',
-              className,
-            )}
+            className="h-10 shrink-0 px-3"
           >
-            <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-            <span className="truncate">
-              {selected
-                ? format(selected, includeTime ? 'dd.MM.yyyy HH:mm' : 'dd.MM.yyyy')
-                : placeholder}
-            </span>
+            <CalendarIcon className="h-4 w-4" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -143,16 +149,6 @@ export function DatePicker({
           )}
         </PopoverContent>
       </Popover>
-      {required && (
-        <input
-          tabIndex={-1}
-          aria-hidden="true"
-          required
-          value={currentValue}
-          onChange={() => undefined}
-          className="pointer-events-none absolute h-px w-px opacity-0"
-        />
-      )}
     </div>
   );
 }
