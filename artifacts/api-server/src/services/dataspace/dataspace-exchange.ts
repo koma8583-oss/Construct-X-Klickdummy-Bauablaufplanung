@@ -14,11 +14,13 @@ export type ExchangeReference = {
   sentAt?: Date | null;
   deliveredAt?: Date | null;
   attemptCount?: number;
+  error?: { code: string; message: string };
 };
 
 export interface DataspaceExchange {
   publishProjectInvitation(payload: ExternalProjectInvitation): Promise<ExchangeReference>;
   publishProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<ExchangeReference>;
+  retryProjectInvitation(messageId: string): Promise<ExchangeReference>;
   receiveProjectInvitation(
     payload: ExternalProjectInvitation,
     process?: (payload: ExternalProjectInvitation) => Promise<void>,

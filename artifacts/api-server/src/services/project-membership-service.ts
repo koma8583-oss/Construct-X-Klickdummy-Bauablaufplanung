@@ -1,6 +1,7 @@
 import {
   db,
   organizationsTable,
+  messageOutboxTable,
   projectsTable,
   takteTable,
   projectMembershipsTable,
@@ -37,10 +38,60 @@ export async function listProjectParticipants(projectId: string) {
 }
 
 export async function listProjectMemberships(projectId: string, agOrgId: string) {
-  return db.select().from(projectMembershipsTable).where(and(
+  const memberships = await db.select().from(projectMembershipsTable).where(and(
     eq(projectMembershipsTable.projectId, projectId),
     eq(projectMembershipsTable.agOrgId, agOrgId),
   ));
+  const messageIds = memberships.flatMap((m) => [
+    `project-invitation-${m.invitationId}`,
+    `project-invitation-response-${m.invitationId}-ACTIVE`,
+    `project-invitation-response-${m.invitationId}-REJECTED`,
+  ]);
+  const deliveries = await db.select().from(messageOutboxTable)
+    .where(inArray(messageOutboxTable.messageId, messageIds));
+  const byMessageId = new Map(deliveries.map((row) => [row.messageId, row]));
+  return memberships.map((membership) => ({
+    ...membership,
+    invitationDelivery: byMessageId.get(`project-invitation-${membership.invitationId}`) ?? null,
+    responseDelivery: (
+      byMessageId.get(`project-invitation-response-${membership.invitationId}-ACTIVE`) ??
+      byMessageId.get(`project-invitation-response-${membership.invitationId}-REJECTED`) ??
+      null
+    ),
+  }));
+}
+
+export async function listFailedProjectInvitationDeliveries(projectId: string, agOrgId: string) {
+  const memberships = await listProjectMemberships(projectId, agOrgId);
+  return memberships.flatMap((membership) => [
+    membership.invitationDelivery,
+    membership.responseDelivery,
+  ].filter((delivery): delivery is NonNullable<typeof delivery> =>
+    delivery?.status === "FAILED" &&
+    (delivery.messageType === "PROJECT_INVITATION" || delivery.messageType === "PROJECT_INVITATION_RESPONSE"),
+  )).sort((a, b) => (b.lastAttemptAt?.getTime() ?? 0) - (a.lastAttemptAt?.getTime() ?? 0));
+}
+
+export async function retryProjectInvitationDelivery(messageId: string, agOrgId: string) {
+  const [outbox] = await db.select().from(messageOutboxTable)
+    .where(and(
+      eq(messageOutboxTable.messageId, messageId),
+      eq(messageOutboxTable.senderOrgId, agOrgId),
+    )).limit(1);
+  if (!outbox || !["PROJECT_INVITATION", "PROJECT_INVITATION_RESPONSE"].includes(outbox.messageType)) {
+    throw new ProjectMembershipError("PROJECT_INVITATION_DELIVERY_NOT_FOUND", "Zustellung der Projekteinladung nicht gefunden.");
+  }
+  if (outbox.status !== "FAILED") {
+    throw new ProjectMembershipError("PROJECT_INVITATION_DELIVERY_NOT_RETRYABLE", `Die Zustellung kann nicht wiederholt werden (Status: ${outbox.status}).`);
+  }
+  if (outbox.attemptCount >= 5) {
+    throw new ProjectMembershipError("PROJECT_INVITATION_RETRY_EXHAUSTED", "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.");
+  }
+  const result = await createDataspaceExchange().retryProjectInvitation(messageId);
+  if (result.status === "FAILED" && (result.attemptCount ?? 0) >= 5) {
+    throw new ProjectMembershipError("PROJECT_INVITATION_RETRY_EXHAUSTED", "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.");
+  }
+  return result;
 }
 
 export async function listPendingProjectInvitations(anOrgId: string) {

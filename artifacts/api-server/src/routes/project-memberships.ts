@@ -7,6 +7,8 @@ import {
   inviteParticipant,
   listPendingProjectInvitations,
   listProjectMemberships,
+  listFailedProjectInvitationDeliveries,
+  retryProjectInvitationDelivery,
   listProjectParticipants,
   rejectInvitation,
   revokeMembership,
@@ -22,6 +24,7 @@ function sendDomainError(res: Response, error: unknown) {
     : error.code.includes("NOT_ACTIVE") || error.code.includes("FORBIDDEN") ? 403
     : error.code.includes("VERIFIED") || error.code.includes("REACHABLE") ? 422
     : error.code.includes("ALREADY") ? 409
+    : error.code.includes("NOT_RETRYABLE") || error.code.includes("EXHAUSTED") ? 409
     : 400;
   res.status(status).json({ error: error.message, code: error.code });
 }
@@ -41,6 +44,26 @@ router.get("/projects/:projectId/memberships", requireRole("AG_ADMIN", "GENERAL_
     return;
   }
   res.json(await listProjectMemberships(req.params.projectId as string, req.user.orgId));
+});
+
+router.get("/projects/:projectId/invitation-deliveries/failed", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
+  if (req.user?.orgType !== "AG" || !req.user.orgId) {
+    res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  res.json(await listFailedProjectInvitationDeliveries(req.params.projectId as string, req.user.orgId));
+});
+
+router.post("/project-invitation-deliveries/:messageId/retry", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
+  if (req.user?.orgType !== "AG" || !req.user.orgId) {
+    res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  try {
+    res.json(await retryProjectInvitationDelivery(req.params.messageId as string, req.user.orgId));
+  } catch (error) {
+    sendDomainError(res, error);
+  }
 });
 
 const inviteSchema = z.object({

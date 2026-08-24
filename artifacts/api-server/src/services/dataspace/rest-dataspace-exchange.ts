@@ -80,6 +80,31 @@ export class RestDataspaceExchange implements DataspaceExchange {
     }
   }
 
+  async retryProjectInvitation(messageId: string): Promise<ExchangeReference> {
+    const [exchange] = await db.select().from(dataspaceExchangesTable)
+      .where(eq(dataspaceExchangesTable.messageId, messageId)).limit(1);
+    if (!exchange || exchange.direction !== "OUTBOUND" ||
+        !["PROJECT_INVITATION", "PROJECT_INVITATION_RESPONSE"].includes(exchange.messageType)) {
+      throw new Error(`Project invitation delivery not found: ${messageId}`);
+    }
+    const result = await this.transport.retry(messageId);
+    await db.update(dataspaceExchangesTable).set({
+      status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
+      externalReference: result.messageId,
+      errorCode: result.error?.code ?? null,
+      updatedAt: new Date(),
+    }).where(eq(dataspaceExchangesTable.messageId, messageId));
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      status: result.status,
+      sentAt: result.sentAt,
+      deliveredAt: result.deliveredAt,
+      attemptCount: result.attemptCount,
+      error: result.error,
+    };
+  }
+
   publishProjectInvitation(payload: ExternalProjectInvitation) {
     return this.publishInvitation(payload, "PROJECT_INVITATION");
   }
