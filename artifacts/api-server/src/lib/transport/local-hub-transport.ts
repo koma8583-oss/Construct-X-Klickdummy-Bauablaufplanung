@@ -31,6 +31,7 @@
 import { db, messageOutboxTable, messageInboxTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import type { MessageEnvelope, MessageTransport, TransportResult, InboxMessage, InboxQueryOptions } from "./message-transport";
+import type { DataspaceMessageType } from "@workspace/api-zod";
 import {
   InvalidEnvelopeError,
   IdempotencyConflictError,
@@ -313,7 +314,10 @@ export class LocalHubTransport implements MessageTransport {
       messageId: row.messageId,
       senderOrgId: row.senderOrgId,
       recipientOrgId: row.recipientOrgId,
-      messageType: row.messageType,
+      // The DB enum is also used for invitation messages. Keep the transport
+      // boundary typed against the public contract while accepting the
+      // database's complete message enum.
+      messageType: row.messageType as DataspaceMessageType,
       correlationId: row.correlationId,
       payload: row.payload as Record<string, unknown>,
       status: row.status,

@@ -31,6 +31,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
+import { assertActiveProjectMembership, ProjectMembershipError } from "../services/project-membership-service";
 import { z } from "zod";
 import {
   createTaktRequestDraft,
@@ -295,6 +296,13 @@ router.post(
 
     let result;
     try {
+      const [takt] = await db.select({ projectId: takteTable.projectId }).from(takteTable)
+        .where(eq(takteTable.id, taktId)).limit(1);
+      if (!takt) {
+        res.status(404).json({ error: "Takt nicht gefunden" });
+        return;
+      }
+      await assertActiveProjectMembership(takt.projectId, nuOrgId);
       result = await createTaktRequestWithSnapshot({
         taktId,
         guOrgId,
@@ -305,6 +313,10 @@ router.post(
         dataPublicationId: parsed.data.dataPublicationId,
       });
     } catch (err) {
+      if (err instanceof ProjectMembershipError) {
+        res.status(403).json({ error: err.message, code: err.code });
+        return;
+      }
       if (err instanceof TaktNotFoundError) {
         res.status(404).json({ error: err.message });
         return;
@@ -424,6 +436,13 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
 
   let result;
   try {
+    const [takt] = await db.select({ projectId: takteTable.projectId }).from(takteTable)
+      .where(eq(takteTable.id, taktId)).limit(1);
+    if (!takt) {
+      res.status(404).json({ error: "Takt nicht gefunden" });
+      return;
+    }
+    await assertActiveProjectMembership(takt.projectId, nuOrgId);
     result = await createTaktRequestWithSnapshot({
       taktId,
       guOrgId,
@@ -436,6 +455,10 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
       dataPublicationId: parsed.data.dataPublicationId,
     });
   } catch (err) {
+    if (err instanceof ProjectMembershipError) {
+      res.status(403).json({ error: err.message, code: err.code });
+      return;
+    }
     if (err instanceof TaktNotFoundError) {
       res.status(404).json({ error: err.message });
       return;

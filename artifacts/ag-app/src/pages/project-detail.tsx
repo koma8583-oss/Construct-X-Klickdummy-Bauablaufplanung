@@ -1111,14 +1111,15 @@ export default function ProjectDetail() {
   };
 
   const handleAddContractor = (anOrgId: string) => {
-    addContractor.mutate({ projectId, data: { anOrgId } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
-        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
-        toast({ title: 'Nachunternehmer verknüpft' });
-      },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
-    });
+    void fetch(`/api/projects/${projectId}/invitations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anOrgId }),
+    }).then(async response => {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? 'Einladung konnte nicht gesendet werden.');
+      queryClient.invalidateQueries({ queryKey: getListProjectContractorsQueryKey(projectId) });
+      toast({ title: 'Projekteinladung gesendet' });
+    }).catch(err => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }));
   };
 
   const handleRemoveContractor = (anOrgId: string) => {

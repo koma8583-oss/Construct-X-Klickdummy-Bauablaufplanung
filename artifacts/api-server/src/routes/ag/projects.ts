@@ -315,7 +315,7 @@ const createAssignmentSchema = z.object({
   anOrgId:              z.string().min(1),
   trade:                z.string().optional(),
   workPackageReference: z.string().optional(),
-  assignmentStatus:     z.enum(["PLANNED", "ACTIVE", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
+  assignmentStatus:     z.enum(["PLANNED", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   validFrom:            z.string().optional(),
   validTo:              z.string().optional(),
 });
@@ -410,7 +410,7 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
 const patchAssignmentSchema = z.object({
   trade:                z.string().nullable().optional(),
   workPackageReference: z.string().nullable().optional(),
-  assignmentStatus:     z.enum(["PLANNED", "ACTIVE", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
+  assignmentStatus:     z.enum(["PLANNED", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   validFrom:            z.string().nullable().optional(),
   validTo:              z.string().nullable().optional(),
 });

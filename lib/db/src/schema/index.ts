@@ -29,6 +29,7 @@ export * from "./messages";
 export * from "./dataspace-exchanges";
 export * from "./organizations";
 export * from "./projects";
+export * from "./project-memberships";
 export * from "./refreshTokens";
 export * from "./resources";
 export * from "./resource-bookings";

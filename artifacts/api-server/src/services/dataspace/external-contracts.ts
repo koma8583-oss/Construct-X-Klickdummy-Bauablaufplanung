@@ -14,9 +14,42 @@ export type ExchangePolicy = {
 };
 
 export type DataspaceParticipant = {
-  localOrgId: string;
-  participantId?: string;
+  localOrgId?: string;
+  participantId: string;
+  organizationName: string;
+  organizationType: "AG" | "AN";
+  identityStatus: "VERIFIED" | "UNVERIFIED" | "SUSPENDED";
   connectorEndpoint?: string;
+  connectorStatus: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
+  capabilities?: string[];
+};
+
+export type ExternalProjectInvitation = {
+  metadata: ExchangeMetadata;
+  invitationId: string;
+  project: {
+    projectReference: string;
+    projectName: string;
+    description?: string;
+    location?: string;
+  };
+  requestedRole: "CONTRACTOR";
+  purpose: "PROJECT_COLLABORATION";
+  invitationMessage?: string;
+  validUntil?: string;
+  policy: {
+    usagePurpose: "PROJECT_MEMBERSHIP";
+    allowedConsumerParticipantId: string;
+  };
+};
+
+export type ExternalProjectInvitationResponse = {
+  metadata: ExchangeMetadata;
+  invitationId: string;
+  projectReference: string;
+  decision: "ACCEPTED" | "REJECTED";
+  message?: string;
+  respondedAt: string;
 };
 
 export type ExternalResourceRequirement = {

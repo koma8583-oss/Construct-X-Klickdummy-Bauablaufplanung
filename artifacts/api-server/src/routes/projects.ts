@@ -335,14 +335,14 @@ router.post(
 
     if (existing) {
       if (existing.assignmentStatus === "ACTIVE") {
-        // Already active — idempotent success
-        res.status(200).json({ ok: true, reactivated: false });
+        // Legacy contractor assignments do not establish membership.
+        res.status(409).json({ error: "Project invitation acceptance is required before activating a contractor." });
         return;
       }
       // Reactivate the inactive/cancelled assignment
       await db
         .update(projectContractorsTable)
-        .set({ assignmentStatus: "ACTIVE" })
+        .set({ assignmentStatus: "PLANNED" })
         .where(eq(projectContractorsTable.id, existing.id));
       res.status(200).json({ ok: true, reactivated: true });
       return;
@@ -351,7 +351,7 @@ router.post(
     // No existing row — insert fresh
     await db
       .insert(projectContractorsTable)
-      .values({ projectId: project.id, anOrgId });
+     .values({ projectId: project.id, anOrgId, assignmentStatus: "PLANNED" });
 
     res.status(201).json({ ok: true, reactivated: false });
   },

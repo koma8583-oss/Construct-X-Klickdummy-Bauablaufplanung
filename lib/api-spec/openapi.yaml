@@ -4662,6 +4662,8 @@ components:
         - TAKT_REQUEST_EXPIRED
         - TAKT_REQUEST_REMINDER
         - DATA_OFFER_PUBLISHED
+        - PROJECT_INVITATION
+        - PROJECT_INVITATION_RESPONSE
 
     DataspaceMessageStatus:
       type: string

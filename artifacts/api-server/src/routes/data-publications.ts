@@ -21,6 +21,7 @@ import {
   dataPublicationRecipientsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   organizationsTable,
   taktRequestsTable,
 } from "@workspace/db";
@@ -276,14 +277,14 @@ router.post(
       return;
     }
 
-    // Validate all recipients are ACTIVE project contractors for THIS project
+    // Only ACTIVE bilateral project members may receive a publication.
     const activeContractors = await db
-      .select({ anOrgId: projectContractorsTable.anOrgId })
-      .from(projectContractorsTable)
+      .select({ anOrgId: projectMembershipsTable.anOrgId })
+      .from(projectMembershipsTable)
       .where(
         and(
-          eq(projectContractorsTable.projectId, project.id),
-          eq(projectContractorsTable.assignmentStatus, "ACTIVE"),
+          eq(projectMembershipsTable.projectId, project.id),
+          eq(projectMembershipsTable.status, "ACTIVE"),
         ),
       );
 
