@@ -18,6 +18,7 @@ import nuRouter from "../nu";
 import dataOffersRouter from "./data-offers";
 import reportsRouter from "../reports";
 import inboxMessagesRouter from "./inbox-messages";
+import projectMembershipsRouter from "../project-memberships";
 
 const router: IRouter = Router();
 
@@ -47,5 +48,11 @@ router.use(reportsRouter);
 
 // AN inbox messages (reminders + expiry notifications) at /api/an/inbox-messages
 router.use(inboxMessagesRouter);
+
+// Project invitation endpoints at /api/an/project-invitations.
+// The router contains both AG and AN handlers; each handler enforces its
+// organisation context, so exposing it in the AN namespace does not broaden
+// access to AG-owned routes.
+router.use(projectMembershipsRouter);
 
 export default router;

@@ -37,3 +37,4 @@
 - [Invitation delivery retry](invitation-delivery-retry.md) — project invitation retries must use the persisted outbox envelope and original message ID, never recreate membership or response business rows.
 - [Physical database boundaries](physical-database-boundaries.md) — AG, AN, and Hub require distinct URLs, role-scoped access, and connector-mediated cross-domain exchange.
 - [Atomic invitation delivery](atomic-invitation-delivery.md) — pre-created transactional outbox rows must allow the first delivery retry from PENDING.
+- [AN API namespace routing](an-api-namespace-routes.md) — AN fetch rewrites `/api/*` to `/api/an/*`; AN-facing handlers need an AN-subrouter mount.
