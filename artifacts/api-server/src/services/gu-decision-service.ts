@@ -52,6 +52,10 @@ import {
   applyAcceptAlternative,
   VersionConflictError,
 } from "./takt-version-service";
+import {
+  applyConfirmedBookingsFromRequirements,
+  type BookingRequirement,
+} from "./confirmed-booking-service";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
@@ -284,14 +288,7 @@ export async function createGuDecision(
   // and Terminübersicht without any manual step by the NU.
   let bookingStart: Date | null = null;
   let bookingEnd:   Date | null = null;
-  let autoBookResources: Array<{
-    resourceId: string | null;
-    resourceTypeId?: string;
-    quantity?: number;
-    utilizationPercent?: number;
-    periodStart?: string | null;
-    periodEnd?: string | null;
-  }> = [];
+  let autoBookRequirements: BookingRequirement[] = [];
 
   const isAcceptance =
     decisionType === "CONFIRM_ACCEPTED" || decisionType === "ACCEPT_ALTERNATIVE";
@@ -327,14 +324,7 @@ export async function createGuDecision(
           409,
         );
       }
-      autoBookResources = reevaluated.availableResources.map((r) => ({
-        resourceId: r.resourceId ?? null,
-        ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
-        ...(r.quantity != null ? { quantity: r.quantity } : {}),
-        utilizationPercent: r.utilizationPercent,
-        periodStart: r.periodStart,
-        periodEnd: r.periodEnd,
-      }));
+      autoBookRequirements = reevaluated.bookingRequirements ?? [];
     } else if (bookingStart && bookingEnd && request.nuOrgId) {
       const [latestCheck] = await db
         .select({ internalResultPayload: availabilityChecksTable.internalResultPayload })
@@ -349,15 +339,7 @@ export async function createGuDecision(
         .orderBy(desc(availabilityChecksTable.runNumber))
         .limit(1);
 
-      const available = latestCheck?.internalResultPayload?.availableResources ?? [];
-      autoBookResources = available.map((r) => ({
-        resourceId: r.resourceId ?? null,
-        ...(r.resourceTypeId ? { resourceTypeId: r.resourceTypeId } : {}),
-        ...(r.quantity != null ? { quantity: r.quantity } : {}),
-        ...(r.utilizationPercent != null ? { utilizationPercent: r.utilizationPercent } : {}),
-        ...(r.periodStart != null ? { periodStart: r.periodStart } : {}),
-        ...(r.periodEnd != null ? { periodEnd: r.periodEnd } : {}),
-      }));
+      autoBookRequirements = latestCheck?.internalResultPayload?.bookingRequirements ?? [];
     }
   }
 
@@ -464,37 +446,19 @@ export async function createGuDecision(
     // d. Auto-create resource bookings for accepted resources
     // Only for acceptance decisions where we have a time window and resources
     // from the latest availability check.
-    if (
-      isAcceptance &&
-      bookingStart &&
-      bookingEnd &&
-      autoBookResources.length > 0 &&
-      request.nuOrgId
-    ) {
-      const bookingValues = autoBookResources.map((resource) => ({
-        ...(() => {
-          if (!resource.periodStart || !resource.periodEnd) {
-            return { startAt: bookingStart!, endAt: bookingEnd! };
-          }
-          const startAt = new Date(`${resource.periodStart}T00:00:00Z`);
-          const endAt = new Date(`${resource.periodEnd}T00:00:00Z`);
-          endAt.setUTCDate(endAt.getUTCDate() + 1);
-          return { startAt, endAt };
-        })(),
-        nuOrgId:           request.nuOrgId as string,
-        resourceId:        resource.resourceId,
-        resourceTypeId:    resource.resourceTypeId ?? null,
-        quantity:          resource.quantity ?? null,
-        sourceType:        "TAKT_REQUEST" as const,
-        sourceReferenceId: taktRequestId,
-        utilizationPercent: resource.utilizationPercent ?? 100,
-        status:            "CONFIRMED" as const,
-      }));
-      await tx.insert(resourceBookingsTable).values(bookingValues);
+    if (isAcceptance && bookingStart && bookingEnd && request.nuOrgId) {
+      const bookingValues = await applyConfirmedBookingsFromRequirements(tx, {
+        serviceRequestId: taktRequestId,
+        nuOrgId: request.nuOrgId,
+        requirements: autoBookRequirements,
+        fallbackWindow: { start: bookingStart, end: bookingEnd },
+      });
+      if (bookingValues.length > 0) {
       logger.info(
         { taktRequestId, count: bookingValues.length },
         "Auto-created resource bookings for accepted TaktRequest",
       );
+      }
     }
 
     const [updatedRequest] = await tx

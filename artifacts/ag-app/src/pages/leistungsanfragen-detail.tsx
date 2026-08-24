@@ -663,7 +663,17 @@ export default function LeistungsanfragenDetailPage() {
         </div>
       </div>
 
-      <CurrentActionCard requestId={detail.id} onFocus={() => document.getElementById('partner-response')?.scrollIntoView({ behavior: 'smooth' })} />
+      <CurrentActionCard requestId={detail.id} onFocus={() => {
+        const nextAction = (detail as TaktRequestDetail & { nextAction?: string }).nextAction;
+        const target = nextAction === 'ANSWER_CLARIFICATION'
+          ? 'clarifications'
+          : nextAction === 'RESOLVE_CONSTRAINT'
+            ? 'constraints'
+            : nextAction === 'CONFIRM_READINESS'
+              ? 'readiness'
+              : 'coordination';
+        document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' });
+      }} />
       <CoordinationSummary detail={detail} />
 
       {/* Transport Error Panel */}

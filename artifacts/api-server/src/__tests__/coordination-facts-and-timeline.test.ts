@@ -136,7 +136,7 @@ describe("deriveCoordinationFacts — factual next action derivation", () => {
       hasResponse: false,
       hasDecision: false,
     });
-    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AN" });
+     expect(result).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN", actionRequiredBy: null });
   });
 
   it("keeps REVISION_REQUIRED assigned to AN after the previous response was decided", () => {
@@ -146,7 +146,7 @@ describe("deriveCoordinationFacts — factual next action derivation", () => {
       hasResponse: true,
       hasDecision: true,
     });
-    expect(factualResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN" });
+     expect(factualResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN", actionRequiredBy: null });
 
     const result = deriveServiceCoordinationState({
       party: "AG",
@@ -154,7 +154,7 @@ describe("deriveCoordinationFacts — factual next action derivation", () => {
       hasResponse: true,
       hasDecision: true,
     });
-    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AN" });
+     expect(result).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN", actionRequiredBy: null });
 
     const anResult = deriveServiceCoordinationState({
       party: "AN",
@@ -162,7 +162,7 @@ describe("deriveCoordinationFacts — factual next action derivation", () => {
       hasResponse: true,
       hasDecision: true,
     });
-    expect(anResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN" });
+     expect(anResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN", actionRequiredBy: null });
   });
 
   it("assigns a submitted response to AG until a decision exists", () => {
@@ -172,7 +172,7 @@ describe("deriveCoordinationFacts — factual next action derivation", () => {
       hasResponse: true,
       hasDecision: false,
     });
-    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AG" });
+     expect(result).toEqual({ nextAction: "DECIDE_RESPONSE", nextActionOwner: "AG", actionRequiredBy: null });
   });
 
   it("returns RESPOND_TO_REQUEST for AN when no response exists and request is open", () => {

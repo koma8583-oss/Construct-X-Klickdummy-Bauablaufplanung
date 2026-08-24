@@ -1,0 +1,664 @@
+SCHRITT 4 – TIMELINE, DEPENDENCIES UND BERECHTIGUNGEN KONSOLIDIEREN
+
+ZIEL
+
+Die Business Timeline muss den tatsächlichen fachlichen Ablauf korrekt wiedergeben.
+
+Zusätzlich müssen:
+
+- initiale Vereinbarung
+- spätere Change Proposals
+- Constraints
+- Clarifications
+- Readiness
+- Abhängigkeiten
+- Rollenrechte
+
+konsistent aus genau einer fachlichen Datenquelle abgeleitet werden.
+
+Prüfe insbesondere:
+
+- buildCoordinationTimeline(...)
+- getCoordination(...)
+- service-change-proposal-service.ts
+- ag-coordination-board-service.ts
+- change-impact-service.ts
+- service-coordination.ts
+- leistungsabhaengigkeiten
+- service_dependencies
+- Constraint-Endpunkte
+- Clarification-Endpunkte
+
+
+1. AGREEMENT_REACHED MUSS DEN ECHTEN INITIALEN DECISION-ZEITPUNKT VERWENDEN
+
+Das Event:
+
+AGREEMENT_REACHED
+
+repräsentiert ausschließlich die erstmalige Vereinbarung zwischen AG und AN.
+
+Der Zeitpunkt muss aus der tatsächlichen AG Decision stammen.
+
+Beispiel:
+
+Request erstellt:
+01.08.
+
+AN Response:
+03.08.
+
+AG Decision:
+05.08.
+
+späterer Change Proposal angenommen:
+20.08.
+
+Timeline muss enthalten:
+
+05.08.
+AGREEMENT_REACHED
+
+20.08.
+CHANGE_PROPOSAL_ACCEPTED
+
+Falsch wäre:
+
+20.08.
+AGREEMENT_REACHED
+
+
+2. acceptedProposal.resolvedAt DARF AGREEMENT_REACHED NICHT ÜBERSCHREIBEN
+
+Eine Logik wie:
+
+const agreementAt =
+  acceptedProposal?.resolvedAt
+  ?? decisionAt
+
+ist fachlich falsch.
+
+Ändern auf:
+
+const agreementAt =
+  decisionAt
+  ?? agreedAt
+  ?? null;
+
+accepted Change Proposals dürfen niemals Quelle für das initiale AGREEMENT_REACHED sein.
+
+
+3. KEINE ERFUNDENE HISTORIE
+
+Wenn ein Legacy-Datensatz bereits:
+
+agreedStart
+agreedEnd
+
+enthält, aber weder:
+
+decisionAt
+agreedAt
+
+noch ein anderer echter Agreement-Zeitpunkt verfügbar ist:
+
+kein künstliches AGREEMENT_REACHED mit request.createdAt erzeugen.
+
+In diesem Fall:
+
+Event weglassen.
+
+Keine falsche Historie erzeugen.
+
+
+4. CHANGE PROPOSAL EVENTS KORREKT TRENNEN
+
+Für jedes Change Proposal abhängig vom Status:
+
+OPEN:
+CHANGE_PROPOSAL_CREATED
+
+ACCEPTED:
+CHANGE_PROPOSAL_CREATED
+CHANGE_PROPOSAL_ACCEPTED
+
+REJECTED:
+CHANGE_PROPOSAL_CREATED
+CHANGE_PROPOSAL_REJECTED
+
+SUPERSEDED:
+CHANGE_PROPOSAL_CREATED
+CHANGE_PROPOSAL_SUPERSEDED
+
+Keine spätere Proposal-Entscheidung als AGREEMENT_REACHED darstellen.
+
+
+5. ACTOR BEI PROPOSAL RESOLUTION KORRIGIEREN
+
+Beim Erstellen:
+
+actorRole =
+proposal.proposerRole
+
+Beim Accept/Reject ist der Actor die Gegenpartei.
+
+Beispiel:
+
+AN erstellt Proposal.
+
+Dann:
+
+CHANGE_PROPOSAL_CREATED
+actorRole = AN
+
+AG nimmt Proposal an.
+
+Dann:
+
+CHANGE_PROPOSAL_ACCEPTED
+actorRole = AG
+
+Nicht proposerRole für beide Events verwenden.
+
+Helper sinnvoll:
+
+function oppositeRole(
+  role: "AG" | "AN"
+): "AG" | "AN" {
+  return role === "AG" ? "AN" : "AG";
+}
+
+Falls resolvedByRole direkt gespeichert wird:
+→ diesen echten Wert bevorzugen.
+
+
+6. getCoordination(...) MUSS ALLE TIMELINE-DATEN LADEN
+
+Der Timeline Builder darf nicht nur theoretisch zusätzliche Eventtypen unterstützen.
+
+getCoordination(...) muss tatsächlich laden bzw. übergeben:
+
+- responseAt
+- decisionAt
+- proposals
+- constraints
+- clarifications
+- readiness
+
+Beispiel:
+
+buildCoordinationTimeline(
+  request,
+  proposals,
+  {
+    responseAt,
+    decisionAt,
+    constraints,
+    clarifications,
+    readiness
+  }
+);
+
+
+7. CONSTRAINT EVENTS
+
+Für jedes Constraint:
+
+createdAt
+→ CONSTRAINT_REPORTED
+
+status = RESOLVED und resolvedAt:
+→ CONSTRAINT_RESOLVED
+
+status = CANCELLED und entsprechender Zeitpunkt:
+→ CONSTRAINT_CANCELLED
+
+Actor für Report:
+reportedByRole bzw. aus Org-Zuordnung ableiten.
+
+Actor für Resolve:
+responsibleRole bzw. tatsächlich gespeicherte Resolver-Rolle.
+
+Actor für Cancel:
+Reporter.
+
+
+8. CLARIFICATION EVENTS
+
+Für jede Clarification:
+
+createdAt
+→ CLARIFICATION_CREATED
+
+answeredAt:
+→ CLARIFICATION_RESOLVED
+
+bei CANCELLED:
+→ CLARIFICATION_CANCELLED
+
+Actor:
+
+Created:
+Fragesteller
+
+Resolved:
+Antwortende Gegenpartei
+
+Cancelled:
+Stornierende/fragestellende Partei entsprechend bestehendem Modell.
+
+
+9. READINESS EVENT
+
+Keine neue Event-Sourcing-Tabelle erstellen.
+
+Wenn das Datenmodell nur den aktuellen Readiness-Zustand besitzt:
+
+genau ein aktuelles:
+
+READINESS_CHANGED
+
+mit:
+
+readiness.updatedAt
+
+erzeugen.
+
+Keine fiktive historische Serie rekonstruieren.
+
+
+10. EVENT-ACTOR EINHEITLICH MODELLIEREN
+
+Timeline DTO möglichst einheitlich:
+
+{
+  type;
+  at;
+  actorRole: "AG" | "AN" | "SYSTEM";
+  actorOrgId?: string;
+  metadata?: ...
+}
+
+Keine internen User IDs organisationsübergreifend ausgeben.
+
+
+11. TIMELINE AM ENDE EINMAL SORTIEREN
+
+Alle Events sammeln.
+
+Dann:
+
+events.sort(
+  (a, b) =>
+    new Date(a.at).getTime()
+    - new Date(b.at).getTime()
+);
+
+Keine unterschiedliche Sortierung pro Eventquelle.
+
+
+12. KANONISCHE DEPENDENCY-QUELLE FESTLEGEN
+
+Die reguläre Projektplanung verwendet die fachlich kanonischen Leistungsabhängigkeiten.
+
+Typischerweise:
+
+leistungsabhaengigkeiten
+
+bzw. Alias:
+
+taktDependenciesTable
+
+Falls beide dieselbe physische Tabelle repräsentieren:
+→ diese Struktur bleibt die einzige fachliche Wahrheit.
+
+
+13. Change Impact WEITERHIN AUF KANONISCHER TABELLE
+
+change-impact-service.ts soll weiterhin die kanonischen Leistungsabhängigkeiten verwenden.
+
+Nicht wieder auf service_dependencies zurückstellen.
+
+
+14. COORDINATION BOARD AUF DIESELBE DEPENDENCY-QUELLE UMRÜSTEN
+
+Falls ag-coordination-board-service.ts aktuell:
+
+serviceDependenciesTable
+
+für:
+
+dependencyImpactCount
+
+verwendet:
+
+auf dieselbe kanonische Leistungsabhängigkeit wie Change Impact umstellen.
+
+Ziel:
+
+Change Impact und Board sehen immer dieselben Abhängigkeiten.
+
+
+15. SERVICE REQUEST → LEISTUNG MAPPING
+
+Für Dependency-Berechnung:
+
+Service Request
+→ zugehörige Leistung
+
+verwenden.
+
+Beispiel:
+
+request.leistungId
+
+oder aktuelles äquivalentes Feld.
+
+Dann:
+
+leistungsabhaengigkeiten
+WHERE predecessorLeistungId = request.leistungId
+
+
+16. NACHFOLGER-SERVICE-REQUESTS
+
+Für gefundene:
+
+successorLeistungId
+
+die relevanten Service Requests desselben Projekts laden.
+
+Keine projektfremden Requests einbeziehen.
+
+
+17. service_dependencies NICHT ALS ZWEITE FACHLICHE WAHRHEIT WEITERPFLEGEN
+
+Prüfen:
+
+- welche Routes schreiben service_dependencies?
+- welche Services lesen service_dependencies?
+- welche UI benutzt diese Route?
+
+Wenn alte API aus Kompatibilitätsgründen bestehen bleiben muss:
+
+intern auf kanonische Leistungsabhängigkeiten delegieren.
+
+Beispiel:
+
+predecessorServiceRequestId
+→ predecessorLeistungId
+
+successorServiceRequestId
+→ successorLeistungId
+
+Dann kanonische Leistungsabhängigkeit erzeugen.
+
+Keine unabhängige zweite Dependency-Zeile mehr speichern.
+
+
+18. KEINE AUTOMATISCHE SUCCESSOR-VERSCHIEBUNG
+
+Accepted Change Proposal darf keine nachgelagerten Leistungen automatisch verschieben.
+
+Change Impact liefert ausschließlich:
+
+affectedServices
+
+bzw. entsprechende Information.
+
+Keine Mutation von Successors.
+
+
+19. CONSTRAINT RESOLVE BERECHTIGUNG
+
+Vor Resolve zwingend:
+
+if (
+  constraint.responsibleOrgId
+  !== currentOrgId
+) {
+  throw forbidden(
+    "CONSTRAINT_RESOLVE_NOT_ALLOWED"
+  );
+}
+
+Nur die verantwortliche Organisation darf OPEN → RESOLVED setzen.
+
+
+20. CONSTRAINT CANCEL BERECHTIGUNG
+
+Vor Cancel:
+
+if (
+  constraint.reportedByOrgId
+  !== currentOrgId
+) {
+  throw forbidden(
+    "CONSTRAINT_CANCEL_NOT_ALLOWED"
+  );
+}
+
+Nur Reporter darf stornieren.
+
+
+21. STATUSÄNDERUNG CONCURRENCY-SAFE
+
+Resolve:
+
+UPDATE ...
+WHERE id = ?
+AND status = 'OPEN'
+RETURNING *
+
+Wenn keine Zeile:
+
+409 CONSTRAINT_ALREADY_CLOSED
+
+Cancel:
+gleiches Pattern.
+
+
+22. KEIN 409 FÜR RECHTEFEHLER
+
+Fehlende Berechtigung:
+
+403
+
+bereits geschlossener Datensatz:
+
+409
+
+Nicht vermischen.
+
+
+23. CLARIFICATION ANSWER
+
+Weiterhin konditional:
+
+UPDATE ...
+WHERE id = ?
+AND status = 'OPEN'
+RETURNING *
+
+Wenn keine Zeile:
+
+409 CLARIFICATION_ALREADY_RESOLVED
+
+
+24. CLARIFICATION CANCEL
+
+Dasselbe Prinzip:
+
+WHERE status = 'OPEN'
+
+Wenn Race verloren:
+
+409
+
+Nicht 404.
+
+
+25. BOARD lastChangedAt VOLLSTÄNDIG BERECHNEN
+
+Für jede Board-Zeile Maximum bilden aus:
+
+request.updatedAt
+
+latestResponse.createdAt
+latestResponse.updatedAt
+
+decision.createdAt
+decision.updatedAt
+
+latestProposal.createdAt
+latestProposal.updatedAt
+latestProposal.resolvedAt
+
+latestConstraint.createdAt
+latestConstraint.updatedAt
+latestConstraint.resolvedAt
+
+latestClarification.createdAt
+latestClarification.updatedAt
+latestClarification.answeredAt
+
+readiness.updatedAt
+
+
+26. maxDate HELPER
+
+Kleinen reinen Helper verwenden:
+
+function maxDate(
+  ...values: Array<Date | string | null | undefined>
+): Date | null
+
+Nullwerte ignorieren.
+
+Nicht dieselbe Maximum-Logik mehrfach kopieren.
+
+
+27. PFLICHTTEST – INITIAL AGREEMENT TIMESTAMP
+
+decisionAt:
+05.08.
+
+Proposal accepted:
+20.08.
+
+Erwartung:
+
+AGREEMENT_REACHED.at = 05.08.
+
+CHANGE_PROPOSAL_ACCEPTED.at = 20.08.
+
+
+28. PFLICHTTEST – KEIN DECISION-ZEITPUNKT
+
+Agreement vorhanden.
+
+decisionAt = null.
+agreedAt = null.
+
+Erwartung:
+
+kein erfundenes AGREEMENT_REACHED mit request.createdAt.
+
+
+29. PFLICHTTEST – PROPOSAL ACTOR
+
+AN erstellt Proposal.
+
+AG akzeptiert.
+
+Erwartung:
+
+CHANGE_PROPOSAL_CREATED.actorRole = AN
+
+CHANGE_PROPOSAL_ACCEPTED.actorRole = AG
+
+
+30. PFLICHTTEST – CONSTRAINT TIMELINE
+
+Constraint created und später resolved.
+
+Erwartung:
+
+CONSTRAINT_REPORTED
+CONSTRAINT_RESOLVED
+
+mit korrekten Zeitpunkten.
+
+
+31. PFLICHTTEST – CLARIFICATION TIMELINE
+
+Clarification erstellt und beantwortet.
+
+Erwartung:
+
+CLARIFICATION_CREATED
+CLARIFICATION_RESOLVED
+
+
+32. PFLICHTTEST – PRODUCTIVE getCoordination
+
+Nicht nur buildCoordinationTimeline(...) isoliert testen.
+
+getCoordination(...) aufrufen.
+
+Prüfen, dass tatsächliches Response-/Decision-/Constraint-/Clarification-/Readiness-Event im finalen DTO enthalten ist.
+
+
+33. PFLICHTTEST – DEPENDENCY BOARD VS CHANGE IMPACT
+
+Eine kanonische Leistungsabhängigkeit erzeugen.
+
+Change Impact für Vorgänger:
+→ Nachfolger erkannt.
+
+Coordination Board:
+→ dependencyImpactCount ebenfalls > 0.
+
+Beide müssen dieselbe Dependency sehen.
+
+
+34. PFLICHTTEST – CONSTRAINT RESOLVE RECHTE
+
+responsibleOrgId = AN.
+
+AG Resolve:
+→ 403
+
+AN Resolve:
+→ success
+
+
+35. PFLICHTTEST – CONSTRAINT CANCEL
+
+reportedByOrgId = AG.
+
+AN Cancel:
+→ 403
+
+AG Cancel:
+→ success
+
+
+36. ABSCHLUSSKONTROLLE
+
+Global suchen:
+
+AGREEMENT_REACHED
+serviceDependenciesTable
+leistungsabhaengigkeitenTable
+CONSTRAINT_RESOLVE_NOT_ALLOWED
+CLARIFICATION_ALREADY_RESOLVED
+
+Prüfen:
+
+- kein accepted Proposal mehr als initial Agreement
+- Board und Change Impact dieselbe Dependency-Quelle
+- Rechteprüfung vor Mutation
+- Concurrency-Prüfung in UPDATE
+
+Nach diesem Schritt müssen Timeline, Dependency-Auswertung und Berechtigungen fachlich konsistent sein.

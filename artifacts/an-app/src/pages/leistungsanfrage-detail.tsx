@@ -623,7 +623,17 @@ export default function LeistungsanfrageDetailPage() {
         </Badge>
       </div>
 
-      <CurrentActionCard requestId={requestId!} onFocus={() => document.getElementById('own-response')?.scrollIntoView({ behavior: 'smooth' })} />
+      <CurrentActionCard requestId={requestId!} onFocus={() => {
+        const nextAction = (details as typeof details & { nextAction?: string }).nextAction;
+        const target = nextAction === 'ANSWER_CLARIFICATION'
+          ? 'clarifications'
+          : nextAction === 'RESOLVE_CONSTRAINT'
+            ? 'constraints'
+            : nextAction === 'CONFIRM_READINESS'
+              ? 'readiness'
+              : 'own-response';
+        document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' });
+      }} />
 
       {/* Revision-requested banner — shown when GU has sent REQUEST_REVISION */}
       {status === 'REVISION_REQUIRED' && (

@@ -12,7 +12,7 @@ import {
   serviceClarificationsTable,
   serviceReadinessChecksTable,
 } from "@workspace/db";
-import { deriveCoordinationFacts } from "./service-coordination-state";
+import { deriveServiceCoordinationState } from "./service-coordination-state";
 
 export type CoordinationTaskType =
   | "RESPOND_TO_REQUEST"
@@ -91,20 +91,25 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
   if (requests.length === 0) return [];
   const ids = requests.map(({ request }) => request.id);
   const [responses, decisions, proposals, constraints, clarifications, readiness] = await Promise.all([
-    db.select().from(leistungsantwortenTable).where(inArray(leistungsantwortenTable.leistungsanfrageId, ids)),
+    db.select().from(leistungsantwortenTable)
+      .where(inArray(leistungsantwortenTable.leistungsanfrageId, ids))
+      .orderBy(desc(leistungsantwortenTable.createdAt)),
     db.select().from(leistungsantwortEntscheidungenTable).where(inArray(leistungsantwortEntscheidungenTable.leistungsanfrageId, ids)),
     db.select().from(serviceChangeProposalsTable).where(
       and(inArray(serviceChangeProposalsTable.leistungsanfrageId, ids), eq(serviceChangeProposalsTable.status, "OPEN")),
     ),
     db.select().from(serviceConstraintsTable).where(
-      and(inArray(serviceConstraintsTable.serviceRequestId, ids), eq(serviceConstraintsTable.status, "OPEN"), eq(serviceConstraintsTable.responsibleOrgId, input.orgId)),
+      and(inArray(serviceConstraintsTable.serviceRequestId, ids), eq(serviceConstraintsTable.status, "OPEN")),
     ),
     db.select().from(serviceClarificationsTable).where(
       and(inArray(serviceClarificationsTable.serviceRequestId, ids), eq(serviceClarificationsTable.status, "OPEN")),
     ),
     db.select().from(serviceReadinessChecksTable).where(inArray(serviceReadinessChecksTable.serviceRequestId, ids)),
   ]);
-  const responseByRequest = new Map(responses.map((row) => [row.leistungsanfrageId, row]));
+   const responseByRequest = new Map<string, typeof responses[number]>();
+   for (const response of responses) {
+     if (!responseByRequest.has(response.leistungsanfrageId)) responseByRequest.set(response.leistungsanfrageId, response);
+   }
   const decisionByResponse = new Map(decisions.map((row) => [row.responseId, row]));
   const proposalByRequest = new Map(proposals.map((row) => [row.leistungsanfrageId, row]));
   const constraintsByRequest = new Map(constraints.map((row) => [row.serviceRequestId, row]));
@@ -159,18 +164,26 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
     const readinessNeedsConfirmation = !!withinSevenDays && (input.role === "AG"
       ? !(check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady)
       : !check.anReady);
-    const action = deriveCoordinationFacts({
-      guOrgId: request.guOrgId,
+     const action = deriveServiceCoordinationState({
       requestStatus: request.status,
       hasResponse: !!response,
       hasDecision: !!response && decisionByResponse.has(response.id),
-      openProposalProposerOrgId: proposal?.proposerOrgId,
-      clarificationPendingForAG: !!clarification && clarification.askedByOrgId !== request.guOrgId,
-      clarificationPendingForAN: !!clarification && clarification.askedByOrgId !== request.nuOrgId,
-      constraintPendingForAG: !!constraint && input.role === "AG",
-      constraintPendingForAN: !!constraint && input.role === "AN",
-      readinessPendingForAG: !!withinSevenDays && !(check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady),
-      readinessPendingForAN: !!withinSevenDays && !check.anReady,
+       openProposalProposer: proposal
+         ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
+         : null,
+       clarificationWaitingFor: clarification
+         ? clarification.askedByOrgId === request.guOrgId ? "AN" : "AG"
+         : null,
+       constraintResponsible: constraint
+         ? constraint.responsibleOrgId === request.guOrgId ? "AG" : "AN"
+         : null,
+       readinessActionRequiredBy: withinSevenDays
+         ? (check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady
+           ? (!check.anReady ? "AN" : null)
+           : "AG")
+         : null,
+       responseRequiredBy: request.responseRequiredBy,
+       decisionRequiredBy: request.guDecisionRequiredBy,
     });
     const taskDetails: Record<Exclude<CoordinationTaskType, "NO_ACTION">, { dueAt: Date | null; summary: string }> = {
       RESPOND_TO_REQUEST: { dueAt: request.responseRequiredBy ?? request.expiresAt, summary: `Antwort auf ${request.requestNumber} erforderlich` },
@@ -182,7 +195,9 @@ export async function getCoordinationTasks(input: { orgId: string; role: "AG" | 
     };
     if (action.nextAction !== "NO_ACTION") {
       const details = taskDetails[action.nextAction];
-      addTask(action.nextAction, details.dueAt, details.summary);
+       if (action.nextActionOwner === input.role) {
+         addTask(action.nextAction, action.actionRequiredBy ? new Date(action.actionRequiredBy) : details.dueAt, details.summary);
+       }
     }
   }
 

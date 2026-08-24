@@ -36,12 +36,15 @@ export function CurrentActionCard({
       nextAction?: CurrentAction | null;
       nextActionOwner?: "AG" | "AN" | null;
       responseRequiredBy?: string | null;
+      actionRequiredBy?: string | null;
     }>(`/api/leistungsanfragen/${requestId}/coordination`),
     enabled: !!requestId,
   });
   const effectiveAction = coordination?.nextAction ?? action;
   const effectiveOwner = coordination?.nextActionOwner ?? owner;
-  const effectiveDeadline = coordination?.responseRequiredBy ?? responseRequiredBy;
+  const effectiveDeadline = coordination?.actionRequiredBy
+    ?? (coordination?.nextAction === "RESPOND_TO_REQUEST" ? coordination.responseRequiredBy : null)
+    ?? responseRequiredBy;
   const copy: Record<CurrentAction, [string, string, string]> = {
     RESPOND_TO_REQUEST: ["Aktion erforderlich", "Leistungsanfrage beantworten", "Der AG erwartet Ihre Rückmeldung zur angefragten Leistung."],
     DECIDE_RESPONSE: ["Warten auf AG", "Antwort wurde übermittelt", "Der AG muss die Abstimmung noch abschließen."],

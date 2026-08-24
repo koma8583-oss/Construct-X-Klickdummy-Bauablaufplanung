@@ -1,11 +1,11 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   leistungenTable, leistungsanfragenTable, leistungsantwortenTable, leistungsantwortEntscheidungenTable,
   organizationsTable, serviceChangeProposalsTable, serviceConstraintsTable, serviceClarificationsTable,
   serviceReadinessChecksTable, serviceDependenciesTable,
 } from "@workspace/db";
-import { deriveCoordinationFacts } from "./service-coordination-state";
+import { deriveServiceCoordinationState } from "./service-coordination-state";
 
 export async function getProjectCoordinationBoard(input: { projectId: string; agOrgId: string }) {
   const rows = await db.select({ request: leistungsanfragenTable, service: leistungenTable, partner: organizationsTable })
@@ -21,22 +21,33 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
     db.select().from(serviceClarificationsTable).where(and(inArray(serviceClarificationsTable.serviceRequestId, ids), eq(serviceClarificationsTable.status, "OPEN"))),
     db.select().from(serviceReadinessChecksTable).where(inArray(serviceReadinessChecksTable.serviceRequestId, ids)),
     db.select().from(serviceDependenciesTable).where(inArray(serviceDependenciesTable.predecessorServiceRequestId, ids)),
-    db.select().from(leistungsantwortenTable).where(inArray(leistungsantwortenTable.leistungsanfrageId, ids)),
+    db.select().from(leistungsantwortenTable)
+      .where(inArray(leistungsantwortenTable.leistungsanfrageId, ids))
+      .orderBy(desc(leistungsantwortenTable.createdAt)),
     db.select().from(leistungsantwortEntscheidungenTable).where(inArray(leistungsantwortEntscheidungenTable.leistungsanfrageId, ids)),
   ]);
   const proposalsBy = new Map(proposals.map((row) => [row.leistungsanfrageId, row]));
   const readinessBy = new Map(readiness.map((row) => [row.serviceRequestId, row]));
   return rows.map(({ request, service, partner }) => {
     const proposal = proposalsBy.get(request.id);
-    const response = responses.find((row) => row.leistungsanfrageId === request.id);
-    const action = deriveCoordinationFacts({
-      guOrgId: request.guOrgId,
+    const response = responses
+      .filter((row) => row.leistungsanfrageId === request.id)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    const constraint = constraints.find((row) => row.serviceRequestId === request.id);
+    const clarification = clarifications.find((row) => row.serviceRequestId === request.id);
+    const action = deriveServiceCoordinationState({
       requestStatus: request.status,
-      openProposalProposerOrgId: proposal?.proposerOrgId,
       hasResponse: !!response,
       hasDecision: !!response && decisions.some((decision) => decision.responseId === response.id),
-      clarificationPendingForAG: clarifications.some((row) => row.serviceRequestId === request.id && row.askedByOrgId !== request.guOrgId),
-      constraintPendingForAG: constraints.some((row) => row.serviceRequestId === request.id && row.responsibleOrgId === request.guOrgId),
+      openProposalProposer: proposal
+        ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
+        : null,
+      clarificationWaitingFor: clarification
+        ? clarification.askedByOrgId === request.guOrgId ? "AN" : "AG"
+        : null,
+      constraintResponsible: constraint
+        ? constraint.responsibleOrgId === request.guOrgId ? "AG" : "AN"
+        : null,
     });
     const check = readinessBy.get(request.id);
     const readinessStatus = !check ? "NOT_APPLICABLE" : check.scheduleConfirmed && check.siteReady && check.informationComplete && check.agReady && check.anReady ? "READY" : "NOT_READY";
@@ -52,6 +63,7 @@ export async function getProjectCoordinationBoard(input: { projectId: string; ag
       proposalInitiator: proposal ? proposal.proposerOrgId === request.guOrgId ? "AG" : "AN" : null,
        nextActionOwner: action.nextActionOwner ?? "NONE",
        nextAction: action.nextAction,
+       actionRequiredBy: action.actionRequiredBy,
       responseRequiredBy: request.responseRequiredBy?.toISOString() ?? null,
       openConstraintCount: constraints.filter((row) => row.serviceRequestId === request.id).length,
       openClarificationCount: clarifications.filter((row) => row.serviceRequestId === request.id).length,

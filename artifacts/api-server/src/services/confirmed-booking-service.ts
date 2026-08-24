@@ -10,6 +10,11 @@ export interface BookingRequirement {
   periodEnd: string | null;
 }
 
+export interface BookingWindow {
+  start: Date;
+  end: Date;
+}
+
 export interface PreservedBookingAssignment {
   resourceRequirementId: string;
   resourceId: string;
@@ -33,6 +38,7 @@ export async function applyConfirmedBookingsFromRequirements(
     requirements: BookingRequirement[];
     preservedAssignments?: PreservedBookingAssignment[];
     replaceExisting?: boolean;
+    fallbackWindow?: BookingWindow;
   },
 ) {
   const assignments = new Map(
@@ -63,8 +69,12 @@ export async function applyConfirmedBookingsFromRequirements(
         quantity: resourceId ? null : requirement.quantity,
         sourceType: "TAKT_REQUEST" as const,
         sourceReferenceId: input.serviceRequestId,
-        startAt: new Date(`${requirement.periodStart ?? ""}T00:00:00Z`),
-        endAt: toExclusiveEnd(requirement.periodEnd ?? requirement.periodStart ?? ""),
+        startAt: requirement.periodStart
+          ? new Date(`${requirement.periodStart}T00:00:00Z`)
+          : input.fallbackWindow?.start ?? new Date(NaN),
+        endAt: requirement.periodEnd
+          ? toExclusiveEnd(requirement.periodEnd)
+          : input.fallbackWindow?.end ?? new Date(NaN),
         utilizationPercent: requirement.utilizationPercent,
         status: "CONFIRMED" as const,
       };

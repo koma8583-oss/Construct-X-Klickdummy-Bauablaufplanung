@@ -5,6 +5,9 @@ import {
   leistungsantwortenTable,
   leistungsantwortEntscheidungenTable,
   serviceChangeProposalsTable,
+  serviceClarificationsTable,
+  serviceConstraintsTable,
+  serviceReadinessChecksTable,
   type ServiceChangeProposal,
 } from "@workspace/db";
 import { applyAcceptedScheduleChange, prepareAcceptedScheduleChange } from "./schedule-change-service";
@@ -69,6 +72,7 @@ export function deriveCoordinationState(input: {
 export type CoordinationTimelineExtras = {
   responseAt?: Date | null;
   decisionAt?: Date | null;
+  agreedAt?: Date | null;
   clarifications?: Array<{ id: string; askedByOrgId: string; createdAt: Date; answeredAt: Date | null; status: string }>;
   constraints?: Array<{ id: string; createdAt: Date; resolvedAt: Date | null; reportedByRole: CoordinationParty; status: string }>;
   readiness?: { updatedAt: Date } | null;
@@ -82,43 +86,53 @@ export function buildCoordinationTimeline(request: {
   agreedStart: Date | null;
   agreedEnd: Date | null;
 }, proposals: ServiceChangeProposal[], extras: CoordinationTimelineExtras = {}) {
-  const agreementAt = proposals.find((proposal) => proposal.status === "ACCEPTED" && proposal.resolvedAt)?.resolvedAt
-    ?? extras.decisionAt
-    ?? null;
+  const agreementAt = extras.decisionAt ?? extras.agreedAt ?? null;
+  const roleForOrg = (orgId: string | null | undefined): CoordinationParty =>
+    orgId && request.guOrgId && orgId === request.guOrgId ? "AG" : "AN";
+  const oppositeRole = (role: CoordinationParty): CoordinationParty => role === "AG" ? "AN" : "AG";
   const events = [
-    { type: "REQUEST_CREATED", at: request.createdAt, party: "AG" as CoordinationParty },
-    ...(request.sentAt ? [{ type: "REQUEST_SENT", at: request.sentAt, party: "AG" as CoordinationParty }] : []),
-    ...(request.deliveredAt ? [{ type: "REQUEST_DELIVERED", at: request.deliveredAt, party: "AN" as CoordinationParty }] : []),
+    { type: "REQUEST_CREATED", at: request.createdAt, actorRole: "AG" as CoordinationParty },
+    ...(request.sentAt ? [{ type: "REQUEST_SENT", at: request.sentAt, actorRole: "AG" as CoordinationParty }] : []),
+    ...(request.deliveredAt ? [{ type: "REQUEST_DELIVERED", at: request.deliveredAt, actorRole: "AN" as CoordinationParty }] : []),
     ...(request.agreedStart && request.agreedEnd && agreementAt ? [{
       type: "AGREEMENT_REACHED",
       at: agreementAt,
-      party: "AG" as CoordinationParty,
+      actorRole: "AG" as CoordinationParty,
       start: request.agreedStart,
       end: request.agreedEnd,
-      actorRole: "AG" as CoordinationParty,
     }] : []),
-     ...proposals.flatMap((p) => [
-       { type: p.action === "COUNTER" ? "COUNTER_PROPOSED" : "PROPOSED", at: p.createdAt, party: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty, proposalId: p.id, start: p.start, end: p.end },
-        ...(p.resolvedAt ? [{
-          type: p.status === "ACCEPTED"
-            ? (request.agreedStart && request.agreedEnd ? "CHANGE_PROPOSAL_ACCEPTED" : "AGREEMENT_REACHED")
-            : p.status === "REJECTED" ? "REJECTED" : "SUPERSEDED",
+    ...proposals.flatMap((p) => {
+      const proposerRole = roleForOrg(p.proposerOrgId);
+      const resolution = p.status === "ACCEPTED"
+        ? "CHANGE_PROPOSAL_ACCEPTED"
+        : p.status === "REJECTED"
+          ? "CHANGE_PROPOSAL_REJECTED"
+          : p.status === "SUPERSEDED"
+            ? "CHANGE_PROPOSAL_SUPERSEDED"
+            : null;
+      return [
+        { type: "CHANGE_PROPOSAL_CREATED", at: p.createdAt, actorRole: proposerRole, proposalId: p.id, start: p.start, end: p.end },
+        ...(p.resolvedAt && resolution ? [{
+          type: resolution,
           at: p.resolvedAt,
+          actorRole: oppositeRole(proposerRole),
           proposalId: p.id,
-          actorRole: request.guOrgId && p.proposerOrgId === request.guOrgId ? "AG" as CoordinationParty : "AN" as CoordinationParty,
         }] : []),
-    ]),
-    ...(extras.responseAt ? [{ type: "RESPONSE_SUBMITTED", at: extras.responseAt, party: "AN" as CoordinationParty }] : []),
+      ];
+    }),
+    ...(extras.responseAt ? [{ type: "RESPONSE_SUBMITTED", at: extras.responseAt, actorRole: "AN" as CoordinationParty }] : []),
     ...(extras.clarifications ?? []).flatMap((clarification) => [
-      { type: "CLARIFICATION_ASKED", at: clarification.createdAt, clarificationId: clarification.id },
-      ...(clarification.answeredAt ? [{ type: "CLARIFICATION_ANSWERED", at: clarification.answeredAt, clarificationId: clarification.id }] : []),
+      { type: "CLARIFICATION_CREATED", at: clarification.createdAt, actorRole: roleForOrg(clarification.askedByOrgId), clarificationId: clarification.id },
+      ...(clarification.answeredAt ? [{ type: "CLARIFICATION_RESOLVED", at: clarification.answeredAt, actorRole: oppositeRole(roleForOrg(clarification.askedByOrgId)), clarificationId: clarification.id }] : []),
+      ...(clarification.status === "CANCELLED" && !clarification.answeredAt ? [{ type: "CLARIFICATION_CANCELLED", at: clarification.updatedAt ?? clarification.createdAt, actorRole: roleForOrg(clarification.askedByOrgId), clarificationId: clarification.id }] : []),
     ]),
     ...(extras.constraints ?? []).flatMap((constraint) => [
-      { type: "CONSTRAINT_REPORTED", at: constraint.createdAt, constraintId: constraint.id },
-      ...(constraint.resolvedAt ? [{ type: "CONSTRAINT_RESOLVED", at: constraint.resolvedAt, constraintId: constraint.id }] : []),
+      { type: "CONSTRAINT_REPORTED", at: constraint.createdAt, actorRole: constraint.reportedByRole, constraintId: constraint.id },
+      ...(constraint.status === "RESOLVED" && constraint.resolvedAt ? [{ type: "CONSTRAINT_RESOLVED", at: constraint.resolvedAt, actorRole: constraint.responsibleRole, constraintId: constraint.id }] : []),
+      ...(constraint.status === "CANCELLED" && constraint.resolvedAt ? [{ type: "CONSTRAINT_CANCELLED", at: constraint.resolvedAt, actorRole: constraint.reportedByRole, constraintId: constraint.id }] : []),
     ]),
-    ...(extras.readiness ? [{ type: "READINESS_UPDATED", at: extras.readiness.updatedAt }] : []),
-  ];
+    ...(extras.readiness ? [{ type: "READINESS_CHANGED", at: extras.readiness.updatedAt, actorRole: extras.readiness.updatedByRole ?? "SYSTEM" as const, actorOrgId: extras.readiness.updatedByOrgId }] : []),
+  ].filter((event) => event.at instanceof Date && !Number.isNaN(event.at.getTime()));
   return events.sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
@@ -126,25 +140,61 @@ export async function getCoordination(requestId: string, orgId: string) {
   const [request] = await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId)).limit(1);
   const party = request ? partyForOrg(request, orgId) : null;
   if (!request || !party) return null;
-  const [proposals, responses, decisions] = await Promise.all([
+  const [proposals, responses, decisions, clarifications, constraints, readinessRows] = await Promise.all([
     db.select().from(serviceChangeProposalsTable)
       .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId))
       .orderBy(desc(serviceChangeProposalsTable.createdAt)),
-    db.select().from(leistungsantwortenTable).where(eq(leistungsantwortenTable.leistungsanfrageId, requestId)),
-    db.select().from(leistungsantwortEntscheidungenTable),
+    db.select().from(leistungsantwortenTable)
+      .where(eq(leistungsantwortenTable.leistungsanfrageId, requestId))
+      .orderBy(desc(leistungsantwortenTable.createdAt)),
+    db.select().from(leistungsantwortEntscheidungenTable)
+      .where(eq(leistungsantwortEntscheidungenTable.leistungsanfrageId, requestId)),
+    db.select().from(serviceClarificationsTable).where(and(
+      eq(serviceClarificationsTable.serviceRequestId, requestId),
+      eq(serviceClarificationsTable.status, "OPEN"),
+    )),
+    db.select().from(serviceConstraintsTable).where(and(
+      eq(serviceConstraintsTable.serviceRequestId, requestId),
+      eq(serviceConstraintsTable.status, "OPEN"),
+    )),
+    db.select().from(serviceReadinessChecksTable)
+      .where(eq(serviceReadinessChecksTable.serviceRequestId, requestId))
+      .limit(1),
   ]);
   const openProposal = proposals.find((p) => p.status === "OPEN") ?? null;
   const currentAgreement = request.agreedStart && request.agreedEnd ? { start: request.agreedStart, end: request.agreedEnd } : null;
   const state = deriveCoordinationState({ openProposal, currentAgreement, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
   const response = responses[0];
+  const clarification = clarifications[0];
+  const constraint = constraints[0];
+  const readiness = readinessRows[0];
+  const readinessNeedsConfirmation = !!readiness && !(
+    readiness.scheduleConfirmed &&
+    readiness.siteReady &&
+    readiness.informationComplete &&
+    readiness.agReady &&
+    readiness.anReady
+  );
   const action = deriveServiceCoordinationState({
-    party,
     requestStatus: request.status,
+    hasResponse: !!response,
+    hasDecision: !!response && decisions.some((decision) => decision.responseId === response.id),
     openProposalProposer: openProposal
       ? openProposal.proposerOrgId === request.guOrgId ? "AG" : "AN"
       : null,
-    hasResponse: !!response,
-    hasDecision: !!response && decisions.some((decision) => decision.responseId === response.id),
+    responseRequiredBy: request.responseRequiredBy,
+    decisionRequiredBy: request.guDecisionRequiredBy,
+    clarificationWaitingFor: clarification
+      ? clarification.askedByOrgId === request.guOrgId ? "AN" : "AG"
+      : null,
+    constraintResponsible: constraint
+      ? constraint.responsibleOrgId === request.guOrgId ? "AG" : "AN"
+      : null,
+    readinessActionRequiredBy: readinessNeedsConfirmation
+      ? (readiness?.agReady && readiness?.scheduleConfirmed && readiness?.siteReady && readiness?.informationComplete
+        ? "AN"
+        : "AG")
+      : null,
   });
   const delta = openProposal
     ? calculateScheduleDelta(currentAgreement?.start, currentAgreement?.end, openProposal.start, openProposal.end)
@@ -168,6 +218,7 @@ export async function getCoordination(requestId: string, orgId: string) {
     coordinationState: state.state,
     nextActionOwner: action.nextActionOwner,
     nextAction: action.nextAction,
+    actionRequiredBy: action.actionRequiredBy,
     responseRequiredBy: request.responseRequiredBy,
     scheduleDelta: delta,
     lastChangedAt: new Date(Math.max(
