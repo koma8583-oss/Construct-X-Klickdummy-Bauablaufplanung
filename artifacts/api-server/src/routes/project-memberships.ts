@@ -4,6 +4,7 @@ import { requireRole } from "../middlewares/requireRole";
 import {
   ProjectMembershipError,
   acceptInvitation,
+  createProjectInvitationPackage,
   inviteParticipant,
   listPendingProjectInvitations,
   listProjectMemberships,
@@ -115,6 +116,50 @@ const combinedInvitationSchema = z.object({
   description: z.string().trim().max(2000).optional(),
   selectedFields: z.array(z.string().min(1)).min(1).max(100),
   validFrom: z.string().datetime({ offset: true }).optional(),
+});
+
+const invitationPackageSchema = z.object({
+  participantIds: z.array(z.string().min(1)).min(1).max(100),
+  policyTemplateId: z.string().min(1),
+  selectedFields: z.array(z.string().min(1)).min(1).max(100),
+  title: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(2000).optional(),
+  invitationMessage: z.string().trim().max(4000).optional(),
+  validFrom: z.string().datetime({ offset: true }).optional(),
+  validUntil: z.string().datetime({ offset: true }).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200).optional(),
+});
+
+// The invitation-package endpoint is the canonical combined workflow. The
+// legacy invitations-with-data endpoint remains below for existing clients.
+router.post("/projects/:projectId/invitation-packages", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
+  if (req.user?.orgType !== "AG" || !req.user.orgId) {
+    res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  const parsed = invitationPackageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const result = await createProjectInvitationPackage({
+      projectId: req.params.projectId as string,
+      agOrgId: req.user.orgId,
+      participantIds: parsed.data.participantIds,
+      policyTemplateId: parsed.data.policyTemplateId,
+      selectedFields: parsed.data.selectedFields,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      invitationMessage: parsed.data.invitationMessage,
+      validFrom: parsed.data.validFrom ? new Date(parsed.data.validFrom) : undefined,
+      validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+    res.status(result.idempotent ? 200 : 201).json(result);
+  } catch (error) {
+    sendDomainError(res, error);
+  }
 });
 
 router.post("/projects/:projectId/invitations-with-data", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {

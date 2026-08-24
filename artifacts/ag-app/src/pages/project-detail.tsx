@@ -25,7 +25,6 @@ import {
   getGetAgProjectsOverviewQueryKey,
   getListProjectContractorsQueryKey,
   useListProjectMemberships,
-  useInviteProjectParticipant,
   useRevokeProjectMembership,
   getListProjectMembershipsQueryKey,
   getListTaktDependenciesQueryKey,
@@ -117,6 +116,7 @@ import {
   type ProjectCalendar,
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
+import { ProjectInvitationWizard } from '@/components/ProjectInvitationWizard';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
 import { CoordinationBoard } from '@/components/coordination-board';
 import { findAlternativeImpacts, type AlternativeImpact } from '@/lib/alternative-impact';
@@ -404,7 +404,6 @@ export default function ProjectDetail() {
 
   // Contractor management dialog
   const [isParticipantDirectoryOpen, setIsParticipantDirectoryOpen] = useState(false);
-  const [participantSearch, setParticipantSearch] = useState('');
 
   // Dependency form state (shared between info panel read and edit dialog write)
   const [newDepPredecessorId, setNewDepPredecessorId] = useState('');
@@ -575,7 +574,6 @@ export default function ProjectDetail() {
   const createTaktRequest = useCreateTaktRequestWithSnapshot();
   const sendTaktRequest = useSendTaktRequest();
   const closeRequest = useCreateGuDecision();
-  const inviteParticipant = useInviteProjectParticipant();
   const revokeMembership = useRevokeProjectMembership();
   const createDep = useCreateTaktDependency();
   const createDepSkip = useCreateTaktDependencySkipReschedule();
@@ -635,6 +633,7 @@ export default function ProjectDetail() {
 
   // Dataspace publication wizard
   const [isDataspaceOpen, setIsDataspaceOpen] = useState(false);
+  const [isInvitationPackageOpen, setIsInvitationPackageOpen] = useState(false);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
   // Internal field state — create form
@@ -1140,16 +1139,6 @@ export default function ProjectDetail() {
     });
   };
 
-  const handleInviteParticipant = (anOrgId: string) => {
-    inviteParticipant.mutate({ projectId, data: { anOrgId } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProjectMembershipsQueryKey(projectId) });
-        toast({ title: 'Projekteinladung gesendet' });
-      },
-      onError: (err) => toast({ title: t('common.error'), description: err.message, variant: 'destructive' }),
-    });
-  };
-
   const handleRevokeMembership = (membership: ProjectMembership) => {
     setConfirmRevokeMembership(membership);
   };
@@ -1404,6 +1393,12 @@ export default function ProjectDetail() {
             </Button>
           </Link>
           {canManageContractors && (
+          <Button onClick={() => setIsInvitationPackageOpen(true)}>
+            <Users className="w-4 h-4 mr-2" />
+            Einladung & Freigabe
+          </Button>
+          )}
+          {canManageContractors && (
           <Button variant="outline" onClick={() => setIsParticipantDirectoryOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
             Teilnehmer
@@ -1417,7 +1412,7 @@ export default function ProjectDetail() {
           {canManageTaktRequests && (
             <Button variant="outline" onClick={() => setIsDataspaceOpen(true)}>
               <Globe className="w-4 h-4 mr-2" />
-              Im Datenraum bereitstellen
+              Weitere Datenfreigabe
             </Button>
           )}
         </div>
@@ -3167,61 +3162,9 @@ export default function ProjectDetail() {
             )}
           </div>
 
-          {/* Invite from the participant pool */}
-          {(() => {
-            const linkedIds = new Set(memberships?.map(m => m.anOrgId) ?? []);
-            const available = (allAnOrgs ?? []).filter(
-              org => !linkedIds.has(org.id) &&
-                (!participantSearch || org.name.toLowerCase().includes(participantSearch.toLowerCase()))
-            );
-            return (
-              <div className="space-y-2 border-t border-border pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Teilnehmer einladen
-                </p>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <Input
-                    placeholder="Teilnehmer suchen…"
-                    value={participantSearch}
-                    onChange={e => setParticipantSearch(e.target.value)}
-                    className="pl-8 h-8 text-sm"
-                  />
-                </div>
-                {available.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic py-2">
-                    {participantSearch ? 'Kein Treffer.' : allAnOrgs?.length === 0 ? 'Noch keine AN-Teilnehmer im System.' : 'Alle verfügbaren Teilnehmer sind bereits eingeladen.'}
-                  </p>
-                ) : (
-                  <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
-                    {available.map(org => (
-                      <div key={org.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border/60 hover:border-border bg-card/50 hover:bg-card transition-colors">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-7 h-7 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-xs shrink-0">
-                            {org.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">{org.name}</div>
-                            {org.contactEmail && <div className="text-[11px] text-muted-foreground truncate">{org.contactEmail}</div>}
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="ml-3 h-7 text-xs shrink-0"
-                          onClick={() => handleInviteParticipant(org.id)}
-                          disabled={inviteParticipant.isPending}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Einladen
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          <div className="border-t border-border pt-4 text-sm text-muted-foreground">
+            Neue Teilnehmer werden über <strong>Einladung &amp; Freigabe</strong> gemeinsam mit einer Policy und einem Informationspaket eingeladen.
+          </div>
         </DialogContent>
       </Dialog>
       {/* ── Assign AN Dialog ────────────────────────────────────────────────── */}
@@ -3525,6 +3468,16 @@ export default function ProjectDetail() {
             assignmentStatus: a.assignmentStatus,
             trade: a.trade,
           }))}
+        />
+      )}
+
+      {project && (
+        <ProjectInvitationWizard
+          open={isInvitationPackageOpen}
+          onOpenChange={setIsInvitationPackageOpen}
+          projectId={projectId}
+          projectName={project.projectName ?? ''}
+          participants={allAnOrgs ?? []}
         />
       )}
 

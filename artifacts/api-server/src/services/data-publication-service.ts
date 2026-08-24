@@ -15,7 +15,7 @@
  *   - Published versions are immutable.
  */
 import crypto from "node:crypto";
-import { db } from "@workspace/db";
+import { db, messageOutboxTable } from "@workspace/db";
 import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
@@ -442,6 +442,43 @@ export async function publishDataPublication(
         .where(eq(dataPublicationRecipientsTable.id, recipient.id));
     } catch {
       // Best-effort — delivery failure must not abort the publish
+    }
+  }
+}
+
+/**
+ * Send notifications for a publication that was already prepared and
+ * committed by the combined invitation transaction. The snapshot and status
+ * are deliberately not written here.
+ */
+export async function publishCombinedDataPublicationNotifications(
+  publicationId: string,
+  agOrgId: string,
+  now = new Date(),
+): Promise<void> {
+  const [pub] = await db.select().from(dataPublicationsTable).where(
+    and(eq(dataPublicationsTable.id, publicationId), eq(dataPublicationsTable.agOrgId, agOrgId)),
+  ).limit(1);
+  if (!pub || pub.status !== "PUBLISHED") {
+    throw new PublicationStatusError("Combined data publication is not active.");
+  }
+  const outboxRows = await db.select().from(messageOutboxTable).where(and(
+    eq(messageOutboxTable.correlationId, publicationId),
+    eq(messageOutboxTable.messageType, "DATA_OFFER_PUBLISHED"),
+  ));
+  for (const outbox of outboxRows) {
+    if (!["PENDING", "FAILED"].includes(outbox.status)) continue;
+    try {
+      const result = await transport.retry(outbox.messageId);
+      if (result.status !== "DELIVERED") continue;
+      await db.update(dataPublicationRecipientsTable).set({ notifiedAt: now }).where(
+        and(
+          eq(dataPublicationRecipientsTable.publicationId, publicationId),
+          eq(dataPublicationRecipientsTable.anOrgId, outbox.recipientOrgId),
+        ),
+      );
+    } catch {
+      // The pre-created outbox row remains retryable after a crash or connector failure.
     }
   }
 }

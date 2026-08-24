@@ -37,6 +37,7 @@ export interface DataOfferSummary {
   notifiedAt: string | null;
   policyAcceptedAt: string | null;
   policyRejectedAt: string | null;
+  projectMembershipId?: string | null;
 }
 
 export interface DataOfferProjectInfo {

@@ -111,6 +111,7 @@ router.get(
             policyAcceptedAt: dataPublicationRecipientsTable.policyAcceptedAt,
             policyRejectedAt: dataPublicationRecipientsTable.policyRejectedAt,
             firstAccessedAt: dataPublicationRecipientsTable.firstAccessedAt,
+            projectMembershipId: dataPublicationRecipientsTable.projectMembershipId,
           })
           .from(dataPublicationRecipientsTable)
           .innerJoin(
@@ -379,6 +380,7 @@ router.get(
         policyRejectedAt: dataPublicationRecipientsTable.policyRejectedAt,
         firstAccessedAt: dataPublicationRecipientsTable.firstAccessedAt,
         lastAccessedAt: dataPublicationRecipientsTable.lastAccessedAt,
+            projectMembershipId: dataPublicationRecipientsTable.projectMembershipId,
         anName: organizationsTable.name,
       })
       .from(dataPublicationRecipientsTable)

@@ -459,7 +459,11 @@ function OfferDetailPanel({
       )}
 
       {/* Access notice — shown when policy not yet accepted */}
-      <AccessNotice recipientStatus={offer.recipientStatus} />
+          {offer.projectMembershipId && offer.recipientStatus === 'OFFERED' ? (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
+              Dieses Informationspaket gehört zu einer Projekteinladung. Bitte öffnen Sie <strong>Projekteinladungen</strong>, um die Einladung und Policy gemeinsam zu bestätigen.
+            </div>
+          ) : <AccessNotice recipientStatus={offer.recipientStatus} />}
 
       {/* Linked TaktRequest */}
       {linkedTaktRequestId && (
@@ -577,13 +581,13 @@ function OfferDetailPanel({
       {(canAccept || canReject) && (
         <div className="flex gap-2">
           {canAccept && (
-            <Button size="sm" onClick={handleAccept} disabled={accept.isPending} className="flex-1">
+            <Button size="sm" onClick={handleAccept} disabled={accept.isPending || !!offer.projectMembershipId} className="flex-1">
               <CheckCircle2 className="h-4 w-4 mr-1.5" />
               {accept.isPending ? 'Wird akzeptiert…' : 'Richtlinie akzeptieren'}
             </Button>
           )}
           {canReject && (
-            <Button size="sm" variant="outline" onClick={handleReject} disabled={reject.isPending}>
+            <Button size="sm" variant="outline" onClick={handleReject} disabled={reject.isPending || !!offer.projectMembershipId}>
               <XCircle className="h-4 w-4 mr-1.5" />
               Ablehnen
             </Button>

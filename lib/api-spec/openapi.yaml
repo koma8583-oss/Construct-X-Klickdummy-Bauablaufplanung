@@ -567,6 +567,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectMembership"
 
+  /projects/{projectId}/invitation-packages:
+    post:
+      operationId: createProjectInvitationPackage
+      tags: [projects, data-publications]
+      summary: Create a project invitation and linked Dataspace offer atomically
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectInvitationPackageRequest"
+      responses:
+        "201":
+          description: Invitation package prepared and dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectInvitationPackage"
+        "200":
+          description: Idempotent replay of an existing invitation package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectInvitationPackage"
+
   /projects/{projectId}/invitations-with-data:
     post:
       operationId: inviteProjectParticipantsWithData
@@ -3519,6 +3549,7 @@ components:
         projectId: { type: string }
         agOrgId: { type: string }
         anOrgId: { type: string }
+        dataPublicationId: { type: string, nullable: true }
         anParticipantId: { type: string, nullable: true }
         status: { type: string, enum: [INVITED, ACTIVE, REJECTED, REVOKED] }
         invitationMessage: { type: string, nullable: true }
@@ -3540,6 +3571,38 @@ components:
         anOrgId: { type: string }
         invitationMessage: { type: string, maxLength: 4000 }
         validUntil: { type: string, format: date-time }
+
+    CreateProjectInvitationPackageRequest:
+      type: object
+      required: [participantIds, policyTemplateId, selectedFields, title]
+      properties:
+        participantIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+        policyTemplateId: { type: string }
+        selectedFields:
+          type: array
+          minItems: 1
+          items: { type: string }
+        title: { type: string, maxLength: 255 }
+        description: { type: string, maxLength: 2000 }
+        invitationMessage: { type: string, maxLength: 4000 }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: string, format: date-time }
+        idempotencyKey: { type: string, maxLength: 200 }
+
+    ProjectInvitationPackage:
+      type: object
+      required: [projectInvitationId, publicationId, status, memberships, idempotent]
+      properties:
+        projectInvitationId: { type: string }
+        publicationId: { type: string }
+        status: { type: string, enum: [PUBLISHED] }
+        memberships:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectMembership" }
+        idempotent: { type: boolean }
 
     ProjectOnboardingInput:
       type: object
@@ -3659,9 +3722,19 @@ components:
           properties:
             usagePurpose: { type: string, enum: [PROJECT_MEMBERSHIP] }
             allowedConsumerParticipantId: { type: string }
+            templateId: { type: string }
+            templateCode: { type: string }
+            templateName: { type: string }
+            purpose: { type: string }
+            permissions: { type: array, items: { type: string } }
+            prohibitions: { type: array, items: { type: string } }
         dataOffer:
           type: object
-          required: [publicationId, title, dataProductType, selectedFields, policy]
+          description: >
+            The linked package. policy and dataProductType are included for
+            legacy onboarding messages; canonical invitation packages carry
+            the immutable policy snapshot on the invitation policy.
+          required: [publicationId, title, selectedFields]
           properties:
             publicationId: { type: string }
             title: { type: string }
@@ -3681,6 +3754,8 @@ components:
                 prohibitions: { type: array, items: { type: string } }
                 validityRule: { type: string }
                 retentionRule: { type: ["string", "null"] }
+            validFrom: { type: string, format: date-time }
+            validUntil: { type: string, format: date-time }
 
     ProjectInvitationResponse:
       type: object
@@ -3690,7 +3765,9 @@ components:
         invitationId: { type: string, minLength: 1 }
         projectReference: { type: string }
         decision: { type: string, enum: [ACCEPTED, REJECTED] }
-        policyAccepted: { type: boolean }
+        policyAccepted:
+          type: boolean
+          description: Required and true when decision is ACCEPTED.
         message: { type: string }
         respondedAt: { type: string, format: date-time }
 

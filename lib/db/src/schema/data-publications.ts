@@ -165,6 +165,12 @@ export const dataPublicationsTable = pgTable(
       .notNull()
       .references(() => projectsTable.id, { onDelete: "cascade" }),
 
+    /**
+     * Set for a publication created by the combined project invitation flow.
+     * Null keeps existing, separately created publications compatible.
+     */
+    projectInvitationId: text("project_invitation_id"),
+
     /** Type of data product */
     dataProductType: dataProductTypeEnum("data_product_type").notNull(),
 
@@ -240,6 +246,7 @@ export const dataPublicationsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
+    unique("uq_data_publication_project_invitation").on(t.projectInvitationId),
     index("data_pub_ag_org_id_idx").on(t.agOrgId),
     index("data_pub_project_id_idx").on(t.projectId),
     index("data_pub_status_idx").on(t.status),

@@ -15,6 +15,7 @@ export interface ProjectMembership {
   projectId: string;
   agOrgId: string;
   anOrgId: string;
+  dataPublicationId?: string | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;

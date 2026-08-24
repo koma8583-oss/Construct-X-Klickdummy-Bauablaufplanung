@@ -10,4 +10,10 @@ import type { ProjectInvitationPolicyUsagePurpose } from './projectInvitationPol
 export type ProjectInvitationPolicy = {
   usagePurpose: ProjectInvitationPolicyUsagePurpose;
   allowedConsumerParticipantId: string;
+  templateId?: string;
+  templateCode?: string;
+  templateName?: string;
+  purpose?: string;
+  permissions?: string[];
+  prohibitions?: string[];
 };

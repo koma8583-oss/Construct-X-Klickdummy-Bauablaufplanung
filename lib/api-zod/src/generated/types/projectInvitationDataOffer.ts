@@ -8,10 +8,15 @@
 import type { ProjectInvitationDataOfferDataProductType } from './projectInvitationDataOfferDataProductType';
 import type { ProjectInvitationDataOfferPolicy } from './projectInvitationDataOfferPolicy';
 
+/**
+ * The linked package. policy and dataProductType are included for legacy onboarding messages; canonical invitation packages carry the immutable policy snapshot on the invitation policy.
+ */
 export type ProjectInvitationDataOffer = {
   publicationId: string;
   title: string;
-  dataProductType: ProjectInvitationDataOfferDataProductType;
+  dataProductType?: ProjectInvitationDataOfferDataProductType;
   selectedFields: string[];
-  policy: ProjectInvitationDataOfferPolicy;
+  policy?: ProjectInvitationDataOfferPolicy;
+  validFrom?: Date;
+  validUntil?: Date;
 };

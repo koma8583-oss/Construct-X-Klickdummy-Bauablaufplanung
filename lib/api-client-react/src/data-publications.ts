@@ -54,12 +54,14 @@ export interface PublicationRecipientSummary {
   policyRejectedAt?: string | null;
   firstAccessedAt?: string | null;
   lastAccessedAt?: string | null;
+  projectMembershipId?: string | null;
 }
 
 export interface DataPublication {
   id: string;
   agOrgId: string;
   projectId: string;
+  projectInvitationId?: string | null;
   dataProductType: DataProductType;
   title: string;
   description: string | null;

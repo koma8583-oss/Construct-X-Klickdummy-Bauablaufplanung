@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations";
 import { projectsTable } from "./projects";
+import { dataPublicationsTable } from "./data-publications";
 
 export const projectMembershipStatusEnum = pgEnum("project_membership_status", [
   "INVITED",
@@ -35,6 +36,9 @@ export const projectMembershipsTable = pgTable(
       .notNull()
       .references(() => organizationsTable.id, { onDelete: "cascade" }),
     anParticipantId: text("an_participant_id"),
+    /** Publication prepared together with this invitation, if any. */
+    dataPublicationId: text("data_publication_id")
+      .references(() => dataPublicationsTable.id, { onDelete: "set null" }),
     status: projectMembershipStatusEnum("status").notNull().default("INVITED"),
     invitationMessage: text("invitation_message"),
     invitationId: text("invitation_id").notNull().unique(),

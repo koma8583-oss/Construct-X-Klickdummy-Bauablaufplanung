@@ -72,12 +72,18 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "validUntil": zod.coerce.date().optional(),
   "policy": zod.object({
   "usagePurpose": zod.enum(['PROJECT_MEMBERSHIP']),
-  "allowedConsumerParticipantId": zod.string()
+  "allowedConsumerParticipantId": zod.string(),
+  "templateId": zod.string().optional(),
+  "templateCode": zod.string().optional(),
+  "templateName": zod.string().optional(),
+  "purpose": zod.string().optional(),
+  "permissions": zod.array(zod.string()).optional(),
+  "prohibitions": zod.array(zod.string()).optional()
 }),
   "dataOffer": zod.object({
   "publicationId": zod.string(),
   "title": zod.string(),
-  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']),
+  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']).optional(),
   "selectedFields": zod.array(zod.string()),
   "policy": zod.object({
   "id": zod.string(),
@@ -88,8 +94,10 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "prohibitions": zod.array(zod.string()),
   "validityRule": zod.string(),
   "retentionRule": zod.string().nullish()
-})
-}).optional()
+}).optional(),
+  "validFrom": zod.coerce.date().optional(),
+  "validUntil": zod.coerce.date().optional()
+}).optional().describe('The linked package. policy and dataProductType are included for legacy onboarding messages; canonical invitation packages carry the immutable policy snapshot on the invitation policy.\n')
 })
 
 export const ReceiveInboundProjectInvitationResponse = zod.object({
@@ -116,7 +124,7 @@ export const ReceiveInboundProjectInvitationResponseBody = zod.object({
   "invitationId": zod.string().min(1),
   "projectReference": zod.string(),
   "decision": zod.enum(['ACCEPTED', 'REJECTED']),
-  "policyAccepted": zod.boolean().optional(),
+  "policyAccepted": zod.boolean().optional().describe('Required and true when decision is ACCEPTED.'),
   "message": zod.string().optional(),
   "respondedAt": zod.coerce.date()
 })
@@ -539,6 +547,7 @@ export const ListProjectMembershipsResponseItem = zod.object({
   "projectId": zod.string(),
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
+  "dataPublicationId": zod.string().nullish(),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -578,6 +587,7 @@ export const InviteProjectParticipantResponse = zod.object({
   "projectId": zod.string(),
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
+  "dataPublicationId": zod.string().nullish(),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -592,6 +602,65 @@ export const InviteProjectParticipantResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).describe('Bilateral project relationship and invitation lifecycle state')
+
+
+/**
+ * @summary Create a project invitation and linked Dataspace offer atomically
+ */
+export const CreateProjectInvitationPackageParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+
+
+export const createProjectInvitationPackageBodyTitleMax = 255;
+
+export const createProjectInvitationPackageBodyDescriptionMax = 2000;
+
+export const createProjectInvitationPackageBodyInvitationMessageMax = 4000;
+
+export const createProjectInvitationPackageBodyIdempotencyKeyMax = 200;
+
+
+
+export const CreateProjectInvitationPackageBody = zod.object({
+  "participantIds": zod.array(zod.string()).min(1),
+  "policyTemplateId": zod.string(),
+  "selectedFields": zod.array(zod.string()).min(1),
+  "title": zod.string().max(createProjectInvitationPackageBodyTitleMax),
+  "description": zod.string().max(createProjectInvitationPackageBodyDescriptionMax).optional(),
+  "invitationMessage": zod.string().max(createProjectInvitationPackageBodyInvitationMessageMax).optional(),
+  "validFrom": zod.coerce.date().optional(),
+  "validUntil": zod.coerce.date().optional(),
+  "idempotencyKey": zod.string().max(createProjectInvitationPackageBodyIdempotencyKeyMax).optional()
+})
+
+export const CreateProjectInvitationPackageResponse = zod.object({
+  "projectInvitationId": zod.string(),
+  "publicationId": zod.string(),
+  "status": zod.enum(['PUBLISHED']),
+  "memberships": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "agOrgId": zod.string(),
+  "anOrgId": zod.string(),
+  "dataPublicationId": zod.string().nullish(),
+  "anParticipantId": zod.string().nullish(),
+  "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
+  "invitationMessage": zod.string().nullish(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "invitedAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "acceptedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Bilateral project relationship and invitation lifecycle state')),
+  "idempotent": zod.boolean()
+})
 
 
 /**
@@ -637,6 +706,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "projectId": zod.string(),
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
+  "dataPublicationId": zod.string().nullish(),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -777,6 +847,7 @@ export const RevokeProjectMembershipResponse = zod.object({
   "projectId": zod.string(),
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
+  "dataPublicationId": zod.string().nullish(),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),

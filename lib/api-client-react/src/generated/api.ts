@@ -34,6 +34,7 @@ import type {
   CreateLeistungsabhaengigkeitParams,
   CreateLeistungsanfrageBody,
   CreateOrganizationRequest,
+  CreateProjectInvitationPackageRequest,
   CreateProjectRequest,
   CreateProjectSubcontractorRequest,
   CreateResourceAssignmentRequest,
@@ -88,6 +89,7 @@ import type {
   Project,
   ProjectInvitation,
   ProjectInvitationDecisionInput,
+  ProjectInvitationPackage,
   ProjectInvitationResponse,
   ProjectMembership,
   ProjectOnboardingInput,
@@ -2007,6 +2009,78 @@ export const useInviteProjectParticipant = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getInviteProjectParticipantMutationOptions(options));
+    }
+
+export const getCreateProjectInvitationPackageUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/invitation-packages`
+}
+
+/**
+ * @summary Create a project invitation and linked Dataspace offer atomically
+ */
+export const createProjectInvitationPackage = async (projectId: string,
+    createProjectInvitationPackageRequest: CreateProjectInvitationPackageRequest, options?: RequestInit): Promise<ProjectInvitationPackage> => {
+
+  return customFetch<ProjectInvitationPackage>(getCreateProjectInvitationPackageUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createProjectInvitationPackageRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateProjectInvitationPackageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectInvitationPackage>>, TError,{projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProjectInvitationPackage>>, TError,{projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>}, TContext> => {
+
+const mutationKey = ['createProjectInvitationPackage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProjectInvitationPackage>>, {projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  createProjectInvitationPackage(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateProjectInvitationPackageMutationResult = NonNullable<Awaited<ReturnType<typeof createProjectInvitationPackage>>>
+    export type CreateProjectInvitationPackageMutationBody = BodyType<CreateProjectInvitationPackageRequest>
+    export type CreateProjectInvitationPackageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a project invitation and linked Dataspace offer atomically
+ */
+export const useCreateProjectInvitationPackage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectInvitationPackage>>, TError,{projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProjectInvitationPackage>>,
+        TError,
+        {projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateProjectInvitationPackageMutationOptions(options));
     }
 
 export const getInviteProjectParticipantsWithDataUrl = (projectId: string,) => {

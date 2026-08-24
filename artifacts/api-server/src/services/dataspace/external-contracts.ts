@@ -20,6 +20,28 @@ const policySchema = z.object({
   validUntil: externalDate.optional(),
 }).strict();
 
+const invitationPolicySchema = z.object({
+  usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
+  allowedConsumerParticipantId: nonEmpty(200),
+  templateId: nonEmpty(200).optional(),
+  templateCode: nonEmpty(200).optional(),
+  templateName: nonEmpty(500).optional(),
+  purpose: nonEmpty(2000).optional(),
+  permissions: z.array(nonEmpty(500)).max(100).optional(),
+  prohibitions: z.array(nonEmpty(500)).max(100).optional(),
+}).strict();
+
+const dataOfferPolicySnapshotSchema = z.object({
+  id: nonEmpty(200),
+  code: nonEmpty(200),
+  name: nonEmpty(500),
+  purpose: nonEmpty(2000),
+  permissions: z.array(nonEmpty(500)).max(100),
+  prohibitions: z.array(nonEmpty(500)).max(100),
+  validityRule: nonEmpty(2000),
+  retentionRule: z.string().trim().max(2000).nullable(),
+}).strict();
+
 const timeWindowSchema = z.object({
   start: externalDate,
   end: externalDate,
@@ -61,25 +83,17 @@ export const externalProjectInvitationSchema = z.object({
   purpose: z.literal("PROJECT_COLLABORATION"),
   invitationMessage: z.string().trim().max(4000).optional(),
   validUntil: externalDate.optional(),
-  policy: z.object({
-    usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
-    allowedConsumerParticipantId: nonEmpty(200),
-  }).strict(),
+  policy: invitationPolicySchema,
   dataOffer: z.object({
     publicationId: nonEmpty(200),
     title: nonEmpty(500),
-    dataProductType: z.literal("TAKT_INFORMATION_PACKAGE"),
-    selectedFields: z.array(nonEmpty(120)).min(1).max(100),
-    policy: z.object({
-      id: nonEmpty(200),
-      code: nonEmpty(200),
-      name: nonEmpty(500),
-      purpose: nonEmpty(2000),
-      permissions: z.array(nonEmpty(500)).max(100),
-      prohibitions: z.array(nonEmpty(500)).max(100),
-      validityRule: nonEmpty(2000),
-      retentionRule: z.string().trim().max(2000).nullable(),
-    }).strict(),
+    // These fields keep the earlier onboarding transport compatible while the
+    // invitation-package transport uses the policy embedded in `policy`.
+    dataProductType: z.literal("TAKT_INFORMATION_PACKAGE").optional(),
+    selectedFields: z.array(nonEmpty(200)).min(1).max(100),
+    policy: dataOfferPolicySnapshotSchema.optional(),
+    validFrom: externalDate.optional(),
+    validUntil: externalDate.optional(),
   }).strict().optional(),
 }).strict();
 
@@ -169,13 +183,19 @@ export type ExternalProjectInvitation = {
   policy: {
     usagePurpose: "PROJECT_MEMBERSHIP";
     allowedConsumerParticipantId: string;
+    templateId?: string;
+    templateCode?: string;
+    templateName?: string;
+    purpose?: string;
+    permissions?: string[];
+    prohibitions?: string[];
   };
   dataOffer?: {
     publicationId: string;
     title: string;
-    dataProductType: "TAKT_INFORMATION_PACKAGE";
+    dataProductType?: "TAKT_INFORMATION_PACKAGE";
     selectedFields: string[];
-    policy: {
+    policy?: {
       id: string;
       code: string;
       name: string;
@@ -185,6 +205,8 @@ export type ExternalProjectInvitation = {
       validityRule: string;
       retentionRule: string | null;
     };
+    validFrom?: string;
+    validUntil?: string;
   };
 };
 

@@ -155,6 +155,7 @@ function PublicationRow({
   const recipients = pub.recipients ?? [];
   const accepted = recipients.filter((r) => r.status === "ACCEPTED").length;
   const isWithdrawn = pub.status === "WITHDRAWN";
+  const isCombinedInvitation = Boolean(pub.projectInvitationId || recipients.some((recipient) => recipient.projectMembershipId));
 
   return (
     <>
@@ -192,6 +193,7 @@ function PublicationRow({
           <div className="text-sm font-medium">{pub.title}</div>
           <div className="text-xs text-muted-foreground">
             {PRODUCT_TYPE_LABELS[pub.dataProductType] ?? pub.dataProductType}
+            {isCombinedInvitation && <span className="ml-1.5 text-primary">· Einladung &amp; Freigabe</span>}
           </div>
         </td>
 
@@ -317,6 +319,9 @@ function PublicationRow({
                     <div key={r.anOrgId} className="bg-card border border-border rounded-lg px-3 py-2 flex flex-col gap-0.5 min-w-[200px]">
                       <div className="text-sm font-medium">{r.anName}</div>
                       <RecipientStatusIcon status={r.status} />
+                       {r.projectMembershipId && r.status === "OFFERED" && (
+                         <div className="text-xs text-amber-600">Wartet auf Einladung &amp; Policy</div>
+                       )}
                       {r.policyAcceptedAt && <div className="text-xs text-muted-foreground">Akzeptiert: {fmtDate(r.policyAcceptedAt)}</div>}
                       {r.firstAccessedAt && <div className="text-xs text-muted-foreground">Erster Zugriff: {fmtDate(r.firstAccessedAt)}</div>}
                       {r.policyRejectedAt && <div className="text-xs text-red-500">Abgelehnt: {fmtDate(r.policyRejectedAt)}</div>}

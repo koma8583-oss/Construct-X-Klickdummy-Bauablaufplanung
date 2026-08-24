@@ -39,6 +39,7 @@ export interface ProjectMembership {
   projectId: string;
   agOrgId: string;
   anOrgId: string;
+  dataPublicationId?: string | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;
@@ -59,6 +60,39 @@ export interface InviteProjectParticipantRequest {
   /** @maxLength 4000 */
   invitationMessage?: string;
   validUntil?: string;
+}
+
+export interface CreateProjectInvitationPackageRequest {
+  /** @minItems 1 */
+  participantIds: string[];
+  policyTemplateId: string;
+  /** @minItems 1 */
+  selectedFields: string[];
+  /** @maxLength 255 */
+  title: string;
+  /** @maxLength 2000 */
+  description?: string;
+  /** @maxLength 4000 */
+  invitationMessage?: string;
+  validFrom?: string;
+  validUntil?: string;
+  /** @maxLength 200 */
+  idempotencyKey?: string;
+}
+
+export type ProjectInvitationPackageStatus = typeof ProjectInvitationPackageStatus[keyof typeof ProjectInvitationPackageStatus];
+
+
+export const ProjectInvitationPackageStatus = {
+  PUBLISHED: 'PUBLISHED',
+} as const;
+
+export interface ProjectInvitationPackage {
+  projectInvitationId: string;
+  publicationId: string;
+  status: ProjectInvitationPackageStatus;
+  memberships: ProjectMembership[];
+  idempotent: boolean;
 }
 
 export interface ProjectOnboardingInput {
@@ -208,6 +242,12 @@ export const ProjectInvitationPolicyUsagePurpose = {
 export type ProjectInvitationPolicy = {
   usagePurpose: ProjectInvitationPolicyUsagePurpose;
   allowedConsumerParticipantId: string;
+  templateId?: string;
+  templateCode?: string;
+  templateName?: string;
+  purpose?: string;
+  permissions?: string[];
+  prohibitions?: string[];
 };
 
 export type ProjectInvitationDataOfferDataProductType = typeof ProjectInvitationDataOfferDataProductType[keyof typeof ProjectInvitationDataOfferDataProductType];
@@ -229,12 +269,17 @@ export type ProjectInvitationDataOfferPolicy = {
   retentionRule?: string | null;
 };
 
+/**
+ * The linked package. policy and dataProductType are included for legacy onboarding messages; canonical invitation packages carry the immutable policy snapshot on the invitation policy.
+ */
 export type ProjectInvitationDataOffer = {
   publicationId: string;
   title: string;
-  dataProductType: ProjectInvitationDataOfferDataProductType;
+  dataProductType?: ProjectInvitationDataOfferDataProductType;
   selectedFields: string[];
-  policy: ProjectInvitationDataOfferPolicy;
+  policy?: ProjectInvitationDataOfferPolicy;
+  validFrom?: string;
+  validUntil?: string;
 };
 
 export interface ProjectInvitation {
@@ -247,6 +292,7 @@ export interface ProjectInvitation {
   invitationMessage?: string;
   validUntil?: string;
   policy: ProjectInvitationPolicy;
+  /** The linked package. policy and dataProductType are included for legacy onboarding messages; canonical invitation packages carry the immutable policy snapshot on the invitation policy. */
   dataOffer?: ProjectInvitationDataOffer;
 }
 
@@ -264,6 +310,7 @@ export interface ProjectInvitationResponse {
   invitationId: string;
   projectReference: string;
   decision: ProjectInvitationResponseDecision;
+  /** Required and true when decision is ACCEPTED. */
   policyAccepted?: boolean;
   message?: string;
   respondedAt: string;

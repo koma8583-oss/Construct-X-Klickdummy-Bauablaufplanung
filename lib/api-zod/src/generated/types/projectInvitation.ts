@@ -22,5 +22,6 @@ export interface ProjectInvitation {
   invitationMessage?: string;
   validUntil?: Date;
   policy: ProjectInvitationPolicy;
+  /** The linked package. policy and dataProductType are included for legacy onboarding messages; canonical invitation packages carry the immutable policy snapshot on the invitation policy. */
   dataOffer?: ProjectInvitationDataOffer;
 }
