@@ -163,6 +163,20 @@ describe("computeUtilizationBands", () => {
     expect(bands[0].kind).toBe("conflict");
   });
 
+  it("does not count the exclusive end date as a booked day", () => {
+    const bands = computeUtilizationBands(
+      [{
+        ...bk("2026-09-10", "2026-09-10", 100),
+        endAt: day("2026-09-11"),
+      }],
+      RANGE_START,
+      RANGE_END,
+    );
+    expect(bands).toHaveLength(1);
+    expect(new Date(bands[0].start).toISOString().slice(0, 10)).toBe("2026-09-10");
+    expect(new Date(bands[0].end).toISOString().slice(0, 10)).toBe("2026-09-11");
+  });
+
   it("returns no bands when the range has zero days", () => {
     const same = new Date("2026-09-01T00:00:00.000Z");
     const bands = computeUtilizationBands(

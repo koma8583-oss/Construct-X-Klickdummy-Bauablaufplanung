@@ -92,6 +92,23 @@ describe("restoreConcreteResourceAssignments", () => {
 
     expect(result).toMatchObject([{ resourceId: null, quantity: 1 }]);
   });
+
+  it("rejects a changed window when strict preservation cannot keep the concrete resource", () => {
+    expect(() => restoreConcreteResourceAssignments(
+      [requirement()],
+      [booking("booking-a", "resource-a", "2026-09-01T00:00:00Z", "2026-09-06T00:00:00Z")],
+      resources,
+      [{
+        resourceId: "resource-a",
+        startAt: new Date("2026-09-08T00:00:00Z"),
+        endAt: new Date("2026-09-13T00:00:00Z"),
+      }],
+      oldStart,
+      oldEnd,
+      newStart,
+      { requireConcreteAssignments: true },
+    )).toThrow("CHANGE_PROPOSAL_NOT_FEASIBLE");
+  });
 });
 
 describe("shiftRequirementsToWindow", () => {

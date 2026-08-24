@@ -110,7 +110,7 @@ export function restoreConcreteResourceAssignments<
       if (options.requireConcreteAssignments) {
         throw Object.assign(
           new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"),
-          { code: "CHANGE_PROPOSAL_NOT_FEASIBLE" },
+          { code: "CHANGE_PROPOSAL_NOT_FEASIBLE", statusCode: 409 },
         );
       }
       output.push({ ...requirement, resourceId: null, quantity: Number(requirement.requiredCapacity) });

@@ -11,7 +11,6 @@
  * Consecutive days with the same classification are merged into one band.
  */
 
-import { differenceInCalendarDays } from "date-fns";
 import type { NuResourceBooking } from "@workspace/api-client-react";
 
 export type UtilBandKind = "partial" | "full" | "conflict";
@@ -22,6 +21,16 @@ export interface UtilBand {
   kind:  UtilBandKind;
 }
 
+function dayKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function calendarDayIndex(start: string, value: string): number {
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const valueMs = Date.parse(`${value}T00:00:00Z`);
+  return Math.round((valueMs - startMs) / 86_400_000);
+}
+
 export function computeUtilizationBands(
   bookings: NuResourceBooking[],
   rangeStart: Date,
@@ -30,19 +39,22 @@ export function computeUtilizationBands(
   const active = bookings.filter((b) => b.status !== "CANCELLED");
   if (!active.length) return [];
 
-  const totalDays = differenceInCalendarDays(rangeEnd, rangeStart) + 1;
+  const totalDays = calendarDayIndex(dayKey(rangeStart), dayKey(rangeEnd)) + 1;
   if (totalDays <= 0) return [];
 
   // Day-index → total utilization
   const dayUtil: number[] = new Array(totalDays).fill(0);
 
   for (const b of active) {
-    const bStart = new Date(b.startAt).getTime();
-    const bEnd   = new Date(b.endAt).getTime();
-    const firstDay = Math.max(0, Math.ceil((bStart - rangeStart.getTime()) / 86_400_000));
+    const bStartDate = new Date(b.startAt);
+    const bEndDate = new Date(new Date(b.endAt).getTime() - 1);
+    const firstDay = Math.max(
+      0,
+      calendarDayIndex(dayKey(rangeStart), dayKey(bStartDate)),
+    );
     const lastDay  = Math.min(
       totalDays - 1,
-      Math.floor((bEnd - rangeStart.getTime()) / 86_400_000),
+      calendarDayIndex(dayKey(rangeStart), dayKey(bEndDate)),
     );
     for (let d = firstDay; d <= lastDay; d++) {
       dayUtil[d] += b.utilizationPercent;
@@ -65,8 +77,8 @@ export function computeUtilizationBands(
   const flush = (endDay: number) => {
     if (bandStart >= 0 && bandKind !== "none") {
       bands.push({
-        start: rangeStart.getTime() + bandStart * 86_400_000,
-        end:   rangeStart.getTime() + endDay   * 86_400_000,
+        start: Date.parse(`${dayKey(rangeStart)}T00:00:00Z`) + bandStart * 86_400_000,
+        end:   Date.parse(`${dayKey(rangeStart)}T00:00:00Z`) + endDay * 86_400_000,
         kind:  bandKind as UtilBandKind,
       });
     }
