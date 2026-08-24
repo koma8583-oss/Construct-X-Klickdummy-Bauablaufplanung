@@ -102,6 +102,7 @@ interface ResourceRow {
   name: string;
   bookings: NuResourceBooking[];
   typeLevel?: boolean;
+  isRequest?: boolean;
 }
 
 interface ResourceSection {
@@ -634,7 +635,9 @@ export function ResourceGantt({
                           const projectLabel = getProjectLabel(b);
                           const barLabel =
                             width > 50
-                              ? (projectLabel || SOURCE_LABEL[b.sourceType] || "")
+                              ? (row.resource.isRequest
+                                ? row.resource.name
+                                : (projectLabel || SOURCE_LABEL[b.sourceType] || ""))
                               : "";
 
                           return (
@@ -826,11 +829,69 @@ export default function TerminuebersichtPage() {
       });
     }
 
-    // 5. Sort sections (named types first, alphabetically; "Ohne Zuordnung" last)
+    // 5. Show requests that do not have a resource booking yet. They use the
+    // planned snapshot window and live in their own section, so incoming
+    // requests are visible before a concrete resource is assigned.
+    const requestRows: ResourceRow[] = [];
+    if (selSrcGroups.size === 0 || selSrcGroups.has("TAKT_REQUEST")) {
+      const bookedRequestIds = new Set(
+        bookings
+          .filter((b) => b.sourceType === "TAKT_REQUEST" && b.sourceReferenceId)
+          .map((b) => b.sourceReferenceId as string),
+      );
+
+      taktList.forEach((request: any) => {
+        if (
+          bookedRequestIds.has(request.id) ||
+          !request.plannedStart ||
+          !request.plannedEnd
+        ) return;
+
+        const startAt = `${request.plannedStart}T00:00:00.000Z`;
+        const endAt = addDays(new Date(`${request.plannedEnd}T00:00:00.000Z`), 1).toISOString();
+        const requestBooking = {
+          id: `request-${request.id}`,
+          nuOrgId: request.nuOrgId,
+          resourceId: null,
+          resourceTypeId: null,
+          quantity: null,
+          localProjectId: null,
+          sourceType: "TAKT_REQUEST",
+          sourceReferenceId: request.id,
+          startAt,
+          endAt,
+          utilizationPercent: 100,
+          status: ["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(request.status)
+            ? "CANCELLED"
+            : "TENTATIVE",
+          note: request.status,
+          createdAt: request.createdAt,
+          updatedAt: request.updatedAt,
+        } as unknown as NuResourceBooking;
+
+        requestRows.push({
+          id: `request-row-${request.id}`,
+          name: request.requestNumber ?? request.taktBezeichnung ?? "Leistungsanfrage",
+          bookings: [requestBooking],
+          isRequest: true,
+        });
+      });
+    }
+
+    if (requestRows.length > 0) {
+      sectionMap.set("__requests__", {
+        name: "Leistungsanfragen",
+        sortKey: -1,
+        resources: requestRows,
+      });
+    }
+
+    // 6. Sort sections (requests first, named types alphabetically;
+    // "Ohne Zuordnung" last)
     return Array.from(sectionMap.entries())
       .sort(([, a], [, b]) => a.sortKey - b.sortKey || a.name.localeCompare(b.name, "de"))
       .map(([id, v]) => ({ id, name: v.name, resources: v.resources }));
-  }, [bookings, resources, resourceTypes, selResTypeIds, selSrcGroups]);
+  }, [bookings, resources, resourceTypes, selResTypeIds, selSrcGroups, taktList]);
 
   // ── All dates (for timeline range) ────────────────────────────────────────
   const allDates = useMemo(() => {
