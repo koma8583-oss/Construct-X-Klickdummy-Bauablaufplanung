@@ -100,6 +100,14 @@ const TAKT_REQUEST_STATUS_LABEL: Record<string, string> = {
   SUPERSEDED: "Ersetzt",
 };
 
+const TAKT_REQUEST_STATUS_LEGEND = [
+  { status: "SENT", label: "Gesendet" },
+  { status: "UNDER_REVIEW", label: "In Prüfung" },
+  { status: "REVISION_REQUIRED", label: "Überarbeitung" },
+  { status: "ACCEPTED", label: "Angenommen" },
+  { status: "REJECTED", label: "Abgelehnt" },
+] as const;
+
 const CATEGORY_LABEL: Record<string, string> = {
   PERSONNEL: "Personal",
   CREW:      "Kolonne",
@@ -147,6 +155,8 @@ interface TaktRequestDisplay {
   requestNumber?: string | null;
   status?: string | null;
 }
+
+const EMPTY_TAKT_REQUEST_MAP = new Map<string, TaktRequestDisplay>();
 
 function taktRequestLabel(request?: TaktRequestDisplay): string {
   if (!request) return "";
@@ -360,14 +370,14 @@ export function ResourceGantt({
   viewMode,
   localProjectMap,
   taktProjectMap,
-  taktRequestMap,
+  taktRequestMap = EMPTY_TAKT_REQUEST_MAP,
 }: {
   sections: ResourceSection[];
   allDates: { start: string; end: string }[];
   viewMode: "day" | "week" | "month";
   localProjectMap: Map<string, string>;
   taktProjectMap: Map<string, string>;
-  taktRequestMap: Map<string, TaktRequestDisplay>;
+  taktRequestMap?: Map<string, TaktRequestDisplay>;
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     () => new Set(sections.map((s) => s.id)),
@@ -713,13 +723,10 @@ export function ResourceGantt({
                           const dimmed  = b.status === "CANCELLED";
                           const tentative = b.status === "TENTATIVE";
                           const { left, width } = barGeom(b.startAt, b.endAt);
-                          const projectLabel = getProjectLabel(b);
                           const bookingLabel = getBookingLabel(b);
                           const barLabel =
                             width > 50
-                              ? (row.resource.isRequest
-                                ? bookingLabel
-                                : bookingLabel)
+                              ? bookingLabel
                               : "";
 
                           return (
@@ -831,6 +838,21 @@ export default function TerminuebersichtPage() {
     const m = new Map<string, string>();
     taktList.forEach((req: any) => {
       if (req?.id && req?.projectName) m.set(req.id, req.projectName);
+    });
+    return m;
+  }, [taktList]);
+
+  const taktRequestMap = useMemo(() => {
+    const m = new Map<string, TaktRequestDisplay>();
+    taktList.forEach((req: any) => {
+      if (req?.id) {
+        m.set(req.id, {
+          projectName: req.projectName ?? null,
+          taktBezeichnung: req.taktBezeichnung ?? null,
+          requestNumber: req.requestNumber ?? null,
+          status: req.status ?? null,
+        });
+      }
     });
     return m;
   }, [taktList]);
@@ -1135,13 +1157,22 @@ export default function TerminuebersichtPage() {
 
       {/* ── Legend ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground items-center">
-        {SOURCE_FILTER_OPTIONS.map((opt) => (
+        {SOURCE_FILTER_OPTIONS.filter((opt) => opt.id !== "TAKT_REQUEST").map((opt) => (
           <span key={opt.id} className="flex items-center gap-1.5">
             <span
               className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
               style={{ background: opt.color }}
             />
             {opt.label}
+          </span>
+        ))}
+        {TAKT_REQUEST_STATUS_LEGEND.map((item) => (
+          <span key={item.status} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ background: TAKT_REQUEST_STATUS_COLOR[item.status] }}
+            />
+            Anfrage: {item.label}
           </span>
         ))}
         <span className="flex items-center gap-1.5">
@@ -1165,6 +1196,7 @@ export default function TerminuebersichtPage() {
               viewMode={viewMode}
               localProjectMap={localProjectMap}
               taktProjectMap={taktProjectMap}
+              taktRequestMap={taktRequestMap}
             />
           )}
         </CardContent>
