@@ -70,6 +70,36 @@ const BOOKING_STATUS_LABEL: Record<string, string> = {
   CANCELLED:  "Storniert",
 };
 
+const TAKT_REQUEST_STATUS_COLOR: Record<string, string> = {
+  DRAFT:                 "#94a3b8",
+  SENT:                  "#3b82f6",
+  DELIVERED:             "#3b82f6",
+  DETAILS_RETRIEVED:    "#f59e0b",
+  UNDER_REVIEW:         "#f59e0b",
+  ALTERNATIVES_PROPOSED:"#f97316",
+  REVISION_REQUIRED:     "#f97316",
+  ACCEPTED:              "#10b981",
+  REJECTED:              "#ef4444",
+  CANCELLED:             "#64748b",
+  EXPIRED:               "#64748b",
+  SUPERSEDED:            "#64748b",
+};
+
+const TAKT_REQUEST_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Entwurf",
+  SENT: "Gesendet",
+  DELIVERED: "Zugestellt",
+  DETAILS_RETRIEVED: "Abgerufen",
+  UNDER_REVIEW: "In Prüfung",
+  ALTERNATIVES_PROPOSED: "Gegenvorschlag",
+  REVISION_REQUIRED: "Überarbeitung",
+  ACCEPTED: "Angenommen",
+  REJECTED: "Abgelehnt",
+  CANCELLED: "Storniert",
+  EXPIRED: "Abgelaufen",
+  SUPERSEDED: "Ersetzt",
+};
+
 const CATEGORY_LABEL: Record<string, string> = {
   PERSONNEL: "Personal",
   CREW:      "Kolonne",
@@ -109,6 +139,20 @@ interface ResourceSection {
   id: string;
   name: string;
   resources: ResourceRow[];
+}
+
+interface TaktRequestDisplay {
+  projectName?: string | null;
+  taktBezeichnung?: string | null;
+  requestNumber?: string | null;
+  status?: string | null;
+}
+
+function taktRequestLabel(request?: TaktRequestDisplay): string {
+  if (!request) return "";
+  return [request.projectName, request.taktBezeichnung].filter(Boolean).join(" · ")
+    || request.requestNumber
+    || "Leistungsanfrage";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,20 +264,27 @@ function BookingDetailPanel({
   booking,
   resourceName,
   projectLabel,
+  taktRequest,
   onClose,
 }: {
   booking: NuResourceBooking;
   resourceName: string;
   projectLabel: string;
+  taktRequest?: TaktRequestDisplay;
   onClose: () => void;
 }) {
   const allDay = isAllDay(booking.startAt, booking.endAt);
-  const color  = SOURCE_COLOR[booking.sourceType] ?? "#6b7280";
+  const color  = booking.sourceType === "TAKT_REQUEST"
+    ? (TAKT_REQUEST_STATUS_COLOR[taktRequest?.status ?? ""] ?? SOURCE_COLOR.TAKT_REQUEST)
+    : (SOURCE_COLOR[booking.sourceType] ?? "#6b7280");
+  const heading = booking.sourceType === "TAKT_REQUEST"
+    ? (taktRequestLabel(taktRequest) || resourceName)
+    : resourceName;
   return (
     <div className="border-t border-border bg-card px-5 py-4 animate-in slide-in-from-bottom-2 duration-200">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
-          <div className="text-sm font-semibold">{resourceName}</div>
+           <div className="text-sm font-semibold">{heading}</div>
           <div className="text-xs font-medium" style={{ color }}>
             {SOURCE_LABEL[booking.sourceType] ?? booking.sourceType}
           </div>
@@ -273,7 +324,9 @@ function BookingDetailPanel({
         <div>
           <div className="text-xs text-muted-foreground mb-0.5">Status</div>
           <div className="font-medium">
-            {BOOKING_STATUS_LABEL[booking.status] ?? booking.status}
+             {booking.sourceType === "TAKT_REQUEST" && taktRequest?.status
+               ? (TAKT_REQUEST_STATUS_LABEL[taktRequest.status] ?? taktRequest.status)
+               : (BOOKING_STATUS_LABEL[booking.status] ?? booking.status)}
           </div>
         </div>
         <div>
@@ -307,12 +360,14 @@ export function ResourceGantt({
   viewMode,
   localProjectMap,
   taktProjectMap,
+  taktRequestMap,
 }: {
   sections: ResourceSection[];
   allDates: { start: string; end: string }[];
   viewMode: "day" | "week" | "month";
   localProjectMap: Map<string, string>;
   taktProjectMap: Map<string, string>;
+  taktRequestMap: Map<string, TaktRequestDisplay>;
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     () => new Set(sections.map((s) => s.id)),
@@ -385,6 +440,31 @@ export function ResourceGantt({
       return "";
     },
     [localProjectMap, taktProjectMap],
+  );
+  const getRequest = useCallback(
+    (b: NuResourceBooking) =>
+      b.sourceType === "TAKT_REQUEST" && b.sourceReferenceId
+        ? taktRequestMap.get(b.sourceReferenceId)
+        : undefined,
+    [taktRequestMap],
+  );
+  const getBookingLabel = useCallback(
+    (b: NuResourceBooking) => {
+      const request = getRequest(b);
+      return request
+        ? taktRequestLabel(request)
+        : getProjectLabel(b) || SOURCE_LABEL[b.sourceType] || "";
+    },
+    [getProjectLabel, getRequest],
+  );
+  const getBookingColor = useCallback(
+    (b: NuResourceBooking) => {
+      const request = getRequest(b);
+      return request
+        ? (TAKT_REQUEST_STATUS_COLOR[request.status ?? ""] ?? SOURCE_COLOR.TAKT_REQUEST)
+        : (SOURCE_COLOR[b.sourceType] ?? "#6b7280");
+    },
+    [getRequest],
   );
 
   // ── Flat rows ──────────────────────────────────────────────────────────────
@@ -628,16 +708,18 @@ export function ResourceGantt({
                         {/* Booking bars */}
                         {bookings.map((b) => {
                           const isSelected = selectedBooking?.booking.id === b.id;
-                          const color   = SOURCE_COLOR[b.sourceType] ?? "#6b7280";
+                          const request = getRequest(b);
+                          const color   = getBookingColor(b);
                           const dimmed  = b.status === "CANCELLED";
                           const tentative = b.status === "TENTATIVE";
                           const { left, width } = barGeom(b.startAt, b.endAt);
                           const projectLabel = getProjectLabel(b);
+                          const bookingLabel = getBookingLabel(b);
                           const barLabel =
                             width > 50
                               ? (row.resource.isRequest
-                                ? row.resource.name
-                                : (projectLabel || SOURCE_LABEL[b.sourceType] || ""))
+                                ? bookingLabel
+                                : bookingLabel)
                               : "";
 
                           return (
@@ -650,7 +732,7 @@ export function ResourceGantt({
                                     : { booking: b, resourceName: row.resource.name },
                                 )
                               }
-                              title={`${SOURCE_LABEL[b.sourceType] ?? b.sourceType}${projectLabel ? ` — ${projectLabel}` : ""}`}
+                              title={bookingLabel}
                               style={{
                                 position: "absolute",
                                 top: "50%", transform: "translateY(-50%)",
@@ -689,6 +771,7 @@ export function ResourceGantt({
           booking={selectedBooking.booking}
           resourceName={selectedBooking.resourceName}
           projectLabel={getProjectLabel(selectedBooking.booking)}
+          taktRequest={getRequest(selectedBooking.booking)}
           onClose={() => setSelectedBooking(null)}
         />
       )}
