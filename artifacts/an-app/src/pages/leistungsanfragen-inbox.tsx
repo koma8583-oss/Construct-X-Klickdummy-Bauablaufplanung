@@ -342,7 +342,7 @@ export default function LeistungsanfragenInboxPage() {
             return (
               <article
                 key={item.id}
-                className={`flex min-w-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
+                className={`flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
@@ -409,8 +409,8 @@ export default function LeistungsanfragenInboxPage() {
                   </div>
                 </div>
 
-                <div className="mt-auto flex flex-col-reverse items-stretch gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="mt-auto flex min-w-0 flex-col-reverse items-stretch gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex items-center gap-3 text-xs text-muted-foreground">
                     {typeof remCount === 'number' && remCount > 0 ? (
                       <span className="flex items-center gap-1 text-orange-500">
                         <Bell size={12} aria-hidden />
@@ -421,8 +421,8 @@ export default function LeistungsanfragenInboxPage() {
                     )}
                   </div>
                   {respond ? (
-                    <Link href={`/leistungsanfragen/${item.id}`} className="sm:shrink-0">
-                      <Button size="sm" className="w-full gap-1 sm:w-auto">
+                    <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
+                      <Button size="sm" className="block max-w-full w-full gap-1 sm:w-auto">
                         Antworten <ChevronRight size={14} />
                       </Button>
                     </Link>
