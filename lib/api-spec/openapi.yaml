@@ -542,6 +542,7 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ProjectMembership"
+  /projects/{projectId}/invitations:
     post:
       operationId: inviteProjectParticipant
       tags: [projects]

@@ -1938,7 +1938,7 @@ export const getInviteProjectParticipantUrl = (projectId: string,) => {
 
 
 
-  return `/api/projects/${projectId}/memberships`
+  return `/api/projects/${projectId}/invitations`
 }
 
 /**
