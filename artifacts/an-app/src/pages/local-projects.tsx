@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
+import { Link } from "wouter";
 import {
   useListNuLocalProjects,
   useCreateNuLocalProject,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
   X,
   Archive,
+  CalendarDays,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -324,13 +326,21 @@ export default function LocalProjectsPage() {
             Interne Projekte Ihres Unternehmens — nicht für Auftraggeber sichtbar
           </p>
         </div>
-        <Button
-          onClick={() => setCreateOpen(true)}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Neues Projekt
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/resource-bookings">
+              <CalendarDays className="w-4 h-4" />
+              Ressourcenbelegungen
+            </Link>
+          </Button>
+          <Button
+            onClick={() => setCreateOpen(true)}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Neues Projekt
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

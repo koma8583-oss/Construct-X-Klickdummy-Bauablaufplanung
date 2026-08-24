@@ -15,7 +15,6 @@ import {
   Menu,
   X,
   FolderOpen,
-  CalendarDays,
   ShieldCheck,
   Globe,
 } from "lucide-react";
@@ -39,7 +38,6 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
     { href: "/resources", icon: HardHat, label: "Ressourcen" },
-    { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
     { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
     { href: "/data-offers", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
