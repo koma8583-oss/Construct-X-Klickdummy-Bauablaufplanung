@@ -27,7 +27,7 @@ import {
 } from "@workspace/db";
 import app from "../app";
 import { buildCoordinationTimeline } from "../services/service-change-proposal-service";
-import { deriveCoordinationFacts } from "../services/service-coordination-state";
+import { deriveCoordinationFacts, deriveServiceCoordinationState } from "../services/service-coordination-state";
 import { getCoordinationTasks } from "../services/coordination-task-service";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
@@ -124,6 +124,57 @@ afterAll(async () => {
 // ── Unit tests for deriveCoordinationFacts ────────────────────────────────────
 
 describe("deriveCoordinationFacts — factual next action derivation", () => {
+  it.each([
+    "SENT",
+    "DELIVERED",
+    "DETAILS_RETRIEVED",
+    "UNDER_REVIEW",
+  ])("assigns open request status %s to AN even when viewed by AG", (requestStatus) => {
+    const result = deriveServiceCoordinationState({
+      party: "AG",
+      requestStatus,
+      hasResponse: false,
+      hasDecision: false,
+    });
+    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AN" });
+  });
+
+  it("keeps REVISION_REQUIRED assigned to AN after the previous response was decided", () => {
+    const factualResult = deriveCoordinationFacts({
+      guOrgId: "gu-org",
+      requestStatus: "REVISION_REQUIRED",
+      hasResponse: true,
+      hasDecision: true,
+    });
+    expect(factualResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN" });
+
+    const result = deriveServiceCoordinationState({
+      party: "AG",
+      requestStatus: "REVISION_REQUIRED",
+      hasResponse: true,
+      hasDecision: true,
+    });
+    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AN" });
+
+    const anResult = deriveServiceCoordinationState({
+      party: "AN",
+      requestStatus: "REVISION_REQUIRED",
+      hasResponse: true,
+      hasDecision: true,
+    });
+    expect(anResult).toEqual({ nextAction: "RESPOND_TO_REQUEST", nextActionOwner: "AN" });
+  });
+
+  it("assigns a submitted response to AG until a decision exists", () => {
+    const result = deriveServiceCoordinationState({
+      party: "AN",
+      requestStatus: "UNDER_REVIEW",
+      hasResponse: true,
+      hasDecision: false,
+    });
+    expect(result).toEqual({ nextAction: "NO_ACTION", nextActionOwner: "AG" });
+  });
+
   it("returns RESPOND_TO_REQUEST for AN when no response exists and request is open", () => {
     const result = deriveCoordinationFacts({
       guOrgId: "gu-org",

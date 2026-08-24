@@ -75,4 +75,14 @@ describe("authenticated AN Leistungsanfrage actions", () => {
     await screen.findByText("Leistungsanfrage beantworten");
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
   });
+
+  it("explains that the AG must handle a request when AN has no action", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response({
+      nextAction: "NO_ACTION",
+      nextActionOwner: "AG",
+    })));
+    renderAuthenticated(<CurrentActionCard requestId="authenticated-request" />);
+    expect(await screen.findByText("Keine Aktion erforderlich")).toBeInTheDocument();
+    expect(await screen.findByText("Keine Aktion erforderlich. Anfrage muss durch den Auftraggeber bearbeitet werden.")).toBeInTheDocument();
+  });
 });

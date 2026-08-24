@@ -58,4 +58,10 @@ describe("AG Leistungsanfrage current action after login", () => {
     expect(await screen.findByText("Keine Aktion erforderlich")).toBeInTheDocument();
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
   });
+
+  it("explains that the AN must handle a request when AG has no action", async () => {
+    renderCard("NO_ACTION", "AN");
+    expect(await screen.findByText("Keine Aktion erforderlich")).toBeInTheDocument();
+    expect(await screen.findByText("Keine Aktion erforderlich. Anfrage muss durch den Nachunternehmer bearbeitet werden.")).toBeInTheDocument();
+  });
 });

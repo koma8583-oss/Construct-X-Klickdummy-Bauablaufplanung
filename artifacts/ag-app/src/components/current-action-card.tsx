@@ -49,7 +49,9 @@ export function CurrentActionCard({
     ANSWER_CLARIFICATION: { label: "Aktion erforderlich", title: "Klärungsfrage beantworten", description: "Die Gegenseite benötigt zusätzliche Informationen." },
     RESOLVE_CONSTRAINT: { label: "Aktion erforderlich", title: "Offenes Risiko bearbeiten", description: "Für diese Leistung besteht ein offenes Ausführungshindernis." },
     CONFIRM_READINESS: { label: "Aktion erforderlich", title: "Ausführungsbereitschaft prüfen", description: "Die Leistung beginnt in Kürze und ist noch nicht vollständig bereit." },
-    NO_ACTION: { label: "Keine Aktion erforderlich", title: "Leistung ist aktuell abgestimmt", description: "Es liegt derzeit keine Aktion für Sie vor." },
+    NO_ACTION: effectiveOwner === "AN"
+      ? { label: "Keine Aktion erforderlich", title: "Warten auf den Nachunternehmer", description: "Keine Aktion erforderlich. Anfrage muss durch den Nachunternehmer bearbeitet werden." }
+      : { label: "Keine Aktion erforderlich", title: "Leistung ist aktuell abgestimmt", description: "Es liegt derzeit keine Aktion für Sie vor." },
   };
   const resolved = copy[effectiveAction ?? "NO_ACTION"];
   const waiting = resolved.label === "Warten auf AN" || (effectiveOwner && effectiveOwner !== "AG" && effectiveAction === "NO_ACTION");

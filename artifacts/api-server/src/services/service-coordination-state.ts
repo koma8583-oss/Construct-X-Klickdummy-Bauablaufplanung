@@ -33,6 +33,11 @@ export function deriveCoordinationFacts(input: {
       nextAction: "RESPOND_TO_CHANGE_PROPOSAL",
     };
   }
+  // A revision replaces the previous response. Its historical response and
+  // GU decision must not make the request look finished to coordination views.
+  if (input.requestStatus === "REVISION_REQUIRED") {
+    return { nextActionOwner: "AN", nextAction: "RESPOND_TO_REQUEST" };
+  }
   if (input.hasResponse && !input.hasDecision) return { nextActionOwner: "AG", nextAction: "DECIDE_RESPONSE" };
   if (!input.hasResponse && ["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(input.requestStatus)) {
     return { nextActionOwner: "AN", nextAction: "RESPOND_TO_REQUEST" };
@@ -61,8 +66,14 @@ export function deriveServiceCoordinationState(input: {
     : null;
   const candidates: Array<[CoordinationAction, CoordinationParty]> = [];
   if (proposalOwner) candidates.push(["RESPOND_TO_CHANGE_PROPOSAL", proposalOwner]);
-  if (input.party === "AG" && input.hasResponse && !input.hasDecision) candidates.push(["DECIDE_RESPONSE", "AG"]);
-  if (input.party === "AN" && ["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(input.requestStatus)) {
+  // REVISION_REQUIRED means that the GU has already decided that the previous
+  // response must be replaced. The existing response and decision therefore
+  // must not hide the AN's next action.
+  if (input.requestStatus === "REVISION_REQUIRED") {
+    candidates.push(["RESPOND_TO_REQUEST", "AN"]);
+  } else if (input.hasResponse && !input.hasDecision) {
+    candidates.push(["DECIDE_RESPONSE", "AG"]);
+  } else if (["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW"].includes(input.requestStatus)) {
     candidates.push(["RESPOND_TO_REQUEST", "AN"]);
   }
   if (input.clarificationNeedsAnswer) candidates.push(["ANSWER_CLARIFICATION", input.party]);
