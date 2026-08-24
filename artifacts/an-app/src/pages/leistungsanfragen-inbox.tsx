@@ -137,7 +137,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function DeadlineBadge({ item }: { item: TaktRequestListItem }) {
   const state = getDeadlineState(item);
-  if (state.kind === 'none') return <span className="text-muted-foreground text-xs">–</span>;
+  if (state.kind === 'none') return null;
 
   const Icon =
     state.kind === 'expired'   ? Ban :
@@ -421,51 +421,21 @@ export default function LeistungsanfragenInboxPage() {
                     )}
                   </div>
                   {respond ? (
-                    <div className="flex min-w-0 w-full flex-col gap-2 sm:w-auto sm:flex-row sm:shrink-0">
-                      <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto"
-                        >
-                          Anzeigen <ChevronRight size={14} className="shrink-0" />
-                        </Button>
-                      </Link>
-                      <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto">
-                        <Button size="sm" className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto">
-                          Antworten <ChevronRight size={14} className="shrink-0" />
-                        </Button>
-                      </Link>
-                    </div>
-                  ) : isExpired ? (
-                    <div className="flex min-w-0 w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:shrink-0">
-                      <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto"
-                        >
-                          Anzeigen <ChevronRight size={14} className="shrink-0" />
-                        </Button>
-                      </Link>
-                      <span
-                        className="flex items-center gap-1 text-xs text-muted-foreground"
-                        title="Die Antwortfrist und der Ablaufzeitpunkt sind überschritten. Eine reguläre Antwort ist nicht mehr möglich."
-                        aria-label="Abgelaufen – Antwort nicht mehr möglich"
-                      >
-                        <Ban size={14} /> Antwort nicht möglich
-                      </span>
-                    </div>
-                  ) : (
                     <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto"
-                      >
-                        Anzeigen <ChevronRight size={14} className="shrink-0" />
+                      <Button size="sm" className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto">
+                        Antworten <ChevronRight size={14} className="shrink-0" />
                       </Button>
                     </Link>
+                  ) : isExpired ? (
+                    <span
+                      className="flex items-center gap-1 text-xs text-muted-foreground"
+                      title="Die Antwortfrist und der Ablaufzeitpunkt sind überschritten. Eine reguläre Antwort ist nicht mehr möglich."
+                      aria-label="Abgelaufen – Antwort nicht mehr möglich"
+                    >
+                      <Ban size={14} /> Antwort nicht möglich
+                    </span>
+                  ) : (
+                    <ChevronRight size={16} className="text-muted-foreground/30" aria-hidden />
                   )}
                 </div>
               </article>
