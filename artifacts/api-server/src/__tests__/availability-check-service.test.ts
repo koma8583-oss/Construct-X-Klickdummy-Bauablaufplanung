@@ -98,7 +98,10 @@ async function seedRequest(opts: {
   status?: string;
   snapshotPayload?: TaktRequestSnapshotPayload;
 }): Promise<void> {
-  const status = (opts.status ?? "DETAILS_RETRIEVED") as "DETAILS_RETRIEVED" | "UNDER_REVIEW";
+  const status = (opts.status ?? "DETAILS_RETRIEVED") as
+    | "DETAILS_RETRIEVED"
+    | "UNDER_REVIEW"
+    | "REVISION_REQUIRED";
   await db.insert(taktRequestsTable).values({
     id: opts.id,
     taktId: opts.taktId,
@@ -187,6 +190,18 @@ describe("runAvailabilityCheck — domain guards", () => {
     // DRAFT is not a checkable status
     await expect(runAvailabilityCheck(reqId, NU_ORG_A, USER_ID))
       .rejects.toMatchObject({ code: "INVALID_STATUS" });
+  });
+
+  it("allows a new availability check for a REVISION_REQUIRED request", async () => {
+    const taktId = "t45-takt-revision-check";
+    const reqId = "t45-req-revision-check";
+    await seedTakt(taktId);
+    await seedRequest({ id: reqId, taktId, status: "REVISION_REQUIRED" });
+
+    const check = await runAvailabilityCheck(reqId, NU_ORG_A, USER_ID);
+
+    expect(check.status).toBe("COMPLETED");
+    expect(check.runNumber).toBe(1);
   });
 });
 

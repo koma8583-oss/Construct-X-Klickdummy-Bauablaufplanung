@@ -153,8 +153,10 @@ export class AvailabilityCheckError extends Error {
 }
 
 // ── Checkable statuses (Rule 4) ───────────────────────────────────────────────
-
-const CHECKABLE_STATUSES = new Set(["DETAILS_RETRIEVED", "UNDER_REVIEW"]);
+//
+// REVISION_REQUIRED is a new coordination round after the AG requested changes.
+// The NU must be able to re-check the updated requirements before responding.
+const CHECKABLE_STATUSES = new Set(["DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]);
 
 // ── Helper: date parsing ──────────────────────────────────────────────────────
 
