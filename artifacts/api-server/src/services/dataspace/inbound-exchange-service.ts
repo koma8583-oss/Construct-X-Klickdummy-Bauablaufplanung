@@ -2,6 +2,11 @@ import { db, dataspaceExchangesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 
+export type InboundProcessResult = {
+  duplicate: boolean;
+  status: "PROCESSED" | "DUPLICATE";
+};
+
 function validateMetadata(payload: { metadata: ExternalServiceRequest["metadata"] }): void {
   const metadata = payload.metadata;
   if (!metadata?.messageId || !metadata.correlationId || metadata.schemaVersion !== "1.0") {
@@ -13,7 +18,7 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   payload: T,
   messageType: "SERVICE_REQUEST" | "SERVICE_RESPONSE",
   process?: (payload: T) => Promise<void>,
-): Promise<void> {
+): Promise<InboundProcessResult> {
   validateMetadata(payload);
 
   // The insert is the claim. Only its winner may execute business logic, so two
@@ -35,7 +40,9 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   if (!exchange) {
     const [existing] = await db.select().from(dataspaceExchangesTable)
       .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
-    if (!existing || existing.status === "PROCESSED" || existing.status === "RECEIVED") return;
+    if (!existing || existing.status === "PROCESSED" || existing.status === "RECEIVED") {
+      return { duplicate: true, status: "DUPLICATE" };
+    }
 
     // Claim a failed delivery atomically. If another retry won the claim, this
     // request is a duplicate and must not invoke the processor.
@@ -45,7 +52,7 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
         eq(dataspaceExchangesTable.id, existing.id),
         eq(dataspaceExchangesTable.status, "FAILED"),
       )).returning();
-    if (!claimed) return;
+    if (!claimed) return { duplicate: true, status: "DUPLICATE" };
     exchange = claimed;
   }
 
@@ -58,18 +65,19 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
       .where(eq(dataspaceExchangesTable.id, exchange.id));
     throw error;
   }
+  return { duplicate: false, status: "PROCESSED" };
 }
 
 export async function handleIncomingServiceRequest(
   payload: ExternalServiceRequest,
   process?: (payload: ExternalServiceRequest) => Promise<void>,
-): Promise<void> {
+): Promise<InboundProcessResult> {
   return processIncoming(payload, "SERVICE_REQUEST", process);
 }
 
 export async function handleIncomingServiceResponse(
   payload: ExternalServiceResponse,
   process?: (payload: ExternalServiceResponse) => Promise<void>,
-): Promise<void> {
+): Promise<InboundProcessResult> {
   return processIncoming(payload, "SERVICE_RESPONSE", process);
 }

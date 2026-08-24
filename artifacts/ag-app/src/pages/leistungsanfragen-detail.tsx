@@ -12,6 +12,7 @@ import {
   useListTaktDependencies,
   getListTakteQueryKey,
   getListTaktDependenciesQueryKey,
+  useSendTaktRequest,
   createChangeProposal,
   counterChangeProposal,
   acceptChangeProposal,
@@ -523,6 +524,7 @@ const OPEN_STATUSES = new Set<TaktRequestStatus>([
 
 export default function LeistungsanfragenDetailPage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { requestId } = useParams<{ requestId: string }>();
 
   const {
@@ -601,21 +603,18 @@ export default function LeistungsanfragenDetailPage() {
 
   // ── Timeline events ────────────────────────────────────────────────────────
   const tl = detail.timeline;
-  const timelineEvents: TimelineEvent[] = [
-    { label: t('taktRequestDetail.timeline.requestCreated'), timestamp: tl.requestCreatedAt },
-    { label: t('taktRequestDetail.timeline.snapshotCreated'), timestamp: tl.snapshotCreatedAt },
-    { label: t('taktRequestDetail.timeline.messageSent'), timestamp: tl.sentAt },
-    { label: t('taktRequestDetail.timeline.messageDelivered'), timestamp: tl.deliveredAt },
-    { label: t('taktRequestDetail.timeline.detailsRetrieved'), timestamp: tl.detailsRetrievedAt },
-    { label: t('taktRequestDetail.timeline.responseReceived'), timestamp: tl.responseCreatedAt },
-    { label: t('taktRequestDetail.timeline.decisionMade'), timestamp: detail.guDecision?.decidedAt ?? null },
-  ];
-
   const outboxFailed = detail.transport.status === 'FAILED';
+  const sendMutation = useSendTaktRequest({
+    mutation: {
+      onSuccess: async () => {
+        await Promise.all([refetch(), queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailQueryKey(detail.id) })]);
+      },
+    },
+  });
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="w-full min-w-0 p-4 sm:p-6 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="w-full min-w-0 p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Back link */}
       <Link href="/leistungsanfragen" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
@@ -647,21 +646,26 @@ export default function LeistungsanfragenDetailPage() {
           </div>
         </div>
         {/* Quick send / resend actions */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {detail.status === 'DRAFT' && (
-            <Button size="sm">
+            <Button size="sm" className="w-full sm:w-auto" onClick={() => sendMutation.mutate({ requestId: detail.id })} disabled={sendMutation.isPending}>
               <Send className="w-4 h-4 mr-2" />
-              {t('taktRequestDetail.actions.send')}
+              {sendMutation.isPending ? 'Wird gesendet …' : t('taktRequestDetail.actions.send')}
             </Button>
           )}
           {outboxFailed && (
-            <Button size="sm" variant="outline">
+            <Button size="sm" className="w-full sm:w-auto" variant="outline" onClick={() => sendMutation.mutate({ requestId: detail.id })} disabled={sendMutation.isPending}>
               <RefreshCw className="w-4 h-4 mr-2" />
               {t('taktRequestDetail.actions.resend')}
             </Button>
           )}
         </div>
       </div>
+      {sendMutation.isError && (
+        <p className="text-sm text-destructive" role="alert">
+          {sendMutation.error instanceof Error ? sendMutation.error.message : 'Die Übertragung konnte nicht gestartet werden.'}
+        </p>
+      )}
 
       <CurrentActionCard requestId={detail.id} onFocus={() => {
         const nextAction = (detail as TaktRequestDetail & { nextAction?: string }).nextAction;
@@ -674,13 +678,11 @@ export default function LeistungsanfragenDetailPage() {
               : 'coordination';
         document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' });
       }} />
-      <CoordinationSummary detail={detail} />
-
       {/* Transport Error Panel */}
       {outboxFailed && <TransportErrorPanel detail={detail} />}
 
-      {/* Metadata grid */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      {/* Leistungsanfrage */}
+      <Section icon={<FileText className="w-4 h-4" />} title="Leistungsanfrage">
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
           {[
             {
@@ -716,66 +718,63 @@ export default function LeistungsanfragenDetailPage() {
             </div>
           ))}
         </dl>
-      </div>
+        <details className="group border-t pt-4">
+          <summary className="cursor-pointer min-h-11 flex items-center font-medium">Alle Details der Leistungsanfrage</summary>
+          <div className="pt-4"><SnapshotPreview snapshot={detail.snapshot ?? null} /></div>
+        </details>
+        <details className="group border-t pt-4">
+          <summary className="cursor-pointer min-h-11 flex items-center font-medium">Ressourcenanforderungen</summary>
+          <div className="pt-4"><SnapshotPreview snapshot={detail.snapshot ?? null} /></div>
+        </details>
+      </Section>
 
-      {/* Deadline card — Fristen & Erinnerungen */}
-      <DeadlineCard
-        responseRequiredBy={(detail as any).responseRequiredBy}
-        expiresAt={(detail as any).expiresAt}
-        expiredAt={(detail as any).expiredAt}
-        lastReminderAt={(detail as any).lastReminderAt}
-        reminderCount={(detail as any).reminderCount}
-        guDecisionRequiredBy={(detail as any).guDecisionRequiredBy}
-      />
-
-      {/* Two-column layout: timeline + content */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-        {/* Timeline */}
-        <Section icon={<Activity className="w-4 h-4" />} title={t('taktRequestDetail.timeline.title')}>
-          <Timeline events={timelineEvents} />
-        </Section>
-
-        {/* Right column */}
-        <div className="space-y-6">
-          {/* Snapshot */}
-          <Section icon={<Lock className="w-4 h-4" />} title={t('taktRequestDetail.snapshot.title')}>
-            <SnapshotPreview snapshot={detail.snapshot ?? null} />
-          </Section>
-
-          {/* Notification */}
-          <Section icon={<Bell className="w-4 h-4" />} title={t('taktRequestDetail.notification.title')}>
-            <NotificationPreview detail={detail} />
-          </Section>
-
-          {/* Response + GU Decision panel */}
-          <Section icon={<FileText className="w-4 h-4" />} title={t('taktRequestDetail.response.title')}>
-            <div id="partner-response"><ResponsePanel detail={detail} /></div>
-            <ProposalActions requestId={requestId ?? ''} />
-            <ServiceCoordinationTools requestId={requestId ?? ''} role="AG" />
-            {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Auswirkungen auf Abhängigkeiten</h3>
-                {detail.response.alternatives.map(alternative => (
-                  <div key={alternative.id} className="rounded-lg border border-orange-500/25 bg-orange-500/5 p-3">
-                    <div className="mb-2 text-xs font-semibold text-orange-700 dark:text-orange-300">
-                      Alternative #{alternative.rank}: {format(new Date(alternative.proposedStart), 'dd.MM.yyyy')}–{format(new Date(alternative.proposedEnd), 'dd.MM.yyyy')}
-                    </div>
-                    <AlternativeImpactInfo
-                      impacts={requestAlternativeImpacts.get(alternative.id) ?? []}
-                      taktNameById={requestTaktNames}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
+      {/* One fachlicher Abstimmungsbereich */}
+      <Section icon={<ArrowRightLeft className="w-4 h-4" />} title="Abstimmung">
+        <div id="coordination" className="min-w-0 space-y-5">
+          <ResponsePanel detail={detail} />
+          <ProposalActions requestId={requestId ?? ''} />
+          {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Auswirkungen auf Abhängigkeiten</h3>
+              {detail.response.alternatives.map(alternative => (
+                <AlternativeImpactInfo key={alternative.id}
+                  impacts={requestAlternativeImpacts.get(alternative.id) ?? []}
+                  taktNameById={requestTaktNames} />
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      </Section>
 
-      {/* Coordination History (Task 6.8) */}
-      <Section icon={<History className="w-4 h-4" />} title={t('taktRequestDetail.coordinationHistory.title')}>
+      <section id="coordination-tools" className="min-w-0">
+        <ServiceCoordinationTools requestId={requestId ?? ''} role="AG" />
+      </section>
+
+      <details className="rounded-xl border border-border bg-card p-5">
+        <summary className="cursor-pointer min-h-11 flex items-center font-semibold">Fristen und Erinnerungen</summary>
+        <div className="pt-4">
+          <DeadlineCard
+            responseRequiredBy={(detail as any).responseRequiredBy}
+            expiresAt={(detail as any).expiresAt}
+            expiredAt={(detail as any).expiredAt}
+            lastReminderAt={(detail as any).lastReminderAt}
+            reminderCount={(detail as any).reminderCount}
+            guDecisionRequiredBy={(detail as any).guDecisionRequiredBy}
+          />
+        </div>
+      </details>
+
+      <Section icon={<Activity className="w-4 h-4" />} title="Verlauf">
         <CoordinationHistory detail={detail} />
       </Section>
+
+      <details className="rounded-xl border border-border bg-card p-5">
+        <summary className="cursor-pointer min-h-11 flex items-center font-semibold">Technische Details & Übertragung</summary>
+        <div className="pt-4 space-y-5 min-w-0">
+          <NotificationPreview detail={detail} />
+          <SnapshotPreview snapshot={detail.snapshot ?? null} />
+        </div>
+      </details>
     </div>
   );
 }

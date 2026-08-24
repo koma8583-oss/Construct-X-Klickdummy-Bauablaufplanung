@@ -289,6 +289,7 @@ export async function createGuDecision(
   let bookingStart: Date | null = null;
   let bookingEnd:   Date | null = null;
   let autoBookRequirements: BookingRequirement[] = [];
+  let legacyAvailableResourceIds: string[] = [];
 
   const isAcceptance =
     decisionType === "CONFIRM_ACCEPTED" || decisionType === "ACCEPT_ALTERNATIVE";
@@ -340,6 +341,15 @@ export async function createGuDecision(
         .limit(1);
 
       autoBookRequirements = latestCheck?.internalResultPayload?.bookingRequirements ?? [];
+      // Compatibility for availability checks written before bookingRequirements
+      // existed. Keep this fallback deliberately narrow: it only uses concrete
+      // resource IDs and never turns an aggregate/type-level result into a
+      // concrete booking.
+      if (autoBookRequirements.length === 0) {
+        legacyAvailableResourceIds = (latestCheck?.internalResultPayload?.availableResources ?? [])
+          .map((resource: { resourceId?: string | null }) => resource.resourceId)
+          .filter((resourceId): resourceId is string => Boolean(resourceId));
+      }
     }
   }
 
@@ -453,9 +463,23 @@ export async function createGuDecision(
         requirements: autoBookRequirements,
         fallbackWindow: { start: bookingStart, end: bookingEnd },
       });
-      if (bookingValues.length > 0) {
+      if (bookingValues.length === 0 && legacyAvailableResourceIds.length > 0) {
+        await tx.insert(resourceBookingsTable).values(legacyAvailableResourceIds.map((resourceId) => ({
+          nuOrgId: request.nuOrgId,
+          resourceId,
+          resourceTypeId: null,
+          quantity: null,
+          sourceType: "TAKT_REQUEST" as const,
+          sourceReferenceId: taktRequestId,
+          startAt: bookingStart!,
+          endAt: bookingEnd!,
+          utilizationPercent: 100,
+          status: "CONFIRMED" as const,
+        })));
+      }
+      if (bookingValues.length > 0 || legacyAvailableResourceIds.length > 0) {
       logger.info(
-        { taktRequestId, count: bookingValues.length },
+        { taktRequestId, count: bookingValues.length || legacyAvailableResourceIds.length },
         "Auto-created resource bookings for accepted TaktRequest",
       );
       }

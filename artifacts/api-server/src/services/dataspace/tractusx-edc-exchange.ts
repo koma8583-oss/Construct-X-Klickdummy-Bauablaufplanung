@@ -17,14 +17,14 @@ export class TractusXEdcExchange implements DataspaceExchange {
   async receiveServiceRequest(
     payload: ExternalServiceRequest,
     process?: (payload: ExternalServiceRequest) => Promise<void>,
-  ): Promise<void> {
+  ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
     return handleIncomingServiceRequest(payload, process);
   }
 
   async receiveServiceResponse(
     payload: ExternalServiceResponse,
     process?: (payload: ExternalServiceResponse) => Promise<void>,
-  ): Promise<void> {
+  ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
     return handleIncomingServiceResponse(payload, process);
   }
 }

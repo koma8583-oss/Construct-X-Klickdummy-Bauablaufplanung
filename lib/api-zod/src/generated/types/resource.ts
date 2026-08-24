@@ -5,6 +5,7 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { ResourceCapacityUnit } from './resourceCapacityUnit';
 import type { ResourceType } from './resourceType';
 
 export interface Resource {
@@ -12,6 +13,15 @@ export interface Resource {
   anOrgId: string;
   type: ResourceType;
   name: string;
+  /** Link to the AN-owned resource type */
+  resourceTypeId?: string | null;
+  /** @exclusiveMinimum 0 */
+  capacity?: number | null;
+  capacityUnit?: ResourceCapacityUnit;
+  skills?: string[];
+  qualifications?: string[];
+  calendarId?: string | null;
+  active?: boolean;
   qualification?: string | null;
   dailyCapacityHours?: number | null;
   /** Hex color for Gantt display */

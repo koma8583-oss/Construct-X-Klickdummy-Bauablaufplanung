@@ -49,6 +49,9 @@ import type {
   GuDecisionCreate,
   GuDecisionResponse,
   HealthStatus,
+  InboundExchangeResult,
+  InboundServiceRequest,
+  InboundServiceResponse,
   InboxMarkReadResponse,
   InboxMessageItem,
   Leistung,
@@ -216,6 +219,148 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getReceiveInboundServiceRequestUrl = () => {
+
+
+
+
+  return `/api/dataspace/inbound/service-requests`
+}
+
+/**
+ * @summary Receive an inbound service request
+ */
+export const receiveInboundServiceRequest = async (inboundServiceRequest: InboundServiceRequest, options?: RequestInit): Promise<InboundExchangeResult> => {
+
+  return customFetch<InboundExchangeResult>(getReceiveInboundServiceRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(inboundServiceRequest)
+  }
+);}
+
+
+
+
+
+export const getReceiveInboundServiceRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceRequest>>, TError,{data: BodyType<InboundServiceRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceRequest>>, TError,{data: BodyType<InboundServiceRequest>}, TContext> => {
+
+const mutationKey = ['receiveInboundServiceRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof receiveInboundServiceRequest>>, {data: BodyType<InboundServiceRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  receiveInboundServiceRequest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReceiveInboundServiceRequestMutationResult = NonNullable<Awaited<ReturnType<typeof receiveInboundServiceRequest>>>
+    export type ReceiveInboundServiceRequestMutationBody = BodyType<InboundServiceRequest>
+    export type ReceiveInboundServiceRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Receive an inbound service request
+ */
+export const useReceiveInboundServiceRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceRequest>>, TError,{data: BodyType<InboundServiceRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof receiveInboundServiceRequest>>,
+        TError,
+        {data: BodyType<InboundServiceRequest>},
+        TContext
+      > => {
+      return useMutation(getReceiveInboundServiceRequestMutationOptions(options));
+    }
+
+export const getReceiveInboundServiceResponseUrl = () => {
+
+
+
+
+  return `/api/dataspace/inbound/service-responses`
+}
+
+/**
+ * @summary Receive an inbound service response
+ */
+export const receiveInboundServiceResponse = async (inboundServiceResponse: InboundServiceResponse, options?: RequestInit): Promise<InboundExchangeResult> => {
+
+  return customFetch<InboundExchangeResult>(getReceiveInboundServiceResponseUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(inboundServiceResponse)
+  }
+);}
+
+
+
+
+
+export const getReceiveInboundServiceResponseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceResponse>>, TError,{data: BodyType<InboundServiceResponse>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceResponse>>, TError,{data: BodyType<InboundServiceResponse>}, TContext> => {
+
+const mutationKey = ['receiveInboundServiceResponse'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof receiveInboundServiceResponse>>, {data: BodyType<InboundServiceResponse>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  receiveInboundServiceResponse(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReceiveInboundServiceResponseMutationResult = NonNullable<Awaited<ReturnType<typeof receiveInboundServiceResponse>>>
+    export type ReceiveInboundServiceResponseMutationBody = BodyType<InboundServiceResponse>
+    export type ReceiveInboundServiceResponseMutationError = ErrorType<void>
+
+    /**
+ * @summary Receive an inbound service response
+ */
+export const useReceiveInboundServiceResponse = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundServiceResponse>>, TError,{data: BodyType<InboundServiceResponse>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof receiveInboundServiceResponse>>,
+        TError,
+        {data: BodyType<InboundServiceResponse>},
+        TContext
+      > => {
+      return useMutation(getReceiveInboundServiceResponseMutationOptions(options));
+    }
 
 export const getListOrganizationsUrl = (params?: ListOrganizationsParams,) => {
   const normalizedParams = new URLSearchParams();

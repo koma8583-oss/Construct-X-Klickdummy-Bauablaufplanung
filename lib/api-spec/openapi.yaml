@@ -36,6 +36,8 @@ tags:
     description: Kanonische Leistung-Endpunkte (Alias für /takte und /takt-dependencies)
   - name: leistungsanfragen
     description: Kanonische Leistungsanfrage-Endpunkte (Alias für /takt-requests)
+  - name: dataspace-inbound
+    description: Eingehende Dataspace-Nachrichten
 
 paths:
   /healthz:
@@ -50,6 +52,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /dataspace/inbound/service-requests:
+    post:
+      operationId: receiveInboundServiceRequest
+      tags: [dataspace-inbound]
+      summary: Receive an inbound service request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundServiceRequest"
+      responses:
+        "202":
+          description: Accepted and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "200":
+          description: Duplicate delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "400":
+          description: Invalid message
+
+  /dataspace/inbound/service-responses:
+    post:
+      operationId: receiveInboundServiceResponse
+      tags: [dataspace-inbound]
+      summary: Receive an inbound service response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundServiceResponse"
+      responses:
+        "202":
+          description: Accepted and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "200":
+          description: Duplicate delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "400":
+          description: Invalid message
 
   # ──────────── Organizations ────────────
   /organizations:
@@ -3226,6 +3282,51 @@ paths:
 
 components:
   schemas:
+    InboundExchangeMetadata:
+      type: object
+      required: [messageId, correlationId, schemaVersion, senderOrgId, receiverOrgId, createdAt]
+      properties:
+        messageId: { type: string }
+        correlationId: { type: string }
+        schemaVersion: { type: string, enum: ["1.0"] }
+        senderOrgId: { type: string }
+        receiverOrgId: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    InboundServiceRequest:
+      type: object
+      required: [metadata, requestId, requestVersion, projectReference, plannedStart, plannedEnd, resourceRequirements]
+      properties:
+        metadata: { $ref: "#/components/schemas/InboundExchangeMetadata" }
+        requestId: { type: string }
+        requestVersion: { type: integer }
+        projectReference: { type: string }
+        taktReference: { type: string }
+        plannedStart: { type: string, format: date-time }
+        plannedEnd: { type: string, format: date-time }
+        resourceRequirements:
+          type: array
+          items: { type: object, additionalProperties: true }
+        policy: { type: object, additionalProperties: true }
+
+    InboundServiceResponse:
+      type: object
+      required: [metadata, requestId, requestVersion, decision]
+      properties:
+        metadata: { $ref: "#/components/schemas/InboundExchangeMetadata" }
+        requestId: { type: string }
+        requestVersion: { type: integer }
+        decision: { type: string, enum: [ACCEPTED, REJECTED, ALTERNATIVES_PROPOSED] }
+        alternatives:
+          type: array
+          items: { type: object, additionalProperties: true }
+
+    InboundExchangeResult:
+      type: object
+      required: [messageId, status]
+      properties:
+        messageId: { type: string }
+        status: { type: string, enum: [PROCESSED, DUPLICATE] }
     ErrorResponse:
       type: object
       properties:

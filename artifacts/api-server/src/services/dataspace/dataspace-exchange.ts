@@ -1,4 +1,5 @@
 import type { ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
+import type { InboundProcessResult } from "./inbound-exchange-service";
 import type { DataspaceMessageStatus } from "@workspace/api-zod";
 
 export type ExchangeReference = {
@@ -16,9 +17,9 @@ export interface DataspaceExchange {
   receiveServiceRequest(
     payload: ExternalServiceRequest,
     process?: (payload: ExternalServiceRequest) => Promise<void>,
-  ): Promise<void>;
+  ): Promise<InboundProcessResult>;
   receiveServiceResponse(
     payload: ExternalServiceResponse,
     process?: (payload: ExternalServiceResponse) => Promise<void>,
-  ): Promise<void>;
+  ): Promise<InboundProcessResult>;
 }

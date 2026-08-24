@@ -16,6 +16,7 @@ import projectCalendarsRouter from "./project-calendars";
 import leistungenRouter from "./leistungen";
 import coordinationTasksRouter from "./coordination-tasks";
 import serviceCoordinationRouter from "./service-coordination";
+import dataspaceInboundRouter from "./dataspace-inbound";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(nuRouter);
 router.use(leistungenRouter);
 router.use(coordinationTasksRouter);
 router.use(serviceCoordinationRouter);
+router.use(dataspaceInboundRouter);
 
 export default router;

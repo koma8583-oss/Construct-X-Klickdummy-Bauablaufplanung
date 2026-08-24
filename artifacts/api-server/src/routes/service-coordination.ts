@@ -25,7 +25,7 @@ router.get("/service-requests/:id/change-impact", requireJwt, async (req, res): 
   if (request.guOrgId !== req.user!.orgId) { res.status(403).json({ error: "Change Impact ist nur für die AG-Organisation verfügbar" }); return; }
   const start = new Date(String(req.query.proposedStart));
   const end = new Date(String(req.query.proposedEnd));
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
     res.status(400).json({ error: "Bitte ein gültiges Zeitfenster angeben" }); return;
   }
   res.json(await evaluateChangeImpact({ serviceRequestId: request.id, proposedStart: start, proposedEnd: end }));

@@ -6,7 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type DataspaceAlternativeProposalTimeWindow = {
-  start: Date;
-  end: Date;
-};
+export type InboundServiceRequestPolicy = { [key: string]: unknown };

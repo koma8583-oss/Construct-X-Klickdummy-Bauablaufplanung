@@ -136,7 +136,7 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
   const timeWindowValid =
     !!plannedStart &&
     !!plannedEnd &&
-    plannedEnd > plannedStart &&
+    plannedEnd >= plannedStart &&
     timeWindowChanged;
   const subjectChanged = subject !== (snapSubject ?? '');
   const messageChanged = message !== (snapMessage ?? '');
@@ -146,8 +146,8 @@ export function RevisionDialog({ detail, open, onClose, onSuccess }: RevisionDia
       setError(
         !plannedStart || !plannedEnd
           ? 'Bitte definieren Sie ein neues Zeitfenster.'
-          : plannedEnd <= plannedStart
-            ? 'Das Ende des Zeitfensters muss nach dem Start liegen.'
+          : plannedEnd < plannedStart
+            ? 'Das Ende des Zeitfensters darf nicht vor dem Start liegen.'
             : 'Bitte ändern Sie das Zeitfenster gegenüber der bisherigen Anfrage.',
       );
       return;

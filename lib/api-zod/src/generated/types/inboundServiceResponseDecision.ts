@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type DataspaceInboundServiceResponseDecision = typeof DataspaceInboundServiceResponseDecision[keyof typeof DataspaceInboundServiceResponseDecision];
+export type InboundServiceResponseDecision = typeof InboundServiceResponseDecision[keyof typeof InboundServiceResponseDecision];
 
 
-export const DataspaceInboundServiceResponseDecision = {
+export const InboundServiceResponseDecision = {
   ACCEPTED: 'ACCEPTED',
   REJECTED: 'REJECTED',
   ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',

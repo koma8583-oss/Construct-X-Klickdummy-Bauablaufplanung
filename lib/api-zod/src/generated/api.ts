@@ -17,6 +17,58 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Receive an inbound service request
+ */
+export const ReceiveInboundServiceRequestBody = zod.object({
+  "metadata": zod.object({
+  "messageId": zod.string(),
+  "correlationId": zod.string(),
+  "schemaVersion": zod.enum(['1.0']),
+  "senderOrgId": zod.string(),
+  "receiverOrgId": zod.string(),
+  "createdAt": zod.coerce.date()
+}),
+  "requestId": zod.string(),
+  "requestVersion": zod.number(),
+  "projectReference": zod.string(),
+  "taktReference": zod.string().optional(),
+  "plannedStart": zod.coerce.date(),
+  "plannedEnd": zod.coerce.date(),
+  "resourceRequirements": zod.array(zod.record(zod.string(), zod.unknown())),
+  "policy": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const ReceiveInboundServiceRequestResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PROCESSED', 'DUPLICATE'])
+})
+
+
+/**
+ * @summary Receive an inbound service response
+ */
+export const ReceiveInboundServiceResponseBody = zod.object({
+  "metadata": zod.object({
+  "messageId": zod.string(),
+  "correlationId": zod.string(),
+  "schemaVersion": zod.enum(['1.0']),
+  "senderOrgId": zod.string(),
+  "receiverOrgId": zod.string(),
+  "createdAt": zod.coerce.date()
+}),
+  "requestId": zod.string(),
+  "requestVersion": zod.number(),
+  "decision": zod.enum(['ACCEPTED', 'REJECTED', 'ALTERNATIVES_PROPOSED']),
+  "alternatives": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+})
+
+export const ReceiveInboundServiceResponseResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PROCESSED', 'DUPLICATE'])
+})
+
+
+/**
  * @summary List organizations (optionally filter by type)
  */
 export const ListOrganizationsQueryParams = zod.object({
@@ -1598,11 +1650,22 @@ export const ListResourcesQueryParams = zod.object({
   "type": zod.enum(['EMPLOYEE', 'EQUIPMENT', 'MACHINE', 'OTHER']).optional()
 })
 
+export const listResourcesResponseCapacityExclusiveMin = 0;
+
+
+
 export const ListResourcesResponseItem = zod.object({
   "id": zod.string(),
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(listResourcesResponseCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -1633,11 +1696,22 @@ export const CreateResourceBody = zod.object({
   "resourceTypeId": zod.string()
 })
 
+export const createResourceResponseCapacityExclusiveMin = 0;
+
+
+
 export const CreateResourceResponse = zod.object({
   "id": zod.string(),
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(createResourceResponseCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -1671,11 +1745,22 @@ export const UpdateResourceBody = zod.object({
   "active": zod.boolean().optional()
 })
 
+export const updateResourceResponseCapacityExclusiveMin = 0;
+
+
+
 export const UpdateResourceResponse = zod.object({
   "id": zod.string(),
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(updateResourceResponseCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -1704,6 +1789,8 @@ export const ListResourceAssignmentsQueryParams = zod.object({
   "to": zod.date().optional()
 })
 
+export const listResourceAssignmentsResponseResourceCapacityExclusiveMin = 0;
+
 
 
 
@@ -1715,6 +1802,13 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(listResourceAssignmentsResponseResourceCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -1843,6 +1937,8 @@ export const CreateResourceAssignmentBody = zod.object({
   "note": zod.string().optional()
 })
 
+export const createResourceAssignmentResponseResourceCapacityExclusiveMin = 0;
+
 
 
 
@@ -1854,6 +1950,13 @@ export const CreateResourceAssignmentResponse = zod.object({
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(createResourceAssignmentResponseResourceCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -1983,6 +2086,8 @@ export const UpdateResourceAssignmentBody = zod.object({
   "note": zod.string().optional()
 })
 
+export const updateResourceAssignmentResponseResourceCapacityExclusiveMin = 0;
+
 
 
 
@@ -1994,6 +2099,13 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(updateResourceAssignmentResponseResourceCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),
@@ -2353,6 +2465,8 @@ export const GetAgDashboardResponse = zod.object({
  * @summary AN dashboard summary
  */
 
+export const getAnDashboardResponseResourceUtilizationItemResourceCapacityExclusiveMin = 0;
+
 
 
 
@@ -2467,6 +2581,13 @@ export const GetAnDashboardResponse = zod.object({
   "anOrgId": zod.string(),
   "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
   "name": zod.string(),
+  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
+  "capacity": zod.number().gt(getAnDashboardResponseResourceUtilizationItemResourceCapacityExclusiveMin).nullish(),
+  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
+  "skills": zod.array(zod.string()).optional(),
+  "qualifications": zod.array(zod.string()).optional(),
+  "calendarId": zod.string().nullish(),
+  "active": zod.boolean().optional(),
   "qualification": zod.string().nullish(),
   "dailyCapacityHours": zod.number().nullish(),
   "color": zod.string().nullish().describe('Hex color for Gantt display'),

@@ -5,6 +5,70 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+export type InboundExchangeMetadataSchemaVersion = typeof InboundExchangeMetadataSchemaVersion[keyof typeof InboundExchangeMetadataSchemaVersion];
+
+
+export const InboundExchangeMetadataSchemaVersion = {
+  '10': '1.0',
+} as const;
+
+export interface InboundExchangeMetadata {
+  messageId: string;
+  correlationId: string;
+  schemaVersion: InboundExchangeMetadataSchemaVersion;
+  senderOrgId: string;
+  receiverOrgId: string;
+  createdAt: string;
+}
+
+export type InboundServiceRequestResourceRequirementsItem = { [key: string]: unknown };
+
+export type InboundServiceRequestPolicy = { [key: string]: unknown };
+
+export interface InboundServiceRequest {
+  metadata: InboundExchangeMetadata;
+  requestId: string;
+  requestVersion: number;
+  projectReference: string;
+  taktReference?: string;
+  plannedStart: string;
+  plannedEnd: string;
+  resourceRequirements: InboundServiceRequestResourceRequirementsItem[];
+  policy?: InboundServiceRequestPolicy;
+}
+
+export type InboundServiceResponseDecision = typeof InboundServiceResponseDecision[keyof typeof InboundServiceResponseDecision];
+
+
+export const InboundServiceResponseDecision = {
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
+} as const;
+
+export type InboundServiceResponseAlternativesItem = { [key: string]: unknown };
+
+export interface InboundServiceResponse {
+  metadata: InboundExchangeMetadata;
+  requestId: string;
+  requestVersion: number;
+  decision: InboundServiceResponseDecision;
+  alternatives?: InboundServiceResponseAlternativesItem[];
+}
+
+export type InboundExchangeResultStatus = typeof InboundExchangeResultStatus[keyof typeof InboundExchangeResultStatus];
+
+
+export const InboundExchangeResultStatus = {
+  PROCESSED: 'PROCESSED',
+  DUPLICATE: 'DUPLICATE',
+} as const;
+
+export interface InboundExchangeResult {
+  messageId: string;
+  status: InboundExchangeResultStatus;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -698,11 +762,30 @@ export const ResourceType = {
   OTHER: 'OTHER',
 } as const;
 
+export type ResourceCapacityUnit = typeof ResourceCapacityUnit[keyof typeof ResourceCapacityUnit] | null;
+
+
+export const ResourceCapacityUnit = {
+  PERSONS: 'PERSONS',
+  UNITS: 'UNITS',
+  HOURS_PER_DAY: 'HOURS_PER_DAY',
+  PERCENT: 'PERCENT',
+} as const;
+
 export interface Resource {
   id: string;
   anOrgId: string;
   type: ResourceType;
   name: string;
+  /** Link to the AN-owned resource type */
+  resourceTypeId?: string | null;
+  /** @exclusiveMinimum 0 */
+  capacity?: number | null;
+  capacityUnit?: ResourceCapacityUnit;
+  skills?: string[];
+  qualifications?: string[];
+  calendarId?: string | null;
+  active?: boolean;
   qualification?: string | null;
   dailyCapacityHours?: number | null;
   /** Hex color for Gantt display */

@@ -42,6 +42,7 @@ import {
   ChevronDown,
   Filter,
 } from "lucide-react";
+import { computeUtilizationBands } from "@/lib/gantt-util-bands";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -100,6 +101,7 @@ interface ResourceRow {
   id: string;
   name: string;
   bookings: NuResourceBooking[];
+  typeLevel?: boolean;
 }
 
 interface ResourceSection {
@@ -593,19 +595,16 @@ export function ResourceGantt({
                     const { bookings } = row.resource;
                     if (!bookings.length) return null;
 
-                    // Overlap detection on non-cancelled bookings
-                    const activeIntervals = bookings
-                      .filter((b) => b.status !== "CANCELLED")
-                      .map((b) => ({
-                        start: new Date(b.startAt).getTime(),
-                        end:   new Date(b.endAt).getTime(),
-                      }));
-                    const overlapBands = computeOverlapBands(activeIntervals);
+                    const utilizationBands = computeUtilizationBands(
+                      bookings,
+                      rangeStart,
+                      rangeEnd,
+                    );
 
                     return (
                       <>
                         {/* Red conflict bands */}
-                        {overlapBands.map((band, bi) => {
+                        {utilizationBands.filter((band) => band.kind === "conflict").map((band, bi) => {
                           const { left, width } = barGeom(
                             new Date(band.start).toISOString(),
                             new Date(band.end).toISOString(),
@@ -783,8 +782,6 @@ export default function TerminuebersichtPage() {
       }
 
       const booksForThis = bookingsByResource.get(res.id) ?? [];
-      if (!booksForThis.length) return; // skip resources with no visible bookings
-
       const typeId   = (res.resourceTypeId as string | null | undefined) ?? "__none__";
       const typeName =
         typeId === "__none__"
@@ -804,6 +801,30 @@ export default function TerminuebersichtPage() {
         bookings: booksForThis,
       });
     });
+
+    // Type-level bookings remain aggregate rows. They are deliberately not
+    // assigned to a concrete resource.
+    const typeLevel = new Map<string, NuResourceBooking[]>();
+    filteredBookings.forEach((booking) => {
+      if (booking.resourceId || !booking.resourceTypeId) return;
+      typeLevel.set(booking.resourceTypeId, [
+        ...(typeLevel.get(booking.resourceTypeId) ?? []),
+        booking,
+      ]);
+    });
+    for (const [typeId, typeBookings] of typeLevel) {
+      const typeName = typeMap.get(typeId)?.name ?? "Unbekannter Ressourcentyp";
+      if (selResTypeIds.size > 0 && !selResTypeIds.has(typeId)) continue;
+      if (!sectionMap.has(typeId)) {
+        sectionMap.set(typeId, { name: typeName, sortKey: 0, resources: [] });
+      }
+      sectionMap.get(typeId)!.resources.push({
+        id: `type-level-${typeId}`,
+        name: `${typeName} (Typ-Level)`,
+        bookings: typeBookings,
+        typeLevel: true,
+      });
+    }
 
     // 5. Sort sections (named types first, alphabetically; "Ohne Zuordnung" last)
     return Array.from(sectionMap.entries())

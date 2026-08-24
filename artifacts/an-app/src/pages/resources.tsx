@@ -87,7 +87,7 @@ const CATEGORY_COLORS: Record<ResourceTypeCategory, string> = {
   OTHER: "text-muted-foreground bg-muted/50",
 };
 
-const CAPACITY_UNIT_LABELS: Record<ResourceCapacityUnit, string> = {
+const CAPACITY_UNIT_LABELS: Record<NonNullable<ResourceCapacityUnit>, string> = {
   PERSONS: "Personen",
   UNITS: "Einheiten",
   HOURS_PER_DAY: "Std/Tag",
@@ -237,14 +237,14 @@ function ResourceTypeDialog({
               </Label>
               <Select
                 value={form.capacityUnit || "__NONE__"}
-                onValueChange={(v) => set("capacityUnit", v === "__NONE__" ? "" : v as ResourceCapacityUnit)}
+                onValueChange={(v) => set("capacityUnit", v === "__NONE__" ? "" : v as NonNullable<ResourceCapacityUnit>)}
               >
                 <SelectTrigger id="rt-unit" className="h-9">
                   <SelectValue placeholder="– keine –" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__NONE__">– keine –</SelectItem>
-                  {(Object.keys(CAPACITY_UNIT_LABELS) as ResourceCapacityUnit[]).map((k) => (
+                  {(Object.keys(CAPACITY_UNIT_LABELS) as NonNullable<ResourceCapacityUnit>[]).map((k) => (
                     <SelectItem key={k} value={k}>
                       {CAPACITY_UNIT_LABELS[k]}
                     </SelectItem>

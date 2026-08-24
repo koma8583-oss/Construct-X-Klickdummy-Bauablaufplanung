@@ -52,8 +52,8 @@ export function ProposalActions({ requestId }: { requestId: string }) {
       setError('Bitte geben Sie Beginn und Ende des Zeitraums an.');
       return;
     }
-    if ((action === 'counter' || action === 'propose') && end <= start) {
-      setError('Das Ende muss nach dem Beginn liegen.');
+    if ((action === 'counter' || action === 'propose') && end < start) {
+      setError('Das Ende darf nicht vor dem Beginn liegen.');
       return;
     }
     setBusy(true);
@@ -81,15 +81,15 @@ export function ProposalActions({ requestId }: { requestId: string }) {
           {proposal ? `Offener Vorschlag: ${new Date(proposal.start).toLocaleDateString('de-DE')} – ${new Date(proposal.end).toLocaleDateString('de-DE')}` : 'Sie können einen Zeitraum vorschlagen.'}
         </p>
       </div>
-      {proposal && canAct && <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => submit('accept')} disabled={busy}><CheckCircle2 className="mr-1.5 h-4 w-4" />Annehmen</Button>
-        <Button size="sm" variant="outline" onClick={() => submit('reject')} disabled={busy}><XCircle className="mr-1.5 h-4 w-4" />Ablehnen</Button>
+      {proposal && canAct && <div className="flex flex-col sm:flex-row gap-2">
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => submit('accept')} disabled={busy}><CheckCircle2 className="mr-1.5 h-4 w-4" />Annehmen</Button>
+        <Button size="sm" className="w-full sm:w-auto" variant="outline" onClick={() => submit('reject')} disabled={busy}><XCircle className="mr-1.5 h-4 w-4" />Ablehnen</Button>
       </div>}
       {canAct && <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Beginn<input type="date" value={start} onChange={e => setStart(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" /></label>
         <label className="text-sm">Ende<input type="date" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" /></label>
         <Textarea className="sm:col-span-2" value={comment} onChange={e => setComment(e.target.value)} placeholder="Kommentar (optional)" maxLength={2000} />
-        <Button className="sm:col-span-2" variant="secondary" onClick={() => submit(proposal ? 'counter' : 'propose')} disabled={busy}>
+        <Button className="w-full sm:col-span-2" variant="secondary" onClick={() => submit(proposal ? 'counter' : 'propose')} disabled={busy}>
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
           {proposal ? 'Gegenvorschlag senden' : 'Zeitraum vorschlagen'}
         </Button>

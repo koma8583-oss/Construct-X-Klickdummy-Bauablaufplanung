@@ -23,6 +23,7 @@ import type {
   ExternalServiceResponse,
 } from "../services/dataspace/external-contracts";
 import pino from "pino";
+import { processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
 
 const logger = pino({ name: "dataspace-inbound" });
 const router = Router();
@@ -102,9 +103,14 @@ router.post(
       policy: (body.policy ?? undefined) as ExternalServiceRequest["policy"],
     };
 
-    let duplicate = false;
     try {
-      await exchange.receiveServiceRequest(payload, undefined);
+      const result = await exchange.receiveServiceRequest(payload, processIncomingServiceRequest);
+      logger.info({ messageId: metadata.messageId, duplicate: result.duplicate }, "Inbound service-request processed");
+      res.status(result.duplicate ? 200 : 202).json({
+        messageId: metadata.messageId,
+        status: result.status,
+      });
+      return;
     } catch (err) {
       // inbound-exchange-service throws when metadata validation fails (bad schemaVersion etc.)
       const msg = err instanceof Error ? err.message : String(err);
@@ -117,11 +123,6 @@ router.post(
       return;
     }
 
-    logger.info({ messageId: metadata.messageId, duplicate }, "Inbound service-request processed");
-    res.status(202).json({
-      messageId: metadata.messageId,
-      status: duplicate ? "DUPLICATE" : "ACCEPTED",
-    });
   },
 );
 
@@ -171,7 +172,13 @@ router.post(
     };
 
     try {
-      await exchange.receiveServiceResponse(payload, undefined);
+      const result = await exchange.receiveServiceResponse(payload, processIncomingServiceResponse);
+      logger.info({ messageId: metadata.messageId, duplicate: result.duplicate }, "Inbound service-response processed");
+      res.status(result.duplicate ? 200 : 202).json({
+        messageId: metadata.messageId,
+        status: result.status,
+      });
+      return;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Invalid external exchange metadata")) {
@@ -183,11 +190,6 @@ router.post(
       return;
     }
 
-    logger.info({ messageId: metadata.messageId }, "Inbound service-response processed");
-    res.status(202).json({
-      messageId: metadata.messageId,
-      status: "ACCEPTED",
-    });
   },
 );
 
