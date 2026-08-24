@@ -379,7 +379,7 @@ export default function LeistungsanfragenInboxPage() {
                     <p className="mt-1 text-sm">
                       {item.responseRequiredBy
                         ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
-                        : '–'}
+                        : 'Keine'}
                     </p>
                     <div className="mt-1">
                       <DeadlineBadge item={item} />

@@ -330,7 +330,7 @@ export default function TaktRequestsInboxPage() {
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {item.responseRequiredBy
                           ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
-                          : '–'}
+                          : 'Keine'}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={item.status} />
