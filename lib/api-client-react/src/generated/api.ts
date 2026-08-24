@@ -2090,7 +2090,7 @@ export const getListAnProjectInvitationsUrl = () => {
 }
 
 /**
- * @summary List local AN invitation projections awaiting a decision
+ * @summary List local AN invitation projections for the shared AN inbox
  */
 export const listAnProjectInvitations = async ( options?: RequestInit): Promise<AnProjectInvitation[]> => {
 
@@ -2137,7 +2137,7 @@ export type ListAnProjectInvitationsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List local AN invitation projections awaiting a decision
+ * @summary List local AN invitation projections for the shared AN inbox
  */
 
 export function useListAnProjectInvitations<TData = Awaited<ReturnType<typeof listAnProjectInvitations>>, TError = ErrorType<unknown>>(

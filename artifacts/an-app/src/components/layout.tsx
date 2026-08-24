@@ -18,7 +18,6 @@ import {
   CalendarDays,
   ShieldCheck,
   Globe,
-  MailPlus,
 } from "lucide-react";
 
 interface NavItem {
@@ -43,7 +42,6 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/resource-bookings", icon: CalendarDays, label: "Ressourcenbelegung" },
     { href: "/local-projects", icon: FolderOpen, label: "Interne Projekte" },
     { href: "/data-offers", icon: Globe, label: "Datenraum" },
-    { href: "/project-invitations", icon: MailPlus, label: "Projekteinladungen" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];
 

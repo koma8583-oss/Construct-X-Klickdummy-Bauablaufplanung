@@ -595,10 +595,10 @@ paths:
     get:
       operationId: listAnProjectInvitations
       tags: [an, projects]
-      summary: List local AN invitation projections awaiting a decision
+      summary: List local AN invitation projections for the shared AN inbox
       responses:
         "200":
-          description: Pending AN project invitations
+          description: AN project invitations, including completed local decisions
           content:
             application/json:
               schema:

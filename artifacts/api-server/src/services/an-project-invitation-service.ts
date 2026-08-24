@@ -62,7 +62,6 @@ export async function listAnProjectInvitations(anOrgId: string) {
   return anDb.select().from(anProjectInvitationsTable)
     .where(and(
       eq(anProjectInvitationsTable.receiverAnOrgId, anOrgId),
-      eq(anProjectInvitationsTable.status, "PENDING"),
     ));
 }
 

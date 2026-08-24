@@ -24,7 +24,6 @@ import ResourceBookings from '@/pages/resource-bookings';
 import AvailabilityChecks from '@/pages/availability-checks';
 import Reports from '@/pages/reports';
 import DataOffers from '@/pages/data-offers';
-import ProjectInvitations from '@/pages/project-invitations';
 
 const queryClient = new QueryClient();
 
@@ -83,7 +82,9 @@ function AuthRoutedApp() {
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />
         <Route path="/data-offers" component={DataOffers} />
-        <Route path="/project-invitations" component={ProjectInvitations} />
+        <Route path="/project-invitations">
+          <Redirect to="/leistungsanfragen" />
+        </Route>
         <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />
         <Route path="/resources" component={Resources} />

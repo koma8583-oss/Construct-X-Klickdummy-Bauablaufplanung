@@ -655,7 +655,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
 
 
 /**
- * @summary List local AN invitation projections awaiting a decision
+ * @summary List local AN invitation projections for the shared AN inbox
  */
 export const ListAnProjectInvitationsResponseItem = zod.object({
   "id": zod.string(),

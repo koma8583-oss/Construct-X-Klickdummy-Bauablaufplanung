@@ -16,6 +16,11 @@ import { de } from 'date-fns/locale';
 import {
   useListTaktRequests,
   getListTaktRequestsQueryKey,
+  useListAnProjectInvitations,
+  getListAnProjectInvitationsQueryKey,
+  useAcceptAnProjectInvitation,
+  useRejectAnProjectInvitation,
+  type AnProjectInvitation,
   type TaktRequestListItem,
   type TaktRequestStatus,
 } from '@workspace/api-client-react';
@@ -31,10 +36,18 @@ import {
   Ban,
   Bell,
   Timer,
+  Building2,
+  ShieldCheck,
+  Lock,
+  CheckCircle2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Select,
   SelectContent,
@@ -162,6 +175,244 @@ type CoordinationFilter = 'ALL' | 'AGREED' | 'NO_AGREEMENT' | 'AG_ACTION_REQUIRE
 type ProposalFilter = 'ALL' | 'OPEN' | 'NONE';
 type ActionOwnerFilter = 'ALL' | 'AG' | 'AN' | 'NONE';
 type ScheduleFilter = 'ALL' | 'CHANGED' | 'UNCHANGED';
+type InboxFilter = 'ALL' | 'OPEN' | 'DONE';
+
+export type InboxItem =
+  | {
+      kind: 'invitation';
+      data: AnProjectInvitation;
+      receivedAt: string;
+      isOpen: boolean;
+    }
+  | {
+      kind: 'service-request';
+      data: TaktRequestListItem;
+      receivedAt: string;
+      isOpen: boolean;
+    };
+
+const COMPLETED_REQUEST_STATUSES = new Set<TaktRequestStatus>([
+  'ACCEPTED',
+  'REJECTED',
+  'EXPIRED',
+  'CANCELLED',
+  'SUPERSEDED',
+]);
+
+function isCompletedRequest(item: TaktRequestListItem): boolean {
+  return COMPLETED_REQUEST_STATUSES.has(item.status);
+}
+
+export interface InboxFilterState {
+  inboxFilter: InboxFilter;
+  deadlineFilter: DeadlineFilter;
+  statusFilter: StatusFilter;
+  coordinationFilter: CoordinationFilter;
+  proposalFilter: ProposalFilter;
+  actionOwnerFilter: ActionOwnerFilter;
+  scheduleFilter: ScheduleFilter;
+}
+
+export function filterInboxItems(
+  allItems: InboxItem[],
+  {
+    inboxFilter,
+    deadlineFilter,
+    statusFilter,
+    coordinationFilter,
+    proposalFilter,
+    actionOwnerFilter,
+    scheduleFilter,
+  }: InboxFilterState,
+): InboxItem[] {
+  const serviceFilterActive = [
+    deadlineFilter,
+    statusFilter,
+    coordinationFilter,
+    proposalFilter,
+    actionOwnerFilter,
+    scheduleFilter,
+  ].some((filter) => filter !== 'ALL');
+
+  return allItems.filter((item) => {
+    if (inboxFilter !== 'ALL' && (inboxFilter === 'OPEN') !== item.isOpen) return false;
+    if (item.kind === 'invitation') return !serviceFilterActive;
+    const request = item.data;
+    if (statusFilter !== 'ALL' && request.status !== statusFilter) return false;
+    if (deadlineFilter !== 'ALL') {
+      const state = getDeadlineState(request);
+      if (deadlineFilter === 'DUE_SOON' && !(state.kind === 'due-soon' || state.kind === 'due-today')) return false;
+      if (deadlineFilter === 'OVERDUE' && state.kind !== 'overdue') return false;
+      if (deadlineFilter === 'EXPIRED' && state.kind !== 'expired') return false;
+    }
+    if (coordinationFilter !== 'ALL' && request.coordinationState !== coordinationFilter) return false;
+    if (proposalFilter === 'OPEN' && !request.openProposal) return false;
+    if (proposalFilter === 'NONE' && request.openProposal) return false;
+    if (actionOwnerFilter === 'NONE' && request.nextActionOwner) return false;
+    if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && request.nextActionOwner !== actionOwnerFilter) return false;
+    if (scheduleFilter === 'CHANGED' && !request.scheduleDelta.hasChange) return false;
+    if (scheduleFilter === 'UNCHANGED' && request.scheduleDelta.hasChange) return false;
+    return true;
+  });
+}
+
+function formatReceivedAt(value: string): string {
+  try {
+    return format(new Date(value), 'dd.MM.yyyy HH:mm', { locale: de });
+  } catch {
+    return value;
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function policyText(policy: Record<string, unknown>, key: string): string | null {
+  const value = policy[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function policyList(policy: Record<string, unknown>, key: string): string[] {
+  return isStringArray(policy[key]) ? policy[key] : [];
+}
+
+function InvitationStatusBadge({ status }: { status: AnProjectInvitation['status'] }) {
+  const labels = {
+    PENDING: 'Offen',
+    ACCEPTED: 'Beigetreten',
+    REJECTED: 'Abgelehnt',
+  } as const;
+  const styles = {
+    PENDING: 'text-amber-700 bg-amber-500/10',
+    ACCEPTED: 'text-emerald-700 bg-emerald-500/10',
+    REJECTED: 'text-red-700 bg-red-500/10',
+  } as const;
+  return <Badge className={styles[status]}>{labels[status]}</Badge>;
+}
+
+function ProjectInvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
+  const [policyConfirmed, setPolicyConfirmed] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const accept = useAcceptAnProjectInvitation();
+  const reject = useRejectAnProjectInvitation();
+  const isBusy = accept.isPending || reject.isPending;
+  const policy = (invitation.policySnapshot ?? {}) as Record<string, unknown>;
+  const policyName = policyText(policy, 'name') ?? 'Nutzungsrichtlinie';
+  const policyPurpose = policyText(policy, 'purpose') ?? policyText(policy, 'usagePurpose');
+  const permissions = policyList(policy, 'permissions');
+  const prohibitions = policyList(policy, 'prohibitions');
+  const validityRule = policyText(policy, 'validityRule');
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
+  };
+
+  const decide = async (action: 'accept' | 'reject') => {
+    try {
+      const input = action === 'accept' ? { policyAccepted: true } : {};
+      const mutation = action === 'accept' ? accept : reject;
+      await mutation.mutateAsync({ id: invitation.id, data: input });
+      toast({
+        title: action === 'accept' ? 'Projekt und Datenfreigabe angenommen' : 'Einladung abgelehnt',
+      });
+      await refresh();
+    } catch (error) {
+      toast({
+        title: 'Fehler',
+        description: error instanceof Error ? error.message : 'Aktion konnte nicht ausgeführt werden.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  return (
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Building2 className="h-5 w-5 shrink-0 text-primary" />
+            <CardTitle className="truncate text-lg">{invitation.projectName}</CardTitle>
+          </div>
+          <InvitationStatusBadge status={invitation.status} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">Projekteinladung</Badge>
+          <span className="text-xs text-muted-foreground">
+            Eingegangen: {formatReceivedAt(invitation.createdAt)}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Einladung vom Auftraggeber <strong>{invitation.senderAgOrgId}</strong>
+        </p>
+        {invitation.projectLocation && <p className="text-sm">{invitation.projectLocation}</p>}
+        {invitation.projectDescription && <p className="text-sm">{invitation.projectDescription}</p>}
+        {invitation.invitationMessage && (
+          <div className="rounded-md bg-muted/50 p-3 text-sm">{invitation.invitationMessage}</div>
+        )}
+        {invitation.dataPublicationTitle && (
+          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Lock className="h-4 w-4 text-primary" />
+              Datenangebot: {invitation.dataPublicationTitle}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {invitation.selectedFields?.map((field) => (
+                <Badge key={field} variant="secondary" className="text-[10px]">{field}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="space-y-2 rounded-lg border p-3 text-sm">
+          <div className="flex items-center gap-2 font-medium">
+            <ShieldCheck className="h-4 w-4 text-primary" />{policyName}
+          </div>
+          {policyPurpose && <p className="text-muted-foreground">{policyPurpose}</p>}
+          {permissions.length > 0 && <p><strong>Erlaubt:</strong> {permissions.join(', ')}</p>}
+          {prohibitions.length > 0 && <p><strong>Nicht erlaubt:</strong> {prohibitions.join(', ')}</p>}
+          {validityRule && <p><strong>Bedingungen:</strong> {validityRule}</p>}
+        </div>
+        {invitation.status === 'PENDING' ? (
+          <>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+              <Checkbox
+                checked={policyConfirmed}
+                onCheckedChange={(checked) => setPolicyConfirmed(checked === true)}
+              />
+              <span className="text-sm">
+                Ich bestätige die angezeigte Nutzungsrichtlinie. Projektmitgliedschaft und Datenzugriff
+                werden erst danach aktiviert.
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                disabled={isBusy || !policyConfirmed}
+                onClick={() => void decide('accept')}
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" />Projekt beitreten
+              </Button>
+              <Button
+                variant="outline"
+                disabled={isBusy}
+                onClick={() => void decide('reject')}
+              >
+                <XCircle className="mr-2 h-4 w-4" />Ablehnen
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            Bearbeitet{invitation.respondedAt ? ` am ${formatReceivedAt(invitation.respondedAt)}` : ''}.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -172,11 +423,12 @@ export default function LeistungsanfragenInboxPage() {
   const [proposalFilter, setProposalFilter] = useState<ProposalFilter>('ALL');
   const [actionOwnerFilter, setActionOwnerFilter] = useState<ActionOwnerFilter>('ALL');
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('ALL');
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('OPEN');
 
   const {
-    data: allItems,
-    isLoading,
-    isError,
+    data: requestItemsFromApi,
+    isLoading: requestsLoading,
+    isError: requestsError,
     refetch,
   } = useListTaktRequests(
     { role: 'nu' } as any,
@@ -188,30 +440,52 @@ export default function LeistungsanfragenInboxPage() {
       },
     },
   );
+  const {
+    data: invitations,
+    isLoading: invitationsLoading,
+    isError: invitationsError,
+    refetch: refetchInvitations,
+  } = useListAnProjectInvitations({
+    query: {
+      queryKey: getListAnProjectInvitationsQueryKey(),
+      refetchInterval: 10_000,
+      refetchIntervalInBackground: false,
+    },
+  });
 
-  const filtered = useMemo(() => {
-    if (!allItems) return [];
-    return allItems.filter((item) => {
-      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
-      if (deadlineFilter !== 'ALL') {
-        const state = getDeadlineState(item);
-        if (deadlineFilter === 'DUE_SOON' && !(state.kind === 'due-soon' || state.kind === 'due-today')) return false;
-        if (deadlineFilter === 'OVERDUE' && state.kind !== 'overdue') return false;
-        if (deadlineFilter === 'EXPIRED' && state.kind !== 'expired') return false;
-      }
-      if (coordinationFilter !== 'ALL' && item.coordinationState !== coordinationFilter) return false;
-      if (proposalFilter === 'OPEN' && !item.openProposal) return false;
-      if (proposalFilter === 'NONE' && item.openProposal) return false;
-      if (actionOwnerFilter === 'NONE' && item.nextActionOwner) return false;
-      if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && item.nextActionOwner !== actionOwnerFilter) return false;
-      if (scheduleFilter === 'CHANGED' && !item.scheduleDelta.hasChange) return false;
-      if (scheduleFilter === 'UNCHANGED' && item.scheduleDelta.hasChange) return false;
-      return true;
-    });
-  }, [allItems, deadlineFilter, statusFilter, coordinationFilter, proposalFilter, actionOwnerFilter, scheduleFilter]);
+  const allItems = useMemo<InboxItem[]>(() => {
+    const requestItems: InboxItem[] = (requestItemsFromApi ?? []).map((data) => ({
+      kind: 'service-request',
+      data,
+      receivedAt: data.createdAt,
+      isOpen: !isCompletedRequest(data),
+    }));
+    const invitationItems: InboxItem[] = (invitations ?? []).map((data) => ({
+      kind: 'invitation',
+      data,
+      receivedAt: data.createdAt,
+      isOpen: data.status === 'PENDING',
+    }));
+    return [...requestItems, ...invitationItems].sort(
+      (left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime(),
+    );
+  }, [requestItemsFromApi, invitations]);
+
+  const filtered = useMemo(
+    () => filterInboxItems(allItems, {
+      inboxFilter,
+      deadlineFilter,
+      statusFilter,
+      coordinationFilter,
+      proposalFilter,
+      actionOwnerFilter,
+      scheduleFilter,
+    }),
+    [allItems, inboxFilter, deadlineFilter, statusFilter, coordinationFilter, proposalFilter, actionOwnerFilter, scheduleFilter],
+  );
 
   // ── Loading ────────────────────────────────────────────────────────────────
-  if (isLoading) {
+  if (requestsLoading || invitationsLoading) {
     return (
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         <Skeleton className="h-8 w-64" />
@@ -221,12 +495,12 @@ export default function LeistungsanfragenInboxPage() {
   }
 
   // ── Error ──────────────────────────────────────────────────────────────────
-  if (isError) {
+  if (requestsError && invitationsError) {
     return (
       <div className="p-6 max-w-5xl mx-auto flex flex-col items-center gap-4 py-20">
         <AlertTriangle className="w-10 h-10 text-destructive" />
-        <p className="text-muted-foreground">Fehler beim Laden der Leistungsanfragen</p>
-        <Button variant="outline" onClick={() => refetch()}>
+        <p className="text-muted-foreground">Fehler beim Laden der Anfragen</p>
+        <Button variant="outline" onClick={() => { void refetch(); void refetchInvitations(); }}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Erneut versuchen
         </Button>
@@ -238,10 +512,10 @@ export default function LeistungsanfragenInboxPage() {
   if (!allItems || allItems.length === 0) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Leistungsanfragen</h1>
+        <h1 className="text-2xl font-bold mb-4">Anfragen</h1>
         <div className="flex flex-col items-center justify-center py-24 gap-3 border border-dashed rounded-xl">
           <Inbox className="w-12 h-12 text-muted-foreground opacity-40" />
-          <p className="font-medium text-muted-foreground">Keine Leistungsanfragen eingegangen</p>
+          <p className="font-medium text-muted-foreground">Keine Anfragen eingegangen</p>
         </div>
       </div>
     );
@@ -252,8 +526,8 @@ export default function LeistungsanfragenInboxPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Leistungsanfragen</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Leistungsanfragen Ihres Unternehmens</p>
+          <h1 className="text-2xl font-bold">Anfragen</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Einladungen und Leistungsanfragen Ihres Unternehmens</p>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
@@ -262,7 +536,20 @@ export default function LeistungsanfragenInboxPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={inboxFilter} onValueChange={(v) => setInboxFilter(v as InboxFilter)}>
+          <SelectTrigger className="h-8 w-full sm:w-[150px] text-sm">
+            <SelectValue placeholder="Ansicht" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="OPEN">Offen</SelectItem>
+            <SelectItem value="ALL">Alle</SelectItem>
+            <SelectItem value="DONE">Erledigt</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-xs font-medium text-muted-foreground sm:ml-2">
+          Leistungsanfragen filtern:
+        </span>
         <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
           <SelectTrigger className="h-8 w-full sm:w-[200px] text-sm">
             <SelectValue placeholder="Friststatus" />
@@ -277,7 +564,7 @@ export default function LeistungsanfragenInboxPage() {
 
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
           <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
-            <SelectValue placeholder="Anfragestatus" />
+            <SelectValue placeholder="Leistungsstatus" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Alle Status</SelectItem>
@@ -324,40 +611,59 @@ export default function LeistungsanfragenInboxPage() {
         </Select>
       </div>
 
-      {/* Request cards */}
+      {requestsError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <span>Leistungsanfragen konnten nicht geladen werden.</span>
+          <Button variant="ghost" size="sm" onClick={() => void refetch()}>Erneut laden</Button>
+        </div>
+      )}
+      {invitationsError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <span>Projekteinladungen konnten nicht geladen werden.</span>
+          <Button variant="ghost" size="sm" onClick={() => void refetchInvitations()}>Erneut laden</Button>
+        </div>
+      )}
+
+      {/* Inbox cards */}
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
-          Keine Leistungsanfragen für diese Filter
+          Keine Anfragen für diese Filter
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {filtered.map((item) => {
-            const isExpired = item.status === 'EXPIRED' || !!(item as any).expiredAt;
-            const respond = canRespond(item);
-            const remCount = (item as any).reminderCount as number | undefined;
-            const agOrgName = (item as any).agOrgName as string | null | undefined;
-            const zone = (item as any).zone as string | null | undefined;
-            const gewerk = (item as any).gewerk as string | null | undefined;
+            if (item.kind === 'invitation') {
+              return <ProjectInvitationCard key={`invitation-${item.data.id}`} invitation={item.data} />;
+            }
+
+            const request = item.data;
+            const isExpired = request.status === 'EXPIRED' || !!request.expiredAt;
+            const respond = canRespond(request);
+            const remCount = request.reminderCount;
+            const agOrgName = (request as any).agOrgName as string | null | undefined;
+            const zone = (request as any).zone as string | null | undefined;
+            const gewerk = (request as any).gewerk as string | null | undefined;
 
             return (
               <article
-                key={item.id}
+                key={`request-${request.id}`}
                 className={`flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={item.requestNumber}>
-                      {item.requestNumber}
+                    <p className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={request.requestNumber}>
+                      {request.requestNumber}
                     </p>
-                    <StatusBadge status={item.status} />
+                    <StatusBadge status={request.status} />
                   </div>
+                  <Badge variant="outline" className="w-fit">Leistungsanfrage</Badge>
                   <div className="min-w-0">
                     <Link
-                      href={`/leistungsanfragen/${item.id}`}
+                      href={`/leistungsanfragen/${request.id}`}
                       className="block line-clamp-2 text-lg font-semibold leading-tight hover:text-primary"
-                      title={item.taktBezeichnung ?? undefined}
+                      title={request.taktBezeichnung ?? undefined}
                     >
-                      {item.taktBezeichnung ?? 'Leistungsanfrage'}
+                      {request.taktBezeichnung ?? 'Leistungsanfrage'}
                     </Link>
                     <p className="mt-1 truncate text-sm text-muted-foreground" title={agOrgName ?? undefined}>
                       {agOrgName ?? 'Auftraggeber nicht angegeben'}
@@ -375,9 +681,9 @@ export default function LeistungsanfragenInboxPage() {
                   </div>
                 )}
 
-                {item.openProposal && (
+                {request.openProposal && (
                   <div className="mt-3 rounded-lg bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-600">
-                    Offener Vorschlag · {item.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
+                    Offener Vorschlag · {request.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
                   </div>
                 )}
 
@@ -385,25 +691,25 @@ export default function LeistungsanfragenInboxPage() {
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Antwortfrist</p>
                     <p className="mt-1 text-sm font-semibold">
-                      {item.responseRequiredBy
-                        ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
+                      {request.responseRequiredBy
+                        ? format(new Date(request.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
                         : 'Keine'}
                     </p>
                     <div className="mt-1">
-                      <DeadlineBadge item={item} />
+                      <DeadlineBadge item={request} />
                     </div>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Vereinbarung</p>
                     <p className="mt-1 text-sm font-semibold">
-                      {item.currentAgreement
-                        ? `${format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(item.currentAgreement.end), 'dd.MM.yy')}`
+                      {request.currentAgreement
+                        ? `${format(new Date(request.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(request.currentAgreement.end), 'dd.MM.yy')}`
                         : 'Noch keine'}
                     </p>
-                    {item.scheduleDelta.hasChange && (
+                    {request.scheduleDelta.hasChange && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Δ {item.scheduleDelta.startDays > 0 ? '+' : ''}{item.scheduleDelta.startDays}/
-                        {item.scheduleDelta.endDays > 0 ? '+' : ''}{item.scheduleDelta.endDays} Tage
+                        Δ {request.scheduleDelta.startDays > 0 ? '+' : ''}{request.scheduleDelta.startDays}/
+                        {request.scheduleDelta.endDays > 0 ? '+' : ''}{request.scheduleDelta.endDays} Tage
                       </p>
                     )}
                   </div>
@@ -421,7 +727,7 @@ export default function LeistungsanfragenInboxPage() {
                     )}
                   </div>
                   {respond ? (
-                    <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
+                       <Link href={`/leistungsanfragen/${request.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
                       <Button size="sm" className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto">
                         Antworten <ChevronRight size={14} className="shrink-0" />
                       </Button>
@@ -445,7 +751,7 @@ export default function LeistungsanfragenInboxPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        {filtered.length} von {allItems.length} Leistungsanfragen
+         {filtered.length} von {allItems.length} Anfragen
       </p>
     </div>
   );
