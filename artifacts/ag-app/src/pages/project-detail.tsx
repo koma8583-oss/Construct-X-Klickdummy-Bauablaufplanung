@@ -1457,13 +1457,6 @@ export default function ProjectDetail() {
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </summary>
         <div className="border-t border-border/60">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              <span className="font-semibold text-sm">Im Datenraum bereitgestellte Daten</span>
-              <span className="text-xs text-muted-foreground">({dataPublications.length})</span>
-            </div>
-          </div>
           <div className="divide-y divide-border/50">
             {dataPublications.map((pub: DataPublication) => {
               const statusColors: Record<string, string> = {
@@ -1506,6 +1499,15 @@ export default function ProjectDetail() {
                       )}
                     </div>
                   </div>
+                  <Link
+                    href="/datenraum"
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0"
+                  >
+                    <Button size="sm" variant="outline" className="text-xs h-7">
+                      Details öffnen
+                    </Button>
+                  </Link>
                   {pub.status === 'PUBLISHED' && (
                     <Button
                       size="sm"

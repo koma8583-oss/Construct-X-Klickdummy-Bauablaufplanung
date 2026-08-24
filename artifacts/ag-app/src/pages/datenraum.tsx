@@ -87,6 +87,13 @@ function fmtDate(iso: string | null | undefined) {
   });
 }
 
+function fmtValidity(validFrom: string | null | undefined, validUntil: string | null | undefined) {
+  if (validFrom && validUntil) return `${fmtDate(validFrom)} – ${fmtDate(validUntil)}`;
+  if (validFrom) return `ab ${fmtDate(validFrom)}`;
+  if (validUntil) return `bis ${fmtDate(validUntil)}`;
+  return "–";
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: PublicationStatus }) {
@@ -224,13 +231,7 @@ function PublicationRow({
 
         {/* Validity */}
         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-          {pub.validFrom || pub.validUntil ? (
-            <>
-              {fmtDate(pub.validFrom)} – {fmtDate(pub.validUntil)}
-            </>
-          ) : (
-            "–"
-          )}
+          {fmtValidity(pub.validFrom, pub.validUntil)}
         </td>
 
         {/* Actions */}
@@ -250,39 +251,80 @@ function PublicationRow({
         </td>
       </tr>
 
-      {/* Expanded: recipient detail */}
-      {expanded && recipients.length > 0 && (
+      {/* Expanded: complete publication detail */}
+      {expanded && (
         <tr className="border-b border-border bg-muted/10">
           <td colSpan={8} className="px-8 py-3">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-              Empfänger
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {recipients.map((r) => (
-                <div
-                  key={r.anOrgId}
-                  className="bg-card border border-border rounded-lg px-3 py-2 flex flex-col gap-0.5 min-w-[200px]"
-                >
-                  <div className="text-sm font-medium">{r.anName}</div>
-                  <RecipientStatusIcon status={r.status} />
-                  {r.policyAcceptedAt && (
-                    <div className="text-xs text-muted-foreground">
-                      Akzeptiert: {fmtDate(r.policyAcceptedAt)}
-                    </div>
-                  )}
-                  {r.firstAccessedAt && (
-                    <div className="text-xs text-muted-foreground">
-                      Erster Zugriff: {fmtDate(r.firstAccessedAt)}
-                    </div>
-                  )}
-                  {r.policyRejectedAt && (
-                    <div className="text-xs text-red-500">
-                      Abgelehnt: {fmtDate(r.policyRejectedAt)}
-                    </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Informationspaket
+                  </div>
+                  <p className="text-sm font-medium">{pub.title}</p>
+                  {pub.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{pub.description}</p>
                   )}
                 </div>
-              ))}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div><dt className="text-muted-foreground">Projekt</dt><dd className="font-medium">{pub.projectName ?? pub.projectId}</dd></div>
+                  <div><dt className="text-muted-foreground">Datentyp</dt><dd className="font-medium">{PRODUCT_TYPE_LABELS[pub.dataProductType] ?? pub.dataProductType}</dd></div>
+                  <div><dt className="text-muted-foreground">Version</dt><dd className="font-medium">v{pub.version} · Schema {pub.schemaVersion}</dd></div>
+                  <div><dt className="text-muted-foreground">Status</dt><dd className="font-medium"><StatusBadge status={pub.status} /></dd></div>
+                  <div><dt className="text-muted-foreground">Gültigkeit</dt><dd className="font-medium">{fmtValidity(pub.validFrom, pub.validUntil)}</dd></div>
+                  <div><dt className="text-muted-foreground">Erstellt</dt><dd className="font-medium">{fmtDate(pub.createdAt)}</dd></div>
+                  <div><dt className="text-muted-foreground">Veröffentlicht</dt><dd className="font-medium">{fmtDate(pub.publishedAt)}</dd></div>
+                </dl>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Richtlinie
+                  </div>
+                  <p className="text-sm font-medium">{pub.policyName ?? "–"}</p>
+                  {pub.policyCode && <p className="text-xs text-muted-foreground">{pub.policyCode}</p>}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Bereitgestellte Inhalte
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(pub.selectedFields ?? []).map((field) => (
+                      <span key={field} className="rounded-md border border-border bg-card px-2 py-1 text-xs">
+                        {field}
+                      </span>
+                    ))}
+                    {(pub.selectedFields ?? []).length === 0 && <span className="text-xs text-muted-foreground">Keine Felder angegeben</span>}
+                  </div>
+                  {pub.selectedTaktIds && pub.selectedTaktIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">{pub.selectedTaktIds.length} Leistungen enthalten</p>
+                  )}
+                </div>
+                {pub.contentHash && (
+                  <p className="text-[10px] text-muted-foreground break-all">Integritäts-Hash: {pub.contentHash}</p>
+                )}
+              </div>
             </div>
+
+            {recipients.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border/60">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Empfänger
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {recipients.map((r) => (
+                    <div key={r.anOrgId} className="bg-card border border-border rounded-lg px-3 py-2 flex flex-col gap-0.5 min-w-[200px]">
+                      <div className="text-sm font-medium">{r.anName}</div>
+                      <RecipientStatusIcon status={r.status} />
+                      {r.policyAcceptedAt && <div className="text-xs text-muted-foreground">Akzeptiert: {fmtDate(r.policyAcceptedAt)}</div>}
+                      {r.firstAccessedAt && <div className="text-xs text-muted-foreground">Erster Zugriff: {fmtDate(r.firstAccessedAt)}</div>}
+                      {r.policyRejectedAt && <div className="text-xs text-red-500">Abgelehnt: {fmtDate(r.policyRejectedAt)}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </td>
         </tr>
       )}
