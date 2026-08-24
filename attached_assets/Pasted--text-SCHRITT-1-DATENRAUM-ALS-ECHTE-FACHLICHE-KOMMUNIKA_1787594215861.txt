@@ -1,0 +1,2230 @@
+```text
+SCHRITT 1 – DATENRAUM ALS ECHTE FACHLICHE KOMMUNIKATIONSGRENZE FÜR PROJEKTEINLADUNGEN HERSTELLEN
+
+ZIEL
+
+Der derzeitige Shared-DB-Shortcut muss beseitigt werden.
+
+Aktuell kann der AN eine Projekteinladung bereits dadurch sehen, dass der AG eine gemeinsame project_memberships-Row mit Status INVITED erzeugt. Ebenso sieht der AG eine Zustimmung bereits dadurch, dass der AN dieselbe Row auf ACTIVE setzt.
+
+Das widerspricht dem gewünschten Datenraumprinzip.
+
+Nach der Änderung muss gelten:
+
+AG lokale Sicht
+→ PROJECT_INVITATION
+→ Datenraum
+→ AN lokale Sicht
+
+und zurück:
+
+AN lokale Zustimmung
+→ PROJECT_INVITATION_RESPONSE
+→ Datenraum
+→ AG lokale Sicht ACTIVE
+
+Die Datenraum-Nachricht muss die tatsächliche fachliche Kommunikationsgrenze sein.
+
+
+1. AKTUELLEN SHARED-DB-PFAD ANALYSIEREN
+
+Prüfe insbesondere:
+
+- project-membership-service.ts
+- project_memberships
+- listPendingProjectInvitations(...)
+- processIncomingProjectInvitation(...)
+- processIncomingProjectInvitationResponse(...)
+- AN Projekteinladungsseite
+- AG Projektseite
+- routes/project-memberships.ts
+- inbound-domain-service.ts
+
+Dokumentiere intern vor Änderung:
+
+A) Welche Daten werden aktuell vom AG geschrieben?
+B) Welche davon liest der AN direkt aus derselben Tabelle?
+C) Welche Daten werden erst durch den Inbound-Processor erzeugt?
+D) Welche Statusänderungen sieht die Gegenseite bereits vor erfolgreicher Nachrichtenübertragung?
+
+
+2. AG- UND AN-SICHT LOGISCH TRENNEN
+
+Auch wenn der PoC weiterhin dieselbe PostgreSQL-Instanz verwendet, müssen AG- und AN-Sicht logisch getrennt modelliert werden.
+
+Bevorzugtes Ziel:
+
+AG-Seite:
+
+project_memberships
+
+repräsentiert:
+
+„Welche externe Organisation ist aus Sicht des AG Projektpartner bzw. eingeladen?“
+
+
+AN-Seite:
+
+eigene lokale Struktur für empfangene Einladungen, beispielsweise:
+
+project_invitations
+
+oder:
+
+external_project_invitations
+
+
+Empfohlenes Schema:
+
+id
+
+externalInvitationId
+
+correlationId
+
+projectReference
+
+projectName
+
+projectDescription nullable
+
+projectLocation nullable
+
+agParticipantId
+
+agOrganizationName
+
+anParticipantId
+
+status
+
+invitationMessage nullable
+
+purpose
+
+policyJson nullable
+
+receivedAt
+
+respondedAt nullable
+
+acceptedAt nullable
+
+rejectedAt nullable
+
+createdAt
+updatedAt
+
+
+Status auf AN-Seite:
+
+PENDING
+ACCEPTED
+REJECTED
+
+
+3. KEINE GEMEINSAME MEMBERSHIP-ROW ALS AN-INBOX VERWENDEN
+
+AN:
+
+GET /project-invitations
+
+darf NICHT mehr direkt:
+
+project_memberships
+WHERE anOrgId = ...
+
+lesen.
+
+Stattdessen ausschließlich die lokale Inbound-/Invitation-Struktur des AN verwenden.
+
+Damit gilt zwingend:
+
+AG erzeugt Membership INVITED
++
+PROJECT_INVITATION Outbox
+
+aber solange die Nachricht nicht erfolgreich inbound verarbeitet wurde:
+
+AN sieht KEINE Einladung.
+
+
+4. INBOUND PROJECT_INVITATION ERZEUGT ERST DIE AN-SICHT
+
+processIncomingProjectInvitation(...)
+
+muss:
+
+1. Nachricht validieren.
+2. Idempotenz prüfen.
+3. senderParticipantId prüfen.
+4. recipientParticipantId prüfen.
+5. Policy prüfen.
+6. externe Projektinformationen aus Payload übernehmen.
+7. lokale AN-Einladung erzeugen.
+8. Status PENDING setzen.
+
+Nicht:
+
+nur eine bereits vorhandene gemeinsame Membership suchen.
+
+
+5. KEIN VORHANDENES AG-PROJEKT AUF AN-SEITE VORAUSSETZEN
+
+Falls processIncomingProjectInvitation aktuell prüft:
+
+projects.id === payload.project.projectReference
+AND projects.agOrgId === senderOrgId
+
+diese Annahme entfernen.
+
+Ein souveränes AN-System kennt dieses AG-Projekt vor der Einladung möglicherweise nicht.
+
+Stattdessen lokale externe Projektrepräsentation verwenden.
+
+Beispielsweise:
+
+external_projects
+
+mit:
+
+id
+externalProjectReference
+projectName
+description
+location
+ownerParticipantId
+ownerOrganizationName
+membershipStatus
+createdAt
+updatedAt
+
+
+Alternativ project_invitations selbst zunächst ausreichend mit Project Snapshot ausstatten.
+
+Keine komplette AG-Projekttabelle spiegeln.
+
+
+6. ACCEPT AUF AN-SEITE DARF AG-MEMBERSHIP NICHT DIREKT ÄNDERN
+
+Aktuell darf ein AN-Accept nicht mehr:
+
+UPDATE project_memberships
+SET status = ACTIVE
+
+auf der AG-Sicht durchführen.
+
+Stattdessen:
+
+AN lokale Invitation:
+
+PENDING → ACCEPTED
+
+und in derselben lokalen Transaktion:
+
+PROJECT_INVITATION_RESPONSE Outbox erzeugen.
+
+
+7. AG WIRD ERST NACH INBOUND RESPONSE ACTIVE
+
+processIncomingProjectInvitationResponse(...)
+
+auf AG-Seite ist der EINZIGE reguläre Pfad für:
+
+project_memberships
+INVITED → ACTIVE
+
+bei:
+
+decision = ACCEPTED
+
+bzw.:
+
+INVITED → REJECTED
+
+bei:
+
+decision = REJECTED
+
+
+8. RESPONSE-KORRELATION STRIKT PRÜFEN
+
+Vor Statusänderung prüfen:
+
+invitationId passt
+
+correlationId passt
+
+projectReference passt
+
+senderParticipantId entspricht eingeladenem AN
+
+recipientParticipantId entspricht AG
+
+Membership.status === INVITED
+
+
+9. KEINE ACTIVE-SICHT BEI RESPONSE-TRANSPORTFEHLER
+
+Pflichttestszenario:
+
+AN klickt „Projekt beitreten“.
+
+AN lokal:
+
+ACCEPTED
+
+PROJECT_INVITATION_RESPONSE:
+FAILED
+
+AG:
+
+Membership bleibt INVITED.
+
+Erst nach erfolgreichem Retry + Inbound Processing:
+
+AG Membership ACTIVE.
+
+
+10. KEINE AN-SICHT BEI INVITATION-TRANSPORTFEHLER
+
+AG:
+
+Membership INVITED
+
+PROJECT_INVITATION:
+FAILED
+
+AN:
+
+keine PENDING Invitation sichtbar.
+
+
+11. PFLICHTTESTS
+
+TEST A
+
+AG erzeugt Einladung.
+
+Transport noch nicht verarbeitet.
+
+AN GET /project-invitations:
+
+0 neue Einladungen.
+
+
+TEST B
+
+Inbound PROJECT_INVITATION wird verarbeitet.
+
+Danach AN:
+
+1 PENDING Invitation.
+
+
+TEST C
+
+AN akzeptiert.
+
+Response noch nicht AG-inbound verarbeitet.
+
+AG Membership:
+
+weiter INVITED.
+
+
+TEST D
+
+AG verarbeitet ACCEPTED Response.
+
+Danach:
+
+ACTIVE.
+
+
+TEST E
+
+Response FAILED.
+
+AG bleibt INVITED.
+
+
+TEST F
+
+gleiche Inbound Invitation zweimal.
+
+AN Invitation nur einmal.
+
+
+TEST G
+
+gleiche Response zweimal.
+
+AG Transition nur einmal.
+
+
+ERGEBNIS NACH SCHRITT 1
+
+Die gemeinsame Datenbank darf physisch weiterhin existieren.
+
+Aber fachlich muss gelten:
+
+Keine Information springt von AG zu AN oder von AN zu AG, ohne dass der entsprechende Dataspace-Inbound-Prozess ausgeführt wurde.
+
+
+======================================================================
+
+
+SCHRITT 2 – PROJECT INVITATION UND RESPONSE TRANSAKTIONAL ÜBER EINE ECHTE OUTBOX ABSICHERN
+
+ZIEL
+
+Membership/Invitation-Zustand und ausgehende Datenraum-Nachricht müssen atomar erzeugt werden.
+
+Aktuell besteht ein Crash-Fenster:
+
+Membership commit
+→ Prozessabbruch
+→ publishProjectInvitation nie ausgeführt
+
+Das muss beseitigt werden.
+
+
+1. BESTEHENDE OUTBOX-STRUKTUR PRÜFEN
+
+Prüfe:
+
+- message/outbox tables
+- LocalHubTransport
+- DataspaceExchange
+- retryProjectInvitationDelivery(...)
+- Audit/Delivery Records
+- bestehende transactionale Message-Erzeugung bei Service Requests
+
+Bestehende Infrastruktur wiederverwenden.
+
+
+2. INVITE TRANSACTION
+
+inviteParticipant(...) soll innerhalb EINER DB-Transaktion:
+
+1. Membership INVITED erzeugen.
+2. invitationId erzeugen.
+3. correlationId erzeugen.
+4. ExternalProjectInvitation Payload erzeugen.
+5. Outbox Record PENDING erzeugen.
+6. Commit.
+
+NICHT innerhalb dieser DB-Transaktion Netzwerktransport ausführen.
+
+
+3. DISPATCH NACH COMMIT
+
+Nach Commit:
+
+Outbox Dispatcher
+
+→ DataspaceExchange.publishProjectInvitation(...)
+
+→ Delivery Status aktualisieren.
+
+
+4. TRANSPORTSTATUS
+
+Mindestens:
+
+PENDING
+SENDING optional
+SENT
+DELIVERED, falls im PoC unterscheidbar
+FAILED
+
+
+5. FACHSTATUS UND TRANSPORTSTATUS NICHT MISCHEN
+
+Beispiel:
+
+Membership:
+INVITED
+
+Transport:
+FAILED
+
+ist ein gültiger Zustand.
+
+
+6. API RESPONSE
+
+Invite API soll nicht pauschal behaupten:
+
+„Einladung gesendet“
+
+wenn Transport FAILED ist.
+
+Response beispielsweise:
+
+{
+  membership: ...,
+  delivery: {
+    status: "PENDING" | "SENT" | "FAILED"
+  }
+}
+
+
+7. RESPONSE-OUTBOX BEIM AN
+
+AN Accept Transaction:
+
+1. Invitation PENDING → ACCEPTED.
+2. respondedAt/acceptedAt setzen.
+3. PROJECT_INVITATION_RESPONSE Payload erzeugen.
+4. Outbox PENDING erzeugen.
+5. Commit.
+
+Erst danach Versand.
+
+
+8. REJECT ANALOG
+
+PENDING → REJECTED
+
+plus Response Outbox.
+
+
+9. RETRY AG
+
+Fehlgeschlagene PROJECT_INVITATION:
+
+bestehende Message wiederverwenden.
+
+Keine neue Membership.
+
+Keine neue Invitation ID.
+
+Keine neue correlationId.
+
+
+10. RETRY AN
+
+Neu ergänzen:
+
+fehlgeschlagene PROJECT_INVITATION_RESPONSE
+
+muss auf AN-Seite erneut gesendet werden können.
+
+Beispiel API:
+
+GET /project-invitation-responses/failed
+
+POST /project-invitation-responses/:messageId/retry
+
+oder passend zur bestehenden Message-API.
+
+
+11. KEINE NEUE BUSINESSENTSCHEIDUNG BEI RETRY
+
+Retry darf nicht:
+
+ACCEPTED erneut setzen
+
+oder:
+
+REJECTED erneut setzen.
+
+Nur dieselbe bereits getroffene Antwort erneut übertragen.
+
+
+12. IDEMPOTENTE MESSAGE IDS
+
+Ein Retry verwendet dieselbe fachliche:
+
+messageId
+
+oder einen klar korrelierten Retry-Mechanismus entsprechend bestehender Outbox-Semantik.
+
+Empfohlen:
+
+gleiche messageId beibehalten, wenn bestehende Idempotenz darauf basiert.
+
+
+13. DELIVERY AUDIT
+
+Pro Versandversuch optional:
+
+attemptCount
+lastAttemptAt
+lastError
+
+speichern.
+
+Nicht für jeden Retry neue fachliche Einladung erzeugen.
+
+
+14. PFLICHTTEST – CRASH-SICHERHEIT
+
+Nach DB-Commit, bevor Transport ausgeführt wird:
+
+Outbox PENDING vorhanden.
+
+Ein späterer Dispatcher kann Nachricht noch senden.
+
+
+15. PFLICHTTEST – INVITE FAILED
+
+Membership INVITED.
+Outbox FAILED.
+
+Retry:
+gleiche Membership.
+gleiche Invitation.
+anschließend SENT.
+
+
+16. PFLICHTTEST – RESPONSE FAILED
+
+AN lokal ACCEPTED.
+Response FAILED.
+AG weiterhin INVITED.
+
+Retry erfolgreich + AG Inbound:
+
+AG ACTIVE.
+
+
+ERGEBNIS
+
+Project Membership und Dataspace-Nachrichten dürfen nicht mehr durch ein Netzwerk-/DB-Crash-Fenster auseinanderlaufen.
+
+
+======================================================================
+
+
+SCHRITT 3 – PARTICIPANT DIRECTORY ALS TATSÄCHLICHE QUELLE FÜR „ZUM PROJEKT EINLADEN“ VERWENDEN
+
+ZIEL
+
+Die AG-UI darf nicht weiterhin einfach:
+
+GET /organizations?type=AN
+
+als vermeintliche Datenraumteilnehmerliste verwenden.
+
+Einladbar sind Teilnehmer mit bestätigter Datenraumidentität.
+
+
+1. VORHANDENE ParticipantDirectory-STRUKTUR PRÜFEN
+
+Insbesondere:
+
+dataspace-participant-resolver.ts
+
+GET /dataspace/participants
+
+bestehende DataspaceParticipant Types.
+
+
+2. ParticipantDirectory ZENTRALISIEREN
+
+Falls noch nicht sauber vorhanden:
+
+interface ParticipantDirectory {
+  listParticipants(
+    filter?: ParticipantFilter
+  ): Promise<DataspaceParticipant[]>;
+
+  resolveParticipant(
+    participantId: string
+  ): Promise<DataspaceParticipant | null>;
+
+  resolveByLocalOrgId?(
+    localOrgId: string
+  ): Promise<DataspaceParticipant | null>;
+}
+
+
+3. LOCAL DIRECTORY FÜR POC
+
+Nicht jede lokale Organisation automatisch VERIFIED machen.
+
+Entweder eigene Tabelle:
+
+dataspace_participants
+
+oder bestehende Organisation explizit um echte Dataspace-Metadaten ergänzen.
+
+Mindestens:
+
+participantId
+localOrgId nullable
+organizationName
+organizationType
+identityStatus
+connectorEndpoint
+connectorStatus
+capabilities
+updatedAt
+
+
+4. identityStatus
+
+Explizit:
+
+VERIFIED
+UNVERIFIED
+SUSPENDED
+
+
+5. connectorStatus
+
+AVAILABLE
+UNAVAILABLE
+UNKNOWN
+
+
+6. KEIN AUTOMATISCHES VERIFIED FÜR JEDE ORGANISATION
+
+Aktuelle Logik sinngemäß:
+
+organization exists
+→ participantId = local:<id>
+→ VERIFIED
+
+ändern.
+
+Seed/Testdaten dürfen bewusst VERIFIED gesetzt werden.
+
+Aber keine automatische Fachannahme.
+
+
+7. AG-UI UMRÜSTEN
+
+project-detail.tsx:
+
+nicht mehr:
+
+useListOrganizations({ type: "AN" })
+
+für die Einladungsfunktion.
+
+Stattdessen:
+
+useListDataspaceParticipants({
+  organizationType: "AN",
+  identityStatus: "VERIFIED"
+})
+
+oder generierten äquivalenten Hook.
+
+
+8. participantId ALS PRIMARY INPUT
+
+Invite API bevorzugt:
+
+{
+  "participantId": "..."
+}
+
+Nicht primär:
+
+{
+  "anOrgId": "..."
+}
+
+
+9. SERVER RESOLVT PARTICIPANT
+
+inviteParticipant(...):
+
+ParticipantDirectory.resolveParticipant(
+  participantId
+)
+
+Dann:
+
+- VERIFIED prüfen
+- Organisationstyp AN prüfen
+- Connector/Endpoint auflösen
+- localOrgId optional mappen
+
+
+10. localOrgId NICHT ALS DATENRAUMIDENTITÄT BEHANDELN
+
+Extern verwenden:
+
+participantId
+
+Intern kann zusätzlich:
+
+anOrgId
+
+gespeichert werden.
+
+
+11. participantId IM MEMBERSHIP MODELL
+
+anParticipantId muss verbindlich gesetzt sein.
+
+Für neue Datenraum-Einladungen nicht nullable lassen, sofern technisch möglich.
+
+
+12. CONNECTOR UNAVAILABLE
+
+Wenn Participant VERIFIED, Connector aber UNAVAILABLE:
+
+AG darf ggf. auswählen, aber UI muss klar zeigen:
+
+„Datenraum-Endpunkt derzeit nicht erreichbar“
+
+Beim Versand:
+
+Delivery FAILED/PENDING.
+
+Keine falsche Erfolgsanzeige.
+
+
+13. BEREITS EINGELADENE TEILNEHMER
+
+Participant-Liste projektbezogen anreichern:
+
+membershipStatus:
+
+null
+INVITED
+ACTIVE
+REJECTED
+REVOKED
+
+
+14. UI
+
+Beispiel:
+
+Müller Ausbau GmbH
+✓ Identität bestätigt
+● Connector verfügbar
+
+[Zum Projekt einladen]
+
+
+ACTIVE:
+
+Müller Ausbau GmbH
+✓ Projektpartner
+
+
+INVITED:
+
+Einladung ausstehend
+
+
+15. PFLICHTTESTS
+
+- VERIFIED AN sichtbar.
+- UNVERIFIED AN nicht einladbar.
+- SUSPENDED nicht einladbar.
+- AG nicht als AN einladbar.
+- Participant ohne localOrgId kann grundsätzlich auflösbar sein.
+- Invite Payload verwendet participantId.
+- ACTIVE Participant nicht erneut einladbar.
+
+
+ERGEBNIS
+
+„Zum Projekt einladen“ arbeitet fachlich gegen Datenraumteilnehmer, nicht gegen die allgemeine lokale Organisationstabelle.
+
+
+======================================================================
+
+
+SCHRITT 4 – OPENAPI, SERVER-ROUTEN UND GENERIERTE CLIENTS FÜR PROJECT MEMBERSHIP KONSISTENT MACHEN
+
+ZIEL
+
+Aktuell besteht mindestens eine kritische Route-Divergenz:
+
+Server:
+POST /projects/:projectId/invitations
+
+OpenAPI/Client:
+POST /projects/{projectId}/memberships
+
+Dadurch kann die AG-UI den falschen Endpoint aufrufen.
+
+OpenAPI soll wieder Single Source of Truth sein.
+
+
+1. KANONISCHE ROUTEN FESTLEGEN
+
+Empfohlen:
+
+GET
+/projects/{projectId}/memberships
+
+POST
+/projects/{projectId}/invitations
+
+GET
+/project-invitations
+
+POST
+/project-invitations/{invitationId}/accept
+
+POST
+/project-invitations/{invitationId}/reject
+
+POST
+/project-memberships/{membershipId}/revoke
+
+
+Transport:
+
+GET
+/projects/{projectId}/invitation-deliveries/failed
+
+POST
+/project-invitation-deliveries/{messageId}/retry
+
+AN Response Retry entsprechend ergänzen.
+
+
+2. SERVER AUF DIESE PFADE AUSRICHTEN
+
+Keine alternative zweite Create-Route pflegen.
+
+
+3. OPENAPI AUF EXAKT DIESE PFADE AUSRICHTEN
+
+Insbesondere:
+
+POST /projects/{projectId}/invitations
+
+
+4. REQUEST BODY
+
+ProjectInvitationCreateRequest:
+
+{
+  participantId: string;
+  invitationMessage?: string;
+  validUntil?: string;
+}
+
+
+5. RESPONSE
+
+{
+  membership: ProjectMembership;
+  delivery: ProjectInvitationDelivery;
+}
+
+
+6. ProjectMembership SCHEMA
+
+Mindestens:
+
+id
+projectId
+agOrgId
+anOrgId nullable
+anParticipantId
+status
+invitedAt
+acceptedAt
+rejectedAt
+revokedAt
+createdAt
+updatedAt
+
+
+7. ProjectInvitation SCHEMA
+
+AN-lokale Sicht:
+
+id
+externalInvitationId
+projectReference
+projectName
+agParticipantId
+agOrganizationName
+status
+receivedAt
+invitationMessage
+purpose
+
+
+8. ParticipantDirectory API
+
+GET /dataspace/participants
+
+in OpenAPI vollständig dokumentieren.
+
+
+9. ACCEPT/REJECT
+
+Explizite Request/Response Codes:
+
+200 success
+403 wrong participant
+404 not found
+409 already resolved
+
+
+10. RETRY APIs
+
+Ebenfalls dokumentieren.
+
+
+11. CODEGEN
+
+Bestehenden Generator verwenden.
+
+Danach:
+
+AG UI und AN UI auf generierte Hooks umstellen, soweit im Projekt üblich.
+
+
+12. RAW fetch REDUZIEREN
+
+Wenn AN Projekteinladungen derzeit per manuellem fetch lädt:
+
+nach Möglichkeit generierten Client nutzen.
+
+Keine parallelen URL-Strings pflegen.
+
+
+13. PFLICHTTEST
+
+Generated Invite Hook muss exakt:
+
+POST /api/projects/{id}/invitations
+
+aufrufen.
+
+
+14. ROUTE CONTRACT TEST
+
+Alle Membership-Routen gegen OpenAPI prüfen.
+
+Kein dokumentierter Pfad ohne Serverroute.
+
+Keine produktive Membership-Route ohne Spec, sofern nicht bewusst intern.
+
+
+ERGEBNIS
+
+Server, Spec und Frontend dürfen keine unterschiedlichen Project-Membership-Endpunkte mehr kennen.
+
+
+======================================================================
+
+
+SCHRITT 5 – ACTIVE PROJECT MEMBERSHIP ALS EINZIGES BERECHTIGUNGS-GATE FÜR DIE LEISTUNGSVERGABE VERWENDEN
+
+ZIEL
+
+Der aktuelle neue Workflow läuft nach Acceptance in eine Sackgasse, weil zusätzlich zur ACTIVE Membership noch ein ACTIVE project_contractors-Eintrag erforderlich ist.
+
+Diese doppelte Berechtigung muss beseitigt werden.
+
+Fachliche Regel:
+
+ACTIVE Project Membership
+→ Organisation darf grundsätzlich Leistungen im Projekt erhalten.
+
+Die konkrete Leistungsanfrage beschreibt anschließend:
+→ welche Leistung sie übernehmen soll.
+
+
+1. DOPPELGATE IDENTIFIZIEREN
+
+Prüfe:
+
+- assertActiveProjectMembership(...)
+- createTaktRequestWithSnapshot(...)
+- project_contractors.assignmentStatus === ACTIVE
+- AG Leistung-vergeben UI
+- DataPublicationWizard
+- Service Request Creation
+
+
+2. MEMBERSHIP ALS PRIMÄRES GATE
+
+Zentral:
+
+requireActiveProjectMembership({
+  projectId,
+  anParticipantId/anOrgId
+})
+
+verwenden.
+
+
+3. createTaktRequestWithSnapshot KORRIGIEREN
+
+Falls dort weiterhin zusätzlich:
+
+project_contractors
+WHERE assignmentStatus = ACTIVE
+
+zwingend verlangt wird:
+
+diese Prüfung als Berechtigungs-Gate entfernen.
+
+
+4. project_contractors FACHLICH NEU EINORDNEN
+
+Diese Tabelle darf weiterhin existieren für zusätzliche fachliche Metadaten:
+
+- Gewerk
+- Arbeitspaket
+- Gültigkeit
+- projektspezifische organisatorische Zuordnung
+
+Aber:
+
+Nicht mehr:
+
+„Darf dieser AN überhaupt eine Leistung erhalten?“
+
+Diese Frage beantwortet ausschließlich Membership ACTIVE.
+
+
+5. KEINE ZWEI ACTIVE-STATUS ALS VORAUSSETZUNG
+
+Nicht:
+
+Membership ACTIVE
+AND
+ContractorAssignment ACTIVE
+
+sondern:
+
+Membership ACTIVE
+
+plus optional fachliche Assignment-Filter, wenn ein konkreter Use Case dies verlangt.
+
+
+6. AG EMPFÄNGERAUSWAHL UMRÜSTEN
+
+„Leistung vergeben“:
+
+Quelle:
+
+project_memberships
+WHERE status = ACTIVE
+
+Nicht:
+
+project_contractors
+WHERE assignmentStatus = ACTIVE
+
+
+7. OPTIONALER GEWERKEFILTER
+
+Falls Assignment-Daten vorhanden:
+
+ACTIVE Members anzeigen und zusätzlich Hinweise:
+
+Gewerk: Trockenbau
+
+Aber kein Member wegen fehlendem ContractorAssignment vollständig unsichtbar machen, sofern der Workflow gerade erst eine neue Leistung zuordnen soll.
+
+
+8. DataPublicationWizard
+
+Frontend ebenfalls auf ACTIVE Memberships umstellen.
+
+Backend verwendet bereits Membership:
+beibehalten.
+
+
+9. ALTE ASSIGNMENT UI PRÜFEN
+
+Dialog „AN zuordnen“ mit:
+
+PLANNED / ACTIVE
+
+ist jetzt missverständlich.
+
+Entweder:
+
+A) auf reine fachliche Gewerk-/Arbeitspaketzuordnung reduzieren
+
+und Status entsprechend anders behandeln,
+
+oder
+
+B) aus dem Membership-/Leistungsworkflow entfernen.
+
+
+10. KEIN ACTIVE STATUS DURCH AG ALS PROJECT MEMBERSHIP
+
+Falls project_contractors weiterhin ACTIVE besitzen darf:
+
+dies darf nicht suggerieren, dass damit Datenraum-Projektmitgliedschaft erzeugt wird.
+
+
+11. END-TO-END-PFLICHTTEST
+
+Wichtigster Test:
+
+1. neuer VERIFIED Participant
+2. kein project_contractors Seed
+3. AG lädt ein
+4. Invitation wird AN inbound verarbeitet
+5. AN akzeptiert
+6. Response wird AG inbound verarbeitet
+7. Membership ACTIVE
+8. AG erstellt Leistungsanfrage
+
+Erwartung:
+
+Erfolg.
+
+Dieser Test darf KEIN vorher manuell erzeugtes ACTIVE project_contractors benötigen.
+
+
+12. NEGATIVTEST
+
+Membership INVITED:
+
+Service Request → nicht erlaubt.
+
+
+13. NEGATIVTEST
+
+Membership REJECTED:
+
+nicht erlaubt.
+
+
+14. NEGATIVTEST
+
+Membership REVOKED:
+
+nicht erlaubt.
+
+
+ERGEBNIS
+
+Der gewünschte Prozess:
+
+Projektbeitritt
+→ ACTIVE
+→ Leistung zuordnen
+
+muss ohne zusätzliche versteckte Berechtigungsstufe funktionieren.
+
+
+======================================================================
+
+
+SCHRITT 6 – PROJECT MEMBERSHIP POLICIES TATSÄCHLICH VALIDIEREN UND EXTERNE IDENTITÄTEN KONSISTENT VERWENDEN
+
+ZIEL
+
+Die Policy im PROJECT_INVITATION-Payload darf nicht nur dokumentative Metadaten sein.
+
+Sie muss an der Inbound-Grenze geprüft werden.
+
+Außerdem sollen externe Nachrichten konsequent Participant IDs statt lokaler Datenbank-IDs verwenden.
+
+
+1. EXTERNE METADATA UMBENENNEN
+
+Bevorzugt:
+
+senderParticipantId
+recipientParticipantId
+
+statt extern:
+
+senderOrgId
+receiverOrgId
+
+
+2. LOKALES MAPPING
+
+Connector/Inbound Service:
+
+participantId
+→ localOrgId
+
+über:
+
+ParticipantDirectory
+
+auflösen.
+
+
+3. PROJECT_INVITATION VALIDIERUNG
+
+Prüfen:
+
+metadata.senderParticipantId vorhanden
+
+metadata.recipientParticipantId vorhanden
+
+purpose === PROJECT_COLLABORATION
+
+policy.usagePurpose === PROJECT_MEMBERSHIP
+
+policy.allowedConsumerParticipantId
+=== metadata.recipientParticipantId
+
+requestedRole === CONTRACTOR
+
+
+4. SENDER TRUST
+
+senderParticipantId muss als:
+
+VERIFIED
+
+auflösbar sein.
+
+
+5. RECIPIENT
+
+recipientParticipantId muss dem lokalen AN-Connector/Participant entsprechen.
+
+
+6. RESPONSE VALIDIERUNG
+
+PROJECT_INVITATION_RESPONSE:
+
+senderParticipantId
+=== ursprünglicher eingeladener AN
+
+recipientParticipantId
+=== ursprünglicher AG
+
+correlationId
+=== Einladung
+
+projectReference
+=== Einladung
+
+
+7. KEINE lokalen IDs IM EXTERNEN CONTRACT ERFORDERN
+
+Extern nicht voraussetzen:
+
+project DB UUID
+organization DB UUID
+
+Project Reference darf ein stabiler externer Identifier sein.
+
+
+8. POLICY FAILURE
+
+Policy-Verstoß:
+
+403 oder 422 entsprechend bestehender Konvention.
+
+Nachricht:
+
+nicht fachlich verarbeiten.
+
+Inbound Audit:
+
+FAILED.
+
+
+9. PURPOSE TRENNUNG
+
+Project Invitation:
+
+PROJECT_MEMBERSHIP
+
+spätere Service Coordination:
+
+CONSTRUCTION_COORDINATION
+
+
+10. SERVICE REQUEST POLICY
+
+Vor Outbound Service Request:
+
+Membership ACTIVE prüfen.
+
+Policy Purpose:
+
+CONSTRUCTION_COORDINATION
+
+
+11. PFLICHTTEST – WRONG CONSUMER
+
+allowedConsumerParticipantId ≠ recipient.
+
+Inbound abweisen.
+
+
+12. PFLICHTTEST – UNVERIFIED SENDER
+
+Inbound abweisen.
+
+
+13. PFLICHTTEST – WRONG PURPOSE
+
+PROJECT_INVITATION mit CONSTRUCTION_COORDINATION:
+
+abweisen.
+
+
+14. PFLICHTTEST – RESPONSE FROM WRONG PARTICIPANT
+
+AG Membership bleibt INVITED.
+
+
+ERGEBNIS
+
+Policies müssen die organisationsübergreifende Nutzung tatsächlich begrenzen und nicht nur im JSON mitgeführt werden.
+
+
+======================================================================
+
+
+SCHRITT 7 – REVOCATION UND WITHDRAWAL ÜBER DEN DATENRAUM VOLLSTÄNDIG MODELLIEREN
+
+ZIEL
+
+Projektbeziehungen dürfen nicht wieder über Shared-DB-Statusänderungen beendet werden.
+
+Auch das Zurückziehen einer Einladung bzw. Beenden einer aktiven Projektbeziehung muss organisationsübergreifend kommuniziert werden.
+
+
+1. ZWEI FÄLLE TRENNEN
+
+INVITED:
+
+AG zieht Einladung zurück
+
+→ PROJECT_INVITATION_WITHDRAWN
+
+
+ACTIVE:
+
+Projektbeziehung wird beendet
+
+→ PROJECT_MEMBERSHIP_REVOKED
+
+
+2. EIGENE MESSAGE TYPES
+
+DataspaceExchange erweitern um:
+
+publishProjectInvitationWithdrawn(...)
+
+publishProjectMembershipRevoked(...)
+
+bzw. bei vorhandener generischer Membership-Message sinnvoll konsolidieren.
+
+
+3. AG LOKALE SICHT
+
+INVITED → REVOKED
+
+oder optional eigener WITHDRAWN Status, falls gewünscht.
+
+Für aktuellen Lifecycle kann REVOKED ausreichen.
+
+
+4. AN INBOUND
+
+PROJECT_INVITATION_WITHDRAWN:
+
+PENDING Invitation
+→ WITHDRAWN oder lokal entfernt/archiviert.
+
+Falls Statusmodell erweitert wird:
+
+PENDING
+ACCEPTED
+REJECTED
+WITHDRAWN
+
+
+5. ACTIVE REVOCATION
+
+AG:
+
+ACTIVE → REVOKED
+
+plus Outbox.
+
+AN erhält:
+
+PROJECT_MEMBERSHIP_REVOKED
+
+und markiert lokale externe Projektpartnerschaft entsprechend.
+
+
+6. AKTIVE LEISTUNGEN PRÜFEN
+
+Vor ACTIVE → REVOKED:
+
+prüfen, ob aktive Service Requests/Agreements existieren.
+
+Für PoC:
+
+wenn aktive fachliche Beziehungen bestehen:
+
+409 PROJECT_MEMBERSHIP_HAS_ACTIVE_SERVICES
+
+
+7. KEINE AUTOMATISCHE LÖSCHUNG
+
+Nicht löschen:
+
+- Service Requests
+- Agreements
+- Timeline
+- historische Nachrichten
+
+Historie bleibt erhalten.
+
+
+8. TRANSPORTFEHLER
+
+Wenn Revocation Outbound FAILED:
+
+lokaler Zustand und Remotezustand können vorübergehend divergieren.
+
+Deshalb Outbox/Retry auch hier verwenden.
+
+Optional für PoC besser:
+
+lokal REVOKED_PENDING
+
+wenn solch zusätzlicher Status wirklich notwendig ist.
+
+Aber keine unnötige Statuskomplexität erzeugen.
+
+Minimal reicht:
+
+fachlicher REVOKED + sichtbarer Delivery FAILED + Retry.
+
+
+9. PFLICHTTEST – WITHDRAW
+
+AG zieht ausstehende Einladung zurück.
+
+Nach Datenraum-Inbound:
+
+AN sieht sie nicht mehr als offene Einladung.
+
+
+10. PFLICHTTEST – ACTIVE SERVICES
+
+Membership ACTIVE + aktiver Service Request.
+
+Revoke:
+
+409.
+
+
+11. PFLICHTTEST – REVOCATION DELIVERY
+
+Keine aktive Leistung.
+
+Revoke erfolgreich.
+
+AN erhält Datenraumnachricht und lokale Partnerschaft wird beendet.
+
+
+ERGEBNIS
+
+Nicht nur Join, sondern der gesamte Membership-Lifecycle muss über die Datenraumgrenze nachvollziehbar sein.
+
+
+======================================================================
+
+
+SCHRITT 8 – UI-BEZEICHNUNGEN UND WORKFLOW KONSEQUENT AUF DEN NEUEN PROJEKTEINLADUNGSPROZESS AUSRICHTEN
+
+ZIEL
+
+Die UI soll fachlich exakt ausdrücken, was passiert.
+
+Keine Vermischung mehr zwischen:
+
+- Datenraumteilnehmer finden
+- zum Projekt einladen
+- Projektpartner werden
+- konkrete Leistung zuordnen
+
+
+1. AG HAUPTAKTION
+
+Bevorzugt exakt:
+
+„Zum Projekt einladen“
+
+Nicht nur:
+
+„Einladen“
+
+wenn Kontext nicht unmittelbar klar ist.
+
+
+2. BEREICHSNAME
+
+Statt allgemein:
+
+„Teilnehmer“
+
+bevorzugt:
+
+„Projektpartner“
+
+
+3. GRUPPEN
+
+Aktive Projektpartner
+
+Ausstehende Einladungen
+
+Optional:
+
+Abgelehnte / beendete Beziehungen
+
+
+4. INVITED
+
+Anzeige:
+
+„Einladung ausstehend“
+
+Darunter technischer Zustand optional:
+
+„Übertragung fehlgeschlagen“
+
+oder:
+
+„Übermittelt“
+
+
+5. ACTIVE
+
+Anzeige:
+
+„Projektpartner“
+
+Aktion:
+
+„Leistung zuordnen“
+
+oder:
+
+„Leistungsanfrage erstellen“
+
+
+6. AN PRIMARY ACTION
+
+Statt:
+
+„Annehmen“
+
+bevorzugt:
+
+„Projekt beitreten“
+
+
+7. AN SECONDARY
+
+„Ablehnen“
+
+
+8. TRANSPORTFEHLER
+
+AN bei fehlgeschlagener Response:
+
+„Ihre Entscheidung wurde gespeichert, konnte aber noch nicht an den AG übertragen werden.“
+
+[Erneut senden]
+
+
+9. AG BEI INVITATION FAILED
+
+„Die Einladung wurde erstellt, konnte aber nicht an den AN übertragen werden.“
+
+[Erneut senden]
+
+
+10. DIALOG „AN ZUORDNEN“
+
+Prüfen, ob er überhaupt noch im Hauptworkflow nötig ist.
+
+Falls er Gewerk/Arbeitspaket verwaltet:
+
+umbenennen beispielsweise:
+
+„Fachliche Zuordnung bearbeiten“
+
+oder:
+
+„Gewerk / Arbeitspaket zuordnen“
+
+Nicht als Project-Membership-Funktion darstellen.
+
+
+11. STATUSDROPDOWN ACTIVE ENTFERNEN
+
+AG darf Project Membership nicht manuell auf ACTIVE stellen.
+
+
+12. PARTICIPANT INFO
+
+Im Einladungsdialog zeigen:
+
+Organisation
+Participant ID optional in Details
+Identität bestätigt
+Connectorstatus
+
+
+13. PFLICHTTEST UI
+
+AG:
+
+„Zum Projekt einladen“
+
+→ Participant Directory
+
+→ Einladung ausstehend
+
+AN:
+
+„Projekt beitreten“
+
+→ lokale Acceptance
+
+AG:
+
+erst nach Inbound Response:
+„Projektpartner“
+
+
+ERGEBNIS
+
+Die Oberfläche soll den Datenraumprozess auch für nicht-technische Nutzer klar nachvollziehbar machen.
+
+
+======================================================================
+
+
+SCHRITT 9 – BUSINESS-AUDIT UND TECHNISCHEN TRANSPORT-AUDIT SAUBER TRENNEN
+
+ZIEL
+
+Der Projektbeitrittsprozess soll fachlich nachvollziehbar sein, ohne technische Message-Events mit Business-Events zu vermischen.
+
+
+1. BUSINESS EVENTS
+
+Mindestens:
+
+PROJECT_INVITATION_CREATED
+
+PROJECT_INVITATION_ACCEPTED
+
+PROJECT_INVITATION_REJECTED
+
+PROJECT_INVITATION_WITHDRAWN
+
+PROJECT_MEMBERSHIP_ACTIVATED
+
+PROJECT_MEMBERSHIP_REVOKED
+
+
+2. TECHNISCHE EVENTS / DELIVERY
+
+Separat:
+
+PENDING
+SENT
+DELIVERED
+FAILED
+RETRY
+
+
+3. AG-TIMELINE
+
+Fachlich beispielsweise:
+
+24.08. AG
+Müller Ausbau zum Projekt eingeladen
+
+25.08. AN
+Projektbeitritt bestätigt
+
+
+Nicht als Hauptverlauf:
+
+MESSAGE_SENT
+DELIVERED
+
+
+4. AN-TIMELINE
+
+Beispielsweise:
+
+24.08.
+Projekteinladung von Generalplaner GmbH erhalten
+
+25.08.
+Projektbeitritt bestätigt
+
+
+5. EVENT-QUELLE
+
+Bestehende Audit-/Timeline-Infrastruktur wiederverwenden, sofern vorhanden.
+
+Keine unnötige separate Event-Sourcing-Architektur.
+
+
+6. EVENT IDEMPOTENZ
+
+Duplicate Inbound darf nicht Duplicate Business Event erzeugen.
+
+
+7. TRANSPORT DETAILS
+
+UI standardmäßig eingeklappt bzw. technische Details.
+
+Dort:
+
+messageId
+correlationId
+attemptCount
+sentAt
+deliveredAt
+lastError
+
+
+8. PFLICHTTEST
+
+Duplicate Invitation:
+
+1 Business Event.
+
+Retry Delivery:
+
+kein zweites PROJECT_INVITATION_CREATED.
+
+
+ERGEBNIS
+
+Fachlicher Projektbeitritt und technische Nachrichtenübertragung bleiben klar unterscheidbar.
+
+
+======================================================================
+
+
+SCHRITT 10 – VOLLSTÄNDIGE END-TO-END-TESTS, CLEANUP UND BUILD-ABNAHME
+
+ZIEL
+
+Der neue Datenraum-Projektbeitrittsprozess muss vollständig ohne Shared-DB-Shortcut und ohne alte Contractor-Bypässe funktionieren.
+
+
+1. KRITISCHER END-TO-END-TEST
+
+Dieser Test darf KEINE bestehende Membership und KEIN ACTIVE project_contractors seeden.
+
+Ablauf:
+
+1. VERIFIED AN im Participant Directory vorhanden.
+
+2. AG öffnet Projekt.
+
+3. AG lädt AN ein.
+
+4. AG Membership:
+   INVITED.
+
+5. Outbox:
+   PROJECT_INVITATION PENDING/SENT.
+
+6. Vor AN-Inbound:
+   AN sieht keine Einladung.
+
+7. PROJECT_INVITATION Inbound verarbeiten.
+
+8. AN sieht PENDING Invitation.
+
+9. AN klickt „Projekt beitreten“.
+
+10. AN lokale Invitation:
+    ACCEPTED.
+
+11. PROJECT_INVITATION_RESPONSE Outbox erzeugt.
+
+12. Vor AG-Inbound:
+    AG Membership weiterhin INVITED.
+
+13. Response Inbound auf AG verarbeiten.
+
+14. AG Membership:
+    ACTIVE.
+
+15. AN erscheint bei AG als Projektpartner.
+
+16. AG erstellt neue Leistungsanfrage.
+
+17. Kein project_contractors ACTIVE notwendig.
+
+18. SERVICE_REQUEST wird erfolgreich erzeugt.
+
+
+2. REJECT END-TO-END
+
+Invite
+→ AN Reject
+→ Response
+→ AG REJECTED
+→ keine Leistungszuordnung möglich.
+
+
+3. INVITATION TRANSPORT FAILURE
+
+AG Membership INVITED.
+AN keine Einladung.
+Retry.
+Inbound.
+AN sieht Einladung.
+
+
+4. RESPONSE TRANSPORT FAILURE
+
+AN ACCEPTED lokal.
+AG weiter INVITED.
+Retry.
+AG Inbound.
+ACTIVE.
+
+
+5. DUPLICATE INVITATION
+
+Inbound 2×.
+
+AN nur eine Invitation.
+
+
+6. DUPLICATE RESPONSE
+
+AG Membership Transition nur einmal.
+
+
+7. WRONG PARTICIPANT
+
+fremder AN Accept:
+403.
+
+
+8. POLICY TESTS
+
+Wrong consumer:
+reject.
+
+Wrong purpose:
+reject.
+
+Unverified sender:
+reject.
+
+
+9. LEGACY ROUTEN
+
+Global prüfen:
+
+POST /projects/:projectId/contractors
+POST /ag/projects/:projectId/subcontractors
+
+Keiner dieser Pfade darf ACTIVE Project Membership erzeugen.
+
+
+10. SHARED-DB BYPASS TEST
+
+Wichtig:
+
+Nur AG Membership INVITED manuell vorhanden.
+
+Ohne Inbound ProjectInvitation:
+
+AN-Inbox muss leer sein.
+
+
+11. SHARED-DB RESPONSE BYPASS TEST
+
+Nur AN lokale Invitation ACCEPTED.
+
+Ohne AG Inbound Response:
+
+AG Membership muss INVITED bleiben.
+
+
+12. ASSIGNMENT-GATE TEST
+
+ACTIVE Membership allein muss ausreichen, um eine neue Leistung fachlich zuordnen zu können.
+
+Kein verstecktes zweites ACTIVE-Gate.
+
+
+13. DATA PUBLICATION
+
+ACTIVE Membership:
+erlaubt.
+
+INVITED:
+nicht erlaubt.
+
+
+14. OPENAPI CODEGEN
+
+Nach Route-/Schemaänderungen:
+
+bestehenden Codegen ausführen.
+
+
+15. TYPECHECK
+
+Aus Repository Root:
+
+pnpm -r --if-present run typecheck
+
+
+16. TESTS
+
+pnpm -r --if-present run test
+
+
+17. BUILD
+
+pnpm -r --if-present run build
+
+
+18. AG EXPLIZIT
+
+pnpm --filter @workspace/ag-app typecheck
+pnpm --filter @workspace/ag-app build
+
+
+19. AN EXPLIZIT
+
+pnpm --filter @workspace/an-app typecheck
+pnpm --filter @workspace/an-app build
+
+
+20. API EXPLIZIT
+
+pnpm --filter @workspace/api-server typecheck
+
+und Build, falls Script vorhanden.
+
+
+21. GLOBALER CLEANUP
+
+Suchen nach:
+
+useListOrganizations
+im Invitation-Kontext
+
+project_memberships
+auf AN-Inbox-Seite
+
+assignmentStatus === ACTIVE
+als Membership-Gate
+
+POST /projects/{projectId}/memberships
+als Invite-Route
+
+senderOrgId / receiverOrgId
+in externen Dataspace DTOs
+
+publishProjectInvitation
+ohne Outbox
+
+publishProjectInvitationResponse
+ohne Outbox
+
+
+22. DEFINITION OF DONE
+
+Der Auftrag ist erst abgeschlossen, wenn alle folgenden Aussagen wahr sind:
+
+1. AG- und AN-Sicht der Projekteinladung sind logisch getrennt.
+
+2. AN sieht eine Einladung erst nach verarbeitetem PROJECT_INVITATION Inbound.
+
+3. AN Acceptance setzt AG Membership nicht direkt auf ACTIVE.
+
+4. AG wird erst nach verarbeitetem PROJECT_INVITATION_RESPONSE ACTIVE.
+
+5. Invitation und Response verwenden eine transactionale Outbox.
+
+6. Fehlgeschlagene Invitation kann vom AG erneut gesendet werden.
+
+7. Fehlgeschlagene Response kann vom AN erneut gesendet werden.
+
+8. Participant Directory ist Quelle des Invite-Dialogs.
+
+9. Neue Invites verwenden participantId als externe Identität.
+
+10. Lokale orgId ist nur Mapping, nicht Datenraumidentität.
+
+11. Policy PROJECT_MEMBERSHIP wird beim Inbound geprüft.
+
+12. Service Requests verwenden Purpose CONSTRUCTION_COORDINATION.
+
+13. ACTIVE Project Membership ist das zentrale Gate für Leistungszuordnung.
+
+14. Kein zusätzliches ACTIVE project_contractors ist für neue Leistungsanfragen erforderlich.
+
+15. DataPublicationWizard verwendet ACTIVE Memberships.
+
+16. Alte Contractor-Routen können Membership ACTIVE nicht umgehen.
+
+17. OpenAPI und Server-Routen stimmen exakt überein.
+
+18. Generierte Clients verwenden die korrekten Routes.
+
+19. Revocation/Withdrawal wird organisationsübergreifend kommuniziert.
+
+20. Aktive Leistungen verhindern unkontrollierte Membership-Revocation.
+
+21. Business Audit und Transport Audit sind getrennt.
+
+22. Shared-DB-Bypass-Regressionstests sind vorhanden.
+
+23. vollständiger End-to-End Join-Prozess ohne manuelle Seed-Zuordnung ist grün.
+
+24. Workspace Typecheck PASS.
+
+25. Workspace Tests PASS.
+
+26. Workspace Build PASS.
+
+
+23. ABSCHLUSSBERICHT
+
+Am Ende exakt berichten:
+
+1. Dataspace Communication Boundary
+   BEHOBEN / OFFEN
+
+2. AN Invitation Store
+   verwendete Tabelle/Struktur nennen
+
+3. Shared-DB Invitation Bypass
+   BEHOBEN / OFFEN
+
+4. Shared-DB Acceptance Bypass
+   BEHOBEN / OFFEN
+
+5. Transactional Invitation Outbox
+   BEHOBEN / OFFEN
+
+6. Transactional Response Outbox
+   BEHOBEN / OFFEN
+
+7. AG Invitation Retry
+   BEHOBEN / OFFEN
+
+8. AN Response Retry
+   BEHOBEN / OFFEN
+
+9. Participant Directory
+   BEHOBEN / OFFEN
+   Implementierung nennen
+
+10. Invite Input
+    participantId / anOrgId
+    tatsächlich verwendeten Wert nennen
+
+11. OpenAPI Invite Route
+    Route nennen
+
+12. Server Invite Route
+    Route nennen
+
+13. Generated Client Route
+    Route nennen
+
+14. ACTIVE Membership Gate
+    zentrale Funktion nennen
+
+15. project_contractors als zweites Gate
+    ENTFERNT / NOCH VORHANDEN
+
+16. Leistungsempfänger AG UI
+    Datenquelle nennen
+
+17. Data Publication Empfänger
+    Datenquelle nennen
+
+18. PROJECT_MEMBERSHIP Policy Enforcement
+    BEHOBEN / OFFEN
+
+19. externe Participant IDs
+    BEHOBEN / OFFEN
+
+20. Revocation Dataspace Flow
+    BEHOBEN / OFFEN
+
+21. aktive Leistungen bei Revoke
+    GESCHÜTZT / OFFEN
+
+22. Business Audit
+    BEHOBEN / OFFEN
+
+23. End-to-End Invite → Accept → Service Request
+    PASS / FAIL
+
+24. Invitation Transport Failure Test
+    PASS / FAIL
+
+25. Response Transport Failure Test
+    PASS / FAIL
+
+26. Shared-DB Bypass Test
+    PASS / FAIL
+
+27. Duplicate Invitation
+    PASS / FAIL
+
+28. Duplicate Response
+    PASS / FAIL
+
+29. Policy Tests
+    PASS / FAIL
+
+30. OpenAPI Codegen
+    PASS / FAIL
+
+31. AG Typecheck
+    PASS / FAIL
+
+32. AN Typecheck
+    PASS / FAIL
+
+33. API Typecheck
+    PASS / FAIL
+
+34. Workspace Tests
+    PASS / FAIL
+
+35. Workspace Build
+    PASS / FAIL
+
+36. verbleibende bekannte Fehler
+
+Für jeden:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
+```
