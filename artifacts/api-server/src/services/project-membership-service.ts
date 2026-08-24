@@ -6,7 +6,7 @@ import {
   projectMembershipsTable,
   messageOutboxTable,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
@@ -214,6 +214,11 @@ export function rejectInvitation(id: string, anOrgId: string, message?: string) 
 }
 
 export async function revokeMembership(id: string, agOrgId: string) {
+  const [existing] = await db.select().from(projectMembershipsTable).where(and(
+    eq(projectMembershipsTable.id, id),
+    eq(projectMembershipsTable.agOrgId, agOrgId),
+  )).limit(1);
+  if (existing?.status === "REVOKED") return existing;
   const [updated] = await db.update(projectMembershipsTable).set({
     status: "REVOKED",
     revokedAt: new Date(),
@@ -223,9 +228,7 @@ export async function revokeMembership(id: string, agOrgId: string) {
     eq(projectMembershipsTable.agOrgId, agOrgId),
     // Both pending invitations and active memberships may be revoked.
     // Resolved memberships cannot be silently reactivated.
-    // An open invitation can also be withdrawn before it is accepted.
-    // An already rejected/revoked relationship is intentionally immutable.
-    eq(projectMembershipsTable.status, "ACTIVE"),
+    inArray(projectMembershipsTable.status, ["INVITED", "ACTIVE"]),
   )).returning();
   if (!updated) throw new ProjectMembershipError("PROJECT_MEMBERSHIP_NOT_FOUND", "Aktive Projektmitgliedschaft nicht gefunden.");
   return updated;
