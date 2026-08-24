@@ -422,7 +422,7 @@ export default function LeistungsanfragenInboxPage() {
                   </div>
                   {respond ? (
                     <Link href={`/leistungsanfragen/${item.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
-                      <Button size="sm" className="block max-w-full w-full gap-1 sm:w-auto">
+                      <Button size="sm" className="block max-w-full w-full whitespace-nowrap gap-1 sm:w-auto">
                         Antworten <ChevronRight size={14} />
                       </Button>
                     </Link>
