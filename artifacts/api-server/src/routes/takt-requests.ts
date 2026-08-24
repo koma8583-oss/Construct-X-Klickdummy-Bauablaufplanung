@@ -189,6 +189,24 @@ function notificationMessageId(requestId: string): string {
   return `taktrequest-notification-${requestId}`;
 }
 
+/**
+ * Response submissions are idempotent, but a GU-requested revision is a new
+ * transport event. Reuse the current response messageId for retries and
+ * advance it only when the request is in REVISION_REQUIRED, otherwise the
+ * transport layer rejects the revised payload as an idempotency conflict.
+ */
+function taktResponseMessageId(
+  requestId: string,
+  requestStatus: string,
+  existingResponse: Awaited<ReturnType<typeof getTaktResponseWithAlternatives>>,
+): string {
+  const previousId = existingResponse?.response.messageId;
+  if (!previousId) return `taktresponse-${requestId}`;
+  return requestStatus === "REVISION_REQUIRED"
+    ? `${previousId}-revision`
+    : previousId;
+}
+
 const router = Router();
 
 // ── GET /takt-requests ────────────────────────────────────────────────────────
@@ -1113,7 +1131,8 @@ router.post(
     }));
 
     // ── 5. Call unified service ─────────────────────────────────────────────
-    const msgId = `taktresponse-${id}`;
+    const existingResponse = await getTaktResponseWithAlternatives(id);
+    const msgId = taktResponseMessageId(id, request.status, existingResponse);
     let result;
     try {
       result = await processNuResponse({
@@ -1126,7 +1145,7 @@ router.post(
         comment,
         alternatives:         canonicalAlternatives,
         nextAvailableDate,
-        answerableStatuses:   new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED"]),
+        answerableStatuses:   new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED", "REVISION_REQUIRED"]),
         currentRequestStatus: request.status,
         messageId:            msgId,
       });
@@ -1364,7 +1383,8 @@ router.post(
 
     // ── 5. Call unified service (idempotency + transaction + status update) ───
     const ANSWERABLE_STATUSES = new Set(["UNDER_REVIEW", "DETAILS_RETRIEVED", "REVISION_REQUIRED"]);
-    const msgId = `taktresponse-${id}`;
+    const existingResponse = await getTaktResponseWithAlternatives(id);
+    const msgId = taktResponseMessageId(id, request.status, existingResponse);
 
     let result;
     try {
