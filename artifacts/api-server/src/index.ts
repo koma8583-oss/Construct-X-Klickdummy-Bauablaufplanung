@@ -3,7 +3,11 @@ import { logger } from "./lib/logger";
 import { startDeadlineWorker, stopDeadlineWorker } from "./lib/local-deadline-worker";
 import { loadDeadlineConfig } from "./services/deadline-config";
 import { seedPolicyTemplates } from "./lib/seed-policy-templates";
-import { assertDatabaseConfiguration, closeDatabasePools } from "@workspace/db";
+import {
+  assertDatabaseConfiguration,
+  closeDatabasePools,
+  runWithDatabaseRole,
+} from "@workspace/db";
 
 // Refuse to boot before any pool is opened if the three physical stores are
 // missing or accidentally configured to the same PostgreSQL database.
@@ -46,7 +50,7 @@ const server = app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 
   // ── Seed canonical policy templates ─────────────────────────────────────
-  seedPolicyTemplates().catch((err) =>
+  runWithDatabaseRole("hub", () => seedPolicyTemplates()).catch((err) =>
     logger.error({ err }, "Failed to seed policy templates"),
   );
 
