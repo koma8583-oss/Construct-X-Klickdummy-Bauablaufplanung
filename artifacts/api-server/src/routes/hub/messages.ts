@@ -3,13 +3,10 @@
  * Mounted at /api/hub/messages/*
  */
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { hubDb as db } from "@workspace/db";
 import {
   hubMessagesTable,
   organizationsTable,
-  delegationsTable,
-  takteTable,
-  projectsTable,
 } from "@workspace/db";
 import { eq, or, and, desc, SQL } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
@@ -80,38 +77,6 @@ router.get("/timeline/:delegationId", requireJwt, async (req, res): Promise<void
   const admin = req.user!.hubAdmin;
   const { delegationId } = req.params as { delegationId: string };
 
-  // Fetch the delegation to verify access
-  const [delegation] = await db
-    .select()
-    .from(delegationsTable)
-    .where(eq(delegationsTable.id, delegationId))
-    .limit(1);
-
-  if (!delegation) {
-    res.status(404).json({ error: "Delegation not found" });
-    return;
-  }
-
-  if (!admin && orgId !== delegation.agOrgId && orgId !== delegation.anOrgId) {
-    res.status(403).json({ error: "Access denied" });
-    return;
-  }
-
-  // Get takt + project for context
-  const [takt] = await db
-    .select()
-    .from(takteTable)
-    .where(eq(takteTable.id, delegation.taktId))
-    .limit(1);
-
-  const [project] = takt
-    ? await db
-        .select({ id: projectsTable.id, name: projectsTable.name })
-        .from(projectsTable)
-        .where(eq(projectsTable.id, takt.projectId))
-        .limit(1)
-    : [null];
-
   // All hub messages for this delegation
   const messages = await db
     .select()
@@ -119,12 +84,24 @@ router.get("/timeline/:delegationId", requireJwt, async (req, res): Promise<void
     .where(eq(hubMessagesTable.delegationId, delegationId))
     .orderBy(hubMessagesTable.createdAt);
 
+  if (messages.length === 0) {
+    res.status(404).json({ error: "Delegation not found" });
+    return;
+  }
+  if (
+    !admin &&
+    !messages.some(
+      (message) =>
+        message.senderOrgId === orgId || message.recipientOrgId === orgId,
+    )
+  ) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  // The Hub is a relay, not a project-data owner. Do not enrich the timeline
+  // with AG schedule/project rows or return a full domain object here.
   res.json({
-    delegation: {
-      ...delegation,
-      takt: takt ?? null,
-      project: project ?? null,
-    },
     timeline: messages,
   });
 });

@@ -28,7 +28,7 @@
  *     → on transaction failure:
  *         outbox → FAILED + failureReason  (best-effort outside tx)
  */
-import { db, messageOutboxTable, messageInboxTable } from "@workspace/db";
+import { hubDb, messageOutboxTable, messageInboxTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import type { MessageEnvelope, MessageTransport, TransportResult, InboxMessage, InboxQueryOptions } from "./message-transport";
 import type { DataspaceMessageType } from "@workspace/api-zod";
@@ -171,7 +171,7 @@ export class LocalHubTransport implements MessageTransport {
     validateEnvelope(envelope);
 
     // 2. Idempotency check
-    const existing = await db
+      const existing = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, envelope.messageId))
@@ -188,7 +188,7 @@ export class LocalHubTransport implements MessageTransport {
     }
 
     // 3. Insert outbox with PENDING (committed immediately, outside transaction)
-    const [outboxRow] = await db
+    const [outboxRow] = await hubDb
       .insert(messageOutboxTable)
       .values({
         messageId: envelope.messageId,
@@ -207,7 +207,7 @@ export class LocalHubTransport implements MessageTransport {
     try {
       const now = new Date();
 
-      await db.transaction(async (tx) => {
+      await hubDb.transaction(async (tx) => {
         // 4-5. Mark outbox as SENT, increment attemptCount
         await tx
           .update(messageOutboxTable)
@@ -239,7 +239,7 @@ export class LocalHubTransport implements MessageTransport {
       });
 
       // 10. Return result from the now-committed outbox row
-      const [delivered] = await db
+      const [delivered] = await hubDb
         .select()
         .from(messageOutboxTable)
         .where(eq(messageOutboxTable.id, outboxRow.id))
@@ -251,7 +251,7 @@ export class LocalHubTransport implements MessageTransport {
       const failureReason =
         err instanceof Error ? err.message : String(err);
 
-      await db
+      await hubDb
         .update(messageOutboxTable)
         .set({
           status: "FAILED",
@@ -301,7 +301,7 @@ export class LocalHubTransport implements MessageTransport {
     const limit = options?.limit ?? 50;
     const offset = options?.offset ?? 0;
 
-    const rows = await db
+    const rows = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(...conditions))
@@ -330,7 +330,7 @@ export class LocalHubTransport implements MessageTransport {
 
   async markAsRead(messageId: string, recipientOrgId: string): Promise<void> {
     // Look up the inbox row
-    const [inboxRow] = await db
+    const [inboxRow] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(
@@ -343,7 +343,7 @@ export class LocalHubTransport implements MessageTransport {
 
     if (!inboxRow) {
       // Distinguish: does the message exist for a different recipient?
-      const [outboxRow] = await db
+      const [outboxRow] = await hubDb
         .select()
         .from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, messageId))
@@ -362,7 +362,7 @@ export class LocalHubTransport implements MessageTransport {
     }
 
     const now = new Date();
-    await db
+    await hubDb
       .update(messageInboxTable)
       .set({ status: "READ", readAt: now })
       .where(
@@ -379,7 +379,7 @@ export class LocalHubTransport implements MessageTransport {
 
   async retry(messageId: string): Promise<TransportResult> {
     // Find the outbox row
-    const [outboxRow] = await db
+    const [outboxRow] = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, messageId))
@@ -396,7 +396,7 @@ export class LocalHubTransport implements MessageTransport {
     const newAttemptCount = outboxRow.attemptCount + 1;
 
     try {
-      await db.transaction(async (tx) => {
+      await hubDb.transaction(async (tx) => {
         // Update outbox to SENT
         await tx
           .update(messageOutboxTable)
@@ -431,7 +431,7 @@ export class LocalHubTransport implements MessageTransport {
           .where(eq(messageOutboxTable.id, outboxRow.id));
       });
 
-      const [updated] = await db
+      const [updated] = await hubDb
         .select()
         .from(messageOutboxTable)
         .where(eq(messageOutboxTable.id, outboxRow.id))
@@ -442,7 +442,7 @@ export class LocalHubTransport implements MessageTransport {
       const failureReason =
         err instanceof Error ? err.message : String(err);
 
-      await db
+      await hubDb
         .update(messageOutboxTable)
         .set({
           status: "FAILED",

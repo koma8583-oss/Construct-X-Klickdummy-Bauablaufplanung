@@ -1,0 +1,18 @@
+---
+name: Physical database boundaries
+description: Durable rules for maintaining separate AG, AN, and Hub PostgreSQL stores
+---
+
+AG, AN, and Hub must use distinct PostgreSQL databases and credentials. The
+application must fail closed when a role URL is missing or points to the same
+database as another role. Cross-domain business data must travel through the
+Dataspace exchange; the Hub may retain transport metadata, not full domain
+records.
+
+**Why:** A shared ORM connection and shared foreign-key graph can expose private
+project or resource data even when route-level organisation checks are correct.
+
+**How to apply:** Use named role handles and role-specific migration schemas.
+Never reintroduce `DATABASE_URL` as a fallback or add SQL joins/transactions
+between AG and AN data. Treat cross-database workflows as idempotent message
+projections/sagas.

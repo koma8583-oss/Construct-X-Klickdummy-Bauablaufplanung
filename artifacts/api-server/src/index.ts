@@ -3,6 +3,11 @@ import { logger } from "./lib/logger";
 import { startDeadlineWorker, stopDeadlineWorker } from "./lib/local-deadline-worker";
 import { loadDeadlineConfig } from "./services/deadline-config";
 import { seedPolicyTemplates } from "./lib/seed-policy-templates";
+import { assertDatabaseConfiguration, closeDatabasePools } from "@workspace/db";
+
+// Refuse to boot before any pool is opened if the three physical stores are
+// missing or accidentally configured to the same PostgreSQL database.
+assertDatabaseConfiguration();
 
 // Fail fast if the JWT secret is missing or is the known insecure dev fallback in production.
 // In development the fallback is allowed so that `pnpm dev` works without pre-configuring secrets.
@@ -83,6 +88,7 @@ async function shutdown(signal: string): Promise<void> {
 
   // Stop deadline worker; awaits any currently-running tick
   await stopDeadlineWorker();
+  await closeDatabasePools();
 
   logger.info("Graceful shutdown complete");
   process.exit(0);

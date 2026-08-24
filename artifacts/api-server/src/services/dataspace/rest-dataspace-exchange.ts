@@ -1,5 +1,5 @@
 import { DataspaceMessageType } from "@workspace/api-zod";
-import { db, dataspaceExchangesTable } from "@workspace/db";
+import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";

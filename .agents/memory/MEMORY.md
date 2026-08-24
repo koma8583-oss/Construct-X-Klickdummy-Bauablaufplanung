@@ -34,3 +34,4 @@
 - [Coordination and booking sources](coordination-and-booking-sources.md) — derive objective next actions centrally; persist confirmed bookings only from unaggregated booking requirements.
 - [Timeline and dependency authority](timeline-and-dependency-authority.md) — initial agreement comes only from a real decision; service-request dependencies map to canonical Leistung dependencies.
 - [Invitation delivery retry](invitation-delivery-retry.md) — project invitation retries must use the persisted outbox envelope and original message ID, never recreate membership or response business rows.
+- [Physical database boundaries](physical-database-boundaries.md) — AG, AN, and Hub require distinct URLs, role-scoped access, and connector-mediated cross-domain exchange.

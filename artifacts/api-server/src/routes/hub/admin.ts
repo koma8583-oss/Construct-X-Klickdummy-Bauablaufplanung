@@ -3,7 +3,7 @@
  * Requires hub admin role (hubAdmin: true in JWT).
  */
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { hubDb as db } from "@workspace/db";
 import {
   usersTable,
   organizationsTable,

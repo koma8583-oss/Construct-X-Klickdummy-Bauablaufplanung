@@ -1,4 +1,4 @@
-import { db, organizationsTable } from "@workspace/db";
+import { hubDb as db, organizationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { DataspaceParticipant } from "./external-contracts";
 

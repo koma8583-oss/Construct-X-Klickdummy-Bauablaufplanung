@@ -142,7 +142,11 @@ pnpm --filter @workspace/hub-app run dev             # Hub app
 pnpm --filter @workspace/api-spec run codegen
 
 # Database schema push (development only — never against production)
-pnpm --filter @workspace/db run push
+# Configure three different PostgreSQL databases first:
+AG_DATABASE_URL=... AN_DATABASE_URL=... HUB_DATABASE_URL=...
+DB_ROLE=ag pnpm --filter @workspace/db run push
+DB_ROLE=an pnpm --filter @workspace/db run push
+DB_ROLE=hub pnpm --filter @workspace/db run push
 
 # Typecheck (all packages)
 pnpm run typecheck
@@ -164,6 +168,7 @@ pnpm run build
 - **OpenAPI-first** — `lib/api-spec/openapi.yaml` drives both the React Query hooks and the Zod validation schemas. Never modify generated output.
 - **Flat explicit schemas over `allOf`** — Orval's `allOf` support is inconsistent; typed message schemas are defined as explicit flat objects referencing base enums and payload schemas.
 - **No EDC in PoC** — Transport is plain HTTPS/JSON. The architecture keeps domain logic and transport separate so EDC can be substituted later without touching business rules.
+- **Physical database separation** — AG, AN, and Hub use separate `AG_DATABASE_URL`, `AN_DATABASE_URL`, and `HUB_DATABASE_URL` connections. `DATABASE_URL` is not a supported fallback; AG↔AN data crosses only the Dataspace exchange.
 
 ---
 

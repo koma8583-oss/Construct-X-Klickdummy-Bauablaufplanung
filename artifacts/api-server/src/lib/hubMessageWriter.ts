@@ -2,7 +2,7 @@
  * Non-fatal broker helper — writes a hub_message entry after each delegation event.
  * Failures are logged but never propagate to the caller.
  */
-import { db, hubMessagesTable } from "@workspace/db";
+import { hubDb, hubMessagesTable } from "@workspace/db";
 
 export type HubMessageType =
   | "DELEGATION_CREATED"
@@ -21,7 +21,7 @@ export async function writeHubMessage(
   payload: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await db.insert(hubMessagesTable).values({
+    await hubDb.insert(hubMessagesTable).values({
       type,
       senderOrgId,
       recipientOrgId,

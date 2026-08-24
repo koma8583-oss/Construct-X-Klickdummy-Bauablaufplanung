@@ -1,4 +1,4 @@
-import { db, dataspaceExchangesTable } from "@workspace/db";
+import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type {
   ExternalProjectInvitation,

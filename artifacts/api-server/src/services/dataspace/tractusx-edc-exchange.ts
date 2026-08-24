@@ -1,5 +1,5 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
-import { db, messageOutboxTable } from "@workspace/db";
+import { hubDb as db, messageOutboxTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 import {

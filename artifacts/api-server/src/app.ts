@@ -11,8 +11,22 @@ import agProjectsRouter from "./routes/ag/projects";
 import reportsRouter from "./routes/reports";
 import dataPublicationsRouter from "./routes/data-publications";
 import { logger } from "./lib/logger";
+import { runWithDatabaseRole, type DatabaseRole } from "@workspace/db";
 
 const app: Express = express();
+
+// Establish the physical data boundary before any route handler runs.  The
+// URL path is the trust boundary in this single-process deployment: AG, AN,
+// and Hub handlers cannot accidentally inherit one another's connection.
+app.use((req, _res, next) => {
+  const path = req.originalUrl.split("?")[0];
+  const role: DatabaseRole =
+    path.startsWith("/api/an") ? "an" :
+    path.startsWith("/api/hub/") || path.startsWith("/auth-service") ||
+      path.startsWith("/internal") || path.startsWith("/api/dataspace/") ? "hub" :
+    "ag";
+  runWithDatabaseRole(role, next);
+});
 
 app.use(
   pinoHttp({

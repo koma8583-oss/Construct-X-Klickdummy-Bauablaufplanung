@@ -2,13 +2,21 @@
 set -e
 pnpm install --frozen-lockfile
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+if [[ -n "${AG_DATABASE_URL:-}" && -n "${AN_DATABASE_URL:-}" && -n "${HUB_DATABASE_URL:-}" ]]; then
+  if [[ "$AG_DATABASE_URL" == "$AN_DATABASE_URL" || "$AG_DATABASE_URL" == "$HUB_DATABASE_URL" || "$AN_DATABASE_URL" == "$HUB_DATABASE_URL" ]]; then
+    echo "AG, AN and Hub databases must be different" >&2
+    exit 1
+  fi
+  psql "$AG_DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0001_leistungen_canonical_rename.sql
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  psql "$AG_DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0002_project_memberships.sql
+  for role in ag an hub; do
+    echo "Applying role-specific schema to ${role} database"
+    DB_ROLE="$role" pnpm --filter @workspace/db run push-force
+  done
 
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+  psql "$AG_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN
   IF to_regclass('public.leistungsantworten') IS NOT NULL
