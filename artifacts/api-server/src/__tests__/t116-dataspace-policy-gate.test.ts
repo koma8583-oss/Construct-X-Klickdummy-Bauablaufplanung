@@ -30,6 +30,7 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -199,6 +200,15 @@ beforeAll(async () => {
     anOrgId,
     assignmentStatus: "ACTIVE",
   });
+  await db.insert(projectMembershipsTable).values({
+    id: `t116-membership-${crypto.randomUUID()}`,
+    projectId,
+    agOrgId,
+    anOrgId,
+    status: "ACTIVE",
+    invitationId: `t116-invitation-${crypto.randomUUID()}`,
+    correlationId: `t116-correlation-${crypto.randomUUID()}`,
+  });
 
   const [takt] = await db
     .insert(takteTable)
@@ -233,6 +243,7 @@ afterAll(async () => {
   await db.delete(dataPublicationRecipientsTable).where(eq(dataPublicationRecipientsTable.anOrgId, anOrgId)).catch(() => {});
   await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.agOrgId, agOrgId)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.projectId, projectId)).catch(() => {});
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId)).catch(() => {});
   // Clear outbox/inbox rows before deleting users/orgs (FK constraints)

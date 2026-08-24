@@ -26,6 +26,7 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -121,6 +122,10 @@ async function flushAll() {
       .delete(taktRequestsTable)
       .where(inArray(taktRequestsTable.id, reqIds))
       .catch(() => {});
+  await db
+    .delete(projectMembershipsTable)
+    .where(eq(projectMembershipsTable.projectId, PROJECT_ID))
+    .catch(() => {});
   // Clean up test publications (must come AFTER takt_requests due to FK)
   const pubRows = await db
     .select({ id: dataPublicationsTable.id })
@@ -196,6 +201,18 @@ beforeAll(async () => {
   await db
     .insert(projectContractorsTable)
     .values({ projectId: PROJECT_ID, anOrgId: NU_ORG_ID, assignmentStatus: "ACTIVE" })
+    .onConflictDoNothing();
+  await db
+    .insert(projectMembershipsTable)
+    .values({
+      id: `${T}-membership`,
+      projectId: PROJECT_ID,
+      agOrgId: GU_ORG_ID,
+      anOrgId: NU_ORG_ID,
+      status: "ACTIVE",
+      invitationId: `${T}-invitation`,
+      correlationId: `${T}-membership-correlation`,
+    })
     .onConflictDoNothing();
 });
 

@@ -15,6 +15,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -64,6 +65,8 @@ let noOrgToken: string;
 // ── Setup / teardown ──────────────────────────────────────────────────────────
 
 beforeAll(async () => {
+  // Remove stale membership state from interrupted or differently ordered runs.
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT_ID)).catch(() => {});
   await db.insert(organizationsTable).values([
     { id: GU_ORG,   name: "T36 GU Org",    type: "AG" },
     { id: NU_ORG,   name: "T36 NU Org",    type: "AN" },
@@ -82,6 +85,16 @@ beforeAll(async () => {
 
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG,
+    assignmentStatus: "ACTIVE",
+  }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t36-membership",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t36-invitation",
+    correlationId: "t36-membership-correlation",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({
@@ -110,6 +123,7 @@ afterAll(async () => {
   )`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT_ID)).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(OTHER_USER)}'])`).catch(() => {});
@@ -185,7 +199,7 @@ describe("POST /takt-requests", () => {
       .set("Authorization", `Bearer ${guToken}`)
       .send({ taktId: TAKT_ID, nuOrgId: OTHER_GU }); // OTHER_GU not in project_contractors
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/not a registered contractor/i);
+    expect(res.body.code).toBe("PROJECT_MEMBERSHIP_NOT_ACTIVE");
   });
 
   it("returns 404 when taktId does not exist", async () => {
