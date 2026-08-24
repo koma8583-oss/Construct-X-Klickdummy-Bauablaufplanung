@@ -76,15 +76,11 @@ export function restoreConcreteResourceAssignments<
     newWindowStart.toISOString().slice(0, 10),
   );
   const shift = (date: Date) => {
-    const shifted = new Date(date);
-    shifted.setUTCDate(shifted.getUTCDate() + shiftDays);
-    return shifted;
+    return new Date(`${addCalendarDays(date.toISOString().slice(0, 10), shiftDays)}T${date.toISOString().slice(11)}`);
   };
   const date = (value: string) => new Date(`${value}T00:00:00Z`);
   const inclusiveEnd = (value: string) => {
-    const result = date(value);
-    result.setUTCDate(result.getUTCDate() + 1);
-    return result;
+    return date(addCalendarDays(value, 1));
   };
   const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
     aStart < bEnd && aEnd > bStart;
@@ -201,9 +197,7 @@ function parseDate(value: string): Date {
 }
 
 function inclusiveEnd(value: string): Date {
-  const end = parseDate(value);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return end;
+  return parseDate(addCalendarDays(value, 1));
 }
 
 function overlaps(startAt: Date, endAt: Date, start: Date, end: Date): boolean {
@@ -270,8 +264,7 @@ export function evaluateResourceRequirements({
     let groupHasConflict = false;
     for (const day of daysFor(start, end)) {
       const dayStart = day;
-      const dayEnd = new Date(day);
-      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+      const dayEnd = parseDate(addCalendarDays(dayKey(day), 1));
       const requiredCapacity = groupedRequirements.reduce((sum, item) => {
         const itemStart = item.periodStart ? parseDate(item.periodStart) : windowStart;
         const itemEnd = item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd;

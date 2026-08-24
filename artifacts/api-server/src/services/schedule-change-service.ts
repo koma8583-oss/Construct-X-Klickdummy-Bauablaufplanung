@@ -127,7 +127,7 @@ export async function prepareAcceptedScheduleChange(
     input.serviceRequestId,
     requestRow.request.nuOrgId,
     input.newStart,
-    input.newEnd,
+    new Date(`${addCalendarDays(dateOnly(input.newEnd), 1)}T00:00:00Z`),
     input.serviceRequestId,
     shiftedRequirements,
     tx,

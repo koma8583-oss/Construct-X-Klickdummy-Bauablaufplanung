@@ -5,6 +5,7 @@ import {
   leistungsanfragenTable,
   leistungsabhaengigkeitenTable,
 } from "@workspace/db";
+import { addCalendarDays, differenceInCalendarDays, toCalendarDate } from "../lib/calendar-date-utils";
 
 export type ChangeImpact = {
   affectedServices: Array<{
@@ -59,14 +60,16 @@ export async function evaluateChangeImpact(input: {
     const lagDays = dep?.lagDays ?? 0;
 
     // Required earliest start of successor = proposed end of predecessor + lagDays + 1 day.
-    const required = new Date(input.proposedEnd);
-    required.setDate(required.getDate() + lagDays + 1);
+    const required = new Date(
+      `${addCalendarDays(toCalendarDate(input.proposedEnd), lagDays + 1)}T00:00:00Z`,
+    );
 
     const currentStart = successor.agreedStart;
     if (!currentStart || currentStart >= required) continue;
 
-    const impactDays = Math.ceil(
-      (required.getTime() - currentStart.getTime()) / 86_400_000,
+    const impactDays = differenceInCalendarDays(
+      toCalendarDate(currentStart),
+      toCalendarDate(required),
     );
     result.push({
       serviceRequestId: successor.id,

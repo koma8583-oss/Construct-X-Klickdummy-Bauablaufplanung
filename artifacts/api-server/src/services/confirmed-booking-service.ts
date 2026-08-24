@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { resourceBookingsTable } from "@workspace/db";
+import { addCalendarDays } from "../lib/calendar-date-utils";
 
 export interface BookingRequirement {
   resourceRequirementId?: string;
@@ -21,9 +22,7 @@ export interface PreservedBookingAssignment {
 }
 
 function toExclusiveEnd(periodEnd: string): Date {
-  const end = new Date(`${periodEnd}T00:00:00Z`);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return end;
+  return new Date(`${addCalendarDays(periodEnd, 1)}T00:00:00Z`);
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   availabilityChecksTable,
   taktRequestResourceRequirementsTable,
 } from "@workspace/db";
+import { addCalendarDays, differenceInCalendarDays, toCalendarDate } from "../lib/calendar-date-utils";
 import { and, eq, lt, gt, ne, max, desc, sql, or, isNull } from "drizzle-orm";
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
 import type {
@@ -162,9 +163,7 @@ function parseDate(d: string): Date {
 }
 
 function parseInclusiveEnd(d: string): Date {
-  const end = parseDate(d);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return end;
+  return parseDate(addCalendarDays(d, 1));
 }
 
 function overlaps(startAt: Date, endAt: Date, windowStart: Date, windowEnd: Date): boolean {
@@ -438,16 +437,13 @@ async function executeCheckRules(
   const requirementEnds = dtcRequirements
     .map((r) => r.periodEnd ? parseInclusiveEnd(r.periodEnd) : windowEnd);
   const plannedDurationDays = Math.max(
-    Math.ceil((windowEnd.getTime() - windowStart.getTime()) / 86_400_000),
+    differenceInCalendarDays(toCalendarDate(windowStart), toCalendarDate(windowEnd)),
     1,
   );
-  const alternativeSearchEnd = new Date(windowStart.getTime());
-  alternativeSearchEnd.setUTCDate(
-    alternativeSearchEnd.getUTCDate() +
-      ALTERNATIVE_GENERATOR_CONFIG.searchHorizonDays +
-      plannedDurationDays +
-      1,
-  );
+  const alternativeSearchEnd = parseDate(addCalendarDays(
+    toCalendarDate(windowStart),
+    ALTERNATIVE_GENERATOR_CONFIG.searchHorizonDays + plannedDurationDays + 1,
+  ));
   const bookingWindowStart = new Date(Math.min(
     windowStart.getTime(),
     ...requirementStarts.map((d) => d.getTime()),
