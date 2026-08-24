@@ -1,0 +1,548 @@
+SCHRITT 1 – SCHEDULE CHANGE UND WIEDERHOLTE TERMINÄNDERUNGEN KORRIGIEREN
+
+ZIEL
+
+Ein akzeptierter Change Proposal muss immer exakt den Zeitraum prüfen, speichern und für die Ressourcenplanung verwenden, der tatsächlich vorgeschlagen wurde.
+
+Insbesondere muss der Fehler bei mehreren aufeinanderfolgenden Terminänderungen vollständig beseitigt werden. ResourceRequirements dürfen bei einer zweiten oder späteren Terminänderung nicht erneut relativ zum ursprünglichen Request-/Snapshot-Zeitraum verschoben werden.
+
+Prüfe insbesondere die aktuell vorhandenen Services und Helper für:
+
+- Change Proposal Acceptance
+- Schedule Change
+- Availability Check
+- Resource Requirements
+- Calendar-Date-Berechnung
+
+Typischerweise betrifft dies insbesondere:
+
+- schedule-change-service.ts
+- availability-check-service.ts
+- service-change-proposal-service.ts
+- resource-availability-service.ts
+- calendar-date-utils.ts
+- shiftRequirementsToWindow(...)
+
+Falls Dateinamen oder Funktionsnamen inzwischen anders sind, die bereits vorhandenen aktuellen Funktionen verwenden und keine parallele zweite Implementierung anlegen.
+
+
+1. DOUBLE-SHIFT-FEHLER BESEITIGEN
+
+Aktuell können ResourceRequirements nach einer ersten akzeptierten Terminänderung bereits auf den neuen Agreement-Zeitraum verschoben gespeichert sein.
+
+Eine weitere Terminänderung muss deshalb immer relativ zum AKTUELLEN Agreement berechnet werden.
+
+Beispiel:
+
+Ursprünglicher Zustand:
+
+Agreement:
+01.09.–05.09.
+
+Requirement:
+02.09.–03.09.
+
+Nach erster akzeptierter Änderung:
+
+Agreement:
+06.09.–10.09.
+
+Requirement:
+07.09.–08.09.
+
+Danach zweite Terminänderung:
+
+neues Agreement:
+11.09.–15.09.
+
+Das Requirement muss jetzt werden:
+
+12.09.–13.09.
+
+Es darf NICHT erneut relativ zum ursprünglichen 01.09. verschoben werden und dadurch beispielsweise auf 17.09.–18.09. gelangen.
+
+
+2. EINDEUTIGE SEMANTIK FÜR shiftRequirementsToWindow(...)
+
+Die zentrale Requirement-Shift-Funktion soll exakt folgende Semantik besitzen:
+
+shiftRequirementsToWindow(
+  requirements,
+  currentAgreementStart,
+  targetAgreementStart
+)
+
+Bedeutung:
+
+- requirements enthält die AKTUELL gespeicherten Requirement-Zeiträume.
+- currentAgreementStart ist der Start der AKTUELLEN Vereinbarung.
+- targetAgreementStart ist der Start der vorgeschlagenen neuen Vereinbarung.
+
+Berechnung ausschließlich mit Kalendertagen:
+
+const shiftDays = differenceInCalendarDays(
+  targetAgreementStart,
+  currentAgreementStart
+);
+
+Danach je Requirement:
+
+shifted.periodStart =
+  shiftCalendarDate(
+    requirement.periodStart,
+    shiftDays
+  );
+
+shifted.periodEnd =
+  shiftCalendarDate(
+    requirement.periodEnd,
+    shiftDays
+  );
+
+Nicht verwenden:
+
+- ursprünglichen Snapshot-Start als Referenz
+- Date.getTime()-Differenzen
+- Millisekunden-Offsets
+- Division durch 86.400.000
+- 23:59:59-Sonderlogik
+
+Für die Bauablaufplanung gilt fachlich Calendar-Day-Semantik.
+
+
+3. SHIFTED REQUIREMENTS GENAU EINMAL BERECHNEN
+
+Im Acceptance-Pfad eines Change Proposals darf die Requirement-Verschiebung nicht an zwei unterschiedlichen Stellen unabhängig voneinander erfolgen.
+
+Falsch:
+
+Availability Service
+→ berechnet shiftedRequirements A
+
+später:
+
+Schedule Change Service
+→ berechnet shiftedRequirements B
+
+Richtig:
+
+const shiftedRequirements =
+  shiftRequirementsToWindow(
+    currentRequirements,
+    currentAgreementStart,
+    proposal.start
+  );
+
+Genau dieses erzeugte Array muss anschließend gemeinsam verwendet werden für:
+
+1. Availability-Prüfung
+2. Update der ResourceRequirements
+3. Erzeugung bzw. Aktualisierung der ResourceBookings
+
+Damit muss technisch garantiert sein:
+
+Der Zeitraum, der geprüft wurde, ist exakt derselbe Zeitraum, der danach gespeichert und gebucht wird.
+
+
+4. SCHEDULE CHANGE IN „PREPARE/CHECK“ UND „APPLY“ TRENNEN
+
+Die vorhandene zentrale Schedule-Change-Logik so strukturieren, dass vor der ersten Mutation zunächst der komplette geplante neue Zustand bestimmt wird.
+
+Empfohlene Struktur sinngemäß:
+
+type PreparedScheduleChange = {
+  request;
+  currentAgreementStart;
+  currentAgreementEnd;
+
+  targetStart;
+  targetEnd;
+
+  shiftedRequirements;
+
+  existingRequestBookings;
+
+  availability;
+};
+
+Optionaler Helper:
+
+prepareScheduleChange({
+  tx,
+  serviceRequestId,
+  targetStart,
+  targetEnd
+})
+
+Dieser Helper darf noch KEINE fachlichen DB-Daten verändern.
+
+Er soll ausschließlich:
+
+- Request laden
+- Agreement laden
+- Requirements laden
+- Bookings laden
+- Termine validieren
+- shiftedRequirements erzeugen
+- Availability prüfen
+- Ergebnis zurückgeben
+
+Danach erfolgt die tatsächliche Änderung beispielsweise über:
+
+applyPreparedScheduleChange(...)
+
+oder über die bestehende zentrale Funktion.
+
+Die konkreten Funktionsnamen sind nicht entscheidend.
+
+Entscheidend ist:
+
+PREPARE / VALIDATE
+→ erst danach
+APPLY
+
+
+5. VERBINDLICHE TRANSAKTIONSREIHENFOLGE
+
+Die komplette Acceptance eines Change Proposals muss innerhalb EINER DB-Transaktion erfolgen.
+
+Reihenfolge:
+
+1. Change Proposal laden.
+
+2. Proposal gegen parallele Bearbeitung absichern.
+
+3. Prüfen:
+   status === OPEN
+
+4. Service Request laden.
+
+5. Prüfen, dass ein Current Agreement existiert.
+
+6. Aktuelles Agreement laden:
+   agreedStart
+   agreedEnd
+
+7. Aktuelle ResourceRequirements laden.
+
+8. Aktuelle request-eigene CONFIRMED ResourceBookings laden.
+
+9. proposal.start und proposal.end mit Calendar-Day-Semantik validieren.
+
+10. shiftedRequirements genau einmal erzeugen:
+
+current Agreement
+→ target Agreement
+
+11. Availability genau für diese shiftedRequirements prüfen.
+
+12. Wenn Availability nicht ausreicht:
+    Fehler werfen.
+    Transaction rollback.
+
+13. Erst nach erfolgreicher Availability:
+    neue Leistung-/Planversion erzeugen.
+
+14. Aktuellen Plan bzw. aktuelle Leistung aktualisieren.
+
+15. Current Agreement aktualisieren.
+
+16. ResourceRequirements auf shiftedRequirements aktualisieren.
+
+17. Request-eigene ResourceBookings entsprechend aktualisieren.
+
+18. Proposal konditional auf ACCEPTED setzen.
+
+19. Transaction commit.
+
+Es darf keine fachliche Mutation vor erfolgreicher Availability-Prüfung geben.
+
+
+6. AVAILABILITY-CHECK MUSS DIE EIGENEN ALTEN BOOKINGS DES REQUESTS AUSSCHLIESSEN
+
+Beim Prüfen des vorgeschlagenen neuen Zeitraums dürfen die bisherigen bestätigten Bookings dieses konkreten Service Requests nicht als Fremdbelegung gegen den Request selbst gerechnet werden.
+
+Beispiel:
+
+Request A besitzt bisher:
+
+01.–05.09.
+4 Personen CONFIRMED
+
+Proposal:
+
+10.–14.09.
+
+Die bisherigen Bookings des Request A werden später verschoben/ersetzt.
+
+Sie dürfen deshalb beim Precheck nicht als fremde Kapazitätsbelegung behandelt werden.
+
+Verwende den bereits vorhandenen Exclude-/Ignore-Mechanismus oder ergänze ihn minimal, beispielsweise:
+
+excludeSourceReferenceId: serviceRequestId
+
+oder einen äquivalenten vorhandenen Parameter.
+
+
+WICHTIG:
+
+Ausschließlich die eigenen Bookings dieses Service Requests ignorieren.
+
+Weiterhin vollständig berücksichtigen:
+
+- Bookings anderer Service Requests
+- Bookings anderer Projekte
+- LOCAL_PROJECT
+- MANUAL_BLOCK
+- ABSENCE
+- MAINTENANCE
+- sonstige CONFIRMED Fremdbelegungen
+
+
+7. NICHT MACHBAREN CHANGE PROPOSAL NICHT AKZEPTIEREN
+
+Wenn die Availability-Prüfung ergibt, dass der neue Zeitraum nicht vollständig machbar ist:
+
+HTTP:
+
+409
+
+Fehlercode:
+
+CHANGE_PROPOSAL_NOT_FEASIBLE
+
+Optional vorhandene Availability-Informationen im Fehler zurückgeben, beispielsweise:
+
+{
+  code: "CHANGE_PROPOSAL_NOT_FEASIBLE",
+  availability: ...
+}
+
+Nach diesem Fehler müssen folgende Daten vollständig unverändert sein:
+
+ChangeProposal:
+status = OPEN
+
+Service Request:
+agreedStart unverändert
+agreedEnd unverändert
+
+Plan:
+unverändert
+
+Planversion:
+keine neue Version
+
+ResourceRequirements:
+unverändert
+
+ResourceBookings:
+unverändert
+
+Es darf keinen teilweise übernommenen Schedule Change geben.
+
+
+8. ACCEPT/REJECT-CONCURRENCY BEIBEHALTEN
+
+Die bereits vorhandene Absicherung gegen paralleles Accept/Reject darf nicht verloren gehen.
+
+Der finale Proposal-Statuswechsel muss weiterhin konditional erfolgen:
+
+UPDATE ...
+WHERE id = proposalId
+AND status = 'OPEN'
+RETURNING ...
+
+Danach zwingend:
+
+if (!updatedProposal) {
+  throw conflict(
+    "CHANGE_PROPOSAL_ALREADY_RESOLVED"
+  );
+}
+
+Falls aktuell zusätzlich:
+
+- Row Lock
+- PostgreSQL Advisory Lock
+- Transaction Locking
+
+vorhanden ist:
+
+beibehalten.
+
+
+9. KEINE AUTOMATISCHE VERSCHIEBUNG VON NACHFOLGERLEISTUNGEN
+
+Dieser Schedule Change darf ausschließlich die unmittelbar betroffene Leistung bzw. den unmittelbar betroffenen Service Request verändern.
+
+Nicht automatisch ändern:
+
+- Successor-Leistungen
+- abhängige Service Requests
+- nachgelagerte Plantermine
+
+Change Impact bleibt lediglich Information für den AG.
+
+
+10. VERPFLICHTENDE TESTS FÜR DIESEN SCHRITT
+
+Mindestens folgende Tests ergänzen bzw. vorhandene Tests korrigieren.
+
+
+TEST 1 – EINE TERMINÄNDERUNG
+
+Ausgang:
+
+Agreement:
+01.–05.09.
+
+Requirement:
+02.–03.09.
+
+Proposal:
+06.–10.09.
+
+Nach Acceptance:
+
+Agreement:
+06.–10.09.
+
+Requirement:
+07.–08.09.
+
+Availability muss für:
+07.–08.09.
+
+geprüft worden sein.
+
+
+TEST 2 – ZWEI AUFEINANDERFOLGENDE TERMINÄNDERUNGEN
+
+Ausgang:
+
+Agreement:
+01.–05.09.
+
+Requirement:
+02.–03.09.
+
+Erste Acceptance:
+
+Agreement:
+06.–10.09.
+
+Requirement:
+07.–08.09.
+
+Zweite Proposal Acceptance:
+
+Agreement:
+11.–15.09.
+
+Erwartung:
+
+Availability geprüft für:
+12.–13.09.
+
+ResourceRequirement gespeichert:
+12.–13.09.
+
+ResourceBooking später ebenfalls:
+12.–13.09.
+
+Explizit prüfen, dass NICHT:
+
+17.–18.09.
+
+verwendet wird.
+
+Dieser Test muss den produktiven Change-Acceptance-Pfad verwenden.
+
+Nicht nur shiftRequirementsToWindow(...) isoliert testen.
+
+
+TEST 3 – NEUER ZEITRAUM NICHT VERFÜGBAR
+
+Ausgang:
+
+Agreement:
+01.–05.09.
+
+Proposal:
+10.–14.09.
+
+Der neue Zeitraum besitzt einen echten Ressourcen-Konflikt.
+
+Acceptance:
+
+→ 409 CHANGE_PROPOSAL_NOT_FEASIBLE
+
+Danach DB prüfen:
+
+Proposal.status:
+OPEN
+
+Agreement:
+weiterhin 01.–05.09.
+
+Requirements:
+unverändert
+
+Bookings:
+unverändert
+
+Plan:
+unverändert
+
+keine neue Planversion.
+
+
+TEST 4 – EIGENES ALTES BOOKING BLOCKIERT NICHT DEN PRECHECK
+
+Request besitzt bisher eigene CONFIRMED Bookings.
+
+Beim Availability Check des neuen Proposal-Zeitraums:
+
+diese eigenen alten Bookings werden ausgeschlossen.
+
+Andere Bookings bleiben berücksichtigt.
+
+
+TEST 5 – CONCURRENT ACCEPT / REJECT
+
+Zwei parallele Resolution Requests.
+
+Erwartung:
+
+genau einer erfolgreich.
+
+Der zweite erhält:
+
+409 CHANGE_PROPOSAL_ALREADY_RESOLVED
+
+Der fachliche Zustand entspricht ausschließlich dem Gewinner.
+
+
+11. ABSCHLUSSKONTROLLE FÜR DIESEN SCHRITT
+
+Vor Abschluss dieses Schritts global prüfen:
+
+- Wo wird shiftRequirementsToWindow(...) aufgerufen?
+- Gibt es noch einen Pfad, der gegen originalSnapshotStart verschiebt?
+- Gibt es noch getTime()-basierte Requirement-Verschiebung?
+- Wird Availability an anderer Stelle nochmals unabhängig für einen anders erzeugten Zeitraum berechnet?
+- Gibt es Mutationen vor der Availability-Prüfung?
+- Kann ein nicht machbarer Proposal teilweise Plan oder Agreement ändern?
+
+Diese alten Pfade beseitigen.
+
+Nach diesem Schritt muss gelten:
+
+Change Proposal
+→ shiftedRequirements einmal bestimmen
+→ exakt diese Requirements prüfen
+→ exakt diese Requirements speichern
+→ exakt diese Requirements später für Bookings verwenden
+
+Eine zweite oder weitere Terminänderung muss genauso korrekt funktionieren wie die erste.
