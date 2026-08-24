@@ -384,7 +384,10 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
         anOrgId,
         trade:                tradeValue,
         workPackageReference: workPackageReference ?? null,
-        assignmentStatus:     assignmentStatus ?? "ACTIVE",
+        // Contractor assignments are fachliche Zuordnungen only. They never
+        // establish project membership; membership becomes ACTIVE only after
+        // the AN accepts a PROJECT_INVITATION.
+        assignmentStatus:     assignmentStatus ?? "PLANNED",
         validFrom:            validFrom ?? null,
         validTo:              validTo ?? null,
         createdByUserId:      (req.user as any)?.userId ?? null,

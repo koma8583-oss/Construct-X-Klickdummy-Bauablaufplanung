@@ -161,8 +161,12 @@ async function resolveInvitation(id: string, anOrgId: string, decision: "ACTIVE"
   const [membership] = await db.select().from(projectMembershipsTable)
     .where(and(eq(projectMembershipsTable.id, id), eq(projectMembershipsTable.anOrgId, anOrgId))).limit(1);
   if (!membership) throw new ProjectMembershipError("PROJECT_INVITATION_NOT_FOUND", "Einladung nicht gefunden.");
+  if (membership.status === decision) return membership;
   if (membership.status !== "INVITED") {
     throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
+  }
+  if (membership.invitationExpiresAt && membership.invitationExpiresAt <= now) {
+    throw new ProjectMembershipError("PROJECT_INVITATION_EXPIRED", "Die Einladung ist abgelaufen.");
   }
   const responseMessageId = `project-invitation-response-${membership.invitationId}-${decision}`;
   const [updated] = await db.transaction(async (tx) => {
@@ -219,6 +223,8 @@ export async function revokeMembership(id: string, agOrgId: string) {
     eq(projectMembershipsTable.agOrgId, agOrgId),
     // Both pending invitations and active memberships may be revoked.
     // Resolved memberships cannot be silently reactivated.
+    // An open invitation can also be withdrawn before it is accepted.
+    // An already rejected/revoked relationship is intentionally immutable.
     eq(projectMembershipsTable.status, "ACTIVE"),
   )).returning();
   if (!updated) throw new ProjectMembershipError("PROJECT_MEMBERSHIP_NOT_FOUND", "Aktive Projektmitgliedschaft nicht gefunden.");
