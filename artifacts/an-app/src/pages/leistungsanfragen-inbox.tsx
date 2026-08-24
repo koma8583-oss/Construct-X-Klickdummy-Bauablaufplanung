@@ -342,14 +342,19 @@ export default function LeistungsanfragenInboxPage() {
             return (
               <article
                 key={item.id}
-                className={`flex min-w-0 flex-col rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
+                className={`flex min-w-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={item.requestNumber}>
+                      {item.requestNumber}
+                    </p>
+                    <StatusBadge status={item.status} />
+                  </div>
                   <div className="min-w-0">
-                    <p className="font-mono text-xs text-muted-foreground">{item.requestNumber}</p>
                     <Link
                       href={`/leistungsanfragen/${item.id}`}
-                      className="mt-1 block truncate text-base font-semibold hover:text-primary"
+                      className="block line-clamp-2 text-lg font-semibold leading-tight hover:text-primary"
                       title={item.taktBezeichnung ?? undefined}
                     >
                       {item.taktBezeichnung ?? 'Leistungsanfrage'}
@@ -358,13 +363,16 @@ export default function LeistungsanfragenInboxPage() {
                       {agOrgName ?? 'Auftraggeber nicht angegeben'}
                     </p>
                   </div>
-                  <StatusBadge status={item.status} />
                 </div>
 
                 {(zone || gewerk) && (
-                  <p className="mt-3 truncate text-xs text-muted-foreground">
-                    {[zone, gewerk].filter(Boolean).join(' · ')}
-                  </p>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {[zone, gewerk].filter(Boolean).map((value) => (
+                      <span key={value} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                        {value}
+                      </span>
+                    ))}
+                  </div>
                 )}
 
                 {item.openProposal && (
@@ -373,10 +381,10 @@ export default function LeistungsanfragenInboxPage() {
                   </div>
                 )}
 
-                <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border/70 py-3">
+                <div className="mt-4 grid grid-cols-1 gap-4 border-y border-border/70 py-4 sm:grid-cols-2 sm:gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Antwortfrist</p>
-                    <p className="mt-1 text-sm">
+                    <p className="text-xs font-medium text-muted-foreground">Antwortfrist</p>
+                    <p className="mt-1 text-sm font-semibold">
                       {item.responseRequiredBy
                         ? format(new Date(item.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
                         : 'Keine'}
@@ -386,8 +394,8 @@ export default function LeistungsanfragenInboxPage() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Vereinbarung</p>
-                    <p className="mt-1 text-sm">
+                    <p className="text-xs font-medium text-muted-foreground">Vereinbarung</p>
+                    <p className="mt-1 text-sm font-semibold">
                       {item.currentAgreement
                         ? `${format(new Date(item.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(item.currentAgreement.end), 'dd.MM.yy')}`
                         : 'Noch keine'}
@@ -401,7 +409,7 @@ export default function LeistungsanfragenInboxPage() {
                   </div>
                 </div>
 
-                <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+                <div className="mt-auto flex flex-col-reverse items-stretch gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {typeof remCount === 'number' && remCount > 0 ? (
                       <span className="flex items-center gap-1 text-orange-500">
@@ -413,8 +421,8 @@ export default function LeistungsanfragenInboxPage() {
                     )}
                   </div>
                   {respond ? (
-                    <Link href={`/leistungsanfragen/${item.id}`}>
-                      <Button size="sm" className="gap-1">
+                    <Link href={`/leistungsanfragen/${item.id}`} className="sm:shrink-0">
+                      <Button size="sm" className="w-full gap-1 sm:w-auto">
                         Antworten <ChevronRight size={14} />
                       </Button>
                     </Link>
