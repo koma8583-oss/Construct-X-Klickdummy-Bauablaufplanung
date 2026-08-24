@@ -458,7 +458,7 @@ async function executeCheckRules(
 
   // Overlap: booking.startAt < bookingWindowEnd AND
   // booking.endAt > bookingWindowStart. Exclude CANCELLED bookings.
-  const overlappingBookings = await db
+  const overlappingBookings = await executor
     .select({
       id: resourceBookingsTable.id,
       resourceId: resourceBookingsTable.resourceId,
@@ -479,6 +479,7 @@ async function executeCheckRules(
         gt(resourceBookingsTable.endAt, bookingWindowStart),
         ...(excludeSourceReferenceId
           ? [or(
+            ne(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
             ne(resourceBookingsTable.sourceReferenceId, excludeSourceReferenceId),
             isNull(resourceBookingsTable.sourceReferenceId),
           )]

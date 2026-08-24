@@ -321,8 +321,15 @@ export async function resolveChangeProposal(input: {
   status: "ACCEPTED" | "REJECTED";
 }) {
   return db.transaction(async (tx) => {
-     const [proposal] = await tx.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, input.proposalId)).limit(1);
-     if (!proposal || proposal.status !== "OPEN") throw Object.assign(new Error("Offener Vorschlag nicht gefunden"), { statusCode: 404 });
+     // All decisions for a request share one critical section. This keeps the
+     // OPEN read, feasibility preparation and conditional resolution atomic
+     // against concurrent accept/reject calls and proposal creation.
+     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.requestId}, 0))`);
+      const [proposal] = await tx.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, input.proposalId)).limit(1);
+      if (!proposal) throw Object.assign(new Error("Offener Vorschlag nicht gefunden"), { statusCode: 404 });
+      if (proposal.status !== "OPEN") {
+        throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
+      }
     if (proposal.leistungsanfrageId !== input.requestId) throw Object.assign(new Error("Vorschlag gehört nicht zu dieser Anfrage"), { statusCode: 404 });
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, proposal.leistungsanfrageId)).limit(1);
     if (!request || !partyForOrg(request, input.orgId) || proposal.proposerOrgId === input.orgId) {

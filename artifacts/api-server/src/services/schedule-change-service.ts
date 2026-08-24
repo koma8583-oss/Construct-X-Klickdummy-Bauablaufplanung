@@ -116,6 +116,7 @@ export async function prepareAcceptedScheduleChange(
     eq(resourceBookingsTable.nuOrgId, requestRow.request.nuOrgId),
     eq(resourceBookingsTable.status, "CONFIRMED"),
     or(
+      ne(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
       ne(resourceBookingsTable.sourceReferenceId, input.serviceRequestId),
       isNull(resourceBookingsTable.sourceReferenceId),
     ),
