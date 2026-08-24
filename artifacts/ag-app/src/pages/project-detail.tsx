@@ -100,7 +100,6 @@ import { useAuth } from '@/contexts/auth-context';
 import {
   useGetAgProjectOverview,
   useListProjectSubcontractors,
-  useCreateProjectSubcontractor,
   useUpdateProjectSubcontractor,
   useDeactivateProjectSubcontractor,
   getListProjectSubcontractorsQueryKey,
@@ -580,7 +579,6 @@ export default function ProjectDetail() {
   const deleteDep = useDeleteTaktDependency();
   
   const updateProject = useUpdateProject();
-  const createAssignment = useCreateProjectSubcontractor();
   const updateAssignment = useUpdateProjectSubcontractor();
   const deactivateAssignment = useDeactivateProjectSubcontractor();
 
@@ -596,16 +594,6 @@ export default function ProjectDetail() {
   const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
   const [vergabeResponseRequiredByError, setVergabeResponseRequiredByError] = useState<string>('');
 
-  // State for new AN assignment dialog (controlled form)
-  const [newAnOrgId, setNewAnOrgId] = useState('');
-  const [newTrades, setNewTrades] = useState<string[]>([]);
-  const [newTradeInput, setNewTradeInput] = useState('');
-  const [newWorkPackage, setNewWorkPackage] = useState('');
-  const [newValidFrom, setNewValidFrom] = useState('');
-  const [newValidTo, setNewValidTo] = useState('');
-  const [newAssignmentStatus, setNewAssignmentStatus] = useState<'PLANNED' | 'ACTIVE'>('PLANNED');
-
-  const [isAssignAnOpen, setIsAssignAnOpen] = useState(false);
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
 
   // Controlled state for the edit-assignment form — synced on open so reopening
@@ -1245,62 +1233,6 @@ export default function ProjectDetail() {
           toast({ title: 'Zuordnung deaktiviert' });
         },
         onError: (err) => toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
-      });
-    }
-  };
-
-  const resetNewAssignmentForm = () => {
-    setNewAnOrgId('');
-    setNewTrades([]);
-    setNewTradeInput('');
-    setNewWorkPackage('');
-    setNewValidFrom('');
-    setNewValidTo('');
-    setNewAssignmentStatus('PLANNED');
-  };
-
-  const handleAddTrade = () => {
-    const val = newTradeInput.trim();
-    if (val && !newTrades.includes(val)) setNewTrades(prev => [...prev, val]);
-    setNewTradeInput('');
-  };
-
-  const handleCreateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // One assignment per trade; if no trades → one assignment for all trades (trade: null)
-    const tradesToCreate: (string | undefined)[] = newTrades.length > 0 ? newTrades : [undefined];
-    let remaining = tradesToCreate.length;
-    let successCount = 0;
-
-    const onDone = (success: boolean) => {
-      if (success) successCount++;
-      remaining--;
-      if (remaining > 0) return;
-      queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
-      if (successCount > 0) {
-        toast({ title: successCount > 1 ? `${successCount} Zuordnungen angelegt` : 'AN-Zuordnung angelegt' });
-        setIsAssignAnOpen(false);
-        resetNewAssignmentForm();
-      }
-    };
-
-    for (const trade of tradesToCreate) {
-      createAssignment.mutate({
-        projectId,
-        data: {
-          anOrgId: newAnOrgId,
-          trade: trade ?? undefined,
-          workPackageReference: newWorkPackage || undefined,
-          validFrom: newValidFrom || undefined,
-          validTo: newValidTo || undefined,
-          assignmentStatus: newAssignmentStatus,
-        }
-      }, {
-        onSuccess: () => onDone(true),
-        onError: (err) => {
-          toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
-          onDone(false);
-        }
       });
     }
   };

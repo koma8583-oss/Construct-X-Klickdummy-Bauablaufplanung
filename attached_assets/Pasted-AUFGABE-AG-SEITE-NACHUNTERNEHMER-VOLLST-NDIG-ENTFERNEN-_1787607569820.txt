@@ -1,0 +1,310 @@
+AUFGABE – AG-SEITE „NACHUNTERNEHMER“ VOLLSTÄNDIG ENTFERNEN
+
+ZIEL
+
+Die eigenständige AG-Seite „Nachunternehmer“ wird nicht mehr benötigt.
+
+Die Auswahl und Einbindung eines AN erfolgt künftig ausschließlich projektbezogen:
+
+Projekt öffnen
+→ „Zum Projekt einladen“
+→ Datenraumteilnehmer auswählen
+→ Einladung senden
+→ AN stimmt zu
+→ AN wird Projektpartner
+→ anschließend Leistung zuordnen
+
+Es soll KEINE zusätzliche projektübergreifende Seite:
+
+„Datenraumteilnehmer“
+„Partner“
+„Nachunternehmer“
+oder ähnliche globale Teilnehmerübersicht
+
+angelegt werden.
+
+
+1. AG-NAVIGATION ANPASSEN
+
+Den Menüpunkt:
+
+„Nachunternehmer“
+
+vollständig aus der AG-Navigation entfernen.
+
+Keine Ersatznavigation „Datenraumteilnehmer“ hinzufügen.
+
+
+2. ROUTE ENTFERNEN
+
+Die eigenständige AG-Route für die Nachunternehmerseite entfernen.
+
+Beispielsweise, abhängig vom aktuellen Routing:
+
+/nachunternehmer
+
+/ag/nachunternehmer
+
+/subcontractors
+
+oder vorhandenes Äquivalent.
+
+Route nicht nur ausblenden, sondern aus dem produktiven Router entfernen, sofern sie keine andere benötigte Funktion besitzt.
+
+
+3. PAGE-KOMPONENTE PRÜFEN
+
+Die zugehörige Page-Komponente identifizieren.
+
+Wenn sie ausschließlich für die globale Nachunternehmerseite verwendet wird:
+
+Datei entfernen.
+
+Wenn Teilfunktionen noch an anderer Stelle verwendet werden:
+
+nur wirklich wiederverwendete Komponenten behalten.
+
+
+4. DIREKTE LINKS ENTFERNEN
+
+Global nach Links suchen auf:
+
+Nachunternehmer
+/subcontractors
+/nachunternehmer
+
+Alle Links entfernen, die zur alten globalen Seite führen.
+
+
+5. KEIN REDIRECT AUF EINE NEUE TEILNEHMERSEITE
+
+Nicht:
+
+/nachunternehmer
+→ /datenraumteilnehmer
+
+umleiten.
+
+Es soll keine entsprechende globale Übersicht geben.
+
+
+6. OPTIONALER LEGACY-REDIRECT
+
+Falls externe/deep links während der PoC-Phase nicht mit einer 404 enden sollen, darf die alte Route vorübergehend auf:
+
+/projekte
+
+bzw. die AG-Projektübersicht
+
+weiterleiten.
+
+Bevorzugt allerdings die Route vollständig entfernen, wenn keine Rückwärtskompatibilität erforderlich ist.
+
+
+7. PROJEKTE BLEIBEN DER EINZIGE EINSTIEGSPUNKT
+
+AN-Verwaltung erfolgt ausschließlich innerhalb eines Projekts.
+
+Auf der Projektseite müssen vorhanden bleiben:
+
+„Projektpartner“
+
+„Zum Projekt einladen“
+
+Status der ausstehenden Einladungen
+
+aktive Projektpartner
+
+spätere Leistungszuordnung
+
+
+8. PARTICIPANT DIRECTORY BLEIBT TECHNISCH ERHALTEN
+
+WICHTIG:
+
+Den ParticipantDirectory-Service bzw.:
+
+GET /dataspace/participants
+
+NICHT entfernen.
+
+Er wird weiterhin für den Dialog:
+
+„Zum Projekt einladen“
+
+innerhalb eines Projekts benötigt.
+
+Entfernt wird nur die eigenständige globale AG-Seite.
+
+
+9. KEINE GLOBALE PARTICIPANT-LISTE IM AG-FRONTEND
+
+ParticipantDirectory wird nur kontextbezogen geladen, wenn der AG beispielsweise den Dialog:
+
+„Zum Projekt einladen“
+
+öffnet.
+
+Keine permanente globale Teilnehmerübersicht einführen.
+
+
+10. BACKEND NICHT UNNÖTIG ENTFERNEN
+
+Nicht automatisch löschen:
+
+organizations
+dataspace_participants
+ParticipantDirectory
+ParticipantResolver
+
+Diese Strukturen werden für Discovery, Identity Mapping und Projekteinladungen weiterhin benötigt.
+
+
+11. ALTE CRUD-FUNKTIONEN PRÜFEN
+
+Falls die globale Nachunternehmerseite Funktionen enthielt wie:
+
+AN anlegen
+AN bearbeiten
+AN löschen
+direkt Projekt zuordnen
+
+prüfen, ob diese noch anderweitig fachlich gebraucht werden.
+
+Für den neuen Workflow gilt:
+
+Ein AN wird nicht mehr über diese Seite einem Projekt zugeordnet.
+
+Die Projektbeziehung entsteht ausschließlich über:
+
+PROJECT_INVITATION
+→ Zustimmung
+→ ACTIVE Project Membership.
+
+
+12. BEGRIFFE GLOBAL PRÜFEN
+
+Im AG-Frontend nach folgenden Begriffen suchen:
+
+„Nachunternehmer“
+„Nachunternehmen“
+„AN verwalten“
+„AN zuordnen“
+
+Nicht pauschal alle Vorkommen löschen.
+
+Nur globale Verwaltungs-/Navigationsbegriffe entfernen.
+
+Fachliche Begriffe innerhalb einer konkreten Leistung oder Projektbeziehung dürfen bestehen bleiben, wenn sie dort sinnvoll sind.
+
+
+13. PROJEKTANSICHT NICHT BESCHÄDIGEN
+
+Folgende Funktionen müssen weiterhin funktionieren:
+
+Projekt öffnen
+
+→ Projektpartner anzeigen
+
+→ „Zum Projekt einladen“
+
+→ Participant Directory laden
+
+→ Einladung senden
+
+→ Einladung ausstehend anzeigen
+
+→ nach Zustimmung Projektpartner ACTIVE anzeigen
+
+→ Leistung zuordnen
+
+
+14. EMPTY STATE
+
+Falls bisher auf einer Projektseite ein Link zur globalen Nachunternehmerverwaltung angezeigt wurde:
+
+entfernen.
+
+Stattdessen direkt anbieten:
+
+„Zum Projekt einladen“
+
+
+15. TESTS ANPASSEN
+
+Tests entfernen oder anpassen, die ausschließlich die globale Nachunternehmerseite testen.
+
+Navigationstest:
+
+„Nachunternehmer“ darf nicht mehr im AG-Menü erscheinen.
+
+Routingtest:
+
+alte Page ist nicht mehr Teil der normalen AG-Navigation.
+
+Projekt-Invite-Test:
+
+Participant Directory bleibt über „Zum Projekt einladen“ erreichbar.
+
+
+16. GLOBALER CLEANUP
+
+Suchen nach:
+
+Nachunternehmer
+subcontractors
+/nachunternehmer
+/ag/nachunternehmer
+
+und prüfen:
+
+- Navigation
+- Router
+- Pages
+- Breadcrumbs
+- Dashboard Quick Links
+- Tests
+- Story-/Mock-Daten
+- alte Imports
+
+
+17. NICHT ÄNDERN
+
+Nicht entfernen:
+
+project_memberships
+
+project_invitations
+
+ParticipantDirectory
+
+dataspace_participants
+
+PROJECT_INVITATION
+
+PROJECT_INVITATION_RESPONSE
+
+project_contractors, sofern diese Tabelle weiterhin für Gewerk-/Arbeitspaketinformationen benötigt wird.
+
+
+DEFINITION OF DONE
+
+1. Im AG-Menü existiert keine Seite „Nachunternehmer“ mehr.
+
+2. Es existiert keine Ersatzseite „Datenraumteilnehmer“.
+
+3. Es existiert keine projektübergreifende AN-/Participant-Übersicht.
+
+4. AN werden ausschließlich innerhalb eines Projekts über „Zum Projekt einladen“ ausgewählt.
+
+5. Der Einladungsdialog nutzt weiterhin ParticipantDirectory.
+
+6. Aktive AN werden innerhalb des Projekts als „Projektpartner“ angezeigt.
+
+7. Leistungszuordnung erfolgt erst nach ACTIVE Project Membership.
+
+8. Alte direkte Projektzuordnung über die Nachunternehmerseite ist nicht mehr möglich.
+
+9. Keine verwaisten Navigationseinträge oder Links verbleiben.
+
+10. Typecheck, Tests und Build laufen erfolgreich.
