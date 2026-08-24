@@ -23,6 +23,14 @@ export interface ScheduleDelta {
   hasChange: boolean;
 }
 
+export function maxDate(...values: Array<Date | string | null | undefined>): Date | null {
+  const dates = values
+    .filter((value): value is Date | string => value != null)
+    .map((value) => value instanceof Date ? value : new Date(value))
+    .filter((value) => !Number.isNaN(value.getTime()));
+  return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null;
+}
+
 function dateOnly(value: Date | string): string {
   return (value instanceof Date ? value.toISOString() : value).slice(0, 10);
 }
@@ -73,9 +81,9 @@ export type CoordinationTimelineExtras = {
   responseAt?: Date | null;
   decisionAt?: Date | null;
   agreedAt?: Date | null;
-  clarifications?: Array<{ id: string; askedByOrgId: string; createdAt: Date; answeredAt: Date | null; status: string }>;
-  constraints?: Array<{ id: string; createdAt: Date; resolvedAt: Date | null; reportedByRole: CoordinationParty; status: string }>;
-  readiness?: { updatedAt: Date } | null;
+  clarifications?: Array<{ id: string; askedByOrgId: string; createdAt: Date; answeredAt: Date | null; updatedAt?: Date | null; status: string }>;
+  constraints?: Array<{ id: string; createdAt: Date; resolvedAt: Date | null; reportedByRole: CoordinationParty; responsibleRole?: CoordinationParty; status: string }>;
+  readiness?: { updatedAt: Date; updatedByOrgId?: string | null; updatedByRole?: CoordinationParty | "SYSTEM" } | null;
 };
 
 export function buildCoordinationTimeline(request: {
@@ -128,7 +136,7 @@ export function buildCoordinationTimeline(request: {
     ]),
     ...(extras.constraints ?? []).flatMap((constraint) => [
       { type: "CONSTRAINT_REPORTED", at: constraint.createdAt, actorRole: constraint.reportedByRole, constraintId: constraint.id },
-      ...(constraint.status === "RESOLVED" && constraint.resolvedAt ? [{ type: "CONSTRAINT_RESOLVED", at: constraint.resolvedAt, actorRole: constraint.responsibleRole, constraintId: constraint.id }] : []),
+      ...(constraint.status === "RESOLVED" && constraint.resolvedAt ? [{ type: "CONSTRAINT_RESOLVED", at: constraint.resolvedAt, actorRole: constraint.responsibleRole ?? constraint.reportedByRole, constraintId: constraint.id }] : []),
       ...(constraint.status === "CANCELLED" && constraint.resolvedAt ? [{ type: "CONSTRAINT_CANCELLED", at: constraint.resolvedAt, actorRole: constraint.reportedByRole, constraintId: constraint.id }] : []),
     ]),
     ...(extras.readiness ? [{ type: "READINESS_CHANGED", at: extras.readiness.updatedAt, actorRole: extras.readiness.updatedByRole ?? "SYSTEM" as const, actorOrgId: extras.readiness.updatedByOrgId }] : []),
@@ -149,14 +157,8 @@ export async function getCoordination(requestId: string, orgId: string) {
       .orderBy(desc(leistungsantwortenTable.createdAt)),
     db.select().from(leistungsantwortEntscheidungenTable)
       .where(eq(leistungsantwortEntscheidungenTable.leistungsanfrageId, requestId)),
-    db.select().from(serviceClarificationsTable).where(and(
-      eq(serviceClarificationsTable.serviceRequestId, requestId),
-      eq(serviceClarificationsTable.status, "OPEN"),
-    )),
-    db.select().from(serviceConstraintsTable).where(and(
-      eq(serviceConstraintsTable.serviceRequestId, requestId),
-      eq(serviceConstraintsTable.status, "OPEN"),
-    )),
+    db.select().from(serviceClarificationsTable).where(eq(serviceClarificationsTable.serviceRequestId, requestId)),
+    db.select().from(serviceConstraintsTable).where(eq(serviceConstraintsTable.serviceRequestId, requestId)),
     db.select().from(serviceReadinessChecksTable)
       .where(eq(serviceReadinessChecksTable.serviceRequestId, requestId))
       .limit(1),
@@ -165,6 +167,10 @@ export async function getCoordination(requestId: string, orgId: string) {
   const currentAgreement = request.agreedStart && request.agreedEnd ? { start: request.agreedStart, end: request.agreedEnd } : null;
   const state = deriveCoordinationState({ openProposal, currentAgreement, guOrgId: request.guOrgId, nuOrgId: request.nuOrgId });
   const response = responses[0];
+  const decision = response ? decisions.find((row) => row.responseId === response.id) ?? null : null;
+  const initialDecision = decisions
+    .filter((row) => ["CONFIRM_ACCEPTED", "ACCEPT_ALTERNATIVE"].includes(row.decisionType))
+    .sort((a, b) => a.decidedAt.getTime() - b.decidedAt.getTime())[0] ?? null;
   const clarification = clarifications[0];
   const constraint = constraints[0];
   const readiness = readinessRows[0];
@@ -221,12 +227,32 @@ export async function getCoordination(requestId: string, orgId: string) {
     actionRequiredBy: action.actionRequiredBy,
     responseRequiredBy: request.responseRequiredBy,
     scheduleDelta: delta,
-    lastChangedAt: new Date(Math.max(
-      request.updatedAt.getTime(),
-      response?.createdAt.getTime() ?? 0,
-      ...proposals.flatMap((proposal) => [proposal.createdAt.getTime(), proposal.resolvedAt?.getTime() ?? 0]),
-    )).toISOString(),
-    timeline: buildCoordinationTimeline(request, proposals, { responseAt: response?.createdAt }),
+    lastChangedAt: (maxDate(
+      request.updatedAt,
+      response?.createdAt,
+      ...decisions.flatMap((row) => [row.createdAt, row.decidedAt]),
+      ...proposals.flatMap((proposal) => [proposal.createdAt, proposal.resolvedAt]),
+      ...constraints.flatMap((row) => [row.createdAt, row.updatedAt, row.resolvedAt]),
+      ...clarifications.flatMap((row) => [row.createdAt, row.updatedAt, row.answeredAt]),
+      readiness?.updatedAt,
+    ) ?? request.updatedAt).toISOString(),
+    timeline: buildCoordinationTimeline(request, proposals, {
+      responseAt: response?.createdAt,
+      decisionAt: initialDecision?.decidedAt ?? null,
+      clarifications: clarifications.map((row) => ({
+        ...row,
+        updatedAt: row.updatedAt,
+      })),
+      constraints: constraints.map((row) => ({
+        ...row,
+        responsibleRole: row.responsibleOrgId === request.guOrgId ? "AG" : "AN",
+      })),
+      readiness: readiness ? {
+        updatedAt: readiness.updatedAt,
+        updatedByOrgId: readiness.updatedByOrgId,
+        updatedByRole: readiness.updatedByOrgId === request.guOrgId ? "AG" : readiness.updatedByOrgId === request.nuOrgId ? "AN" : "SYSTEM",
+      } : null,
+    }),
   };
 }
 

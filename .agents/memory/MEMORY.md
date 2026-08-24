@@ -32,3 +32,4 @@
 - [Coordination regression contracts](coordination-regression-contracts.md) — regression fixtures must use canonical Leistungsanfrage states, idempotent response codes, linked resource types, and current UI props.
 - [Concurrent agent edits](concurrent-agent-edits.md) — serialize changes to shared backend services; parallel writers can overwrite each other’s working copy.
 - [Coordination and booking sources](coordination-and-booking-sources.md) — derive objective next actions centrally; persist confirmed bookings only from unaggregated booking requirements.
+- [Timeline and dependency authority](timeline-and-dependency-authority.md) — initial agreement comes only from a real decision; service-request dependencies map to canonical Leistung dependencies.

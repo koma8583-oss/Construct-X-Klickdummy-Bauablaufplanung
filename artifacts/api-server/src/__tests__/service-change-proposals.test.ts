@@ -286,6 +286,6 @@ describe("proposal calculations and history ordering", () => {
       resolvedByUserId: NU_USER,
     }]);
     expect(timeline.map((event) => event.type))
-      .toEqual(["REQUEST_CREATED", "REQUEST_SENT", "REQUEST_DELIVERED", "PROPOSED", "AGREEMENT_REACHED", "CHANGE_PROPOSAL_ACCEPTED"]);
+      .toEqual(["REQUEST_CREATED", "REQUEST_SENT", "REQUEST_DELIVERED", "CHANGE_PROPOSAL_CREATED", "CHANGE_PROPOSAL_ACCEPTED"]);
   });
 });

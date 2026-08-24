@@ -1,0 +1,655 @@
+SCHRITT 5 – DATASPACE INBOUND UND OPENAPI PRODUKTIV FERTIGSTELLEN
+
+ZIEL
+
+Die vorhandene Dataspace-Inbound-Struktur darf nicht nur aus ungenutztem Code bestehen.
+
+Eingehende Service Requests und Service Responses müssen:
+
+- über einen tatsächlich registrierten Endpoint eintreffen,
+- idempotent verarbeitet werden,
+- einen echten Domain-Service aufrufen,
+- nur nach erfolgreicher Domain-Verarbeitung als PROCESSED markiert werden.
+
+Zusätzlich müssen die vorhandenen Coordination APIs in OpenAPI beschrieben werden.
+
+Prüfe insbesondere:
+
+- routes/dataspace-inbound.ts
+- routes/index.ts
+- rest-dataspace-exchange.ts
+- inbound-exchange-service.ts
+- DataspaceExchange Interface
+- Domain Services für eingehende Service Requests / Responses
+- new LocalHubTransport()
+- lib/api-spec/openapi.yaml
+- bestehende API-Codegen-Scripts
+
+
+1. DATASPACE-INBOUND-ROUTER PRODUKTIV REGISTRIEREN
+
+Prüfen, ob:
+
+routes/dataspace-inbound.ts
+
+im zentralen Router tatsächlich importiert und registriert wird.
+
+Falls nicht:
+
+entsprechend bestehender Routerstruktur registrieren.
+
+Beispiel sinngemäß:
+
+import { dataspaceInboundRouter }
+  from "./dataspace-inbound";
+
+router.use(dataspaceInboundRouter);
+
+oder mit bestehendem Prefix:
+
+router.use(
+  "/dataspace/inbound",
+  dataspaceInboundRouter
+);
+
+Nicht doppelte Prefixes erzeugen.
+
+Die tatsächlich vorhandene Route-Struktur berücksichtigen.
+
+
+2. ROUTE-LAUFZEITTEST
+
+Nach Registrierung muss mindestens erreichbar sein:
+
+POST .../dataspace/inbound/service-requests
+
+POST .../dataspace/inbound/service-responses
+
+entsprechend tatsächlich definierten Pfaden.
+
+Test über API-Integration, nicht nur Router-Unit-Test.
+
+
+3. DataspaceExchange INTERFACE VOLLSTÄNDIG MACHEN
+
+Falls das Interface aktuell nur publish-Methoden definiert, aber die Implementierung zusätzlich:
+
+receiveServiceRequest(...)
+receiveServiceResponse(...)
+
+besitzt:
+
+diese Receive-Methoden in das zentrale Interface aufnehmen.
+
+Damit Consumer nicht gegen konkrete RestDataspaceExchange-Klasse programmieren müssen.
+
+
+4. RECEIVE DARF NICHT MIT undefined PROCESSOR AUFGERUFEN WERDEN
+
+Aktuell darf kein Pfad existieren wie:
+
+receiveServiceRequest(
+  payload,
+  undefined
+)
+
+wenn anschließend:
+
+PROCESSED
+
+gesetzt wird.
+
+Für eingehende Service Requests einen echten Processor übergeben.
+
+Beispiel:
+
+await exchange.receiveServiceRequest(
+  payload,
+  async (validatedPayload) => {
+    await incomingServiceRequestService.process(
+      validatedPayload
+    );
+  }
+);
+
+Analog für Service Response.
+
+
+5. BESTEHENDE DOMAIN-SERVICES VERWENDEN
+
+Keine zweite Request-/Response-Persistenzlogik im Dataspace-Route-Handler implementieren.
+
+Route:
+
+- Authentifizierung / Transportvalidierung
+- Payload Parsing
+- DataspaceExchange.receive...
+
+Processor:
+
+- vorhandenen Domain Service aufrufen
+
+Domain Service:
+
+- eigentliche fachliche Speicherung / Statusänderung
+
+Keine doppelte Businesslogik im Transport Layer.
+
+
+6. SERVICE REQUEST INBOUND FLOW
+
+Soll logisch exakt sein:
+
+HTTP Receive
+
+→ Payload validieren
+
+→ messageId bestimmen
+
+→ Inbound Idempotency Claim
+
+→ Status RECEIVED
+
+→ vorhandenen Domain Service aufrufen
+
+→ Request fachlich erzeugen/aktualisieren
+
+→ Status PROCESSED
+
+→ Success Response
+
+
+7. SERVICE RESPONSE INBOUND FLOW
+
+Analog:
+
+HTTP Receive
+
+→ Payload validieren
+
+→ Idempotency Claim
+
+→ RECEIVED
+
+→ vorhandenen Response Domain Service
+
+→ Response fachlich speichern
+
+→ PROCESSED
+
+
+8. DOMAIN-FEHLER
+
+Wenn Domain-Verarbeitung fehlschlägt:
+
+Status:
+
+FAILED
+
+setzen.
+
+Fehler nicht als PROCESSED markieren.
+
+HTTP-Fehler gemäß bestehender Error-Struktur zurückgeben.
+
+
+9. DUPLICATE-BEHANDLUNG
+
+Wenn messageId bereits:
+
+PROCESSED
+
+ist:
+
+keine zweite Domain-Verarbeitung.
+
+Route soll einen echten Duplicate-Zustand zurückgeben können.
+
+Beispiel:
+
+{
+  status: "DUPLICATE",
+  messageId: ...
+}
+
+oder vorhandenes äquivalentes Schema.
+
+
+10. UNGENUTZTE duplicate-VARIABLE ENTFERNEN
+
+Falls aktuell:
+
+let duplicate = false;
+
+existiert, aber niemals geändert wird:
+
+entfernen und Ergebnis direkt aus Inbound-Service/Exchange ableiten.
+
+Der Inbound-Service soll idealerweise zurückgeben:
+
+{
+  duplicate: boolean;
+  status: "PROCESSED" | "DUPLICATE";
+}
+
+oder äquivalente Information.
+
+
+11. FAILED RETRY
+
+Falls bestehender Inbound-Service FAILED-Nachrichten neu claimen kann:
+
+diese Funktionalität beibehalten.
+
+Wichtig:
+
+Gleiche messageId:
+
+PROCESSED
+→ nicht neu
+
+RECEIVED in Bearbeitung
+→ nicht parallel erneut
+
+FAILED
+→ entsprechend bestehender Retry-Regel erneut verarbeitbar
+
+
+12. ATOMARE IDEMPOTENZ
+
+Check-then-insert ohne Concurrency-Schutz vermeiden.
+
+Bestehenden atomaren INSERT/ON CONFLICT-/Claim-Mechanismus verwenden.
+
+Zwei parallele gleiche messageId dürfen Business Processing nur einmal ausführen.
+
+
+13. DIRECT LocalHubTransport VORKOMMEN KLASSIFIZIEREN
+
+Global suchen:
+
+new LocalHubTransport()
+
+Für jeden Fund dokumentieren:
+
+Datei
+Funktion
+Nachrichtentyp
+AG↔AN oder intern?
+
+
+14. CROSS-ORG BUSINESS MESSAGE
+
+Wenn Nachricht fachlich AG↔AN übertragen wird:
+
+über:
+
+DataspaceExchange
+
+führen.
+
+Insbesondere prüfen:
+
+- gu-decision-service.ts
+- revision-service.ts
+- data-publication-service.ts
+- deadline-evaluation-service.ts
+- routes/messages.ts
+
+Nicht blind ersetzen.
+
+Jede Nutzung einzeln bewerten.
+
+
+15. INTERNE NACHRICHTEN DÜRFEN LOKAL BLEIBEN
+
+Rein interner:
+
+- Mock
+- lokaler technischer Event
+- Testmechanismus
+- nicht organisationsübergreifender Transport
+
+darf LocalHubTransport weiter verwenden.
+
+Im Abschlussbericht begründen.
+
+
+16. OUTBOUND IDEMPOTENZ PRÜFEN
+
+Falls vorhandene Publish-Logik:
+
+if existing messageId PUBLISHED
+→ return
+
+nutzt:
+
+zusätzlich prüfen, ob zwei parallele Calls dieselbe Nachricht zweimal versenden können.
+
+Falls Insert Claim bereits atomar möglich ist:
+
+nur der Gewinner darf tatsächlichen Send durchführen.
+
+Keine große neue Architektur bauen.
+
+
+17. OPENAPI – Coordination Detail
+
+Vorhandenen produktiven Endpoint dokumentieren.
+
+Mindestens DTO-Felder:
+
+serviceRequest
+currentAgreement
+response
+decision
+openChangeProposal
+nextActionOwner
+nextAction
+actionRequiredBy
+timeline
+
+Nur tatsächlich vorhandene Felder.
+
+
+18. OPENAPI – Change Proposals
+
+Dokumentieren:
+
+create
+accept
+reject
+counter
+
+einschließlich:
+
+Request Body
+Response
+422
+403
+409
+
+relevante Fehlercodes.
+
+
+19. OPENAPI – Constraints
+
+Dokumentieren:
+
+list
+create
+resolve
+cancel
+
+Schema mindestens:
+
+id
+serviceRequestId
+type
+description
+reportedByOrgId / Role soweit öffentlich
+responsibleOrgId / Role
+status
+createdAt
+resolvedAt
+
+
+20. OPENAPI – Clarifications
+
+Dokumentieren:
+
+list
+create
+answer
+cancel
+
+Schema:
+
+id
+category
+question
+answer
+status
+createdAt
+answeredAt
+Rolleninformationen
+
+
+21. OPENAPI – Readiness
+
+Dokumentieren:
+
+GET
+PATCH
+
+Felder entsprechend aktuellem Modell:
+
+scheduleConfirmed
+siteReady
+informationComplete
+agReady
+anReady
+updatedAt
+
+
+22. OPENAPI – Change Impact
+
+Response strukturiert dokumentieren:
+
+affectedServices[]
+current dates
+requiredEarliestStart
+shift/delta
+dependency reference
+
+Nur tatsächliche Felder.
+
+
+23. OPENAPI – Coordination Tasks
+
+Vorhandenen Endpoint und Task-Schema dokumentieren.
+
+Enums konkret.
+
+
+24. OPENAPI – Coordination Board
+
+Board-Zeilen-Schema dokumentieren.
+
+Insbesondere:
+
+nextActionOwner
+nextAction
+lastChangedAt
+dependencyImpactCount
+readiness summary
+open issues counts
+
+soweit tatsächlich vorhanden.
+
+
+25. OPENAPI ENUMS
+
+Mindestens konkrete Enums:
+
+nextActionOwner:
+AG
+AN
+NONE
+
+nextAction:
+RESPOND_TO_REQUEST
+DECIDE_RESPONSE
+RESPOND_TO_CHANGE_PROPOSAL
+ANSWER_CLARIFICATION
+RESOLVE_CONSTRAINT
+CONFIRM_READINESS
+NO_ACTION
+
+Proposal Status
+Constraint Status
+Constraint Type
+Clarification Status
+Clarification Category
+Readiness Status, falls explizites Enum vorhanden
+
+
+26. KEINE UNKNOWN OBJECTS
+
+Wenn Struktur bekannt ist:
+
+nicht:
+
+type: object
+additionalProperties: true
+
+verwenden.
+
+Konkrete Properties definieren.
+
+
+27. DATENSOUVERÄNITÄT AUCH IN OPENAPI
+
+Öffentliche Coordination DTOs dürfen keine internen:
+
+- proposerUserId
+- resolvedByUserId
+- AN Resource IDs
+- interne Availability Details
+
+enthalten, sofern diese nicht bewusst AG-sichtbar sind.
+
+
+28. BESTEHENDEN CODEGEN VERWENDEN
+
+Repository Scripts prüfen:
+
+package.json
+workspace package.json
+
+bestehenden OpenAPI-Codegen-Befehl ermitteln.
+
+Keinen neuen Generator einführen.
+
+
+29. CODEGEN AUSFÜHREN
+
+Nach OpenAPI-Anpassung:
+
+bestehenden Codegen ausführen.
+
+Generierte Dateien nicht manuell editieren.
+
+
+30. MANUELLEN service-coordination CLIENT PRÜFEN
+
+Falls:
+
+lib/api-client-react/src/service-coordination.ts
+
+oder vergleichbar handgeschrieben existiert:
+
+prüfen, ob generierte Typen sinnvoll übernommen werden können.
+
+Keine große riskante Migration.
+
+Mindestens DTO-Typen möglichst aus API-Spec ableiten, wenn bereits vorgesehen.
+
+
+31. PFLICHTTEST – INBOUND ROUTE ERREICHBAR
+
+Produktiven Router starten/testen.
+
+POST Service Request Inbound.
+
+Erwartung:
+
+kein 404.
+
+
+32. PFLICHTTEST – DOMAIN PROCESSING
+
+Inbound Request senden.
+
+Danach fachliche DB prüfen:
+
+entsprechender Domain-Datensatz wurde tatsächlich erstellt/aktualisiert.
+
+Nicht nur Audit PROCESSED.
+
+
+33. PFLICHTTEST – DOMAIN ERROR
+
+Processor gezielt fehlschlagen lassen.
+
+Erwartung:
+
+Inbound Audit:
+FAILED
+
+nicht:
+PROCESSED
+
+
+34. PFLICHTTEST – DUPLICATE
+
+Gleiche messageId zweimal.
+
+Erwartung:
+
+erster Call:
+Business Processing 1×
+
+zweiter Call:
+Business Processing 0×
+
+Gesamt:
+1×
+
+
+35. PFLICHTTEST – PARALLELER DUPLICATE
+
+Zwei Requests mit gleicher messageId gleichzeitig.
+
+Erwartung:
+
+Business Processing exakt einmal.
+
+
+36. PFLICHTTEST – RESPONSE INBOUND
+
+Nicht nur Service Request testen.
+
+Auch eingehende Service Response muss echten Domain Service erreichen.
+
+
+37. PFLICHTTEST – OPENAPI
+
+Spec validieren bzw. vorhandenen Codegen erfolgreich ausführen.
+
+Keine unresolved schema references.
+
+
+38. ABSCHLUSSKONTROLLE
+
+Global suchen:
+
+receiveServiceRequest(
+receiveServiceResponse(
+undefined
+new LocalHubTransport()
+change-proposals
+constraints
+clarifications
+readiness
+change-impact
+coordination-board
+
+Prüfen:
+
+- kein produktiver receive mit undefined Processor
+- Router registriert
+- OpenAPI-Pfade vorhanden
+- Cross-Org Transporte klassifiziert
+
+Nach diesem Schritt muss Dataspace Inbound tatsächlich fachlich arbeiten und die vorhandene Coordination API maschinenlesbar dokumentiert sein.

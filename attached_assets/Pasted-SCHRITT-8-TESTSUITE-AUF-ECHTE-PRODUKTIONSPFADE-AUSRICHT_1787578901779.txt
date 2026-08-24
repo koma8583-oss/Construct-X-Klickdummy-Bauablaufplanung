@@ -1,0 +1,541 @@
+SCHRITT 8 – TESTSUITE AUF ECHTE PRODUKTIONSPFADE AUSRICHTEN UND REGRESSIONEN VOLLSTÄNDIG ABSICHERN
+
+ZIEL
+
+Die Test-Suite muss die tatsächlichen Serviceketten prüfen.
+
+Isolierte Helper-Tests allein reichen nicht.
+
+Alte fachlich falsche Erwartungen müssen entfernt werden.
+
+Keine Tests dürfen Fehler durch falsche Mocks oder veraltete Annahmen kaschieren.
+
+
+1. VERALTETEN CHANGE-PROPOSAL-TEST ENTFERNEN/KORRIGIEREN
+
+Ein Test, der erwartet:
+
+kein Agreement
+→ Change Proposal
+→ daraus entsteht initiales Agreement
+
+ist fachlich ungültig.
+
+Neue Erwartung:
+
+kein Agreement
+→ Change Proposal create
+→ 422 CHANGE_PROPOSAL_REQUIRES_AGREEMENT
+
+
+2. KEIN acceptedProposal ALS AGREEMENT-QUELLE IM TEST
+
+Tests dürfen nicht mehr absichern:
+
+accepted Proposal resolvedAt
+→ AGREEMENT_REACHED
+
+Das ist fachlich falsch.
+
+
+3. TIMELINE-TEST EXAKT AUF ZEITPUNKTE PRÜFEN
+
+Nicht nur Eventanzahl.
+
+Setup:
+
+decisionAt:
+05.08.
+
+accepted Change Proposal:
+20.08.
+
+Assertions:
+
+AGREEMENT_REACHED.at === 05.08.
+
+CHANGE_PROPOSAL_ACCEPTED.at === 20.08.
+
+
+4. SCHEDULE-CHANGE TEST ÜBER PRODUKTIVEN ACCEPT-PFAD
+
+Nicht nur:
+
+shiftRequirementsToWindow(...)
+
+testen.
+
+Mindestens ein Integrationstest:
+
+create/open Proposal
+→ accept
+→ DB prüfen
+
+
+5. DOUBLE-SHIFT INTEGRATIONSTEST
+
+Zwei aufeinanderfolgende accepted Changes durchführen.
+
+Danach prüfen:
+
+Agreement
+Requirements
+Bookings
+
+und die tatsächlich an Availability übergebenen Tage.
+
+
+6. ROLLBACK-TEST
+
+Availability Conflict erzwingen.
+
+Nach 409 prüfen:
+
+Proposal OPEN
+Agreement unverändert
+Plan unverändert
+Versionanzahl unverändert
+Requirements unverändert
+Bookings unverändert
+
+
+7. bookingRequirements INITIAL ACCEPTANCE
+
+Availability-Daten so vorbereiten, dass:
+
+availableResources
+
+und:
+
+bookingRequirements
+
+unterschiedliche Booking-Ergebnisse erzeugen würden.
+
+Dann echten Decision-Pfad ausführen.
+
+Assertions auf DB-Bookings müssen beweisen:
+
+bookingRequirements wurden verwendet.
+
+
+8. CHANGE ACCEPTANCE BOOKING TEST
+
+Gleiche Prüfung für Schedule Change.
+
+
+9. CONCRETE RESOURCE PRESERVATION
+
+Kompletten Schedule-Change-Pfad.
+
+Alte resourceId = X.
+
+X im neuen Zeitraum verfügbar.
+
+Nach Acceptance:
+
+resourceId = X.
+
+
+10. CONCRETE RESOURCE CONFLICT
+
+X im neuen Zeitraum durch Fremdbooking blockiert.
+
+Erwartung:
+
+409
+
+kein stiller Fallback auf Type-Level.
+
+
+11. RESTBEDARF TEST
+
+Requirement 4.
+
+Eine konkrete Resource deckt 1.
+
+Erwartung:
+
+Gesamtkapazität der erzeugten Bookings weiterhin 4.
+
+
+12. MULTI-CONCRETE TEST
+
+Requirement 4.
+
+Vier konkrete ResourceBookings.
+
+Nach Shift:
+
+alle vier erhalten.
+
+
+13. LEGACY NO-REQUIREMENTS TEST
+
+Keine Requirements.
+
+Bestehendes Booking.
+
+Nach Schedule Change:
+
+Booking noch vorhanden und korrekt verschoben.
+
+
+14. QUALIFICATION DOUBLE COUNT TEST
+
+6 Resources A+B.
+
+4×A + 4×B.
+
+Erwartung:
+
+nicht FEASIBLE.
+
+
+15. LEGACY DAILY AVAILABILITY TEST
+
+Zeitlich getrennte Bookings.
+
+Kein falscher Summenkonflikt.
+
+
+16. ONE-DAY TESTS
+
+Backend Proposal
+AG UI
+AN UI
+Change Impact
+
+jeweils:
+
+start == end
+→ gültig
+
+
+17. NEXT ACTION – REQUEST
+
+Keine Response.
+
+Erwartung:
+
+AN / RESPOND_TO_REQUEST
+
+in:
+
+- zentralem Helper
+- Detail
+- Board
+- Liste
+
+
+18. NEXT ACTION – RESPONSE
+
+Response vorhanden.
+
+Keine Decision.
+
+Erwartung:
+
+AG / DECIDE_RESPONSE
+
+
+19. STATUS HEURISTIC REGRESSION
+
+Request.status kann ACCEPTED sein.
+
+Aber keine AG Decision Row.
+
+Erwartung weiterhin:
+
+AG / DECIDE_RESPONSE
+
+
+20. NEXT ACTION – AG PROPOSAL
+
+OPEN proposer AG.
+
+Erwartung:
+
+AN / RESPOND_TO_CHANGE_PROPOSAL
+
+
+21. NEXT ACTION – AN PROPOSAL
+
+Erwartung:
+
+AG / RESPOND_TO_CHANGE_PROPOSAL
+
+
+22. CLARIFICATION STATE
+
+AG fragt AN.
+
+OPEN.
+
+Erwartung:
+
+AN / ANSWER_CLARIFICATION
+
+
+23. CONSTRAINT STATE
+
+responsible AG.
+
+OPEN.
+
+Erwartung:
+
+AG / RESOLVE_CONSTRAINT
+
+
+24. READINESS STATE
+
+Nur Readiness offen.
+
+Erwartung entsprechend verantwortlicher Rolle.
+
+
+25. PRIORITÄTSTEST
+
+Proposal + Constraint gleichzeitig.
+
+Proposal muss gewinnen.
+
+
+26. CurrentActionCard TEST KORRIGIEREN
+
+Kein Test mehr:
+
+nextActionOwner AN
+nextAction NO_ACTION
+→ Keine Aktion erforderlich
+
+für echten Wartezustand.
+
+Stattdessen:
+
+AN / RESPOND_TO_REQUEST
+Viewer AG
+→ Warten auf AN
+
+
+27. ACTION TARGET TEST
+
+DECIDE_RESPONSE
+→ coordination
+
+ANSWER_CLARIFICATION
+→ clarifications
+
+RESOLVE_CONSTRAINT
+→ constraints
+
+CONFIRM_READINESS
+→ readiness
+
+
+28. TIMELINE PRODUCTIVE TEST
+
+getCoordination() aufrufen.
+
+Nicht nur Builder.
+
+Prüfen, dass:
+
+decision
+constraint
+clarification
+readiness
+
+im finalen DTO ankommen.
+
+
+29. DEPENDENCY CONSISTENCY TEST
+
+Eine kanonische Leistungsabhängigkeit.
+
+Change Impact und Board müssen dieselbe Auswirkung erkennen.
+
+
+30. CONSTRAINT PERMISSION TESTS
+
+Responsible AN:
+
+AG Resolve 403
+AN Resolve Erfolg
+
+Reporter AG:
+
+AN Cancel 403
+AG Cancel Erfolg
+
+
+31. CONSTRAINT RACE
+
+Zwei parallele Resolve.
+
+Einer erfolgreich.
+Zweiter 409.
+
+
+32. CLARIFICATION RACE
+
+Zwei parallele Answers.
+
+Einer erfolgreich.
+Zweiter 409.
+
+
+33. READINESS RACE
+
+Zwei erste PATCH parallel.
+
+Keine Unique-Verletzung.
+
+Eine Readiness-Row.
+
+
+34. DATASPACE ROUTE TEST
+
+Inbound Route tatsächlich über registrierten API Router aufrufen.
+
+Kein direkter Funktionsaufruf allein.
+
+
+35. DATASPACE DOMAIN TEST
+
+Nach Inbound muss Domain-Datensatz existieren.
+
+
+36. DATASPACE IDEMPOTENZ
+
+Gleiche messageId zweimal.
+
+Domain Processing insgesamt 1×.
+
+
+37. GANTT TESTS
+
+50+50
+→ kein Konflikt
+
+60+60
+→ Konflikt
+
+freie Resource
+→ sichtbar
+
+Type-Level Booking
+→ sichtbar
+
+
+38. AG DETAIL – WARTEN AUF AN
+
+Neue Seitenstruktur testen.
+
+Keine alten Hauptcards.
+
+
+39. AG DETAIL – RESPONSE
+
+Genau ein Decision-Bereich.
+
+
+40. AG DETAIL – AGREEMENT
+
+Terminänderung vorschlagen max. 1×.
+
+
+41. AG DETAIL – AN PROPOSAL
+
+Annehmen 1×
+Ablehnen 1×
+Gegenvorschlag 1×
+Terminänderung vorschlagen 0×
+
+
+42. AG DETAIL – EIGENER PROPOSAL
+
+Keine Response-Aktionsbuttons.
+
+
+43. AG DETAIL – TIMELINE
+
+Genau eine sichtbare fachliche Timeline.
+
+
+44. AG DETAIL – TECHNISCHE DETAILS
+
+Snapshot
+Notification
+Transport
+
+nicht standardmäßig im Hauptfluss.
+
+Nach Öffnen abrufbar.
+
+
+45. LEGACY ROUTE TEST
+
+Alte Route:
+
+Redirect.
+
+Keine alte Komponente.
+
+
+46. KEINE TESTS SKIPPEN
+
+Nicht hinzufügen:
+
+test.skip
+it.skip
+describe.skip
+xit
+
+
+47. BESTEHENDE SKIPS PRÜFEN
+
+Falls vorhandene relevante Tests bereits geskippt sind:
+
+prüfen, ob diese wieder aktiviert werden können.
+
+Nicht ohne Grund bestehen lassen.
+
+
+48. MOCKS NICHT FACHLICH FALSCH MACHEN
+
+Mocks sollen DTOs abbilden, nicht neue State-Logik erfinden.
+
+Bevorzugt zentrale Helper direkt testen.
+
+
+49. DB-TESTS NACH MÖGLICHKEIT TRANSAKTIONAL ISOLIEREN
+
+Bestehendes Testsetup weiterverwenden.
+
+Keine gegenseitige Abhängigkeit der Testreihenfolge.
+
+
+50. TESTNAMEN FACHLICH KLAR
+
+Beispiel:
+
+"keeps initial agreement timestamp after later accepted change proposal"
+
+statt generisch:
+
+"timeline works"
+
+
+51. ABSCHLUSSKONTROLLE
+
+Global suchen:
+
+.skip
+creates initial agreement
+accepted proposal resolvedAt
+NO_ACTION
+
+Tests darauf prüfen, ob noch alte fachliche Annahmen abgesichert werden.
+
+Nach diesem Schritt müssen die wichtigsten Fehler durch echte Regressionstests dauerhaft abgedeckt sein.

@@ -1,0 +1,541 @@
+SCHRITT 10 – VOLLSTÄNDIGEN PNPM CLEAN BUILD, TESTLAUF UND FINALE ABNAHME DURCHFÜHREN
+
+ZIEL
+
+Keine Aufgabe als abgeschlossen melden, solange nicht der vollständige Workspace installiert, typgeprüft, getestet und gebaut wurde.
+
+Es reicht ausdrücklich NICHT:
+
+- nur TypeScript Syntax prüfen
+- nur AG-App bauen
+- nur einzelne Tests ausführen
+- nur API-Server typechecken
+
+Der komplette Workspace muss geprüft werden.
+
+
+1. REPOSITORY ROOT PRÜFEN
+
+Ausführen:
+
+pwd
+ls
+
+Sicherstellen, dass im aktuellen Verzeichnis mindestens vorhanden sind:
+
+package.json
+pnpm-workspace.yaml
+pnpm-lock.yaml
+
+
+2. NODE VERSION
+
+Ausführen:
+
+node --version
+
+
+3. PNPM VERSION
+
+Ausführen:
+
+pnpm --version
+
+
+4. packageManager PRÜFEN
+
+Root package.json prüfen.
+
+Falls beispielsweise:
+
+"packageManager": "pnpm@9.x.x"
+
+definiert ist:
+
+genau diese Version verwenden.
+
+
+5. FROZEN INSTALL
+
+Ausführen:
+
+pnpm install --frozen-lockfile
+
+Dieser Befehl muss PASS sein.
+
+
+6. FROZEN-LOCKFILE-FEHLER NICHT KASCHIEREN
+
+Bei Fehler nicht einfach ungeprüft:
+
+pnpm install
+
+ausführen.
+
+Zuerst Ursache feststellen.
+
+
+7. LEGITIME DEPENDENCY-ÄNDERUNG
+
+Nur wenn dieser Auftrag tatsächlich:
+
+package.json
+
+verändert hat:
+
+Lockfile bewusst aktualisieren.
+
+Danach erneut:
+
+pnpm install --frozen-lockfile
+
+bis PASS.
+
+
+8. OPENAPI CODEGEN VOR TYPECHECK
+
+Falls OpenAPI verändert wurde:
+
+bestehenden Codegen-Befehl aus Repository-Scripts ermitteln.
+
+Codegen ausführen.
+
+Keine generierten Dateien manuell patchen.
+
+
+9. FULL WORKSPACE TYPECHECK
+
+Ausführen:
+
+pnpm -r --if-present run typecheck
+
+Muss PASS sein.
+
+
+10. API-SERVER EXPLIZIT
+
+Zusätzlich:
+
+pnpm --filter @workspace/api-server typecheck
+
+Falls Workspace-Name abweicht:
+→ tatsächlichen Namen verwenden.
+
+
+11. AG-APP EXPLIZIT
+
+pnpm --filter @workspace/ag-app typecheck
+
+
+12. AN-APP EXPLIZIT
+
+pnpm --filter @workspace/an-app typecheck
+
+
+13. LINT
+
+Falls Scripts vorhanden:
+
+pnpm -r --if-present run lint
+
+Keine neue Lint-Konfiguration erstellen.
+
+
+14. FULL TEST SUITE
+
+Ausführen:
+
+pnpm -r --if-present run test
+
+Nicht nur neue Tests.
+
+
+15. TESTERGEBNISSE ERFASSEN
+
+Am Ende Anzahl nennen:
+
+passed
+failed
+skipped
+
+Relevante Skips begründen.
+
+
+16. KEINE NEUEN SKIPS
+
+Vor Abschluss global prüfen:
+
+.skip
+xit
+describe.skip
+
+Keine neu hinzugefügten Skips zur Fehlerumgehung.
+
+
+17. FULL WORKSPACE BUILD
+
+Ausführen:
+
+pnpm -r --if-present run build
+
+Muss PASS sein.
+
+
+18. AG BUILD EXPLIZIT
+
+pnpm --filter @workspace/ag-app build
+
+
+19. AN BUILD EXPLIZIT
+
+pnpm --filter @workspace/an-app build
+
+
+20. API BUILD
+
+Falls Build-Script vorhanden:
+
+pnpm --filter @workspace/api-server build
+
+
+21. FALLS CODEGEN NACHGEBESSERT WURDE
+
+Nach jeder weiteren OpenAPI-/Codegen-Änderung erneut:
+
+typecheck
+tests
+build
+
+
+22. FINALER CLEAN-DURCHLAUF
+
+Der LETZTE technische Lauf soll in dieser Reihenfolge erfolgen:
+
+pnpm install --frozen-lockfile
+
+pnpm -r --if-present run typecheck
+
+pnpm -r --if-present run lint
+
+pnpm -r --if-present run test
+
+pnpm -r --if-present run build
+
+Lint nur auslassen, wenn kein Lint-Script existiert.
+
+
+23. GIT STATUS
+
+Danach:
+
+git status --short
+
+
+24. DIFF STAT
+
+git diff --stat
+
+
+25. BUILD-ARTEFAKTE PRÜFEN
+
+Keine versehentlich erzeugten:
+
+.js
+.js.map
+coverage
+temporary files
+dist outputs
+
+in Source-Verzeichnissen, sofern nicht ausdrücklich vorgesehen.
+
+
+26. ALTE AG-SEITE PRÜFEN
+
+Global bestätigen:
+
+alte vollständige AG-Detaildatei nicht mehr produktiv vorhanden.
+
+Legacy URL nur Redirect.
+
+
+27. DOUBLE-SHIFT FINAL PRÜFEN
+
+Regressionstest grün.
+
+
+28. BOOKING FINAL PRÜFEN
+
+Initial Acceptance:
+bookingRequirements
+
+Change Acceptance:
+bookingRequirements
+
+Concrete Resources:
+erhalten
+
+Legacy:
+erhalten
+
+
+29. NEXT ACTION FINAL PRÜFEN
+
+Mindestens folgende Szenarien:
+
+wartet AN
+wartet AG
+AN Proposal
+AG Proposal
+
+Detail/Board/Liste konsistent.
+
+
+30. TIMELINE FINAL PRÜFEN
+
+Initial Agreement behält Decision-Zeitpunkt nach späterem Change.
+
+
+31. DEPENDENCY FINAL PRÜFEN
+
+Board und Change Impact gleiche kanonische Dependency.
+
+
+32. DATASPACE FINAL PRÜFEN
+
+Inbound Route tatsächlich erreichbar.
+
+Domain Processing tatsächlich ausgeführt.
+
+Duplicate nur einmal verarbeitet.
+
+
+33. OPENAPI FINAL PRÜFEN
+
+Coordination APIs in Spec vorhanden.
+
+Codegen erfolgreich.
+
+
+34. GANTT FINAL PRÜFEN
+
+Free Resource sichtbar.
+
+Type-Level Booking sichtbar.
+
+50+50 kein Conflict.
+
+60+60 Conflict.
+
+
+35. ONE-DAY FINAL PRÜFEN
+
+Backend + AG + AN + Change Impact.
+
+
+36. AG-UI FINAL PRÜFEN
+
+Kanonische Seite besitzt Reihenfolge:
+
+Header
+Aktuelle Aufgabe
+Abstimmung
+Leistungsanfrage
+Koordination
+Verlauf
+Weitere fachliche Details
+Technische Details
+
+
+37. KEINE PARALLELEN HAUPTBLOCKS
+
+Auf AG-Detailseite nicht mehr gleichzeitig alte:
+
+CoordinationSummary
+ResponsePanel
+GUDecisionPanel
+ProposalActions
+CoordinationHistory
+Snapshot Hauptcard
+Notification Hauptcard
+
+rendern.
+
+
+38. EINE TIMELINE
+
+Genau eine Business Timeline.
+
+
+39. RESPONSIVE FINAL
+
+Prüfen:
+
+1440×900
+1024×768
+768×1024
+390×844
+
+
+40. 390 PX
+
+Keine horizontale Gesamtseiten-Scrollbar.
+
+
+41. VERBINDLICHER ABSCHLUSSBERICHT
+
+Am Ende exakt folgende Punkte berichten:
+
+1. Double Shift
+   BEHOBEN / OFFEN
+   Datei/Funktion
+
+2. Availability + Rollback
+   BEHOBEN / OFFEN
+
+3. bookingRequirements Auto-Booking
+   BEHOBEN / OFFEN
+
+4. Concrete Resource Preservation
+   BEHOBEN / OFFEN
+
+5. Restbedarf konkreter Resources
+   BEHOBEN / OFFEN
+
+6. Legacy Booking Fallback
+   BEHOBEN / OFFEN
+
+7. Qualification Double Counting
+   BEHOBEN / OFFEN
+
+8. Legacy Availability
+   BEHOBEN / OFFEN
+
+9. zentraler Next Action State
+   BEHOBEN / OFFEN
+   Funktion nennen
+
+10. Detail / Board / Tasks / Listen Konsistenz
+    BEHOBEN / OFFEN
+
+11. Timeline
+    BEHOBEN / OFFEN
+
+12. Dependency-Konsolidierung
+    BEHOBEN / OFFEN
+    kanonische Tabelle nennen
+
+13. Constraint Permissions
+    BEHOBEN / OFFEN
+
+14. Clarification Concurrency
+    BEHOBEN / OFFEN
+
+15. Dataspace Inbound
+    VERDRAHTET / OFFEN
+    Route + Processor nennen
+
+16. Dataspace Idempotenz
+    BEHOBEN / OFFEN
+
+17. OpenAPI Coordination
+    VOLLSTÄNDIG / OFFEN
+
+18. One-Day Semantik
+    BEHOBEN / OFFEN
+
+19. Gantt Free Resources
+    BEHOBEN / OFFEN
+
+20. Gantt Type-Level Bookings
+    BEHOBEN / OFFEN
+
+21. Gantt 50+50 / 60+60
+    PASS / FAIL
+
+22. kanonische AG-Detailroute
+    Route nennen
+
+23. alte AG-Detailseite
+    GELÖSCHT / NOCH VORHANDEN
+
+24. neue AG-Hauptstruktur
+    Komponenten nennen
+
+25. parallele alte Hauptblöcke
+    ENTFERNT / RESTLICHE NENNEN
+
+26. Business Timeline
+    GENAU EINE / MEHRERE
+
+27. Snapshot
+    neue Position nennen
+
+28. Notification
+    neue Position nennen
+
+29. technische Details
+    neue Position nennen
+
+30. Informationsverlust
+    KEINER / fehlende Felder nennen
+
+31. Responsive 1440×900
+    PASS / FAIL
+
+32. Responsive 1024×768
+    PASS / FAIL
+
+33. Responsive 768×1024
+    PASS / FAIL
+
+34. Responsive 390×844
+    PASS / FAIL
+
+35. horizontale Gesamtseiten-Scrollbar 390px
+    NEIN / JA
+
+36. pnpm install --frozen-lockfile
+    PASS / FAIL
+
+37. Workspace Typecheck
+    PASS / FAIL
+
+38. Workspace Lint
+    PASS / FAIL / NICHT VORHANDEN
+
+39. Workspace Tests
+    PASS / FAIL
+    passed / failed / skipped nennen
+
+40. Workspace Build
+    PASS / FAIL
+
+41. AG-App Typecheck
+    PASS / FAIL
+
+42. AG-App Build
+    PASS / FAIL
+
+43. AN-App Typecheck
+    PASS / FAIL
+
+44. AN-App Build
+    PASS / FAIL
+
+45. API-Server Typecheck
+    PASS / FAIL
+
+46. API-Server Build
+    PASS / FAIL / KEIN BUILD-SCRIPT
+
+47. verbleibende bekannte Fehler
+
+Für jeden offenen Fehler:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
+
+Keine Aufgabe als BEHOBEN melden, wenn zugehöriger Regressionstest oder Build weiterhin fehlschlägt.

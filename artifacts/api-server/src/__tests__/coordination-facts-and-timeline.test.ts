@@ -305,7 +305,7 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
     expect((event!.at as Date).toISOString()).toBe(decisionAt.toISOString());
   });
 
-  it("emits AGREEMENT_REACHED from accepted proposal resolvedAt", () => {
+   it("does not emit AGREEMENT_REACHED from an accepted proposal resolvedAt", () => {
     const resolvedAt = new Date("2026-09-04T14:00:00Z");
     const timeline = buildCoordinationTimeline(
       { ...baseRequest, agreedStart: originalStart, agreedEnd: originalEnd },
@@ -327,9 +327,8 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
       }],
       {},
     );
-    const event = timeline.find((e) => e.type === "AGREEMENT_REACHED");
-    expect(event).toBeDefined();
-    expect((event!.at as Date).toISOString()).toBe(resolvedAt.toISOString());
+     expect(timeline.find((e) => e.type === "AGREEMENT_REACHED")).toBeUndefined();
+     expect(timeline.find((e) => e.type === "CHANGE_PROPOSAL_ACCEPTED")).toBeDefined();
   });
 
   it("emits CHANGE_PROPOSAL_ACCEPTED (not second AGREEMENT_REACHED) when proposal accepted after agreement", () => {
@@ -367,7 +366,7 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
     expect(timeline.map((e) => e.type)).toContain("RESPONSE_SUBMITTED");
   });
 
-  it("includes CLARIFICATION_ASKED and CLARIFICATION_ANSWERED events", () => {
+   it("includes CLARIFICATION_CREATED and CLARIFICATION_RESOLVED events", () => {
     const timeline = buildCoordinationTimeline(baseRequest, [], {
       clarifications: [{
         id: "clr1",
@@ -378,11 +377,11 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
       }],
     });
     const types = timeline.map((e) => e.type);
-    expect(types).toContain("CLARIFICATION_ASKED");
-    expect(types).toContain("CLARIFICATION_ANSWERED");
+     expect(types).toContain("CLARIFICATION_CREATED");
+     expect(types).toContain("CLARIFICATION_RESOLVED");
   });
 
-  it("does not include CLARIFICATION_ANSWERED when not yet resolved", () => {
+   it("does not include CLARIFICATION_RESOLVED when not yet resolved", () => {
     const timeline = buildCoordinationTimeline(baseRequest, [], {
       clarifications: [{
         id: "clr2",
@@ -393,8 +392,8 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
       }],
     });
     const types = timeline.map((e) => e.type);
-    expect(types).toContain("CLARIFICATION_ASKED");
-    expect(types).not.toContain("CLARIFICATION_ANSWERED");
+     expect(types).toContain("CLARIFICATION_CREATED");
+     expect(types).not.toContain("CLARIFICATION_RESOLVED");
   });
 
   it("includes CONSTRAINT_REPORTED and CONSTRAINT_RESOLVED events", () => {
@@ -412,11 +411,11 @@ describe("buildCoordinationTimeline — canonical timeline", () => {
     expect(types).toContain("CONSTRAINT_RESOLVED");
   });
 
-  it("emits READINESS_UPDATED when readiness is provided", () => {
+   it("emits READINESS_CHANGED when readiness is provided", () => {
     const timeline = buildCoordinationTimeline(baseRequest, [], {
       readiness: { updatedAt: new Date("2026-09-20T08:00:00Z") },
     });
-    expect(timeline.map((e) => e.type)).toContain("READINESS_UPDATED");
+     expect(timeline.map((e) => e.type)).toContain("READINESS_CHANGED");
   });
 
   it("events are sorted chronologically", () => {

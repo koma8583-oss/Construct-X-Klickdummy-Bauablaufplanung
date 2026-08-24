@@ -9,7 +9,7 @@ import {
   projectsTable,
   serviceClarificationsTable,
   serviceConstraintsTable,
-  serviceDependenciesTable,
+  leistungsabhaengigkeitenTable,
   serviceReadinessChecksTable,
 } from "@workspace/db";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -97,7 +97,16 @@ async function resolveConstraint(req: any, res: any, status: "RESOLVED" | "CANCE
       )).limit(1);
       if (!constraint) { res.status(404).json({ error: "Risiko nicht gefunden" }); return; }
       if (constraint.reportedByOrgId !== orgId) {
-        res.status(409).json({ error: "Nur die meldende Organisation darf dieses Risiko stornieren" }); return;
+        res.status(403).json({ error: "CONSTRAINT_CANCEL_NOT_ALLOWED" }); return;
+      }
+    } else {
+      const [constraint] = await db.select().from(serviceConstraintsTable).where(and(
+        eq(serviceConstraintsTable.id, constraintId),
+        eq(serviceConstraintsTable.serviceRequestId, request.id),
+      )).limit(1);
+      if (!constraint) { res.status(404).json({ error: "Risiko nicht gefunden" }); return; }
+      if (constraint.responsibleOrgId !== orgId) {
+        res.status(403).json({ error: "CONSTRAINT_RESOLVE_NOT_ALLOWED" }); return;
       }
     }
 
@@ -108,7 +117,7 @@ async function resolveConstraint(req: any, res: any, status: "RESOLVED" | "CANCE
       eq(serviceConstraintsTable.serviceRequestId, request.id),
       eq(serviceConstraintsTable.status, "OPEN"),
     )).returning();
-    if (!row) { res.status(404).json({ error: "Offenes Risiko nicht gefunden" }); return; }
+    if (!row) { res.status(409).json({ error: "CONSTRAINT_ALREADY_CLOSED" }); return; }
     res.json(row);
   } catch (error) { fail(res, error, "Risiko konnte nicht aktualisiert werden"); }
 }
@@ -151,8 +160,9 @@ router.post("/service-requests/:id/clarifications/:clarificationId/answer", requ
       eq(serviceClarificationsTable.id, req.params.clarificationId as string),
       eq(serviceClarificationsTable.serviceRequestId, request.id),
     )).limit(1);
-    if (!clarification || clarification.status !== "OPEN") { res.status(404).json({ error: "Offene Klärungsfrage nicht gefunden" }); return; }
+     if (!clarification) { res.status(404).json({ error: "Klärungsfrage nicht gefunden" }); return; }
     if (clarification.askedByOrgId === orgId) { res.status(403).json({ error: "Nur die Gegenseite darf diese Frage beantworten" }); return; }
+     if (clarification.status !== "OPEN") { res.status(409).json({ error: "CLARIFICATION_ALREADY_RESOLVED" }); return; }
     const [row] = await db.update(serviceClarificationsTable).set({
       answer: parsed.answer, answeredByOrgId: orgId, answeredAt: new Date(), status: "RESOLVED", updatedAt: new Date(),
     }).where(and(eq(serviceClarificationsTable.id, clarification.id), eq(serviceClarificationsTable.status, "OPEN"))).returning();
@@ -162,15 +172,23 @@ router.post("/service-requests/:id/clarifications/:clarificationId/answer", requ
 });
 router.post("/service-requests/:id/clarifications/:clarificationId/cancel", requireJwt, async (req, res): Promise<void> => {
   try {
-    const request = await requestForParty(req.params.id as string, req.user!.orgId!);
+    const orgId = req.user!.orgId!;
+    const request = await requestForParty(req.params.id as string, orgId);
     if (!request) { res.status(404).json({ error: "Leistungsanfrage nicht gefunden" }); return; }
+    const [clarification] = await db.select().from(serviceClarificationsTable).where(and(
+      eq(serviceClarificationsTable.id, req.params.clarificationId as string),
+      eq(serviceClarificationsTable.serviceRequestId, request.id),
+    )).limit(1);
+    if (!clarification) { res.status(404).json({ error: "Klärungsfrage nicht gefunden" }); return; }
+    if (clarification.askedByOrgId !== orgId) {
+      res.status(403).json({ error: "CLARIFICATION_CANCEL_NOT_ALLOWED" }); return;
+    }
     const [row] = await db.update(serviceClarificationsTable).set({ status: "CANCELLED", updatedAt: new Date() }).where(and(
       eq(serviceClarificationsTable.id, req.params.clarificationId as string),
       eq(serviceClarificationsTable.serviceRequestId, request.id),
       eq(serviceClarificationsTable.status, "OPEN"),
-      eq(serviceClarificationsTable.askedByOrgId, req.user!.orgId!),
     )).returning();
-    if (!row) { res.status(404).json({ error: "Offene Klärungsfrage nicht gefunden" }); return; }
+     if (!row) { res.status(409).json({ error: "CLARIFICATION_ALREADY_RESOLVED" }); return; }
     res.json(row);
   } catch (error) { fail(res, error, "Klärungsfrage konnte nicht storniert werden"); }
 });
@@ -225,7 +243,17 @@ const dependencySchema = z.object({
 router.get("/projects/:projectId/service-dependencies", requireJwt, async (req, res): Promise<void> => {
   const [project] = await db.select().from(projectsTable).where(and(eq(projectsTable.id, req.params.projectId as string), eq(projectsTable.agOrgId, req.user!.orgId!))).limit(1);
   if (!project) { res.status(404).json({ error: "Projekt nicht gefunden" }); return; }
-  res.json(await db.select().from(serviceDependenciesTable).where(eq(serviceDependenciesTable.projectId, project.id)));
+  const dependencies = await db.select().from(leistungsabhaengigkeitenTable)
+    .where(eq(leistungsabhaengigkeitenTable.projectId, project.id));
+  const projectRequests = await db.select().from(leistungsanfragenTable)
+    .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
+    .where(eq(leistungenTable.projectId, project.id));
+  const requestByLeistung = new Map(projectRequests.map(({ leistungsanfragen }) => [leistungsanfragen.leistungId, leistungsanfragen.id]));
+  res.json(dependencies.map((dependency) => ({
+    ...dependency,
+    predecessorServiceRequestId: requestByLeistung.get(dependency.predecessorId) ?? null,
+    successorServiceRequestId: requestByLeistung.get(dependency.successorId) ?? null,
+  })));
 });
 router.post("/projects/:projectId/service-dependencies", requireJwt, async (req, res): Promise<void> => {
   try {
@@ -237,20 +265,24 @@ router.post("/projects/:projectId/service-dependencies", requireJwt, async (req,
     const rows = await db.select({ request: leistungsanfragenTable, service: leistungenTable }).from(leistungsanfragenTable)
       .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id)).where(inArray(leistungsanfragenTable.id, ids));
     if (rows.length !== 2 || rows.some(({ service }) => service.projectId !== project.id)) { res.status(400).json({ error: "Beide Leistungen müssen zum Projekt gehören" }); return; }
-    const existing = await db.select().from(serviceDependenciesTable).where(eq(serviceDependenciesTable.projectId, project.id));
-    const outgoing = new Map<string, string[]>();
+     const existing = await db.select().from(leistungsabhaengigkeitenTable).where(eq(leistungsabhaengigkeitenTable.projectId, project.id));
+     const leistungByRequest = new Map(rows.map(({ request, service }) => [request.id, service.id]));
+     const predecessorId = leistungByRequest.get(parsed.predecessorServiceRequestId);
+     const successorId = leistungByRequest.get(parsed.successorServiceRequestId);
+     if (!predecessorId || !successorId) { res.status(400).json({ error: "Leistungen konnten nicht zugeordnet werden" }); return; }
+     const outgoing = new Map<string, string[]>();
     for (const dependency of existing) {
-      outgoing.set(dependency.predecessorServiceRequestId, [
-        ...(outgoing.get(dependency.predecessorServiceRequestId) ?? []),
-        dependency.successorServiceRequestId,
+       outgoing.set(dependency.predecessorId, [
+         ...(outgoing.get(dependency.predecessorId) ?? []),
+         dependency.successorId,
       ]);
     }
-    const queue = [parsed.successorServiceRequestId];
+     const queue = [successorId];
     const visited = new Set<string>();
     let reachesPredecessor = false;
     while (queue.length) {
       const current = queue.shift()!;
-      if (current === parsed.predecessorServiceRequestId) { reachesPredecessor = true; break; }
+       if (current === predecessorId) { reachesPredecessor = true; break; }
       if (visited.has(current)) continue;
       visited.add(current);
       queue.push(...(outgoing.get(current) ?? []));
@@ -258,17 +290,23 @@ router.post("/projects/:projectId/service-dependencies", requireJwt, async (req,
     if (reachesPredecessor) {
       res.status(422).json({ error: "DEPENDENCY_CYCLE" }); return;
     }
-    if (existing.some((d) => d.predecessorServiceRequestId === parsed.predecessorServiceRequestId && d.successorServiceRequestId === parsed.successorServiceRequestId)) {
+     if (existing.some((d) => d.predecessorId === predecessorId && d.successorId === successorId)) {
       res.status(409).json({ error: "Diese Abhängigkeit existiert bereits" }); return;
     }
-    const [row] = await db.insert(serviceDependenciesTable).values({ projectId: project.id, ...parsed }).returning();
-    res.status(201).json(row);
+     const [row] = await db.insert(leistungsabhaengigkeitenTable).values({
+       projectId: project.id,
+       predecessorId,
+       successorId,
+       type: "EA",
+       lagDays: parsed.lagDays,
+     }).returning();
+     res.status(201).json({ ...row, predecessorServiceRequestId: parsed.predecessorServiceRequestId, successorServiceRequestId: parsed.successorServiceRequestId });
   } catch (error) { fail(res, error, "Abhängigkeit konnte nicht erstellt werden"); }
 });
 router.delete("/projects/:projectId/service-dependencies/:id", requireJwt, async (req, res): Promise<void> => {
   const [project] = await db.select().from(projectsTable).where(and(eq(projectsTable.id, req.params.projectId as string), eq(projectsTable.agOrgId, req.user!.orgId!))).limit(1);
   if (!project) { res.status(404).json({ error: "Projekt nicht gefunden" }); return; }
-  await db.delete(serviceDependenciesTable).where(and(eq(serviceDependenciesTable.id, req.params.id as string), eq(serviceDependenciesTable.projectId, project.id)));
+   await db.delete(leistungsabhaengigkeitenTable).where(and(eq(leistungsabhaengigkeitenTable.id, req.params.id as string), eq(leistungsabhaengigkeitenTable.projectId, project.id)));
   res.status(204).send();
 });
 

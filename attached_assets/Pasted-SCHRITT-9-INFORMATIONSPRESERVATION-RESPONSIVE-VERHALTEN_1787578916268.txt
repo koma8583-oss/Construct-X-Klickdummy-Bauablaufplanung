@@ -1,0 +1,423 @@
+SCHRITT 9 – INFORMATIONSPRESERVATION, RESPONSIVE VERHALTEN UND SOURCE-CLEANUP ABSCHLIESSEN
+
+ZIEL
+
+Der UI-Umbau darf keine legitimen Informationen oder Funktionen entfernen.
+
+Die neue AG-Detailseite muss auf Desktop und Mobile konsistent funktionieren.
+
+Der Source Tree darf keine alte parallele AG-Detailimplementierung oder sonstige offensichtliche Restduplikate mehr enthalten.
+
+
+1. INFORMATION-INVENTAR ERSTELLEN
+
+Vor endgültigem Entfernen alter AG-Komponenten alle bisher sichtbaren Datenfelder erfassen.
+
+Für jedes Feld dokumentieren:
+
+A = weiterhin direkt sichtbar
+
+B = fachliches Accordion
+
+C = Technische Details
+
+D = bewusst nicht mehr sichtbar wegen Datensouveränität
+
+
+2. MINDESTENS FOLGENDE FACHLICHEN INFORMATIONEN ERHALTEN
+
+- Leistungsbezeichnung
+- Projekt
+- AN
+- Request-Referenz
+- angefragter Zeitraum
+- Antwortfrist
+- Beschreibung
+- Gewerk
+- Bereich
+- Arbeitspaket
+- Ressourcenanforderungen
+- AN Response
+- Response-Kommentar
+- Alternativen
+- Bedingungen
+- AG Decision
+- Agreement
+- Change Proposal
+- Proposal-Grund
+- Proposal-Kommentar
+- Change Impact
+- Constraints
+- Clarifications
+- Readiness
+- Fristen
+- Reminder
+- Revisionen
+- Business Timeline
+
+
+3. TECHNISCHE INFORMATIONEN ERHALTEN
+
+Soweit bisher legitim sichtbar:
+
+- Service Request ID
+- Projekt-/Leistungs-ID
+- Snapshot
+- Snapshot Version
+- Schema Version
+- Notification
+- Message ID
+- Correlation ID
+- Transportstatus
+- Retry Count
+- letzter Transportfehler
+- Dataspace/Audit
+
+
+4. FUNKTIONEN ERHALTEN
+
+Nach Umbau weiterhin möglich:
+
+- AG Response Decision
+- Alternative wählen
+- Proposal erstellen
+- Proposal annehmen
+- Proposal ablehnen
+- Gegenvorschlag
+- Constraint Resolve/Cancel entsprechend Rechte
+- Clarification
+- Readiness
+- Resend bei Transportfehler
+
+
+5. KEINE DATENSOUVERÄNITÄTSREGRESSION
+
+AG darf nicht zusätzlich sehen:
+
+- konkrete AN-Mitarbeiter
+- interne Maschinen, sofern nicht geteilt
+- andere AN-Projekte
+- lokale AN-Bookings
+- interne Kapazitätswerte
+- dailyAvailability
+- interne User IDs
+
+
+6. RESPONSIVE TEST 1440×900
+
+Direkt sichtbar:
+
+Header
+Current Action
+wesentliche Abstimmung
+Beginn Leistungsanfrage
+
+Nicht zuerst technische Informationen.
+
+
+7. RESPONSIVE TEST 1024×768
+
+Keine überbreiten Tabellen.
+
+Keine abgeschnittenen Aktionen.
+
+
+8. RESPONSIVE TEST 768×1024
+
+Übergang zu einspaltiger Darstellung sauber.
+
+
+9. RESPONSIVE TEST 390×844
+
+Verbindlich prüfen:
+
+keine horizontale Gesamtseiten-Scrollbar
+
+Header vollständig
+
+Current Action vollständig
+
+Abstimmung bedienbar
+
+Buttons erreichbar
+
+Accordions erreichbar
+
+keine abgeschnittenen Dialoge
+
+
+10. KEIN overflow-x-hidden ALS KASCHIERUNG
+
+Nicht einfach Body/Page:
+
+overflow-x-hidden
+
+setzen, um Layoutfehler zu verstecken.
+
+Ursache beheben.
+
+
+11. LANGE UUIDs
+
+Technische IDs:
+
+break-all
+oder
+overflow-wrap:anywhere
+
+
+12. FLEX-KINDER
+
+Bei flex/grid Inhaltsbereichen:
+
+min-w-0
+
+verwenden, wo lange Inhalte sonst Breite erzwingen.
+
+
+13. MOBILE ALTERNATIVEN
+
+Keine horizontale Tabelle.
+
+Cards untereinander.
+
+
+14. BUTTON-GRUPPEN
+
+Unter 640px:
+
+flex-col
+w-full
+
+wenn mehrere Workflowaktionen vorhanden.
+
+
+15. DIALOGE
+
+Bestehende Dialoge prüfen:
+
+max-w-[calc(100vw-...)]
+max-h-[90vh]
+overflow-y-auto nur innerhalb Dialoginhalt
+
+Kein Dialog breiter als Viewport.
+
+
+16. NORMALE SEITE NUR BROWSER-SCROLL
+
+Keine:
+
+max-h-[...]
+overflow-y-auto
+
+auf normalen Hauptcards.
+
+
+17. TECHNISCHES JSON
+
+Darf lokal horizontal scrollen, wenn nötig.
+
+Das ist eine zulässige Ausnahme.
+
+
+18. ACCORDION TOUCH TARGET
+
+Accordion Header auf Mobile mindestens ungefähr 44 px hoch.
+
+Gesamte Kopfzeile klickbar.
+
+
+19. LOADING
+
+Neue Seite mit sinnvoller Skeleton-Reihenfolge:
+
+Header
+Current Action
+Abstimmung
+Leistungsanfrage
+
+
+20. NOT FOUND
+
+Klare Ansicht:
+
+„Leistungsanfrage nicht gefunden.“
+
+[Zurück zu Leistungsanfragen]
+
+
+21. ERROR STATE
+
+Backend-/Loadingfehler nicht als leere Seite.
+
+Bestehende Error-Komponenten verwenden.
+
+
+22. MUTATION SUCCESS
+
+Nach erfolgreicher Mutation:
+
+Detailstatus sichtbar aktualisieren.
+
+Kein manueller Reload erforderlich.
+
+
+23. MUTATION ERROR
+
+Fehler klar anzeigen.
+
+Buttons anschließend wieder aktivierbar.
+
+
+24. SOURCE-CLEANUP ALTE AG-SEITE
+
+Global:
+
+takt-request-detail
+
+Wenn ungenutzt:
+→ löschen.
+
+
+25. ROUTE-CLEANUP
+
+Keine Route darf alte Seite importieren.
+
+
+26. IMPORT-CLEANUP
+
+Ungenutzte Imports aus leistungsanfragen-detail.tsx entfernen.
+
+
+27. COMPONENT-CLEANUP
+
+Global prüfen:
+
+CoordinationSummary
+CoordinationHistory
+SnapshotPreview
+NotificationPreview
+DeadlineCard
+ResponsePanel
+GUDecisionPanel
+ProposalActions
+ServiceCoordinationTools
+
+Wenn Komponente nach Refactoring nirgendwo mehr genutzt:
+→ löschen.
+
+Wenn AN oder andere Seite sie braucht:
+→ behalten.
+
+
+28. KEIN ALT/NEU CODEPFAD
+
+Global suchen:
+
+legacy
+classic
+oldView
+useNewView
+featureFlag
+
+im Zusammenhang mit AG Detail.
+
+Kein permanenter Umschalter.
+
+
+29. availableResources GLOBAL CHECK
+
+Sicherstellen:
+
+nirgendwo Booking-Erzeugungsquelle.
+
+
+30. bookingRequirements CHECK
+
+Sicherstellen:
+
+Initial + Change Acceptance nutzen dieselbe Logik.
+
+
+31. STATE HELPER CHECK
+
+Global:
+
+deriveServiceCoordinationState
+deriveCoordinationFacts
+deriveCoordinationState
+
+Keine konkurrierenden Businessregeln.
+
+
+32. DEPENDENCY CHECK
+
+Global:
+
+serviceDependenciesTable
+leistungsabhaengigkeiten
+
+Sicherstellen:
+
+keine zwei fachlich divergierenden Auswertungen.
+
+
+33. LocalHub CHECK
+
+Alle verbliebenen direkten Vorkommen dokumentieren.
+
+
+34. DATUMS-CHECK
+
+Global:
+
+86400000
+getTime()
+end <= start
+
+fachliche Planungspfade prüfen.
+
+
+35. GANTT CHECK
+
+Global:
+
+if (!b.resourceId)
+if (!booksForThis.length)
+
+alte Fehlerpfade dürfen nicht mehr bestehen.
+
+
+36. INFORMATIONSPRESERVATION MANUELL ABGLEICHEN
+
+Alte Feldinventarliste gegen neue Seite vergleichen.
+
+Keine Kategorie ohne Zielort.
+
+
+37. ACCESSIBILITY BASICS
+
+Buttons mit verständlichen Labels.
+
+Accordion aria-expanded entsprechend bestehender UI-Library.
+
+Keine Click-Aktion nur auf Icon ohne accessible name.
+
+
+38. KEINE NEUE DESIGN-SYSTEM-ARCHITEKTUR
+
+Bestehende Komponentenbibliothek/Tailwind-Konventionen verwenden.
+
+
+39. PERFORMANCE
+
+Keine großen JSON-Blöcke standardmäßig rendern, wenn Accordion geschlossen und Lazy Rendering einfach möglich ist.
+
+Aber keine unnötige komplexe Optimierung.
+
+
+40. ABSCHLUSSPRÜFUNG
+
+Bei 390px, 768px, 1024px, 1440px öffnen und Kernzustände testen.
+
+Nach diesem Schritt muss die neue Ansicht vollständig, responsiv und ohne alte parallele UI verfügbar sein.

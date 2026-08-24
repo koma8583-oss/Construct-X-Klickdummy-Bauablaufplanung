@@ -1,0 +1,452 @@
+SCHRITT 6 – ONE-DAY-DATEN, CALENDAR-DATE-LOGIK, GANTT UND TECHNISCHE RESTDOPPLUNGEN BEREINIGEN
+
+ZIEL
+
+Verbleibende kleinere, aber fachlich relevante Inkonsistenzen in Datumsauswertung, Gantt und Legacy-Code beseitigen.
+
+Prüfe insbesondere:
+
+- ProposalActions AG
+- ProposalActions AN
+- Change Impact Route
+- Revision
+- Schedule Change
+- calendar-date-utils.ts
+- lokale calendarDayDelta-Helper
+- gantt.tsx
+- alte AG-Detaildateien
+
+
+1. ONE-DAY-ZEITFENSTER ÜBERALL ZULASSEN
+
+Ein Leistungsvorgang darf genau einen Kalendertag dauern.
+
+Fachliche Regel:
+
+start <= end
+→ gültig
+
+Nur:
+
+end < start
+→ ungültig
+
+
+2. AG ProposalActions KORRIGIEREN
+
+Falls dort:
+
+if (end <= start)
+
+steht:
+
+ändern auf Calendar-Date-Vergleich:
+
+if (
+  compareCalendarDates(end, start) < 0
+)
+
+oder vorhandenen äquivalenten Helper.
+
+
+3. AN ProposalActions KORRIGIEREN
+
+Identische Semantik.
+
+Keine abweichende AN-Regel.
+
+
+4. CHANGE IMPACT KORRIGIEREN
+
+Auch dort:
+
+start == end
+
+zulassen.
+
+Keine:
+
+end <= start
+
+Validierung.
+
+
+5. REVISION UND ALTERNATIVEN PRÜFEN
+
+Global alle Zeitfenster-Validatoren suchen.
+
+Für fachliche Calendar-Day-Intervalle überall:
+
+start <= end
+
+
+6. ZENTRALEN Calendar-Date HELPER VERWENDEN
+
+Vorhandenes:
+
+calendar-date-utils.ts
+
+ist die zentrale Quelle.
+
+Keine zusätzlichen gleichartigen lokalen Helper pflegen.
+
+
+7. LOKALE calendarDayDelta-FUNKTIONEN ENTFERNEN
+
+Falls schedule-change-service.ts oder andere Dateien eigene:
+
+calendarDayDelta(...)
+
+implementieren:
+
+auf:
+
+differenceInCalendarDays(...)
+
+aus dem zentralen Helper umstellen.
+
+Danach lokale Duplikatfunktion löschen.
+
+
+8. KEINE getTime()-SHIFT-LOGIK FÜR PLANUNGSTAGE
+
+Insbesondere prüfen:
+
+restoreConcreteResourceAssignments
+schedule-change-service
+change-impact-service
+revision-service
+
+Keine:
+
+newDate = new Date(
+  oldDate.getTime() + shiftMs
+)
+
+für fachliche Tagesverschiebungen.
+
+Stattdessen:
+
+shiftCalendarDate(...)
+
+
+9. INKLUSIVE DAUER
+
+Dauer einer Leistung:
+
+differenceInCalendarDays(
+  end,
+  start
+) + 1
+
+Damit:
+
+01.–01.
+= 1 Tag
+
+01.–05.
+= 5 Tage
+
+
+10. GANTT: FREIE RESOURCES SICHTBAR MACHEN
+
+Aktuell darf keine Logik verbleiben wie:
+
+if (!booksForThis.length) return;
+
+Die Basis des Gantt muss aus:
+
+allen aktiven Resources
+
+gebildet werden.
+
+Danach Bookings zuordnen.
+
+
+11. VIEWMODEL ZUERST AUS RESOURCES
+
+Sinngemäß:
+
+const resourceRows =
+  activeResources.map(resource => ({
+    resource,
+    bookings: ...
+  }));
+
+Nicht:
+
+bookings
+→ daraus Resources ableiten.
+
+
+12. TYPE-LEVEL BOOKINGS NICHT VERWERFEN
+
+Booking:
+
+resourceId == null
+resourceTypeId != null
+
+ist ein gültiges Type-Level-Booking.
+
+Keine:
+
+if (!booking.resourceId) return;
+
+Logik mehr, die diese Daten vollständig ausblendet.
+
+
+13. TYPE-LEVEL BOOKING DARSTELLUNG
+
+Pro ResourceType eine Aggregate-/Type-Level-Zeile verwenden.
+
+Beispiel:
+
+Facharbeiter Trockenbau
+[Type-Level]
+
+01.–05.
+4 Personen @ 50 %
+
+Keine künstliche Zuordnung auf konkrete Resource.
+
+
+14. KEINE KONKRETEN AN-RESSOURCEN ERFINDEN
+
+Type-Level Booking nicht automatisch auf einzelne Personen/Maschinen verteilen.
+
+Nur aggregiert darstellen.
+
+
+15. KONKRETE RESOURCE CONFLICT LOGIK KORRIGIEREN
+
+Konflikt nicht aus:
+
+Anzahl überlappender Bookings > 1
+
+ableiten.
+
+Stattdessen pro Kalendertag:
+
+dailyUtilization =
+  sum(utilizationPercent aller aktiven Bookings)
+
+
+16. KONFLIKTREGEL
+
+dailyUtilization <= 100
+→ kein Konflikt
+
+dailyUtilization > 100
+→ Konflikt
+
+
+17. STATUSREGEL
+
+0 %
+→ frei
+
+1–99 %
+→ teilweise belegt
+
+100 %
+→ voll belegt
+
+>100 %
+→ Konflikt
+
+
+18. PURE HELPER FÜR UTILIZATION
+
+Bevorzugt:
+
+getDailyResourceUtilization(
+  bookings,
+  startDate,
+  endDate
+)
+
+als reine Funktion.
+
+Dadurch einfach testbar.
+
+
+19. BOOKING-AKTIVITÄT PRO TAG
+
+Booking zählt an einem Tag nur, wenn:
+
+booking.start <= day
+und
+booking.end >= day
+
+Calendar-Day Vergleich verwenden.
+
+
+20. 50+50 TEST
+
+Gleiche konkrete Resource.
+
+Zwei Bookings gleicher Tag:
+
+50 %
+50 %
+
+Erwartung:
+
+100 %
+kein Konflikt.
+
+
+21. 60+60 TEST
+
+Zwei Bookings:
+
+60 %
+60 %
+
+Erwartung:
+
+120 %
+Konflikt.
+
+
+22. FREE RESOURCE TEST
+
+Aktive Resource ohne Booking.
+
+Erwartung:
+
+im Gantt/ViewModel vorhanden.
+
+Status:
+frei.
+
+
+23. TYPE-LEVEL TEST
+
+Booking:
+
+resourceId = null
+resourceTypeId = TYPE_A
+
+Erwartung:
+
+im ViewModel vorhanden.
+
+Nicht verworfen.
+
+
+24. RESPONSIVE GANTT NICHT KOMPLETT NEU BAUEN
+
+Nur bestehende fachliche Darstellung korrigieren.
+
+Keine neue große Ressourcenplanungsarchitektur.
+
+
+25. ALTE AG-DETAILDATEI PRÜFEN
+
+Wenn:
+
+artifacts/ag-app/src/pages/takt-request-detail.tsx
+
+weiterhin keinen produktiven Import besitzt:
+
+löschen.
+
+
+26. ALTE ROUTE DARF NUR REDIRECTEN
+
+Wenn Legacy Route existiert:
+
+/takt-requests/:requestId
+
+darf sie nur auf die kanonische neue Route redirecten.
+
+Keine alte Komponente rendern.
+
+
+27. GLOBALER IMPORT-CHECK
+
+Vor Löschen:
+
+global suchen nach:
+
+takt-request-detail
+
+Wenn keine produktive Verwendung:
+→ Datei entfernen.
+
+
+28. ONE-DAY-PFLICHTTEST BACKEND
+
+start = 21.08.
+end = 21.08.
+
+Change Proposal:
+→ gültig.
+
+
+29. ONE-DAY-PFLICHTTEST AG UI
+
+Formular akzeptiert:
+
+21.08.–21.08.
+
+Submit möglich.
+
+
+30. ONE-DAY-PFLICHTTEST AN UI
+
+Gleiche Erwartung.
+
+
+31. CHANGE IMPACT ONE-DAY TEST
+
+start == end
+
+→ kein 422 allein wegen gleicher Daten.
+
+
+32. CALENDAR SHIFT TEST
+
+Agreement:
+
+01.–05.
+
+Proposal:
+
+02.–06.
+
+Erwartung:
+
+startShiftDays = 1
+endShiftDays = 1
+durationDeltaDays = 0
+
+
+33. DST-/TIMEZONE-ROBUSTHEIT
+
+Mindestens einen Calendar-Date-Test um ein Datum durchführen, an dem lokale DST-Probleme auftreten könnten.
+
+Da fachlich reine YYYY-MM-DD-Daten verwendet werden:
+
+Ergebnis muss unabhängig von DST genau korrekte Kalendertage liefern.
+
+
+34. ABSCHLUSSKONTROLLE
+
+Global suchen:
+
+86400000
+getTime()
+end <= start
+if (!b.resourceId)
+if (!booksForThis.length)
+computeOverlapBands
+
+Jeden Treffer prüfen.
+
+Nur technisch legitime getTime()-Nutzung, z. B. reine Eventsortierung, darf bleiben.
+
+Keine fachliche Calendar-Day-Berechnung darüber.
+
+Nach diesem Schritt müssen One-Day-Termine, Gantt-Auslastung und Calendar-Day-Semantik konsistent funktionieren.

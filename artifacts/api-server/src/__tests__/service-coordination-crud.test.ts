@@ -257,30 +257,36 @@ describe("Constraint CRUD – owner check for cancel", () => {
     expect(res.body.reportedByOrgId).toBe(GU_ORG);
   });
 
-  it("NU (non-reporter) cannot cancel the constraint → 409", async () => {
+   it("NU (non-reporter) cannot cancel the constraint → 403", async () => {
     const res = await request(app)
       .post(`/api/service-requests/${REQUEST_A}/constraints/${constraintId}/cancel`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({});
-    expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/meldende Organisation/);
+     expect(res.status).toBe(403);
+     expect(res.body.error).toBe("CONSTRAINT_CANCEL_NOT_ALLOWED");
   });
 
-  it("NU can resolve the constraint (any party may resolve) → 200", async () => {
+   it("NU cannot resolve a constraint assigned to GU → 403", async () => {
     const res = await request(app)
       .post(`/api/service-requests/${REQUEST_A}/constraints/${constraintId}/resolve`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({});
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("RESOLVED");
+     expect(res.status).toBe(403);
+     expect(res.body.error).toBe("CONSTRAINT_RESOLVE_NOT_ALLOWED");
   });
 
-  it("trying to cancel a RESOLVED constraint returns 404 (not OPEN)", async () => {
+   it("GU can resolve the constraint and a second close returns 409", async () => {
+     const resolveRes = await request(app)
+       .post(`/api/service-requests/${REQUEST_A}/constraints/${constraintId}/resolve`)
+       .set("Authorization", `Bearer ${guToken}`)
+       .send({});
+     expect(resolveRes.status).toBe(200);
+     expect(resolveRes.body.status).toBe("RESOLVED");
     const res = await request(app)
       .post(`/api/service-requests/${REQUEST_A}/constraints/${constraintId}/cancel`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({});
-    expect(res.status).toBe(404);
+     expect(res.status).toBe(409);
   });
 
   it("GU can cancel their own constraint", async () => {
@@ -329,12 +335,12 @@ describe("Clarification answer – concurrent answer returns 409", () => {
     expect(res.body.status).toBe("RESOLVED");
   });
 
-  it("second answer attempt → 404 (clarification no longer OPEN)", async () => {
+   it("second answer attempt → 409 (clarification no longer OPEN)", async () => {
     const res = await request(app)
       .post(`/api/service-requests/${REQUEST_A}/clarifications/${clarId}/answer`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({ answer: "Another answer" });
-    expect(res.status).toBe(404);
+     expect(res.status).toBe(409);
   });
 
   it("asker (NU) cannot answer their own question → 403", async () => {
@@ -369,12 +375,12 @@ describe("Clarification cancel – only asker may cancel", () => {
     clarId = res.body.id;
   });
 
-  it("NU (non-asker) cannot cancel GU's question → 404", async () => {
+   it("NU (non-asker) cannot cancel GU's question → 403", async () => {
     const res = await request(app)
       .post(`/api/service-requests/${REQUEST_A}/clarifications/${clarId}/cancel`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({});
-    expect(res.status).toBe(404);
+     expect(res.status).toBe(403);
   });
 
   it("GU (asker) can cancel their own question → 200", async () => {
