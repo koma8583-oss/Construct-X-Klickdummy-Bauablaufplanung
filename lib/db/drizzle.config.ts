@@ -6,11 +6,11 @@ const roleEnv =
   role === "ag" ? "AG_DATABASE_URL" :
   role === "an" ? "AN_DATABASE_URL" :
   role === "hub" ? "HUB_DATABASE_URL" : undefined;
-const url = roleEnv ? process.env[roleEnv] : undefined;
+const url = roleEnv ? (process.env[roleEnv] ?? process.env.DATABASE_URL) : undefined;
 
 if (!roleEnv || !url) {
   throw new Error(
-    "DB_ROLE must be ag, an, or hub and its corresponding *_DATABASE_URL must be set",
+    "DB_ROLE must be ag, an, or hub and DATABASE_URL or its corresponding *_DATABASE_URL must be set",
   );
 }
 

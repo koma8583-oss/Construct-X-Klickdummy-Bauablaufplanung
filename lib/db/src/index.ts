@@ -8,24 +8,37 @@ const { Pool } = pg;
 export type DatabaseRole = "ag" | "an" | "hub";
 
 const connectionStrings: Record<DatabaseRole, string | undefined> = {
-  ag: process.env.AG_DATABASE_URL,
-  an: process.env.AN_DATABASE_URL,
-  hub: process.env.HUB_DATABASE_URL,
+  ag: process.env.AG_DATABASE_URL ?? process.env.DATABASE_URL,
+  an: process.env.AN_DATABASE_URL ?? process.env.DATABASE_URL,
+  hub: process.env.HUB_DATABASE_URL ?? process.env.DATABASE_URL,
 };
 
 /**
- * The three stores are deliberately configured independently.  DATABASE_URL
- * is not accepted as a fallback: allowing it here would make it possible to
- * silently re-introduce a shared AG/AN database during deployment.
+ * The preferred deployment uses three independent databases. Replit's default
+ * single-database development setup can explicitly operate in logical
+ * isolation mode through DATABASE_URL: requests still select one role-scoped
+ * database handle, while route/org guards and Dataspace processing remain the
+ * actual cross-domain boundary.
  */
 export function assertDatabaseConfiguration(): void {
+  const hasSharedDatabase = Boolean(process.env.DATABASE_URL);
+  const hasAnySeparateDatabase = Object.values({
+    ag: process.env.AG_DATABASE_URL,
+    an: process.env.AN_DATABASE_URL,
+    hub: process.env.HUB_DATABASE_URL,
+  }).some(Boolean);
+
+  if (hasSharedDatabase && !hasAnySeparateDatabase) {
+    return;
+  }
+
   const missing = (Object.entries(connectionStrings) as [DatabaseRole, string | undefined][])
     .filter(([, url]) => !url)
     .map(([role]) => `${role.toUpperCase()}_DATABASE_URL`);
   if (missing.length > 0) {
     throw new Error(
       `Separate database configuration is required. Missing: ${missing.join(", ")}. ` +
-        "DATABASE_URL is intentionally not supported.",
+        "Set all three role URLs or use DATABASE_URL explicitly for logical isolation.",
     );
   }
 

@@ -40,6 +40,12 @@ BEGIN
   END IF;
 END $$;
 SQL
+elif [[ -n "${DATABASE_URL:-}" && -z "${AG_DATABASE_URL:-}" && -z "${AN_DATABASE_URL:-}" && -z "${HUB_DATABASE_URL:-}" ]]; then
+  echo "Using the configured single development database with logical AG/AN/Hub isolation"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0001_leistungen_canonical_rename.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0002_project_memberships.sql
 fi
 
 pnpm -w run typecheck:libs

@@ -1,6 +1,6 @@
-# Physische Datenbanktrennung
+# Datenbanktrennung
 
-TaktKoord verwendet drei PostgreSQL-Datenbanken:
+Für eine produktive Installation ist die bevorzugte Konfiguration:
 
 | Rolle | Variable | Inhalt |
 | --- | --- | --- |
@@ -8,15 +8,16 @@ TaktKoord verwendet drei PostgreSQL-Datenbanken:
 | AN/NU | `AN_DATABASE_URL` | Ressourcen, lokale Projekte, Kapazität und interne Buchungen |
 | Hub | `HUB_DATABASE_URL` | Identität, Nachrichten- und Dataspace-Transport-Metadaten |
 
-`DATABASE_URL` ist absichtlich nicht mehr gültig. Die API startet nicht, wenn
-eine Variable fehlt oder zwei Variablen auf dieselbe Datenbank zeigen. Die
-Verbindungen werden lazy als `agDb`, `anDb` und `hubDb` erzeugt. Bestehende
-Repository-Aufrufe über `db` sind request-scoped und werden durch die
-Route-Grenze (`/api`, `/api/an`, `/api/hub`) auf genau eine Rolle gebunden.
+Für die lokale Replit-Entwicklung kann ausdrücklich eine vorhandene einzelne
+Datenbank über `DATABASE_URL` verwendet werden. In diesem Modus werden AG, AN
+und Hub logisch über getrennte Rollen-Zugriffspfade (`agDb`, `anDb`, `hubDb`)
+und die Route-/Organisationstrennung isoliert. Das ist keine physische
+PostgreSQL-Datenbank- oder Benutzertrennung und darf nicht als solche
+ausgegeben werden.
 
 ## Migration und lokale Entwicklung
 
-Jede Datenbank wird unabhängig synchronisiert:
+Getrennte Datenbanken werden unabhängig synchronisiert:
 
 ```bash
 DB_ROLE=ag pnpm --filter @workspace/db run push-force
@@ -29,7 +30,11 @@ DB_ROLE=hub pnpm --filter @workspace/db run push-force
 drei getrennten Schema-Synchronisationen aus. In produktiven Umgebungen sollen
 die drei URLs von getrennten PostgreSQL-Rollen mit minimalen Rechten stammen.
 
-AG↔AN-Daten werden nicht per SQL-Join, Fremdschlüssel oder gemeinsamem ORM-
-Bestand übertragen. Die einzige erlaubte Übergabe ist ein validierter
-Dataspace-Connector-Nachrichtenaustausch; der Hub speichert dabei nur
-Transportmetadaten und keine vollständigen Projekt- oder Ressourcenpläne.
+Bei Verwendung von `DATABASE_URL` führt das Nachsetup die gemeinsamen
+Entwicklungsmigrationen einmal aus. Die Anwendung bleibt bei jedem Request an
+einen logischen Datenbankrollenpfad gebunden.
+
+AG↔AN-Daten sollen nicht per fachlichem SQL-Join übertragen werden. Die
+bevorzugte Übergabe ist ein validierter Dataspace-Connector-
+Nachrichtenaustausch. Im gemeinsamen Entwicklungsmodus schützen zusätzlich
+serverseitige Rollen-, Organisations- und Projektprüfungen vor Querzugriffen.
