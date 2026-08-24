@@ -1,0 +1,199 @@
+SCHRITT 16 – TESTSUITE EXPLIZIT AUF EINE GEMEINSAME DATENBANK MIT LOGISCHER ORGANISATIONSISOLATION AUSRICHTEN
+
+ZIEL
+
+Die Tests müssen beweisen:
+
+- eine gemeinsame PostgreSQL-Testdatenbank
+- keine getrennten PostgreSQL-Benutzer
+- trotzdem keine direkten privaten Cross-Org-Zugriffe
+
+
+1. TESTINFRASTRUKTUR
+
+Eine gemeinsame Testdatenbank verwenden.
+
+
+2. KEINE SEPARATEN DB-USER
+
+AG und AN ausschließlich als Application Context simulieren.
+
+
+3. AG CONTEXT
+
+currentOrgId = AG_ID
+
+
+4. AN CONTEXT
+
+currentOrgId = AN_ID
+
+
+5. PARTICIPANT DIRECTORY
+
+AG und AN als VERIFIED Participants.
+
+
+6. INVITE TEST
+
+AG lädt AN ein.
+
+Erwartung:
+
+AG-owned Membership INVITED.
+
+
+7. BEFORE INBOUND
+
+AN GET /project-invitations:
+
+keine Einladung.
+
+
+8. CROSS-ORG MEMBERSHIP
+
+AN darf AG Membership nicht lesen.
+
+
+9. INVITATION INBOUND
+
+AN Context.
+
+Danach:
+
+AN-owned Invitation PENDING.
+
+
+10. CROSS-ORG INVITATION
+
+AG darf AN-owned Invitation nicht lesen.
+
+
+11. ACCEPT
+
+AN:
+
+PENDING → ACCEPTED
+
+Response Outbox AN-owned.
+
+
+12. BEFORE RESPONSE INBOUND
+
+AG Membership:
+
+weiter INVITED.
+
+
+13. KEIN SHARED-DB SHORTCUT
+
+Kein Service darf den AN ACCEPTED-Status direkt lesen, um AG Membership zu aktivieren.
+
+
+14. RESPONSE INBOUND
+
+AG Context.
+
+Membership:
+
+ACTIVE.
+
+
+15. SERVICE REQUEST
+
+AG erzeugt Leistungsanfrage.
+
+
+16. BEFORE SERVICE INBOUND
+
+AN sieht AG-owned Service Request nicht.
+
+
+17. SERVICE REQUEST INBOUND
+
+AN Context.
+
+AN-owned received Request entsteht.
+
+
+18. RESOURCE PRIVACY
+
+AN ResourceBooking anlegen.
+
+AG darf ihn nicht über reguläre Resource APIs erhalten.
+
+
+19. AG PLANNING PRIVACY
+
+AN darf AG-interne Planung nicht direkt lesen.
+
+
+20. OUTBOX PRIVACY
+
+AG kann AN-owned Outbox nicht lesen.
+
+AN kann AG-owned Outbox nicht lesen.
+
+
+21. AUDIT PRIVACY
+
+AG nur AG Audit.
+
+AN nur AN Audit.
+
+
+22. PARTICIPANT DIRECTORY SHARED
+
+Beide dürfen freigegebene Participant-Informationen sehen.
+
+
+23. ownerOrgId SPOOFING
+
+AG sendet:
+
+ownerOrgId = AN_ID
+
+Erwartung:
+
+ignoriert oder abgewiesen.
+
+Keine AN-owned Row.
+
+
+24. E2E HAPPY PATH
+
+VERIFIED AN
+
+→ AG „Zum Projekt einladen“
+
+→ AG Membership INVITED
+
+→ PROJECT_INVITATION
+
+→ AN Invitation PENDING
+
+→ AN „Projekt beitreten“
+
+→ AN ACCEPTED
+
+→ PROJECT_INVITATION_RESPONSE
+
+→ AG Membership ACTIVE
+
+→ AG Leistungsanfrage
+
+→ SERVICE_REQUEST
+
+→ AN Inbound
+
+→ AN sieht Leistung
+
+
+25. KEIN ACTIVE project_contractors SEED
+
+Der Test darf keinen versteckten zweiten Aktivstatus benötigen.
+
+
+ERGEBNIS
+
+Die Test-Suite beweist echte logische Datensouveränität innerhalb einer gemeinsamen Datenbank.

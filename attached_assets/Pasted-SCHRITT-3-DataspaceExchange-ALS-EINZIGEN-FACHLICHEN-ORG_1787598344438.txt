@@ -1,0 +1,122 @@
+SCHRITT 3 – DataspaceExchange ALS EINZIGEN FACHLICHEN ORGANISATIONSÜBERGANG VERWENDEN
+
+ZIEL
+
+Die gemeinsame Datenbank darf nicht als direkter Kommunikationskanal zwischen AG und AN verwendet werden.
+
+Der DataspaceExchange ist der einzige reguläre fachliche Übergang zwischen den Organisationssichten.
+
+
+1. VERBINDLICHER AG→AN FLOW
+
+AG Domain
+→ AG-owned Outbox
+→ DataspaceExchange
+→ AN Inbound Processor
+→ AN-owned Domain Data
+
+
+2. VERBINDLICHER AN→AG FLOW
+
+AN Domain
+→ AN-owned Outbox
+→ DataspaceExchange
+→ AG Inbound Processor
+→ AG-owned Domain Data
+
+
+3. PROJECT_INVITATION
+
+AG Outbound:
+
+publishProjectInvitation(...)
+
+AN Inbound:
+
+processIncomingProjectInvitation(...)
+
+
+4. PROJECT_INVITATION_RESPONSE
+
+AN Outbound:
+
+publishProjectInvitationResponse(...)
+
+AG Inbound:
+
+processIncomingProjectInvitationResponse(...)
+
+
+5. NORMALE AG-SERVICES DÜRFEN KEINE AN-DOMAIN-ROWS ERZEUGEN
+
+Nicht zulässig:
+
+AG Service
+→ INSERT private Row
+ownerOrgId = AN
+
+
+6. NORMALE AN-SERVICES DÜRFEN KEINE AG-DOMAIN-ROWS ERZEUGEN
+
+Nicht zulässig:
+
+AN Service
+→ UPDATE private AG Row
+
+
+7. AUSNAHME
+
+Explizite Dataspace-Inbound-Processor dürfen im organisatorischen Kontext des Empfängers dessen lokale Kopie erzeugen bzw. aktualisieren.
+
+
+8. INBOUND CONTEXT
+
+Beispiel:
+
+processIncomingProjectInvitation(
+  payload,
+  {
+    currentOrgId: recipientOrgId,
+    currentParticipantId: recipientParticipantId
+  }
+)
+
+
+9. publishProjectInvitation DARF NICHT project_invitations SCHREIBEN
+
+Outbound Transport kennt keine AN-private Domain-Tabelle.
+
+
+10. publishProjectInvitationResponse DARF NICHT AG-MEMBERSHIP ÄNDERN
+
+Die Mutation erfolgt ausschließlich im AG Inbound Processor.
+
+
+11. TRANSPORT AUS TESTWEISE DEAKTIVIEREN
+
+AG lädt AN ein.
+
+Erwartung:
+
+AG Membership INVITED.
+
+AN keine Invitation.
+
+
+12. NACH INBOUND
+
+Erst dann:
+
+AN Invitation PENDING.
+
+
+13. ACCEPT OHNE RESPONSE-INBOUND
+
+AN ACCEPTED.
+
+AG bleibt INVITED.
+
+
+ERGEBNIS
+
+Die physische gemeinsame Datenbank bleibt bestehen, aber organisationsübergreifender Fachzustand entsteht ausschließlich durch DataspaceExchange + Inbound.

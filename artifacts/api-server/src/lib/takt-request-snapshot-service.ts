@@ -28,6 +28,7 @@ import { eq, and } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
 import { withCanonicalTakt } from "./legacy-takt-mappers";
+import { assertActiveProjectMembership } from "../services/project-membership-service";
 
 // ── Snapshot payload type ─────────────────────────────────────────────────────
 
@@ -356,28 +357,11 @@ export async function createTaktRequestWithSnapshot(
     throw new UnauthorizedSnapshotError(input.guOrgId, project.agOrgId);
   }
 
-  // ── Step 4: NU contractor check ───────────────────────────────────────────
-  const [contractorRow] = await db
-    .select()
-    .from(projectContractorsTable)
-    .where(
-      and(
-        eq(projectContractorsTable.projectId, takt.projectId),
-        eq(projectContractorsTable.anOrgId, input.nuOrgId),
-      ),
-    )
-    .limit(1);
+  // Membership is the sole project-participation gate. Contractor rows carry
+  // trade/work-package assignment data, not a second AN consent decision.
+  await assertActiveProjectMembership(takt.projectId, input.nuOrgId);
 
-  if (!contractorRow) {
-    throw new NuNotContractorError(input.nuOrgId, takt.projectId);
-  }
-
-  // Only ACTIVE assignments may receive new TaktRequests (Task 9.2)
-  if (contractorRow.assignmentStatus !== "ACTIVE") {
-    throw new NuNotContractorError(input.nuOrgId, takt.projectId);
-  }
-
-  // ── Step 5: Load dependencies ─────────────────────────────────────────────
+  // ── Step 4: Load dependencies ─────────────────────────────────────────────
   const predecessors = await db
     .select()
     .from(taktDependenciesTable)

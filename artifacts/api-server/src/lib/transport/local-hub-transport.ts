@@ -388,7 +388,10 @@ export class LocalHubTransport implements MessageTransport {
     if (!outboxRow) {
       throw new MessageNotFoundError(messageId);
     }
-    if (outboxRow.status !== "FAILED") {
+    // PENDING is also retryable: domain transactions may pre-create the
+    // outbox row atomically with their business change before the delivery
+    // adapter is invoked.
+    if (!["PENDING", "FAILED"].includes(outboxRow.status)) {
       throw new NotRetryableError(messageId, outboxRow.status);
     }
 

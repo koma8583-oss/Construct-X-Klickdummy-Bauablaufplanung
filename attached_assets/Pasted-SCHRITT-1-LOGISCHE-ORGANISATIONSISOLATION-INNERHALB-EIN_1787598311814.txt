@@ -1,0 +1,211 @@
+SCHRITT 1 – LOGISCHE ORGANISATIONSISOLATION INNERHALB EINER GEMEINSAMEN DATENBANK VERBINDLICH MACHEN
+
+ZIEL
+
+Die Anwendung verwendet weiterhin EINE gemeinsame verwaltete PostgreSQL-Datenbank und dieselbe bestehende technische Datenbankverbindung bzw. denselben Connection Pool.
+
+AG, AN und Hub sind KEINE getrennten PostgreSQL-Benutzer.
+
+Die Isolation erfolgt ausschließlich logisch auf Anwendungsebene.
+
+Verbindliches Architekturprinzip:
+
+Authentifizierung
+→ currentOrgId
+→ ownerOrgId
+→ Service-/Repository-Scope
+→ Authorization
+
+Es dürfen insbesondere NICHT eingeführt werden:
+
+- separate PostgreSQL-Benutzer für AG, AN oder Hub
+- separate PostgreSQL-Rollen als Mandantentrennung
+- separate Connection Strings je Organisation
+- separate Datenbanken
+- separate Schemas ausschließlich zur Organisationsisolation
+
+Die bestehende verwaltete Datenbankarchitektur bleibt erhalten.
+
+
+1. BESTEHENDEN AUTH-/ORGANISATIONSKONTEXT ANALYSIEREN
+
+Prüfe, wie die aktuell authentifizierte Organisation bestimmt wird.
+
+Beispiele:
+
+req.user.orgId
+currentOrganization.id
+authContext.orgId
+
+Verwende die bereits bestehende zentrale Quelle.
+
+Keine zweite parallele Organisationsauflösung implementieren.
+
+
+2. currentOrgId VERBINDLICH AUS AUTH CONTEXT
+
+Private Domain-Services müssen ihre Organisation aus dem authentifizierten Anwendungskontext erhalten.
+
+Beispiel:
+
+const currentOrgId = req.user.orgId;
+
+Nicht zulassen:
+
+POST {
+  "ownerOrgId": "..."
+}
+
+als frei vom Client bestimmbaren Datenbesitzer.
+
+
+3. ownerOrgId FÜR PRIVATE ORGANISATIONSDATEN VERWENDEN
+
+Alle organisationsspezifischen privaten Datensätze müssen einen eindeutigen organisatorischen Eigentümer besitzen.
+
+Bevorzugt:
+
+ownerOrgId
+
+Falls im aktuellen Code bereits eine andere konsistente Tenant-Bezeichnung existiert, diese prüfen und gegebenenfalls weiterverwenden.
+
+Keine unnötige zweite Konvention einführen.
+
+
+4. PRIVATE READ-QUERIES ORGANISATIONSGESCOPED AUSFÜHREN
+
+Nicht:
+
+SELECT *
+FROM project_invitations
+WHERE id = ?
+
+sondern:
+
+SELECT *
+FROM project_invitations
+WHERE id = ?
+AND ownerOrgId = currentOrgId
+
+
+5. UPDATE UND DELETE EBENFALLS SCOPEN
+
+Beispiel:
+
+UPDATE project_invitations
+SET ...
+WHERE id = ?
+AND ownerOrgId = currentOrgId
+
+
+6. KEINE FRONTEND-FILTERUNG ALS SICHERHEIT
+
+Nicht:
+
+Backend liefert Daten aller Organisationen
+→ Frontend filtert anschließend.
+
+Die Zugriffsbeschränkung muss im Backend erfolgen.
+
+
+7. KEINE CROSS-ORG-QUERIES AUF PRIVATE DATEN
+
+AG darf nicht direkt lesen:
+
+- AN ResourceBookings
+- AN interne Ressourcen
+- AN interne Projekte
+- AN ProjectInvitations
+- AN Outbox
+- AN Audit
+
+AN darf nicht direkt lesen:
+
+- AG Gesamtterminplanung
+- AG interne Projekte
+- AG ProjectMemberships
+- AG Outbox
+- AG Audit
+
+
+8. BEWUSST GETEILTE DATEN AUSNEHMEN
+
+Ein Participant Directory ist bewusst ein gemeinsamer Datenraumdienst.
+
+Daten wie:
+
+participantId
+organizationName
+identityStatus
+connectorEndpoint
+capabilities
+
+dürfen dort organisationsübergreifend sichtbar sein.
+
+Dies erzeugt aber KEIN Zugriffsrecht auf private Domain-Daten.
+
+
+9. KEINE POSTGRESQL-USER-BASIERTE AUTHORIZATION
+
+Nicht implementieren:
+
+current_database_user === "ag_user"
+
+oder:
+
+current_database_user === "an_user"
+
+AG, AN und Hub verwenden dieselbe technische DB-Verbindung.
+
+
+10. RLS NICHT ALS VORAUSSETZUNG EINFÜHREN
+
+PostgreSQL Row Level Security ist für diesen Auftrag nicht erforderlich.
+
+Nur weiterverwenden, falls sie bereits sauber vorhanden ist.
+
+Die verbindliche Sicherheitsgrenze bleibt:
+
+Application-Level Authorization
++
+currentOrgId/ownerOrgId
+
+
+11. PFLICHTTEST AG → AN
+
+Als AG authentifizieren.
+
+Versuch:
+
+AN-owned private Row über reguläre API lesen.
+
+Erwartung:
+
+nicht sichtbar bzw. 403/404 gemäß bestehender API-Konvention.
+
+
+12. PFLICHTTEST AN → AG
+
+Als AN authentifizieren.
+
+Versuch:
+
+AG-owned private Row lesen.
+
+Erwartung:
+
+nicht sichtbar.
+
+
+13. ABSCHLUSSKONTROLLE
+
+Global private Repository-/Service-Queries prüfen.
+
+Keine produktive private Query darf ohne organisatorischen Scope verbleiben.
+
+
+ERGEBNIS
+
+Eine PostgreSQL-Datenbank und eine technische Verbindung bleiben bestehen.
+
+Die Datensouveränität wird logisch durch den Application Layer umgesetzt.

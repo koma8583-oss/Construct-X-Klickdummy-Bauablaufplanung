@@ -1,0 +1,286 @@
+SCHRITT 18 – FINALE DEFINITION OF DONE UND VERBINDLICHEN ABSCHLUSSBERICHT ERSTELLEN
+
+ZIEL
+
+Die Umsetzung gilt erst als abgeschlossen, wenn der gesamte Prozess fachlich, technisch und hinsichtlich der logischen Organisationsisolation konsistent ist.
+
+
+DEFINITION OF DONE
+
+Alle folgenden Aussagen müssen wahr sein:
+
+1. Es wird weiterhin EINE gemeinsame verwaltete PostgreSQL-Datenbank verwendet.
+
+2. Es wurden KEINE getrennten PostgreSQL-Benutzer für AG, AN oder Hub eingeführt.
+
+3. Es wurden KEINE getrennten Connection Strings je Organisation eingeführt.
+
+4. AG und AN verwenden dieselbe technische DB-Infrastruktur.
+
+5. Die Datentrennung erfolgt logisch im Application Layer.
+
+6. Private Datensätze besitzen einen ownerOrgId- bzw. gleichwertigen Organisationsscope.
+
+7. currentOrgId stammt aus dem Auth-/Application Context.
+
+8. ownerOrgId kann nicht vom Client frei manipuliert werden.
+
+9. AG kann keine privaten AN-owned Rows über reguläre Services lesen.
+
+10. AN kann keine privaten AG-owned Rows über reguläre Services lesen.
+
+11. Participant Directory ist bewusst geteilt und enthält nur freigegebene Discovery-Metadaten.
+
+12. „Zum Projekt einladen“ nutzt Participant Directory.
+
+13. Neue Einladungen verwenden participantId als externe Identität.
+
+14. AG Project Membership und AN Project Invitation sind getrennte logische Domain-Sichten.
+
+15. AG Membership INVITED erzeugt nicht direkt eine AN Invitation.
+
+16. Erst PROJECT_INVITATION Inbound erzeugt AN Invitation PENDING.
+
+17. AN Acceptance ändert keine AG Membership direkt.
+
+18. Erst PROJECT_INVITATION_RESPONSE Inbound setzt AG Membership ACTIVE.
+
+19. PROJECT_INVITATION wird transactional über eine AG-owned Outbox erzeugt.
+
+20. PROJECT_INVITATION_RESPONSE wird transactional über eine AN-owned Outbox erzeugt.
+
+21. Failed Invitation kann AG retryen.
+
+22. Failed Response kann AN retryen.
+
+23. PROJECT_MEMBERSHIP Policy wird tatsächlich geprüft.
+
+24. Externe Nachrichten verwenden Participant IDs.
+
+25. OpenAPI und Server-Routen stimmen überein.
+
+26. Der generierte Client verwendet die korrekte Invite-Route.
+
+27. ACTIVE Project Membership ist das zentrale Projektbeitritts-Gate.
+
+28. project_contractors ist kein zweites verstecktes ACTIVE-Gate.
+
+29. ACTIVE Membership ermöglicht die spätere Leistungszuordnung.
+
+30. SERVICE_REQUEST folgt ebenfalls der organisationsgetrennten Datenraumkommunikation.
+
+31. AN liest nicht direkt die AG-owned ServiceRequest-Row.
+
+32. AG liest nicht direkt AN ResourcePlanning/ResourceBookings.
+
+33. Change Proposal, Clarification, Constraint und Readiness wurden auf Shared-DB-Cross-Org-Shortcuts geprüft.
+
+34. Withdrawal/Revocation läuft ebenfalls über DataspaceExchange.
+
+35. Business Audit ist organisationsgescoped.
+
+36. Transport Audit ist organisationsgescoped.
+
+37. Cross-Org-Read-Regressionstests sind vorhanden.
+
+38. Shared-DB-Bypass-Tests sind vorhanden.
+
+39. End-to-End Invite → Accept → Service Request funktioniert ohne ACTIVE project_contractors Seed.
+
+40. Workspace Typecheck PASS.
+
+41. Workspace Tests PASS.
+
+42. Workspace Build PASS.
+
+
+VERBINDLICHER ABSCHLUSSBERICHT
+
+Am Ende exakt berichten:
+
+1. Gemeinsame PostgreSQL-Datenbank
+   JA / NEIN
+
+2. Getrennte PostgreSQL-Benutzer eingeführt
+   NEIN / JA
+
+3. Getrennte Connection Strings eingeführt
+   NEIN / JA
+
+4. Logische Organisationsisolation
+   BEHOBEN / OFFEN
+
+5. verwendeter Organisationsscope
+   Feld nennen
+
+6. currentOrgId Quelle
+   Auth-/Application-Context nennen
+
+7. AG → AN direkter privater Datenzugriff
+   VERHINDERT / NOCH MÖGLICH
+
+8. AN → AG direkter privater Datenzugriff
+   VERHINDERT / NOCH MÖGLICH
+
+9. AG Membership Store
+   Tabelle nennen
+
+10. AN Invitation Store
+    Tabelle nennen
+
+11. Invitation vor Dataspace Inbound auf AN sichtbar
+    NEIN / JA
+
+12. AN Acceptance vor Response Inbound auf AG sichtbar
+    NEIN / JA
+
+13. Project Invitation über DataspaceExchange
+    JA / NEIN
+
+14. Invitation Response über DataspaceExchange
+    JA / NEIN
+
+15. AG Invitation Outbox transactional
+    JA / NEIN
+
+16. AN Response Outbox transactional
+    JA / NEIN
+
+17. AG Invitation Retry
+    JA / NEIN
+
+18. AN Response Retry
+    JA / NEIN
+
+19. Participant Directory
+    Implementierung nennen
+
+20. Invite-Auswahl nutzt Participant Directory
+    JA / NEIN
+
+21. Invite Input
+    participantId / anOrgId / anderes
+
+22. externe Sender-/Empfängeridentität
+    verwendete Felder nennen
+
+23. PROJECT_MEMBERSHIP Policy Enforcement
+    BEHOBEN / OFFEN
+
+24. OpenAPI Invite Route
+    Route nennen
+
+25. Server Invite Route
+    Route nennen
+
+26. Generated Client Invite Route
+    Route nennen
+
+27. ACTIVE Membership Gate
+    zentrale Funktion nennen
+
+28. project_contractors als zweites Membership-Gate
+    ENTFERNT / NOCH VORHANDEN
+
+29. Leistungsempfänger AG UI
+    Datenquelle nennen
+
+30. Data Publication Empfänger
+    Datenquelle nennen
+
+31. Service Request organisationsgetrennt
+    JA / NEIN
+
+32. AG kann AN ResourceBookings direkt lesen
+    NEIN / JA
+
+33. AN kann AG interne Projektplanung direkt lesen
+    NEIN / JA
+
+34. Withdrawal/Revocation Dataspace Flow
+    BEHOBEN / OFFEN
+
+35. Business Audit organisationsgescoped
+    JA / NEIN
+
+36. Transport Audit organisationsgescoped
+    JA / NEIN
+
+37. Cross-Org AG→AN Test
+    PASS / FAIL
+
+38. Cross-Org AN→AG Test
+    PASS / FAIL
+
+39. Invitation-before-Inbound Test
+    PASS / FAIL
+
+40. Acceptance-before-Response-Inbound Test
+    PASS / FAIL
+
+41. ServiceRequest-before-Inbound Test
+    PASS / FAIL
+
+42. End-to-End Invite → Accept → Service Request
+    PASS / FAIL
+
+43. Duplicate Invitation
+    PASS / FAIL
+
+44. Duplicate Response
+    PASS / FAIL
+
+45. Policy Tests
+    PASS / FAIL
+
+46. OpenAPI Codegen
+    PASS / FAIL
+
+47. AG Typecheck
+    PASS / FAIL
+
+48. AN Typecheck
+    PASS / FAIL
+
+49. API Typecheck
+    PASS / FAIL
+
+50. Workspace Tests
+    PASS / FAIL
+
+51. Workspace Build
+    PASS / FAIL
+
+52. verbleibende bekannte Probleme
+
+Für jedes offene Problem:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
+
+
+VERBINDLICHE ARCHITEKTURFORMULIERUNG
+
+EINE PostgreSQL-Datenbank.
+EINE bestehende verwaltete technische Datenbankverbindung.
+KEINE PostgreSQL-Benutzertrennung zwischen AG, AN und Hub.
+
+Die organisatorische Datensouveränität erfolgt logisch über:
+
+Authentifizierung
+→ currentOrgId
+→ ownerOrgId
+→ Service-/Repository-Scope
+→ Authorization.
+
+Der fachlich vorgesehene organisationsübergreifende Übergang erfolgt ausschließlich über:
+
+DataspaceExchange
+→ Participant Identity
+→ Policy
+→ Nachricht
+→ Inbound Processor
+→ lokale organisationsbezogene Sicht.

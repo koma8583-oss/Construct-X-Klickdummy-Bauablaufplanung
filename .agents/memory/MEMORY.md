@@ -29,9 +29,11 @@
 - [DTC resource semantics](dtc-resource-semantics.md) — type bookings are nullable-resource reservations with positive quantity; DTC class mapping must not invent an OTHER fallback.
 - [Booking requirement metadata](booking-requirement-metadata.md) — auto-bookings retain original quantity/utilization and shift requirement sub-periods with the accepted Takt window.
 - [API Zod codegen exports](api-zod-codegen-exports.md) — keep api-zod exports explicit because broad generated type re-exports can create duplicate symbols.
+- [API Zod codegen overwrite](api-zod-codegen-export.md) — Orval can overwrite barrel-export fixes during codegen; the durable fix belongs in generator flow, not generated output.
 - [Coordination regression contracts](coordination-regression-contracts.md) — regression fixtures must use canonical Leistungsanfrage states, idempotent response codes, linked resource types, and current UI props.
 - [Concurrent agent edits](concurrent-agent-edits.md) — serialize changes to shared backend services; parallel writers can overwrite each other’s working copy.
 - [Coordination and booking sources](coordination-and-booking-sources.md) — derive objective next actions centrally; persist confirmed bookings only from unaggregated booking requirements.
 - [Timeline and dependency authority](timeline-and-dependency-authority.md) — initial agreement comes only from a real decision; service-request dependencies map to canonical Leistung dependencies.
 - [Invitation delivery retry](invitation-delivery-retry.md) — project invitation retries must use the persisted outbox envelope and original message ID, never recreate membership or response business rows.
 - [Physical database boundaries](physical-database-boundaries.md) — AG, AN, and Hub require distinct URLs, role-scoped access, and connector-mediated cross-domain exchange.
+- [Atomic invitation delivery](atomic-invitation-delivery.md) — pre-created transactional outbox rows must allow the first delivery retry from PENDING.

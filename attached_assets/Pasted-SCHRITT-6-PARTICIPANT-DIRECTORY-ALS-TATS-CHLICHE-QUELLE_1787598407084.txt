@@ -1,0 +1,181 @@
+SCHRITT 6 – PARTICIPANT DIRECTORY ALS TATSÄCHLICHE QUELLE FÜR „ZUM PROJEKT EINLADEN“ VERWENDEN
+
+ZIEL
+
+Die AG-Oberfläche soll keine allgemeine lokale AN-Organisationsliste mehr als Datenraumteilnehmerliste verwenden.
+
+Einladbar sind verifizierte Teilnehmer des Datenraums.
+
+
+1. BESTEHENDEN CODE PRÜFEN
+
+Insbesondere:
+
+dataspace-participant-resolver.ts
+
+GET /dataspace/participants
+
+DataspaceParticipant DTOs
+
+AG project-detail.tsx
+
+
+2. ZENTRALES INTERFACE
+
+Bevorzugt:
+
+interface ParticipantDirectory {
+  listParticipants(
+    filter?: ParticipantFilter
+  ): Promise<DataspaceParticipant[]>;
+
+  resolveParticipant(
+    participantId: string
+  ): Promise<DataspaceParticipant | null>;
+}
+
+
+3. DTO
+
+Mindestens:
+
+participantId
+
+localOrgId optional
+
+organizationName
+
+organizationType
+
+identityStatus
+
+connectorEndpoint optional
+
+connectorStatus
+
+capabilities optional
+
+
+4. identityStatus
+
+VERIFIED
+UNVERIFIED
+SUSPENDED
+
+
+5. connectorStatus
+
+AVAILABLE
+UNAVAILABLE
+UNKNOWN
+
+
+6. NICHT JEDE LOKALE ORGANISATION AUTOMATISCH VERIFIED SETZEN
+
+Die Existenz in organizations bedeutet nicht automatisch:
+
+gültiger Datenraumteilnehmer.
+
+
+7. PO C IMPLEMENTIERUNG
+
+Participant Directory darf als lokale Registry in derselben PostgreSQL-Datenbank umgesetzt werden.
+
+Beispielsweise:
+
+dataspace_participants
+
+
+8. PARTICIPANT DIRECTORY IST BEWUSST SHARED
+
+Diese Tabelle bzw. dieser Service darf organisationsübergreifend lesbar sein.
+
+Nur freigegebene Discovery-Metadaten.
+
+
+9. AG UI UMRÜSTEN
+
+Für „Zum Projekt einladen“ nicht mehr:
+
+useListOrganizations({ type: "AN" })
+
+
+10. STATTDESSEN
+
+GET /dataspace/participants?organizationType=AN
+
+bzw. generierten Hook.
+
+
+11. NUR VERIFIED EINLADBAR
+
+UNVERIFIED:
+nicht einladbar.
+
+SUSPENDED:
+nicht einladbar.
+
+
+12. INVITE REQUEST
+
+Bevorzugt:
+
+{
+  participantId,
+  invitationMessage?,
+  validUntil?
+}
+
+
+13. BACKEND
+
+ParticipantDirectory.resolveParticipant(participantId)
+
+und anschließend:
+
+- Teilnehmer existiert?
+- Typ AN?
+- VERIFIED?
+- bereits INVITED/ACTIVE?
+
+
+14. CONNECTOR STATUS
+
+UNAVAILABLE darf nicht als fachliche Ablehnung behandelt werden.
+
+Technischen Transportstatus separat behandeln.
+
+
+15. UI
+
+Pro Teilnehmer beispielsweise:
+
+Müller Ausbau GmbH
+Identität bestätigt
+Connector verfügbar
+
+
+16. BEREITS ACTIVE
+
+„Bereits Projektpartner“
+
+
+17. BEREITS INVITED
+
+„Einladung ausstehend“
+
+
+18. PFLICHTTEST
+
+VERIFIED AN sichtbar.
+
+UNVERIFIED nicht einladbar.
+
+AG nicht als AN einladbar.
+
+ACTIVE nicht erneut einladbar.
+
+
+ERGEBNIS
+
+Die Projektpartnerschaft beginnt mit einem Datenraumteilnehmer und nicht mit einer beliebigen lokalen Organisation.

@@ -1,0 +1,137 @@
+SCHRITT 4 – PROJECT_INVITATION UND PROJECT_INVITATION_RESPONSE DATENPAKETE KONSISTENT MODELLIEREN
+
+ZIEL
+
+Externe Datenraum-Nachrichten sollen Datenraumidentitäten und stabile externe Referenzen verwenden.
+
+Lokale Datenbank-IDs bleiben interne Implementierungsdetails.
+
+
+1. METADATA UMRÜSTEN
+
+Bevorzugt:
+
+senderParticipantId
+recipientParticipantId
+
+statt extern:
+
+senderOrgId
+receiverOrgId
+
+
+2. PROJECT_INVITATION DTO
+
+Beispiel:
+
+{
+  "metadata": {
+    "messageId": "...",
+    "correlationId": "...",
+    "schemaVersion": "1.0",
+    "createdAt": "...",
+    "senderParticipantId": "AG-123",
+    "recipientParticipantId": "AN-4711"
+  },
+
+  "project": {
+    "projectReference": "P-123",
+    "projectName": "Neubau Bochum",
+    "description": "...",
+    "location": "Bochum"
+  },
+
+  "requestedRole": "CONTRACTOR",
+
+  "purpose": "PROJECT_COLLABORATION",
+
+  "invitationMessage": "...",
+
+  "policy": {
+    "usagePurpose": "PROJECT_MEMBERSHIP",
+    "allowedConsumerParticipantId": "AN-4711"
+  }
+}
+
+
+3. PROJECT_INVITATION DARF KEINE INTERNEN PLANUNGSDATEN ENTHALTEN
+
+Nicht übertragen:
+
+- ResourceBookings
+- konkrete AN-Ressourcen
+- gesamte AG-Terminplanung
+- andere Projektpartner
+- interne User IDs
+- interne Kommentare
+- unnötige DB Primary Keys
+
+
+4. PROJECT_INVITATION_RESPONSE DTO
+
+Beispiel:
+
+{
+  "metadata": {
+    "messageId": "...",
+    "correlationId": "...",
+    "schemaVersion": "1.0",
+    "createdAt": "...",
+    "senderParticipantId": "AN-4711",
+    "recipientParticipantId": "AG-123"
+  },
+
+  "invitationId": "...",
+
+  "projectReference": "P-123",
+
+  "decision": "ACCEPTED",
+
+  "respondedAt": "...",
+
+  "message": "..."
+}
+
+
+5. DECISION ENUM
+
+ACCEPTED
+REJECTED
+
+
+6. correlationId
+
+Invitation und Response müssen eindeutig korreliert werden.
+
+
+7. STABILE EXTERNE PROJECT REFERENCE
+
+projectReference darf nicht ausschließlich eine interne Datenbank-ID sein, wenn perspektivisch eine externe stabile Referenz vorhanden ist.
+
+Bestehendes Modell prüfen und nicht unnötig migrieren.
+
+
+8. PARTICIPANT MAPPING
+
+Intern:
+
+participantId
+↔
+localOrgId
+
+über ParticipantDirectory.
+
+
+9. KEINE localOrgId ALS EXTERNE IDENTITÄT VORAUSSETZEN
+
+Extern bleibt participantId maßgeblich.
+
+
+10. SCHEMA-VALIDIERUNG
+
+Inbound Payloads vollständig über bestehende Schema-/Validation-Infrastruktur validieren.
+
+
+ERGEBNIS
+
+Die Datenpakete sind von der internen Shared-DB-Struktur entkoppelt.

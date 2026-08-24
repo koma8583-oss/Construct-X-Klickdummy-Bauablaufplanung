@@ -35,7 +35,11 @@ router.get("/dataspace/participants", requireRole("AG_ADMIN", "GENERAL_PLANNER")
     res.status(400).json({ error: "organizationType=AN and projectId are required" });
     return;
   }
-  res.json(await listProjectParticipants(projectId));
+  if (req.user?.orgType !== "AG" || !req.user.orgId) {
+    res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  res.json(await listProjectParticipants(projectId, req.user.orgId));
 });
 
 router.get("/projects/:projectId/memberships", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
@@ -67,9 +71,13 @@ router.post("/project-invitation-deliveries/:messageId/retry", requireRole("AG_A
 });
 
 const inviteSchema = z.object({
-  anOrgId: z.string().min(1),
+  participantId: z.string().min(1).optional(),
+  anOrgId: z.string().min(1).optional(),
   invitationMessage: z.string().max(4000).optional(),
   validUntil: z.string().datetime({ offset: true }).optional(),
+}).refine((data) => Boolean(data.participantId || data.anOrgId), {
+  message: "participantId is required",
+  path: ["participantId"],
 });
 
 router.post("/projects/:projectId/invitations", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
@@ -86,7 +94,8 @@ router.post("/projects/:projectId/invitations", requireRole("AG_ADMIN", "GENERAL
     const membership = await inviteParticipant({
       projectId: req.params.projectId as string,
       agOrgId: req.user.orgId,
-      anOrgId: parsed.data.anOrgId,
+       anOrgId: parsed.data.anOrgId,
+       participantId: parsed.data.participantId,
       invitationMessage: parsed.data.invitationMessage,
       validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
     });

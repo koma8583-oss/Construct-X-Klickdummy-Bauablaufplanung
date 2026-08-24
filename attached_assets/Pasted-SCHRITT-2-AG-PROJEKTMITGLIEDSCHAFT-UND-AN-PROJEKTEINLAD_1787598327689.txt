@@ -1,0 +1,242 @@
+SCHRITT 2 – AG-PROJEKTMITGLIEDSCHAFT UND AN-PROJEKTEINLADUNG ALS GETRENNTE LOGISCHE SICHTEN MODELLIEREN
+
+ZIEL
+
+Die bestehende gemeinsame project_memberships-Row darf nicht gleichzeitig die fachliche Wahrheit von AG und AN darstellen.
+
+Physisch bleiben alle Daten in derselben PostgreSQL-Datenbank.
+
+Logisch müssen jedoch zwei organisationsspezifische Sichten existieren:
+
+AG:
+Project Membership
+
+AN:
+empfangene Project Invitation
+
+
+1. AG-SICHT
+
+project_memberships repräsentiert ausschließlich die lokale fachliche Sicht des AG.
+
+Mindestens:
+
+id
+ownerOrgId
+projectId
+remoteParticipantId
+remoteOrgId nullable
+status
+invitationMessage nullable
+invitedAt
+acceptedAt nullable
+rejectedAt nullable
+revokedAt nullable
+correlationId
+createdAt
+updatedAt
+
+
+2. ownerOrgId AG
+
+Bei einer vom AG verwalteten Membership gilt:
+
+ownerOrgId = AG_ORG_ID
+
+
+3. STATUS AG
+
+INVITED
+ACTIVE
+REJECTED
+REVOKED
+
+
+4. AN-SICHT
+
+Eigene Tabelle einführen:
+
+project_invitations
+
+Diese Tabelle repräsentiert ausschließlich die lokale AN-Sicht auf empfangene Projekteinladungen.
+
+
+5. SCHEMA project_invitations
+
+Mindestens:
+
+id
+ownerOrgId
+
+externalInvitationId
+correlationId
+
+externalProjectReference
+projectName
+projectDescription nullable
+projectLocation nullable
+
+senderParticipantId
+senderOrganizationName
+
+recipientParticipantId
+
+status
+
+invitationMessage nullable
+
+purpose
+policyJson nullable
+
+receivedAt
+respondedAt nullable
+acceptedAt nullable
+rejectedAt nullable
+
+createdAt
+updatedAt
+
+
+6. STATUS AN
+
+PENDING
+ACCEPTED
+REJECTED
+
+Optional bei späterer Withdrawal-Unterstützung:
+
+WITHDRAWN
+
+
+7. ZUGRIFF AG
+
+AG liest ausschließlich:
+
+project_memberships
+WHERE ownerOrgId = currentAgOrgId
+
+
+8. ZUGRIFF AN
+
+AN liest ausschließlich:
+
+project_invitations
+WHERE ownerOrgId = currentAnOrgId
+
+
+9. AN-INBOX DARF NICHT project_memberships LESEN
+
+Falls:
+
+GET /project-invitations
+
+aktuell aus:
+
+project_memberships
+WHERE anOrgId = ...
+
+liest:
+
+vollständig umstellen.
+
+
+10. AG INVITE ERZEUGT NOCH KEINE AN-ROW
+
+Beim Einladen:
+
+INSERT project_memberships
+ownerOrgId = AG
+status = INVITED
+
+Es darf noch keine:
+
+project_invitations
+ownerOrgId = AN
+
+Row entstehen.
+
+
+11. AN-ROW ERST DURCH INBOUND
+
+Erst:
+
+PROJECT_INVITATION
+→ DataspaceExchange
+→ AN Inbound Processor
+
+erzeugt:
+
+project_invitations
+ownerOrgId = AN
+status = PENDING
+
+
+12. AN ACCEPT
+
+AN verändert nur seine eigene Row:
+
+project_invitations
+WHERE ownerOrgId = AN
+
+PENDING → ACCEPTED
+
+
+13. KEINE DIREKTE AG-MUTATION
+
+AN Accept darf NICHT:
+
+project_memberships
+ownerOrgId = AG
+
+direkt auf ACTIVE setzen.
+
+
+14. AG ACTIVE ERST NACH RESPONSE
+
+Nur:
+
+PROJECT_INVITATION_RESPONSE
+→ AG Inbound Processor
+
+darf:
+
+AG-owned project_memberships
+INVITED → ACTIVE
+
+setzen.
+
+
+15. PFLICHTTEST
+
+AG Membership INVITED vorhanden.
+
+PROJECT_INVITATION noch nicht AN-inbound verarbeitet.
+
+AN GET /project-invitations:
+
+Erwartung:
+
+keine Einladung.
+
+
+16. PFLICHTTEST
+
+AN Invitation ACCEPTED.
+
+Response noch nicht AG-inbound verarbeitet.
+
+AG Membership:
+
+weiter INVITED.
+
+
+17. PFLICHTTEST
+
+Nach AG-Inbound ACCEPTED:
+
+Membership ACTIVE.
+
+
+ERGEBNIS
+
+Eine gemeinsame Datenbank wird genutzt, aber AG und AN lesen und verändern nicht dieselben privaten Domain-Rows.

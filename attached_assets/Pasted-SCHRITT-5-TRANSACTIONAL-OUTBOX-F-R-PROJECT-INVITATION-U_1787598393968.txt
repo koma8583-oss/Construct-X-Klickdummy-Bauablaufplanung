@@ -1,0 +1,137 @@
+SCHRITT 5 – TRANSACTIONAL OUTBOX FÜR PROJECT_INVITATION UND PROJECT_INVITATION_RESPONSE IMPLEMENTIEREN
+
+ZIEL
+
+Fachlicher Zustand und ausgehende Nachricht müssen atomar gespeichert werden.
+
+Ein Crash zwischen DB-Commit und Message-Erzeugung darf keine verlorene Datenraumkommunikation erzeugen.
+
+
+1. BESTEHENDE OUTBOX PRÜFEN
+
+Vorhandene Outbox-/Message-/Delivery-Infrastruktur wiederverwenden.
+
+Keine zweite parallele Outbox bauen.
+
+
+2. ownerOrgId FÜR OUTBOX
+
+Jede private Outbox Message benötigt:
+
+ownerOrgId
+
+
+3. AG INVITE TRANSACTION
+
+In EINER DB-Transaktion:
+
+1. AG Membership INVITED erzeugen.
+2. invitationId erzeugen.
+3. correlationId erzeugen.
+4. PROJECT_INVITATION Payload erzeugen.
+5. AG-owned Outbox PENDING erzeugen.
+6. Commit.
+
+
+4. KEIN NETZWERK INNERHALB DER DB-TRANSAKTION
+
+DataspaceExchange erst nach Commit ausführen.
+
+
+5. DISPATCHER
+
+Outbox:
+
+PENDING
+→ Versandversuch
+→ SENT oder FAILED
+
+
+6. DELIVERED
+
+Nur verwenden, wenn dies technisch tatsächlich von SENT unterschieden werden kann.
+
+
+7. AN ACCEPT TRANSACTION
+
+In EINER Transaktion:
+
+1. AN Invitation PENDING → ACCEPTED.
+2. acceptedAt/respondedAt setzen.
+3. PROJECT_INVITATION_RESPONSE Payload erzeugen.
+4. AN-owned Outbox PENDING erzeugen.
+5. Commit.
+
+
+8. REJECT ANALOG
+
+PENDING → REJECTED
+
+plus Response Outbox.
+
+
+9. INVITATION TRANSPORTFEHLER
+
+AG:
+
+Membership INVITED
+
+Outbox FAILED
+
+AN:
+
+keine Invitation.
+
+
+10. RESPONSE TRANSPORTFEHLER
+
+AN:
+
+Invitation ACCEPTED
+
+Response Outbox FAILED
+
+AG:
+
+Membership weiterhin INVITED.
+
+
+11. RETRY AG
+
+Failed PROJECT_INVITATION erneut senden.
+
+Keine zweite Membership erzeugen.
+
+
+12. RETRY AN
+
+Failed PROJECT_INVITATION_RESPONSE erneut senden können.
+
+
+13. RETRY OWNER-SCOPED
+
+AG darf nur AG-owned Outbox retryen.
+
+AN nur AN-owned.
+
+
+14. KEINE NEUE FACHLICHE ENTSCHEIDUNG BEI RETRY
+
+Retry transportiert dieselbe bereits gespeicherte Nachricht erneut.
+
+
+15. PFLICHTTEST CRASH WINDOW
+
+Nach Transaktions-Commit und vor Versand:
+
+Outbox PENDING vorhanden.
+
+
+16. PFLICHTTEST RETRY
+
+Retry erzeugt keine zweite Membership und keine zweite AN Invitation.
+
+
+ERGEBNIS
+
+Message Transport und Fachzustand können nicht dauerhaft auseinanderlaufen.

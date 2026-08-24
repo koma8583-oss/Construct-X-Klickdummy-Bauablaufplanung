@@ -18,6 +18,7 @@ import {
   resourceBookingsTable,
   resourcesTable,
   resourceTypesTable,
+  taktRequestsTable,
 } from "@workspace/db";
 import { and, eq, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -71,6 +72,25 @@ async function loadOwnLocalProject(localProjectId: string, nuOrgId: string) {
     .where(and(eq(nuLocalProjectsTable.id, localProjectId), eq(nuLocalProjectsTable.nuOrgId, nuOrgId)))
     .limit(1);
   return project ?? null;
+}
+
+async function sourceBelongsToNu(
+  sourceType: string,
+  sourceReferenceId: string | undefined,
+  nuOrgId: string,
+): Promise<boolean> {
+  if (sourceType === "TAKT_REQUEST") {
+    if (!sourceReferenceId) return false;
+    const [request] = await db.select({ id: taktRequestsTable.id })
+      .from(taktRequestsTable)
+      .where(and(
+        eq(taktRequestsTable.id, sourceReferenceId),
+        eq(taktRequestsTable.nuOrgId, nuOrgId),
+      ))
+      .limit(1);
+    return Boolean(request);
+  }
+  return true;
 }
 
 // GET /api/nu/resource-types
@@ -596,6 +616,10 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     res.status(422).json({ error: "LOCAL_PROJECT_REQUIRED" });
     return;
   }
+  if (!(await sourceBelongsToNu(data.sourceType, data.sourceReferenceId, nuOrgId))) {
+    res.status(403).json({ error: "Source reference does not belong to your organisation" });
+    return;
+  }
   if (data.localProjectId && !(await loadOwnLocalProject(data.localProjectId, nuOrgId))) {
     res.status(403).json({ error: "Local project does not belong to your organisation" });
     return;
@@ -706,6 +730,11 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
     return;
   }
   const nextSourceType = existing.sourceType;
+  if (patchData.sourceReferenceId !== undefined &&
+      !(await sourceBelongsToNu(nextSourceType, patchData.sourceReferenceId, nuOrgId))) {
+    res.status(403).json({ error: "Source reference does not belong to your organisation" });
+    return;
+  }
   const nextLocalProjectId = patchData.localProjectId !== undefined ? patchData.localProjectId : existing.localProjectId;
   if (nextSourceType === "LOCAL_PROJECT" && !nextLocalProjectId) {
     res.status(422).json({ error: "LOCAL_PROJECT_REQUIRED" });

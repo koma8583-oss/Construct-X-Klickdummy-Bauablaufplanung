@@ -1,0 +1,126 @@
+SCHRITT 15 – GLOBALEN SECURITY-REVIEW ALLER PRIVATEN DATENBANKQUERIES DURCHFÜHREN
+
+ZIEL
+
+Die physisch gemeinsame PostgreSQL-Datenbank darf in keinem produktiven Service einen direkten Zugriff auf private Daten der Gegenorganisation ermöglichen.
+
+
+1. GLOBAL SUCHEN NACH ZUGRIFFEN AUF
+
+project_memberships
+project_invitations
+projects
+service requests
+responses
+resource_bookings
+resource_requirements
+outbox
+audit
+constraints
+clarifications
+readiness
+
+
+2. JEDE STRUKTUR KLASSIFIZIEREN
+
+A) bewusst geteilter Datenraumdienst
+
+oder
+
+B) organisationsprivate Domain-Daten
+
+
+3. PRIVATE READ QUERY
+
+Muss currentOrgId/ownerOrgId Scope besitzen.
+
+
+4. PRIVATE UPDATE/DELETE
+
+Muss ebenfalls Scope besitzen.
+
+
+5. KRITISCHE SERVICES
+
+Insbesondere prüfen:
+
+project-membership-service
+project-invitation-service
+inbound-domain-service
+service-request-service
+response-service
+resource-planning-service
+data-publication-service
+coordination services
+board services
+audit services
+outbox/retry services
+
+
+6. VERBOTENES MUSTER
+
+AG Service:
+
+SELECT *
+FROM project_invitations
+WHERE ownerOrgId = AN
+
+
+7. VERBOTENES MUSTER
+
+AN Service:
+
+SELECT *
+FROM project_memberships
+WHERE ownerOrgId = AG
+
+
+8. BOARD/LISTEN
+
+Keine aggregierte AG-Liste darf direkt private AN-Tabellen lesen.
+
+
+9. ZENTRALE AUTHORIZATION HELPER
+
+Wo sinnvoll:
+
+requireOwnedResource(...)
+
+requireProjectAccess(...)
+
+requireActiveProjectMembership(...)
+
+
+10. orgId AUS URL IST KEINE BERECHTIGUNG
+
+Ein Parameter:
+
+/organizations/:orgId/...
+
+darf nicht allein den Datenzugriff bestimmen.
+
+
+11. ownerOrgId SPOOFING
+
+Client darf nicht durch Payload fremden Eigentümer setzen.
+
+
+12. PFLICHTTEST
+
+Fremde private Entity-ID kennen.
+
+API-Aufruf aus anderer Organisation.
+
+Erwartung:
+
+keine Daten.
+
+
+13. STATISCHE ABSCHLUSSSUCHE
+
+Alle ungescopten Query-Stellen dokumentieren und beheben.
+
+
+ERGEBNIS
+
+Die gemeinsame DB ist ausschließlich technische Persistenz und kein Cross-Org-Zugriffsmechanismus.

@@ -1,0 +1,157 @@
+SCHRITT 13 – AG- UND AN-OBERFLÄCHE KONSEQUENT AUF DEN DATENRAUM-PROJEKTEINLADUNGSPROZESS AUSRICHTEN
+
+ZIEL
+
+Die UI soll fachlich klar zwischen Teilnehmerauswahl, Projekteinladung, Zustimmung und späterer Leistungszuordnung unterscheiden.
+
+
+1. AG HAUPTAKTION
+
+Bezeichnung:
+
+„Zum Projekt einladen“
+
+
+2. NICHT MEHR ALS MEMBERSHIP-AKTION VERWENDEN
+
+„Verknüpfen“
+
+„AN zuordnen“
+
+
+3. BEREICH
+
+Bevorzugt:
+
+„Projektpartner“
+
+
+4. GRUPPEN
+
+Aktive Projektpartner
+
+Ausstehende Einladungen
+
+
+5. INVITED
+
+Anzeige:
+
+„Einladung ausstehend“
+
+
+6. TRANSPORTSTATUS SEPARAT
+
+Beispiele:
+
+„Übertragung ausstehend“
+
+„Übermittelt“
+
+„Übertragung fehlgeschlagen“
+
+
+7. FAILED INVITATION
+
+Text:
+
+„Die Einladung wurde erstellt, konnte aber noch nicht an den AN übertragen werden.“
+
+Aktion:
+
+[Erneut senden]
+
+
+8. AN MENÜ
+
+„Projekteinladungen“
+
+
+9. AN PRIMARY ACTION
+
+„Projekt beitreten“
+
+
+10. AN SECONDARY ACTION
+
+„Ablehnen“
+
+
+11. AN RESPONSE FAILED
+
+Text:
+
+„Ihre Entscheidung wurde gespeichert, konnte aber noch nicht an den AG übertragen werden.“
+
+Aktion:
+
+[Erneut senden]
+
+
+12. KEINE REMOTE LIVE-INFORMATION
+
+Wenn AN lokal ACCEPTED hat, aber Response noch nicht AG-inbound ist:
+
+AG zeigt weiterhin:
+
+„Warten auf Zustimmung des AN“
+
+
+13. ERST NACH AG INBOUND
+
+AG zeigt:
+
+„Projektpartner“
+
+
+14. DIALOG MIT GEWERK/ARBEITSPAKET
+
+Falls der bestehende Dialog weiterhin gebraucht wird:
+
+nicht „AN zuordnen“ als Project-Membership-Funktion nennen.
+
+Beispielsweise:
+
+„Fachliche Zuordnung“
+
+oder:
+
+„Gewerk / Arbeitspaket zuordnen“
+
+
+15. KEIN MANUELLES ACTIVE DROPDOWN FÜR MEMBERSHIP
+
+AG darf ProjectMembership nicht per Statusauswahl aktivieren.
+
+
+16. TEILNEHMERDATEN IM INVITE-DIALOG
+
+Zeigen:
+
+Organisation
+Identity Status
+Connectorstatus
+optional Capability
+
+
+17. PFLICHTTEST UI
+
+AG Invite
+→ „Einladung ausstehend“
+
+AN Inbound
+→ Einladung sichtbar
+
+AN Accept
+→ lokale Bestätigung
+
+AG vor Response Inbound
+→ weiterhin ausstehend
+
+AG nach Response Inbound
+→ Projektpartner
+
+
+ERGEBNIS
+
+Die sichtbare Nutzerführung entspricht dem tatsächlichen Datenraumprozess.

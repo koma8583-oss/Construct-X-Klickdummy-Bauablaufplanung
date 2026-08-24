@@ -1,0 +1,142 @@
+SCHRITT 8 – OPENAPI, SERVER-ROUTEN UND GENERIERTE CLIENTS DES PROJECT-MEMBERSHIP-WORKFLOWS KONSISTENT MACHEN
+
+ZIEL
+
+Der im Review gefundene Konflikt zwischen Serverroute und OpenAPI muss vollständig beseitigt werden.
+
+Server, OpenAPI und Frontend dürfen nur einen kanonischen Vertrag kennen.
+
+
+1. KANONISCHE ROUTES
+
+Empfohlen:
+
+GET
+/projects/{projectId}/memberships
+
+POST
+/projects/{projectId}/invitations
+
+GET
+/project-invitations
+
+POST
+/project-invitations/{id}/accept
+
+POST
+/project-invitations/{id}/reject
+
+POST
+/project-memberships/{id}/revoke
+
+
+2. DELIVERY ROUTES
+
+Beispielsweise:
+
+GET
+/projects/{projectId}/invitation-deliveries/failed
+
+POST
+/project-invitation-deliveries/{messageId}/retry
+
+
+3. RESPONSE RETRY AN
+
+Entsprechenden Endpoint ergänzen, falls noch nicht vorhanden.
+
+
+4. SERVER AUF KANONISCHE ROUTES AUSRICHTEN
+
+Keine zweite Create-Route für Membership pflegen.
+
+
+5. OPENAPI EXAKT ANGLEICHEN
+
+Insbesondere:
+
+POST /projects/{projectId}/invitations
+
+
+6. INVITE REQUEST
+
+{
+  participantId: string;
+  invitationMessage?: string;
+  validUntil?: string;
+}
+
+
+7. ownerOrgId NICHT ALS CLIENTFELD
+
+Kommt aus Auth Context.
+
+
+8. ProjectMembership SCHEMA
+
+AG-lokale Sicht dokumentieren.
+
+
+9. ProjectInvitation SCHEMA
+
+AN-lokale Sicht dokumentieren.
+
+
+10. DataspaceParticipant SCHEMA
+
+Vollständig aufnehmen.
+
+
+11. ENUMS
+
+Membership:
+
+INVITED
+ACTIVE
+REJECTED
+REVOKED
+
+Invitation:
+
+PENDING
+ACCEPTED
+REJECTED
+
+optional:
+WITHDRAWN
+
+
+12. CODEGEN AUSFÜHREN
+
+Bestehenden Generator verwenden.
+
+
+13. AG UI
+
+Generierten Invite Hook verwenden.
+
+
+14. AN UI
+
+Wenn möglich ebenfalls generierte Hooks statt manueller fetch-URLs.
+
+
+15. PFLICHTTEST GENERATED CLIENT
+
+Invite Hook muss tatsächlich:
+
+POST /api/projects/{id}/invitations
+
+aufrufen.
+
+
+16. CONTRACT CHECK
+
+Kein OpenAPI-Pfad ohne Implementierung.
+
+Keine produktive Membership-Route ohne Spec, soweit öffentlich vorgesehen.
+
+
+ERGEBNIS
+
+API-Spezifikation und laufender Code sind wieder synchron.

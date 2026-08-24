@@ -21,7 +21,14 @@ export class ProjectMembershipError extends Error {
   }
 }
 
-export async function listProjectParticipants(projectId: string) {
+export async function listProjectParticipants(projectId: string, agOrgId: string) {
+  const [project] = await db.select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, projectId), eq(projectsTable.agOrgId, agOrgId)))
+    .limit(1);
+  if (!project) {
+    throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
+  }
   const participants = await listDataspaceParticipants("AN");
   const memberships = await db.select({
     anOrgId: projectMembershipsTable.anOrgId,
@@ -128,7 +135,8 @@ export async function assertActiveProjectMembership(projectId: string, anOrgId: 
 export async function inviteParticipant(input: {
   projectId: string;
   agOrgId: string;
-  anOrgId: string;
+  anOrgId?: string;
+  participantId?: string;
   invitationMessage?: string;
   validUntil?: Date;
 }) {
@@ -136,7 +144,7 @@ export async function inviteParticipant(input: {
     .where(and(eq(projectsTable.id, input.projectId), eq(projectsTable.agOrgId, input.agOrgId))).limit(1);
   if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
 
-  const participant = await resolveDataspaceParticipant(input.anOrgId);
+  const participant = await resolveDataspaceParticipant(input.anOrgId ?? input.participantId ?? "");
   if (!participant || participant.organizationType !== "AN" || participant.identityStatus !== "VERIFIED") {
     throw new ProjectMembershipError("PROJECT_PARTICIPANT_NOT_VERIFIED", "Der Teilnehmer ist nicht verifiziert.");
   }
@@ -144,9 +152,13 @@ export async function inviteParticipant(input: {
     throw new ProjectMembershipError("PROJECT_PARTICIPANT_INVALID", "Die eigene Organisation kann nicht eingeladen werden.");
   }
 
+  const anOrgId = participant.localOrgId ?? input.anOrgId;
+  if (!anOrgId) {
+    throw new ProjectMembershipError("PROJECT_PARTICIPANT_UNMAPPED", "Der Datenraumteilnehmer ist keiner lokalen Organisation zugeordnet.");
+  }
   const [existing] = await db.select().from(projectMembershipsTable).where(and(
     eq(projectMembershipsTable.projectId, input.projectId),
-    eq(projectMembershipsTable.anOrgId, input.anOrgId),
+    eq(projectMembershipsTable.anOrgId, anOrgId),
   )).limit(1);
   if (existing?.status === "INVITED") {
     throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_EXISTS", "Für diesen AN besteht bereits eine offene Einladung.");
@@ -159,32 +171,16 @@ export async function inviteParticipant(input: {
   }
 
   const invitationId = crypto.randomUUID();
-  const correlationId = `project-membership:${input.projectId}:${input.anOrgId}:${invitationId}`;
+  const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
   const messageId = `project-invitation-${invitationId}`;
   const now = new Date();
-  const [membership] = await db.transaction(async (tx) => {
-    const [created] = await tx.insert(projectMembershipsTable).values({
-      projectId: input.projectId,
-      agOrgId: input.agOrgId,
-      anOrgId: input.anOrgId,
-      anParticipantId: participant.participantId,
-      status: "INVITED",
-      invitationId,
-      correlationId,
-      invitationMessage: input.invitationMessage ?? null,
-      invitationExpiresAt: input.validUntil ?? null,
-      invitedAt: now,
-    }).returning();
-    return [created];
-  });
-  const exchange = createDataspaceExchange();
-  await exchange.publishProjectInvitation({
+  const invitationPayload: ExternalProjectInvitation = {
     metadata: {
       messageId,
       correlationId,
       schemaVersion: "1.0",
       senderOrgId: input.agOrgId,
-      receiverOrgId: input.anOrgId,
+      receiverOrgId: anOrgId,
       createdAt: now.toISOString(),
     },
     invitationId,
@@ -202,7 +198,37 @@ export async function inviteParticipant(input: {
       usagePurpose: "PROJECT_MEMBERSHIP",
       allowedConsumerParticipantId: participant.participantId,
     },
+  };
+  const [membership] = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(projectMembershipsTable).values({
+      projectId: input.projectId,
+      agOrgId: input.agOrgId,
+      anOrgId,
+      anParticipantId: participant.participantId,
+      status: "INVITED",
+      invitationId,
+      correlationId,
+      invitationMessage: input.invitationMessage ?? null,
+      invitationExpiresAt: input.validUntil ?? null,
+      invitedAt: now,
+    }).returning();
+    await tx.insert(messageOutboxTable).values({
+      messageId,
+      schemaVersion: "1.0",
+      messageType: "PROJECT_INVITATION",
+      senderOrgId: input.agOrgId,
+      recipientOrgId: anOrgId,
+      correlationId,
+      payload: invitationPayload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
+    return [created];
   });
+  const exchange = createDataspaceExchange();
+  const delivery = await exchange.publishProjectInvitation(invitationPayload);
+  if (delivery.status === "PENDING") {
+    await exchange.retryProjectInvitation(messageId);
+  }
   return membership;
 }
 
@@ -219,23 +245,7 @@ async function resolveInvitation(id: string, anOrgId: string, decision: "ACTIVE"
     throw new ProjectMembershipError("PROJECT_INVITATION_EXPIRED", "Die Einladung ist abgelaufen.");
   }
   const responseMessageId = `project-invitation-response-${membership.invitationId}-${decision}`;
-  const [updated] = await db.transaction(async (tx) => {
-    const [row] = await tx.update(projectMembershipsTable).set({
-      status: decision,
-      respondedAt: now,
-      acceptedAt: decision === "ACTIVE" ? now : null,
-      rejectedAt: decision === "REJECTED" ? now : null,
-      updatedAt: now,
-    }).where(and(
-      eq(projectMembershipsTable.id, id),
-      eq(projectMembershipsTable.anOrgId, anOrgId),
-      eq(projectMembershipsTable.status, "INVITED"),
-    )).returning();
-    if (!row) throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
-    return [row];
-  });
-  const exchange = createDataspaceExchange();
-  await exchange.publishProjectInvitationResponse({
+  const responsePayload: ExternalProjectInvitationResponse = {
     metadata: {
       messageId: responseMessageId,
       correlationId: membership.correlationId,
@@ -249,7 +259,37 @@ async function resolveInvitation(id: string, anOrgId: string, decision: "ACTIVE"
     decision: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
     ...(message ? { message } : {}),
     respondedAt: now.toISOString(),
+  };
+  const [updated] = await db.transaction(async (tx) => {
+    const [row] = await tx.update(projectMembershipsTable).set({
+      status: decision,
+      respondedAt: now,
+      acceptedAt: decision === "ACTIVE" ? now : null,
+      rejectedAt: decision === "REJECTED" ? now : null,
+      updatedAt: now,
+    }).where(and(
+      eq(projectMembershipsTable.id, id),
+      eq(projectMembershipsTable.anOrgId, anOrgId),
+      eq(projectMembershipsTable.status, "INVITED"),
+    )).returning();
+    if (!row) throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
+    await tx.insert(messageOutboxTable).values({
+      messageId: responseMessageId,
+      schemaVersion: "1.0",
+      messageType: "PROJECT_INVITATION_RESPONSE",
+      senderOrgId: anOrgId,
+      recipientOrgId: membership.agOrgId,
+      correlationId: membership.correlationId,
+      payload: responsePayload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
+    return [row];
   });
+  const exchange = createDataspaceExchange();
+  const delivery = await exchange.publishProjectInvitationResponse(responsePayload);
+  if (delivery.status === "PENDING") {
+    await exchange.retryProjectInvitation(responseMessageId);
+  }
   return updated;
 }
 
