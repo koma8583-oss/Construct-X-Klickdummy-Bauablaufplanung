@@ -19,26 +19,10 @@ import {
   useGetDataPublicationOdrl,
   useGetAnInboxMessages,
   type DataOfferSummary,
+  type DataOfferProjectInfo,
+  type DataOfferAssignment,
 } from '@workspace/api-client-react';
 
-// Local types for fields added by the AN Datenraum enhancement (not yet in generated types)
-interface DataOfferProjectInfo {
-  name: string;
-  status: string;
-  startDate?: string | null;
-  endDate?: string | null;
-  location?: string | null;
-  description?: string | null;
-}
-
-interface DataOfferAssignment {
-  id: string;
-  workPackageReference?: string | null;
-  trade?: string | null;
-  assignmentStatus: string;
-  validFrom?: string | null;
-  validTo?: string | null;
-}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -449,13 +433,13 @@ function OfferDetailPanel({
       </div>
 
       {/* Project info — visible before acceptance */}
-      {(offer as any).projectInfo && (
-        <ProjectInfoSection info={(offer as any).projectInfo as DataOfferProjectInfo} />
+      {offer.projectInfo && (
+        <ProjectInfoSection info={offer.projectInfo} />
       )}
 
       {/* Package assignments — show this AN's allocated work packages */}
-      {(offer as any).assignments && ((offer as any).assignments as DataOfferAssignment[]).length > 0 && (
-        <PackageAssignmentsSection assignments={(offer as any).assignments as DataOfferAssignment[]} />
+      {offer.assignments.length > 0 && (
+        <PackageAssignmentsSection assignments={offer.assignments} />
       )}
 
       {/* Access notice — shown when policy not yet accepted */}
