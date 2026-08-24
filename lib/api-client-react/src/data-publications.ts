@@ -94,6 +94,22 @@ export interface CreateDataPublicationDto {
   validUntil?: string;
 }
 
+export interface InviteParticipantsWithDataDto {
+  participantIds: string[];
+  invitationMessage?: string;
+  validUntil?: string;
+  policyTemplateId: string;
+  title: string;
+  description?: string;
+  selectedFields: string[];
+  validFrom?: string;
+}
+
+export interface InviteParticipantsWithDataResult {
+  publication: DataPublication;
+  memberships: Array<{ id: string; anOrgId: string; status: string }>;
+}
+
 /** A DataPublication enriched with projectName (returned by /ag/data-publications). */
 export interface AgDataPublication extends DataPublication {
   projectName: string | null;
@@ -243,6 +259,23 @@ export function useCreateDataPublication(
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["data-publications", projectId] });
+    },
+  });
+}
+
+export function useInviteParticipantsWithData(
+  projectId: string,
+): UseMutationResult<InviteParticipantsWithDataResult, Error, InviteParticipantsWithDataDto> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      customFetch<InviteParticipantsWithDataResult>(
+        `/api/projects/${projectId}/invitations-with-data`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-publications", projectId] });
+      void qc.invalidateQueries({ queryKey: ["project-memberships", projectId] });
     },
   });
 }

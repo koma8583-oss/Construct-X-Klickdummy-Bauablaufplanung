@@ -146,10 +146,20 @@ describe("project participant directory membership lifecycle", () => {
   beforeEach(() => {
     memberships = [...membershipFixtures];
     updateMemberships = undefined;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([
+        { localOrgId: "an-invited", organizationName: "Eingeladener Betrieb", participantId: "local:an-invited", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+        { localOrgId: "an-active", organizationName: "Aktiver Betrieb", participantId: "local:an-active", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+        { localOrgId: "an-revoked", organizationName: "Widerrufener Betrieb", participantId: "local:an-revoked", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+        { localOrgId: "an-rejected", organizationName: "Abgelehnter Betrieb", participantId: "local:an-rejected", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+        { localOrgId: "an-new", organizationName: "Neuer Betrieb", participantId: "local:an-new", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+      ]), { status: 200, headers: { "Content-Type": "application/json" } }),
+    );
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("renders the German label for every membership state", async () => {
@@ -158,12 +168,12 @@ describe("project participant directory membership lifecycle", () => {
 
     await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
 
-    const rowFor = (name: string) =>
-      screen.getByText(name).closest("div.rounded-lg") as HTMLElement;
-    expect(within(rowFor("Eingeladener Betrieb")).getByText("Einladung ausstehend")).toBeInTheDocument();
-    expect(within(rowFor("Aktiver Betrieb")).getByText("Aktiv")).toBeInTheDocument();
-    expect(within(rowFor("Widerrufener Betrieb")).getByText("Widerrufen")).toBeInTheDocument();
-    expect(within(rowFor("Abgelehnter Betrieb")).getByText("Abgelehnt")).toBeInTheDocument();
+    const rowFor = async (name: string) =>
+      (await screen.findByText(name)).closest("div.rounded-lg") as HTMLElement;
+    expect(within(await rowFor("Eingeladener Betrieb")).getByText("Einladung ausstehend")).toBeInTheDocument();
+    expect(within(await rowFor("Aktiver Betrieb")).getByText("Aktiv")).toBeInTheDocument();
+    expect(within(await rowFor("Widerrufener Betrieb")).getByText("Widerrufen")).toBeInTheDocument();
+    expect(within(await rowFor("Abgelehnter Betrieb")).getByText("Abgelehnt")).toBeInTheDocument();
   });
 
   it("refreshes the directory with a pending row after inviting a participant", async () => {
@@ -171,7 +181,7 @@ describe("project participant directory membership lifecycle", () => {
     renderPage();
     await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
 
-    const newParticipant = screen.getByText("Neuer Betrieb").closest("div.rounded-lg");
+    const newParticipant = (await screen.findByText("Neuer Betrieb")).closest("div.rounded-lg");
     expect(newParticipant).not.toBeNull();
     await user.click(within(newParticipant as HTMLElement).getByRole("button", { name: "Einladen" }));
 
@@ -187,14 +197,14 @@ describe("project participant directory membership lifecycle", () => {
     renderPage();
     await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
 
-    const invitedRow = screen.getByText("Eingeladener Betrieb").closest("div.rounded-lg");
+    const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
     await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Widerrufen" }));
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Widerrufen" }));
     await waitFor(() => {
       expect(within(invitedRow as HTMLElement).getByText("Widerrufen")).toBeInTheDocument();
     });
 
-    const activeRow = screen.getByText("Aktiver Betrieb").closest("div.rounded-lg");
+    const activeRow = (await screen.findByText("Aktiver Betrieb")).closest("div.rounded-lg");
     await user.click(within(activeRow as HTMLElement).getByRole("button", { name: "Widerrufen" }));
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Widerrufen" }));
     await waitFor(() => {

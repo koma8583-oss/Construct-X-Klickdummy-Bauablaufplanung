@@ -19,6 +19,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
+  anProjectInvitationsTable,
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
@@ -363,6 +364,23 @@ router.get(
         recipientStatus: recipient.status,
       });
       return;
+    }
+    // Invitation-coupled offers require the AN's local Dataspace invitation
+    // projection to be accepted as well. We intentionally do not query the
+    // AG-owned membership table from the AN route.
+    if (recipient.projectMembershipId) {
+      const [localInvitation] = await db.select({ id: anProjectInvitationsTable.id })
+        .from(anProjectInvitationsTable)
+        .where(and(
+          eq(anProjectInvitationsTable.dataPublicationId, publicationId),
+          eq(anProjectInvitationsTable.receiverAnOrgId, anOrgId),
+          eq(anProjectInvitationsTable.status, "ACCEPTED"),
+        ))
+        .limit(1);
+      if (!localInvitation) {
+        res.status(403).json({ error: "Active project invitation is required before accessing content" });
+        return;
+      }
     }
 
     const [pub] = await db

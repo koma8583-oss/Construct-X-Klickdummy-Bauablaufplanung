@@ -30,6 +30,7 @@ import {
 import { organizationsTable } from "./organizations";
 import { projectsTable } from "./projects";
 import { usersTable } from "./users";
+import { projectMembershipsTable } from "./project-memberships";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -274,6 +275,14 @@ export const dataPublicationRecipientsTable = pgTable(
       .notNull()
       .references(() => organizationsTable.id),
 
+    /**
+     * Present only for an invitation-coupled offer. It allows the AG inbound
+     * processor to activate exactly the recipient that belongs to the accepted
+     * invitation; ordinary standalone data publications keep this null.
+     */
+    projectMembershipId: text("project_membership_id")
+      .references(() => projectMembershipsTable.id, { onDelete: "cascade" }),
+
     status: publicationRecipientStatusEnum("status")
       .notNull()
       .default("OFFERED"),
@@ -307,6 +316,7 @@ export const dataPublicationRecipientsTable = pgTable(
     index("data_pub_recipient_pub_id_idx").on(t.publicationId),
     index("data_pub_recipient_an_org_id_idx").on(t.anOrgId),
     index("data_pub_recipient_status_idx").on(t.status),
+    index("data_pub_recipient_membership_idx").on(t.projectMembershipId),
   ],
 );
 

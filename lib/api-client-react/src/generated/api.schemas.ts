@@ -61,6 +61,106 @@ export interface InviteProjectParticipantRequest {
   validUntil?: string;
 }
 
+export interface ProjectOnboardingInput {
+  /** @minItems 1 */
+  participantIds: string[];
+  /** @maxLength 4000 */
+  invitationMessage?: string;
+  validUntil?: string;
+  policyTemplateId: string;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  title: string;
+  /** @maxLength 2000 */
+  description?: string;
+  /** @minItems 1 */
+  selectedFields: string[];
+  validFrom?: string;
+}
+
+export type ProjectDataPublicationDataProductType = typeof ProjectDataPublicationDataProductType[keyof typeof ProjectDataPublicationDataProductType];
+
+
+export const ProjectDataPublicationDataProductType = {
+  TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
+} as const;
+
+export type ProjectDataPublicationStatus = typeof ProjectDataPublicationStatus[keyof typeof ProjectDataPublicationStatus];
+
+
+export const ProjectDataPublicationStatus = {
+  PUBLISHED: 'PUBLISHED',
+} as const;
+
+export interface ProjectDataPublication {
+  id: string;
+  projectId: string;
+  dataProductType: ProjectDataPublicationDataProductType;
+  title: string;
+  status: ProjectDataPublicationStatus;
+  policyTemplateId: string;
+  selectedFields: string[];
+}
+
+export interface ProjectOnboardingResult {
+  publication: ProjectDataPublication;
+  memberships: ProjectMembership[];
+}
+
+export interface ProjectInvitationDecisionInput {
+  /** Must be true when accepting an invitation. */
+  policyAccepted?: boolean;
+  /** @maxLength 4000 */
+  message?: string;
+}
+
+export type AnProjectInvitationPolicySnapshot = { [key: string]: unknown };
+
+export type AnProjectInvitationStatus = typeof AnProjectInvitationStatus[keyof typeof AnProjectInvitationStatus];
+
+
+export const AnProjectInvitationStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export interface AnProjectInvitation {
+  id: string;
+  invitationId: string;
+  correlationId: string;
+  senderAgOrgId: string;
+  receiverAnOrgId: string;
+  projectReference: string;
+  projectName: string;
+  /** @nullable */
+  projectDescription?: string | null;
+  /** @nullable */
+  projectLocation?: string | null;
+  /** @nullable */
+  invitationMessage?: string | null;
+  /** @nullable */
+  invitationExpiresAt?: string | null;
+  /** @nullable */
+  dataPublicationId?: string | null;
+  /** @nullable */
+  dataPublicationTitle?: string | null;
+  /** @nullable */
+  selectedFields?: string[] | null;
+  policySnapshot: AnProjectInvitationPolicySnapshot;
+  status: AnProjectInvitationStatus;
+  /** @nullable */
+  policyAcceptedAt?: string | null;
+  /** @nullable */
+  respondedAt?: string | null;
+  /** @nullable */
+  rejectedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type InboundServiceRequestResourceRequirementsItem = { [key: string]: unknown };
 
 export type InboundServiceRequestPolicy = { [key: string]: unknown };
@@ -110,6 +210,33 @@ export type ProjectInvitationPolicy = {
   allowedConsumerParticipantId: string;
 };
 
+export type ProjectInvitationDataOfferDataProductType = typeof ProjectInvitationDataOfferDataProductType[keyof typeof ProjectInvitationDataOfferDataProductType];
+
+
+export const ProjectInvitationDataOfferDataProductType = {
+  TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
+} as const;
+
+export type ProjectInvitationDataOfferPolicy = {
+  id: string;
+  code: string;
+  name: string;
+  purpose: string;
+  permissions: string[];
+  prohibitions: string[];
+  validityRule: string;
+  /** @nullable */
+  retentionRule?: string | null;
+};
+
+export type ProjectInvitationDataOffer = {
+  publicationId: string;
+  title: string;
+  dataProductType: ProjectInvitationDataOfferDataProductType;
+  selectedFields: string[];
+  policy: ProjectInvitationDataOfferPolicy;
+};
+
 export interface ProjectInvitation {
   metadata: InboundExchangeMetadata;
   /** @minLength 1 */
@@ -120,6 +247,7 @@ export interface ProjectInvitation {
   invitationMessage?: string;
   validUntil?: string;
   policy: ProjectInvitationPolicy;
+  dataOffer?: ProjectInvitationDataOffer;
 }
 
 export type ProjectInvitationResponseDecision = typeof ProjectInvitationResponseDecision[keyof typeof ProjectInvitationResponseDecision];
@@ -136,6 +264,7 @@ export interface ProjectInvitationResponse {
   invitationId: string;
   projectReference: string;
   decision: ProjectInvitationResponseDecision;
+  policyAccepted?: boolean;
   message?: string;
   respondedAt: string;
 }

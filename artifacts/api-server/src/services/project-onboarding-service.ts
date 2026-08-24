@@ -1,0 +1,195 @@
+import {
+  agDb,
+  dataPublicationRecipientsTable,
+  dataPublicationsTable,
+  messageOutboxTable,
+  policyTemplatesTable,
+  projectMembershipsTable,
+  projectsTable,
+} from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { FIELD_WHITELISTS, buildContentSnapshot, computeContentHash } from "./data-publication-service";
+import { resolveDataspaceParticipant } from "./dataspace/dataspace-participant-resolver";
+import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
+import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
+import { ProjectMembershipError } from "./project-membership-service";
+
+type CombinedInvitationInput = {
+  projectId: string;
+  agOrgId: string;
+  participantIds: string[];
+  invitationMessage?: string;
+  validUntil?: Date;
+  policyTemplateId: string;
+  title: string;
+  description?: string;
+  selectedFields: string[];
+  validFrom?: Date;
+};
+
+export async function inviteParticipantsWithData(input: CombinedInvitationInput) {
+  const [project] = await agDb.select().from(projectsTable)
+    .where(and(eq(projectsTable.id, input.projectId), eq(projectsTable.agOrgId, input.agOrgId)))
+    .limit(1);
+  if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
+
+  const allowedFields = new Set(FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE);
+  const invalidFields = input.selectedFields.filter((field) => !allowedFields.has(field));
+  if (invalidFields.length) {
+    throw new ProjectMembershipError("DATA_FIELDS_INVALID", `Nicht freigabefähige Datenfelder: ${invalidFields.join(", ")}`);
+  }
+
+  const [policy] = await agDb.select().from(policyTemplatesTable)
+    .where(and(eq(policyTemplatesTable.id, input.policyTemplateId), eq(policyTemplatesTable.active, true)))
+    .limit(1);
+  if (!policy) throw new ProjectMembershipError("POLICY_NOT_AVAILABLE", "Die ausgewählte Policy ist nicht verfügbar.");
+
+  const uniqueParticipantIds = [...new Set(input.participantIds)];
+  const participants = await Promise.all(uniqueParticipantIds.map((id) => resolveDataspaceParticipant(id)));
+  if (participants.some((participant) => !participant || participant.organizationType !== "AN" || participant.identityStatus !== "VERIFIED")) {
+    throw new ProjectMembershipError("PROJECT_PARTICIPANT_NOT_VERIFIED", "Mindestens ein ausgewählter Teilnehmer ist nicht verifiziert.");
+  }
+  const resolved = participants as Array<NonNullable<typeof participants[number]>>;
+  if (resolved.some((participant) => !participant.localOrgId || participant.localOrgId === input.agOrgId)) {
+    throw new ProjectMembershipError("PROJECT_PARTICIPANT_INVALID", "Die Teilnehmerauswahl ist ungültig.");
+  }
+
+  const anOrgIds = resolved.map((participant) => participant.localOrgId!);
+  const existingMemberships = await agDb.select({
+    anOrgId: projectMembershipsTable.anOrgId,
+    status: projectMembershipsTable.status,
+  }).from(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, input.projectId));
+  const blocked = existingMemberships.filter((membership) => anOrgIds.includes(membership.anOrgId));
+  if (blocked.length) {
+    throw new ProjectMembershipError(
+      "PROJECT_INVITATION_ALREADY_EXISTS",
+      "Mindestens ein ausgewählter Nachunternehmer hat bereits eine Projektbeziehung.",
+    );
+  }
+
+  // The immutable snapshot is assembled before the write transaction. Only its
+  // whitelist-filtered result is persisted; it is never embedded in the invite.
+  const snapshot = await buildContentSnapshot(
+    "TAKT_INFORMATION_PACKAGE",
+    input.projectId,
+    input.selectedFields,
+    [],
+  );
+  const contentHash = computeContentHash(snapshot);
+  const now = new Date();
+  const publicationId = crypto.randomUUID();
+
+  const prepared = await agDb.transaction(async (tx) => {
+    const [publication] = await tx.insert(dataPublicationsTable).values({
+      id: publicationId,
+      agOrgId: input.agOrgId,
+      projectId: input.projectId,
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      title: input.title,
+      description: input.description ?? null,
+      version: 1,
+      policyTemplateId: policy.id,
+      selectedFields: input.selectedFields,
+      selectedTaktIds: [],
+      contentSnapshot: snapshot,
+      contentHash,
+      status: "PUBLISHED",
+      validFrom: input.validFrom ?? now,
+      validUntil: input.validUntil ?? null,
+      publishedByUserId: null,
+      publishedAt: now,
+    }).returning();
+
+    const rows: Array<{ membership: typeof projectMembershipsTable.$inferSelect; payload: ExternalProjectInvitation }> = [];
+    for (const participant of resolved) {
+      const anOrgId = participant.localOrgId!;
+      const invitationId = crypto.randomUUID();
+      const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
+      const messageId = `project-invitation-${invitationId}`;
+      const [membership] = await tx.insert(projectMembershipsTable).values({
+        projectId: input.projectId,
+        agOrgId: input.agOrgId,
+        anOrgId,
+        anParticipantId: participant.participantId,
+        status: "INVITED",
+        invitationId,
+        correlationId,
+        invitationMessage: input.invitationMessage ?? null,
+        invitationExpiresAt: input.validUntil ?? null,
+        invitedAt: now,
+      }).returning();
+      await tx.insert(dataPublicationRecipientsTable).values({
+        publicationId: publication.id,
+        anOrgId,
+        projectMembershipId: membership.id,
+        status: "OFFERED",
+      });
+      const payload: ExternalProjectInvitation = {
+        metadata: {
+          messageId,
+          correlationId,
+          schemaVersion: "1.0",
+          senderOrgId: input.agOrgId,
+          receiverOrgId: anOrgId,
+          createdAt: now.toISOString(),
+        },
+        invitationId,
+        project: {
+          projectReference: project.id,
+          projectName: project.name,
+          ...(project.description ? { description: project.description } : {}),
+          ...(project.location ? { location: project.location } : {}),
+        },
+        requestedRole: "CONTRACTOR",
+        purpose: "PROJECT_COLLABORATION",
+        ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
+        ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+        policy: {
+          usagePurpose: "PROJECT_MEMBERSHIP",
+          allowedConsumerParticipantId: participant.participantId,
+        },
+        dataOffer: {
+          publicationId: publication.id,
+          title: publication.title,
+          dataProductType: "TAKT_INFORMATION_PACKAGE",
+          selectedFields: input.selectedFields,
+          policy: {
+            id: policy.id,
+            code: policy.code,
+            name: policy.name,
+            purpose: policy.purpose,
+            permissions: policy.permissions,
+            prohibitions: policy.prohibitions,
+            validityRule: policy.validityRule,
+            retentionRule: policy.retentionRule ?? null,
+          },
+        },
+      };
+      await tx.insert(messageOutboxTable).values({
+        messageId,
+        schemaVersion: "1.0",
+        messageType: "PROJECT_INVITATION",
+        senderOrgId: input.agOrgId,
+        recipientOrgId: anOrgId,
+        correlationId,
+        payload: payload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      });
+      rows.push({ membership, payload });
+    }
+    return { publication, rows };
+  });
+
+  // Delivery is deliberately after commit. Failed delivery leaves the durable
+  // invitation and its original outbox envelope available for retry.
+  const exchange = createDataspaceExchange();
+  await Promise.all(prepared.rows.map(async ({ payload }) => {
+    const delivery = await exchange.publishProjectInvitation(payload);
+    if (delivery.status === "PENDING") await exchange.retryProjectInvitation(payload.metadata.messageId);
+  }));
+
+  return {
+    publication: prepared.publication,
+    memberships: prepared.rows.map(({ membership }) => membership),
+  };
+}

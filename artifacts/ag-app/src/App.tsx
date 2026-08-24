@@ -17,7 +17,6 @@ import ProjectDetail from '@/pages/project-detail';
 import ProjectProposals from '@/pages/project-proposals';
 import Leistungsanfragen from '@/pages/leistungsanfragen';
 import LeistungsanfragenDetail from '@/pages/leistungsanfragen-detail';
-import Contractors from '@/pages/contractors';
 import Datenraum from '@/pages/datenraum';
 import Settings from '@/pages/settings';
 import NotFound from '@/pages/not-found';
@@ -51,7 +50,6 @@ function AuthenticatedApp() {
             <Redirect to="/leistungsanfragen" />
           </Route>
           <Route path="/takt-requests/:requestId" component={TaktRequestsLegacyRedirect} />
-          <Route path="/contractors" component={Contractors} />
           <Route path="/datenraum" component={Datenraum} />
           <Route path="/settings" component={Settings} />
           <Route component={NotFound} />

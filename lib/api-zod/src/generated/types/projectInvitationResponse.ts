@@ -14,6 +14,7 @@ export interface ProjectInvitationResponse {
   invitationId: string;
   projectReference: string;
   decision: ProjectInvitationResponseDecision;
+  policyAccepted?: boolean;
   message?: string;
   respondedAt: Date;
 }

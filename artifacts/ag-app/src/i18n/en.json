@@ -22,7 +22,6 @@
     "projects": "Projects",
     "taktRequests": "Performance Requests",
     "proposals": "Proposals",
-    "contractors": "Contractors",
     "settings": "Settings",
     "logout": "Log out"
   },
@@ -79,14 +78,6 @@
     "accept": "Accept",
     "reject": "Reject",
     "comment": "Comment (optional)"
-  },
-  "contractors": {
-    "title": "Contractors",
-    "search": "Search contractors...",
-    "add": "Add to Project",
-    "remove": "Remove",
-    "email": "Email",
-    "noContractors": "No contractors found."
   },
   "settings": {
     "title": "Settings",

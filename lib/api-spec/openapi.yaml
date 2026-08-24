@@ -567,6 +567,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectMembership"
 
+  /projects/{projectId}/invitations-with-data:
+    post:
+      operationId: inviteProjectParticipantsWithData
+      tags: [projects, data-publications]
+      summary: Atomically prepare project invitations, policy and data offers
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectOnboardingInput"
+      responses:
+        "201":
+          description: Invitations and linked data offer prepared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectOnboardingResult"
+
+  /an/project-invitations:
+    get:
+      operationId: listAnProjectInvitations
+      tags: [an, projects]
+      summary: List local AN invitation projections awaiting a decision
+      responses:
+        "200":
+          description: Pending AN project invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnProjectInvitation"
+
+  /an/project-invitations/{id}/accept:
+    post:
+      operationId: acceptAnProjectInvitation
+      tags: [an, projects]
+      summary: Accept project invitation and its policy together
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInvitationDecisionInput"
+      responses:
+        "200":
+          description: Local AN decision recorded and sent through Dataspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnProjectInvitation"
+
+  /an/project-invitations/{id}/reject:
+    post:
+      operationId: rejectAnProjectInvitation
+      tags: [an, projects]
+      summary: Reject a project invitation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInvitationDecisionInput"
+      responses:
+        "200":
+          description: Local AN rejection recorded and sent through Dataspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnProjectInvitation"
+
   /project-memberships/{id}/revoke:
     post:
       operationId: revokeProjectMembership
@@ -3454,6 +3541,84 @@ components:
         invitationMessage: { type: string, maxLength: 4000 }
         validUntil: { type: string, format: date-time }
 
+    ProjectOnboardingInput:
+      type: object
+      required: [participantIds, policyTemplateId, title, selectedFields]
+      properties:
+        participantIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+        invitationMessage: { type: string, maxLength: 4000 }
+        validUntil: { type: string, format: date-time }
+        policyTemplateId: { type: string }
+        title: { type: string, minLength: 1, maxLength: 255 }
+        description: { type: string, maxLength: 2000 }
+        selectedFields:
+          type: array
+          minItems: 1
+          items: { type: string }
+        validFrom: { type: string, format: date-time }
+
+    ProjectOnboardingResult:
+      type: object
+      required: [publication, memberships]
+      properties:
+        publication: { $ref: "#/components/schemas/ProjectDataPublication" }
+        memberships:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectMembership" }
+
+    ProjectDataPublication:
+      type: object
+      required: [id, projectId, dataProductType, title, status, policyTemplateId, selectedFields]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        dataProductType: { type: string, enum: [TAKT_INFORMATION_PACKAGE] }
+        title: { type: string }
+        status: { type: string, enum: [PUBLISHED] }
+        policyTemplateId: { type: string }
+        selectedFields:
+          type: array
+          items: { type: string }
+
+    ProjectInvitationDecisionInput:
+      type: object
+      properties:
+        policyAccepted:
+          type: boolean
+          description: Must be true when accepting an invitation.
+        message: { type: string, maxLength: 4000 }
+
+    AnProjectInvitation:
+      type: object
+      required: [id, invitationId, correlationId, senderAgOrgId, receiverAnOrgId, projectReference, projectName, policySnapshot, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        invitationId: { type: string }
+        correlationId: { type: string }
+        senderAgOrgId: { type: string }
+        receiverAnOrgId: { type: string }
+        projectReference: { type: string }
+        projectName: { type: string }
+        projectDescription: { type: ["string", "null"] }
+        projectLocation: { type: ["string", "null"] }
+        invitationMessage: { type: ["string", "null"] }
+        invitationExpiresAt: { type: ["string", "null"], format: date-time }
+        dataPublicationId: { type: ["string", "null"] }
+        dataPublicationTitle: { type: ["string", "null"] }
+        selectedFields:
+          type: ["array", "null"]
+          items: { type: string }
+        policySnapshot: { type: object, additionalProperties: true }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED] }
+        policyAcceptedAt: { type: ["string", "null"], format: date-time }
+        respondedAt: { type: ["string", "null"], format: date-time }
+        rejectedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
     InboundServiceRequest:
       type: object
       required: [metadata, requestId, requestVersion, projectReference, plannedStart, plannedEnd, resourceRequirements]
@@ -3494,6 +3659,28 @@ components:
           properties:
             usagePurpose: { type: string, enum: [PROJECT_MEMBERSHIP] }
             allowedConsumerParticipantId: { type: string }
+        dataOffer:
+          type: object
+          required: [publicationId, title, dataProductType, selectedFields, policy]
+          properties:
+            publicationId: { type: string }
+            title: { type: string }
+            dataProductType: { type: string, enum: [TAKT_INFORMATION_PACKAGE] }
+            selectedFields:
+              type: array
+              items: { type: string }
+            policy:
+              type: object
+              required: [id, code, name, purpose, permissions, prohibitions, validityRule]
+              properties:
+                id: { type: string }
+                code: { type: string }
+                name: { type: string }
+                purpose: { type: string }
+                permissions: { type: array, items: { type: string } }
+                prohibitions: { type: array, items: { type: string } }
+                validityRule: { type: string }
+                retentionRule: { type: ["string", "null"] }
 
     ProjectInvitationResponse:
       type: object
@@ -3503,6 +3690,7 @@ components:
         invitationId: { type: string, minLength: 1 }
         projectReference: { type: string }
         decision: { type: string, enum: [ACCEPTED, REJECTED] }
+        policyAccepted: { type: boolean }
         message: { type: string }
         respondedAt: { type: string, format: date-time }
 

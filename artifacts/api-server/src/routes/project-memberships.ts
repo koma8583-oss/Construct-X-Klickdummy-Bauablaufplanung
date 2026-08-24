@@ -13,6 +13,7 @@ import {
   rejectInvitation,
   revokeMembership,
 } from "../services/project-membership-service";
+import { inviteParticipantsWithData } from "../services/project-onboarding-service";
 import { z } from "zod";
 
 const router = Router();
@@ -105,36 +106,45 @@ router.post("/projects/:projectId/invitations", requireRole("AG_ADMIN", "GENERAL
   }
 });
 
-router.get("/project-invitations", async (req, res) => {
-  if (req.user?.orgType !== "AN" || !req.user.orgId) {
-    res.status(403).json({ error: "AN organisation required" });
-    return;
-  }
-  res.json(await listPendingProjectInvitations(req.user.orgId));
+const combinedInvitationSchema = z.object({
+  participantIds: z.array(z.string().min(1)).min(1).max(100),
+  invitationMessage: z.string().trim().max(4000).optional(),
+  validUntil: z.string().datetime({ offset: true }).optional(),
+  policyTemplateId: z.string().min(1),
+  title: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(2000).optional(),
+  selectedFields: z.array(z.string().min(1)).min(1).max(100),
+  validFrom: z.string().datetime({ offset: true }).optional(),
 });
 
-async function resolveInvitationRoute(
-  req: Request,
-  res: Response,
-  action: "accept" | "reject",
-) {
-  if (req.user?.orgType !== "AN" || !req.user.orgId) {
-    res.status(403).json({ error: "AN organisation required" });
+router.post("/projects/:projectId/invitations-with-data", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
+  if (req.user?.orgType !== "AG" || !req.user.orgId) {
+    res.status(403).json({ error: "AG organisation required" });
     return;
   }
-  const message = typeof req.body?.message === "string" ? req.body.message : undefined;
+  const parsed = combinedInvitationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
   try {
-    const membership = action === "accept"
-      ? await acceptInvitation(req.params.id as string, req.user.orgId)
-      : await rejectInvitation(req.params.id as string, req.user.orgId, message);
-    res.json(membership);
+    const result = await inviteParticipantsWithData({
+      projectId: req.params.projectId as string,
+      agOrgId: req.user.orgId,
+      participantIds: parsed.data.participantIds,
+      invitationMessage: parsed.data.invitationMessage,
+      validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
+      policyTemplateId: parsed.data.policyTemplateId,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      selectedFields: parsed.data.selectedFields,
+      validFrom: parsed.data.validFrom ? new Date(parsed.data.validFrom) : undefined,
+    });
+    res.status(201).json(result);
   } catch (error) {
     sendDomainError(res, error);
   }
-}
-
-router.post("/project-invitations/:id/accept", (req, res) => resolveInvitationRoute(req, res, "accept"));
-router.post("/project-invitations/:id/reject", (req, res) => resolveInvitationRoute(req, res, "reject"));
+});
 
 router.post("/project-memberships/:id/revoke", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
   if (req.user?.orgType !== "AG" || !req.user.orgId) {

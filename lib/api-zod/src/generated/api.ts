@@ -73,7 +73,23 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "policy": zod.object({
   "usagePurpose": zod.enum(['PROJECT_MEMBERSHIP']),
   "allowedConsumerParticipantId": zod.string()
+}),
+  "dataOffer": zod.object({
+  "publicationId": zod.string(),
+  "title": zod.string(),
+  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']),
+  "selectedFields": zod.array(zod.string()),
+  "policy": zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "permissions": zod.array(zod.string()),
+  "prohibitions": zod.array(zod.string()),
+  "validityRule": zod.string(),
+  "retentionRule": zod.string().nullish()
 })
+}).optional()
 })
 
 export const ReceiveInboundProjectInvitationResponse = zod.object({
@@ -100,6 +116,7 @@ export const ReceiveInboundProjectInvitationResponseBody = zod.object({
   "invitationId": zod.string().min(1),
   "projectReference": zod.string(),
   "decision": zod.enum(['ACCEPTED', 'REJECTED']),
+  "policyAccepted": zod.boolean().optional(),
   "message": zod.string().optional(),
   "respondedAt": zod.coerce.date()
 })
@@ -575,6 +592,177 @@ export const InviteProjectParticipantResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).describe('Bilateral project relationship and invitation lifecycle state')
+
+
+/**
+ * @summary Atomically prepare project invitations, policy and data offers
+ */
+export const InviteProjectParticipantsWithDataParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+
+export const inviteProjectParticipantsWithDataBodyInvitationMessageMax = 4000;
+
+export const inviteProjectParticipantsWithDataBodyTitleMax = 255;
+
+export const inviteProjectParticipantsWithDataBodyDescriptionMax = 2000;
+
+
+
+
+export const InviteProjectParticipantsWithDataBody = zod.object({
+  "participantIds": zod.array(zod.string()).min(1),
+  "invitationMessage": zod.string().max(inviteProjectParticipantsWithDataBodyInvitationMessageMax).optional(),
+  "validUntil": zod.coerce.date().optional(),
+  "policyTemplateId": zod.string(),
+  "title": zod.string().min(1).max(inviteProjectParticipantsWithDataBodyTitleMax),
+  "description": zod.string().max(inviteProjectParticipantsWithDataBodyDescriptionMax).optional(),
+  "selectedFields": zod.array(zod.string()).min(1),
+  "validFrom": zod.coerce.date().optional()
+})
+
+export const InviteProjectParticipantsWithDataResponse = zod.object({
+  "publication": zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']),
+  "title": zod.string(),
+  "status": zod.enum(['PUBLISHED']),
+  "policyTemplateId": zod.string(),
+  "selectedFields": zod.array(zod.string())
+}),
+  "memberships": zod.array(zod.object({
+  "id": zod.string(),
+  "projectId": zod.string(),
+  "agOrgId": zod.string(),
+  "anOrgId": zod.string(),
+  "anParticipantId": zod.string().nullish(),
+  "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
+  "invitationMessage": zod.string().nullish(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "invitedAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "acceptedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('Bilateral project relationship and invitation lifecycle state'))
+})
+
+
+/**
+ * @summary List local AN invitation projections awaiting a decision
+ */
+export const ListAnProjectInvitationsResponseItem = zod.object({
+  "id": zod.string(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "senderAgOrgId": zod.string(),
+  "receiverAnOrgId": zod.string(),
+  "projectReference": zod.string(),
+  "projectName": zod.string(),
+  "projectDescription": zod.string().nullish(),
+  "projectLocation": zod.string().nullish(),
+  "invitationMessage": zod.string().nullish(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "dataPublicationId": zod.string().nullish(),
+  "dataPublicationTitle": zod.string().nullish(),
+  "selectedFields": zod.array(zod.string()).nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()),
+  "status": zod.enum(['PENDING', 'ACCEPTED', 'REJECTED']),
+  "policyAcceptedAt": zod.coerce.date().nullish(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAnProjectInvitationsResponse = zod.array(ListAnProjectInvitationsResponseItem)
+
+
+/**
+ * @summary Accept project invitation and its policy together
+ */
+export const AcceptAnProjectInvitationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const acceptAnProjectInvitationBodyMessageMax = 4000;
+
+
+
+export const AcceptAnProjectInvitationBody = zod.object({
+  "policyAccepted": zod.boolean().optional().describe('Must be true when accepting an invitation.'),
+  "message": zod.string().max(acceptAnProjectInvitationBodyMessageMax).optional()
+})
+
+export const AcceptAnProjectInvitationResponse = zod.object({
+  "id": zod.string(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "senderAgOrgId": zod.string(),
+  "receiverAnOrgId": zod.string(),
+  "projectReference": zod.string(),
+  "projectName": zod.string(),
+  "projectDescription": zod.string().nullish(),
+  "projectLocation": zod.string().nullish(),
+  "invitationMessage": zod.string().nullish(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "dataPublicationId": zod.string().nullish(),
+  "dataPublicationTitle": zod.string().nullish(),
+  "selectedFields": zod.array(zod.string()).nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()),
+  "status": zod.enum(['PENDING', 'ACCEPTED', 'REJECTED']),
+  "policyAcceptedAt": zod.coerce.date().nullish(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Reject a project invitation
+ */
+export const RejectAnProjectInvitationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const rejectAnProjectInvitationBodyMessageMax = 4000;
+
+
+
+export const RejectAnProjectInvitationBody = zod.object({
+  "policyAccepted": zod.boolean().optional().describe('Must be true when accepting an invitation.'),
+  "message": zod.string().max(rejectAnProjectInvitationBodyMessageMax).optional()
+})
+
+export const RejectAnProjectInvitationResponse = zod.object({
+  "id": zod.string(),
+  "invitationId": zod.string(),
+  "correlationId": zod.string(),
+  "senderAgOrgId": zod.string(),
+  "receiverAnOrgId": zod.string(),
+  "projectReference": zod.string(),
+  "projectName": zod.string(),
+  "projectDescription": zod.string().nullish(),
+  "projectLocation": zod.string().nullish(),
+  "invitationMessage": zod.string().nullish(),
+  "invitationExpiresAt": zod.coerce.date().nullish(),
+  "dataPublicationId": zod.string().nullish(),
+  "dataPublicationTitle": zod.string().nullish(),
+  "selectedFields": zod.array(zod.string()).nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()),
+  "status": zod.enum(['PENDING', 'ACCEPTED', 'REJECTED']),
+  "policyAcceptedAt": zod.coerce.date().nullish(),
+  "respondedAt": zod.coerce.date().nullish(),
+  "rejectedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
 
 
 /**

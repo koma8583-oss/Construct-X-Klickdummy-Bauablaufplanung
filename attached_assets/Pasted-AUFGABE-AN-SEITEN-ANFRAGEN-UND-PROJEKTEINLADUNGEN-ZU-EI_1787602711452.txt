@@ -1,0 +1,889 @@
+AUFGABE – AN-SEITEN „ANFRAGEN“ UND „PROJEKTEINLADUNGEN“ ZU EINER GEMEINSAMEN INBOX ZUSAMMENFÜHREN
+
+ZIEL
+
+Im AN-System soll es künftig nur noch EINE zentrale Seite für eingehende Vorgänge geben:
+
+„Anfragen“
+
+Die bisherige eigenständige Seite:
+
+„Projekteinladungen“
+
+soll als separater Menüpunkt entfallen.
+
+Projekteinladungen werden künftig innerhalb der Seite „Anfragen“ als eigener Anfrage-Typ dargestellt.
+
+WICHTIG:
+
+Es wird nur die Benutzeroberfläche bzw. die Inbox-Darstellung zusammengeführt.
+
+Die fachlichen Datenmodelle und Nachrichtenarten bleiben getrennt.
+
+Insbesondere NICHT zusammenführen:
+
+PROJECT_INVITATION
+und
+SERVICE_REQUEST
+
+Ebenso NICHT die jeweiligen Statusmodelle in ein gemeinsames Domainmodell pressen.
+
+Die Seite „Anfragen“ ist eine gemeinsame UI-Aggregation unterschiedlicher fachlicher Vorgänge.
+
+
+======================================================================
+1. AN-NAVIGATION VEREINFACHEN
+======================================================================
+
+Die AN-Navigation soll künftig bevorzugt so aussehen:
+
+Übersicht
+
+Anfragen
+
+Projekte
+
+Ressourcenplanung
+
+Koordination
+
+
+Den bisherigen eigenständigen Menüpunkt:
+
+„Projekteinladungen“
+
+vollständig aus der Navigation entfernen.
+
+
+Keinen zusätzlichen Menüpunkt:
+
+„Leistungsanfragen“
+
+anlegen, wenn diese bereits unter „Anfragen“ geführt werden können.
+
+
+======================================================================
+2. „ANFRAGEN“ ALS ZENTRALE INBOX VERWENDEN
+======================================================================
+
+Die Seite „Anfragen“ soll alle Vorgänge anzeigen, bei denen eine Reaktion des AN erforderlich oder sinnvoll ist.
+
+Mindestens berücksichtigen:
+
+1. Projekteinladungen
+
+2. Leistungsanfragen / Service Requests
+
+Optional, sofern bereits Bestandteil der Anwendung:
+
+3. Änderungsanfragen / Change Proposals
+
+4. Klärungsanfragen / Clarifications
+
+5. Constraints oder andere Vorgänge nur dann, wenn sie fachlich tatsächlich eine Aktion des AN erfordern.
+
+
+Nicht jeden technischen Nachrichtentyp automatisch in die Inbox aufnehmen.
+
+
+======================================================================
+3. PROJEKTEINLADUNGEN IN „ANFRAGEN“ INTEGRIEREN
+======================================================================
+
+Die bisherige:
+
+GET /project-invitations
+
+Funktionalität bleibt erhalten.
+
+Sie wird künftig von der gemeinsamen Seite „Anfragen“ geladen.
+
+
+Eine Projekteinladung soll beispielsweise dargestellt werden als:
+
+Typ:
+„Projekteinladung“
+
+Projekt:
+Projektname
+
+Auftraggeber:
+AG-Organisation
+
+Eingegangen:
+receivedAt
+
+Status:
+Offen / Beigetreten / Abgelehnt
+
+Optional:
+Einladungstext
+
+
+Aktionen bei PENDING:
+
+[Projekt beitreten]
+
+[Ablehnen]
+
+
+======================================================================
+4. LEISTUNGSANFRAGEN EBENFALLS IN DER GEMEINSAMEN INBOX ANZEIGEN
+======================================================================
+
+Bestehende Service-/TaktRequests weiterhin über ihr vorhandenes fachliches Modell laden.
+
+Beispiel Darstellung:
+
+Typ:
+„Leistungsanfrage“
+
+Projekt:
+Projektname
+
+Leistung:
+Arbeitspaket / Takt / Beschreibung
+
+Zeitraum:
+Start – Ende
+
+Auftraggeber:
+AG
+
+Status:
+Offen / In Prüfung / Beantwortet
+
+Aktion:
+
+[Anfrage prüfen]
+
+
+WICHTIG:
+
+Eine Leistungsanfrage darf nur zu einem Projekt angezeigt werden, für das die entsprechende Projektpartnerschaft fachlich zulässig ist bzw. der Request über den vorgesehenen Dataspace-Inbound empfangen wurde.
+
+
+======================================================================
+5. FACHLICHE DATENMODELLE NICHT ZUSAMMENFÜHREN
+======================================================================
+
+Nicht eine neue gemeinsame Datenbanktabelle wie:
+
+requests
+
+einführen, nur um die UI zu vereinheitlichen, sofern dies fachlich nicht erforderlich ist.
+
+
+Bestehende getrennte Modelle beibehalten:
+
+PROJECT_INVITATION
+→ project_invitations
+
+SERVICE_REQUEST
+→ AN-lokale Service-/TaktRequest-Sicht
+
+CHANGE_PROPOSAL
+→ bestehende Domainstruktur
+
+CLARIFICATION
+→ bestehende Domainstruktur
+
+
+Die gemeinsame Seite aggregiert diese Daten lediglich.
+
+
+======================================================================
+6. GEMEINSAMES UI-VIEWMODEL EINFÜHREN
+======================================================================
+
+Für die Darstellung darf ein gemeinsames Frontend-/API-ViewModel eingeführt werden.
+
+Beispielsweise:
+
+type AnRequestInboxItem = {
+  id: string;
+  type:
+    | "PROJECT_INVITATION"
+    | "SERVICE_REQUEST"
+    | "CHANGE_PROPOSAL"
+    | "CLARIFICATION";
+
+  projectId?: string;
+  externalProjectReference?: string;
+
+  projectName: string;
+
+  senderName?: string;
+
+  title: string;
+  description?: string;
+
+  receivedAt: string;
+
+  status: string;
+
+  actionRequired: boolean;
+
+  sourceId: string;
+};
+
+
+WICHTIG:
+
+Dieses ViewModel dient nur der Darstellung.
+
+Es ersetzt NICHT die Domainobjekte.
+
+
+======================================================================
+7. BEVORZUGT AGGREGATION IM BACKEND ODER SAUBEREN FRONTEND-LAYER
+======================================================================
+
+Prüfen, welche Lösung besser in die bestehende Architektur passt.
+
+Variante A bevorzugt, wenn sauber umsetzbar:
+
+GET /an/requests
+
+oder bestehendes passendes API-Naming.
+
+Dieser Endpoint aggregiert ausschließlich die für die aktuelle AN-Organisation sichtbaren lokalen Domain-Sichten.
+
+
+Alternativ:
+
+Frontend lädt getrennt:
+
+/project-invitations
+
+und
+
+bestehende ServiceRequest-API
+
+und vereinigt die Ergebnisse ausschließlich zur Anzeige.
+
+
+WICHTIG:
+
+Keine Cross-Org-Queries einführen.
+
+Der Aggregator darf nur Daten verwenden, die bereits in der AN-lokalen Sicht vorhanden sind.
+
+
+======================================================================
+8. KEINE DATENRAUM-SHORTCUTS DURCH DIE NEUE INBOX
+======================================================================
+
+Die neue Seite „Anfragen“ darf nicht dazu führen, dass AN wieder direkt AG-owned Daten aus der gemeinsamen PostgreSQL-Datenbank liest.
+
+
+Beispiel Projekteinladung:
+
+Nur:
+
+AN-owned project_invitations
+
+anzeigen.
+
+
+Nicht:
+
+AG-owned project_memberships
+WHERE anOrgId = ...
+
+
+Beispiel Leistungsanfrage:
+
+Nur AN-lokal empfangene ServiceRequest-Sicht anzeigen.
+
+Nicht direkt die AG-owned Original-Row verwenden.
+
+
+======================================================================
+9. TYP-BADGES VERWENDEN
+======================================================================
+
+Jeder Eintrag soll klar erkennen lassen, um welchen fachlichen Vorgang es sich handelt.
+
+Beispiele:
+
+„Projekteinladung“
+
+„Leistungsanfrage“
+
+„Änderungsanfrage“
+
+„Klärungsanfrage“
+
+
+Die Typen dürfen visuell als Badge dargestellt werden.
+
+
+Keine technischen Message-Type-Bezeichnungen wie:
+
+PROJECT_INVITATION
+SERVICE_REQUEST
+
+direkt dem normalen Fachanwender anzeigen.
+
+
+======================================================================
+10. FILTER DER GEMEINSAMEN INBOX
+======================================================================
+
+Die Seite soll einfach bleiben.
+
+Bevorzugte Hauptfilter:
+
+Alle
+
+Offen
+
+Erledigt
+
+
+Optional zusätzlich, wenn ohne UI-Überladung sinnvoll:
+
+Typ
+
+
+Beispielsweise:
+
+Alle Typen
+Projekteinladungen
+Leistungsanfragen
+
+
+Aber NICHT wieder separate Navigationsseiten daraus machen.
+
+
+======================================================================
+11. SORTIERUNG
+======================================================================
+
+Standardmäßig:
+
+neueste Vorgänge zuerst.
+
+Bevorzugt nach:
+
+receivedAt DESC
+
+
+Offene, handlungsrelevante Vorgänge dürfen optional visuell hervorgehoben werden.
+
+
+======================================================================
+12. STATUS NORMALISIEREN NUR FÜR DIE DARSTELLUNG
+======================================================================
+
+Die verschiedenen Domainmodelle behalten ihre eigenen Statuswerte.
+
+Für die gemeinsame Inbox darf ein UI-Status abgeleitet werden.
+
+
+Beispiel Projekteinladung:
+
+PENDING
+→ „Offen“
+
+ACCEPTED
+→ „Beigetreten“
+
+REJECTED
+→ „Abgelehnt“
+
+
+ServiceRequest beispielsweise:
+
+REQUESTED
+→ „Offen“
+
+ACCEPTED
+→ „Beantwortet“
+
+REJECTED
+→ „Abgelehnt“
+
+ALTERNATIVE_PROPOSED
+→ „Alternative vorgeschlagen“
+
+
+Nicht die Domain-Enrichment-Status durch einen globalen RequestStatus ersetzen.
+
+
+======================================================================
+13. PROJEKTEINLADUNG-AKTIONEN BEIBEHALTEN
+======================================================================
+
+Bei einer offenen Projekteinladung:
+
+[Projekt beitreten]
+
+[Ablehnen]
+
+
+Beim Klick:
+
+weiterhin die bestehenden bzw. neu korrigierten Endpunkte verwenden:
+
+POST /project-invitations/{id}/accept
+
+POST /project-invitations/{id}/reject
+
+
+Die gemeinsame Inbox darf die Domainlogik nicht duplizieren.
+
+
+======================================================================
+14. ACCEPTANCE FLOW BLEIBT UNVERÄNDERT
+======================================================================
+
+WICHTIG:
+
+Das Zusammenführen der UI ändert NICHT den Project-Membership-Prozess.
+
+
+Weiterhin:
+
+AN klickt „Projekt beitreten“
+
+→ AN project_invitations:
+PENDING → ACCEPTED
+
+→ PROJECT_INVITATION_RESPONSE Outbox
+
+→ DataspaceExchange
+
+→ AG Inbound
+
+→ AG Membership:
+INVITED → ACTIVE
+
+
+Die gemeinsame „Anfragen“-Seite darf NICHT direkt AG project_memberships verändern.
+
+
+======================================================================
+15. NACH ACCEPT IN DER INBOX
+======================================================================
+
+Nach erfolgreicher lokaler Annahme:
+
+Eintrag darf weiterhin unter:
+
+„Erledigt“
+
+sichtbar sein.
+
+Alternativ kann er aus „Offen“ verschwinden und über „Alle“ weiterhin erreichbar sein.
+
+
+Bevorzugt:
+
+Historie beibehalten.
+
+
+======================================================================
+16. NACH PROJEKTBEITRITT PROJEKT IN „PROJEKTE“ ANZEIGEN
+======================================================================
+
+Nach erfolgreichem Projektbeitritt soll das Projekt zusätzlich im Bereich:
+
+„Projekte“
+
+des AN erscheinen.
+
+
+WICHTIG:
+
+Dies erfolgt über die AN-lokale Projekt-/Membership-Sicht.
+
+Nicht durch direkten Zugriff auf AG-private Projektdaten.
+
+
+======================================================================
+17. LEISTUNGSANFRAGE-AKTION
+======================================================================
+
+Bei einer Leistungsanfrage:
+
+[Anfrage prüfen]
+
+
+Diese Aktion öffnet die bestehende Detail-/Bearbeitungsansicht für:
+
+- Zeitraum
+- Leistung
+- Ressourcenprüfung
+- Zusage
+- Alternative
+- Ablehnung
+- ggf. Bedingungen
+
+
+Keine vollständige Ressourcenplanung direkt in die Inbox integrieren.
+
+
+======================================================================
+18. KEINE PROJEKTEINLADUNGS-SEITE MEHR
+======================================================================
+
+Die alte eigenständige Page:
+
+„Projekteinladungen“
+
+aus dem normalen Router und der Navigation entfernen.
+
+
+Falls die Komponente ausschließlich dieser Seite dient:
+
+entfernen.
+
+
+Wiederverwendbare Detail-/Card-Komponenten dürfen in die neue „Anfragen“-Seite übernommen werden.
+
+
+======================================================================
+19. ALTE ROUTE
+======================================================================
+
+Falls bisher eine Frontendroute existiert wie:
+
+/project-invitations
+
+/an/project-invitations
+
+oder ähnlich:
+
+aus dem normalen Navigationsrouting entfernen.
+
+
+Optional für alte Deep Links:
+
+Redirect auf:
+
+/requests
+
+bzw. vorhandene AN-Anfragenroute.
+
+
+Keinen Redirect auf eine neue separate Einladungsliste.
+
+
+======================================================================
+20. BADGES / COUNTER IN DER NAVIGATION
+======================================================================
+
+Falls bereits Badge-/Counter-Unterstützung vorhanden ist:
+
+„Anfragen“
+
+kann die Gesamtzahl offener handlungsrelevanter Vorgänge anzeigen.
+
+
+Beispiel:
+
+Anfragen  4
+
+
+Berechnung:
+
+offene Projekteinladungen
++
+offene Leistungsanfragen
++
+weitere tatsächlich handlungsrelevante Vorgänge
+
+
+Keine technischen FAILED-Outbox-Nachrichten in diesen Counter aufnehmen.
+
+
+======================================================================
+21. TRANSPORTFEHLER KONTEXTBEZOGEN ANZEIGEN
+======================================================================
+
+Beispiel:
+
+AN nimmt Projekteinladung an.
+
+Lokaler Status:
+ACCEPTED
+
+PROJECT_INVITATION_RESPONSE konnte aber noch nicht übertragen werden.
+
+
+Dann darf der Eintrag anzeigen:
+
+„Beigetreten – Rückmeldung noch nicht übertragen“
+
+Aktion:
+
+[Erneut senden]
+
+
+Nicht hierfür eine separate Datenraum-/Nachrichtenseite verlangen.
+
+
+======================================================================
+22. EMPTY STATE
+======================================================================
+
+Wenn keine offenen Anfragen vorhanden sind:
+
+Beispiel:
+
+„Aktuell liegen keine offenen Anfragen vor.“
+
+
+Keine getrennten Empty States für:
+
+Projekteinladungen
+Leistungsanfragen
+
+auf separaten Seiten mehr.
+
+
+======================================================================
+23. AN-DASHBOARD PRÜFEN
+======================================================================
+
+Falls die Übersicht eigene Kacheln enthält:
+
+„Projekteinladungen“
+
+und:
+
+„Anfragen“
+
+diese zusammenführen.
+
+
+Bevorzugt eine Kachel:
+
+„Offene Anfragen“
+
+
+Darin Gesamtzahl offener Vorgänge.
+
+
+Optional kurze Unterteilung:
+
+1 Projekteinladung
+3 Leistungsanfragen
+
+
+Aber Klick führt immer zu:
+
+„Anfragen“.
+
+
+======================================================================
+24. BREADCRUMBS UND QUICK LINKS
+======================================================================
+
+Alle Links:
+
+„Projekteinladungen“
+
+auf die gemeinsame Seite:
+
+„Anfragen“
+
+umstellen.
+
+
+Keine zweite fachliche Navigation erhalten.
+
+
+======================================================================
+25. TESTS DER UI
+======================================================================
+
+Folgende Tests ergänzen bzw. anpassen:
+
+
+TEST 1
+
+AN Navigation enthält:
+
+„Anfragen“
+
+aber NICHT:
+
+„Projekteinladungen“.
+
+
+TEST 2
+
+AN besitzt eine PENDING ProjectInvitation.
+
+„Anfragen“ zeigt:
+
+Typ „Projekteinladung“.
+
+
+TEST 3
+
+AN besitzt einen empfangenen offenen ServiceRequest.
+
+„Anfragen“ zeigt:
+
+Typ „Leistungsanfrage“.
+
+
+TEST 4
+
+Beide gleichzeitig vorhanden.
+
+„Anfragen“ zeigt beide.
+
+
+TEST 5
+
+Filter „Offen“ zeigt beide offenen Vorgänge.
+
+
+TEST 6
+
+AN akzeptiert Projekteinladung.
+
+Eintrag verschwindet aus „Offen“ bzw. wechselt korrekt in „Erledigt“.
+
+
+TEST 7
+
+Akzeptieren erzeugt weiterhin PROJECT_INVITATION_RESPONSE.
+
+Kein direkter AG-Membership-Update aus der Inbox.
+
+
+======================================================================
+26. DATENISOLATIONS-TEST
+======================================================================
+
+Sehr wichtig:
+
+AG Membership INVITED vorhanden.
+
+PROJECT_INVITATION noch NICHT beim AN inbound verarbeitet.
+
+Erwartung:
+
+Die gemeinsame AN-Seite „Anfragen“ zeigt KEINE Projekteinladung.
+
+
+Erst nach:
+
+PROJECT_INVITATION Inbound
+
+erscheint sie.
+
+
+Analog Service Request:
+
+AG ServiceRequest vorhanden.
+
+Noch kein AN Inbound.
+
+„Anfragen“ zeigt ihn NICHT.
+
+
+Erst nach SERVICE_REQUEST Inbound:
+
+sichtbar.
+
+
+======================================================================
+27. NICHT ÄNDERN
+======================================================================
+
+Nicht entfernen oder zusammenführen:
+
+project_invitations
+
+project_memberships
+
+PROJECT_INVITATION
+
+PROJECT_INVITATION_RESPONSE
+
+SERVICE_REQUEST
+
+SERVICE_RESPONSE
+
+jeweilige Outbox-Einträge
+
+jeweilige Policy-/Identity-Prüfungen
+
+jeweilige Dataspace-Inbound-Prozessoren
+
+
+Nur die AN-Benutzeroberfläche und gegebenenfalls eine reine Inbox-Aggregationsschicht werden vereinheitlicht.
+
+
+======================================================================
+28. ZIEL-NAVIGATION AN
+======================================================================
+
+Am Ende bevorzugt:
+
+Übersicht
+
+Anfragen
+
+Projekte
+
+Ressourcenplanung
+
+Koordination
+
+
+Kein separater Menüpunkt:
+
+„Projekteinladungen“
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+1. Im AN-Menü existiert nur noch „Anfragen“.
+
+2. „Projekteinladungen“ existiert nicht mehr als separater Menüpunkt.
+
+3. Es gibt keine separate reguläre Projekteinladungsseite mehr.
+
+4. Projekteinladungen erscheinen unter „Anfragen“.
+
+5. Leistungsanfragen erscheinen ebenfalls unter „Anfragen“.
+
+6. Die unterschiedlichen Vorgangstypen sind durch verständliche Typ-Badges unterscheidbar.
+
+7. Die Domainmodelle bleiben fachlich getrennt.
+
+8. ProjectInvitation bleibt project_invitations.
+
+9. ServiceRequest bleibt eigenständige Domainstruktur.
+
+10. Die gemeinsame Inbox führt keine direkten Cross-Org-Datenbankzugriffe ein.
+
+11. Projekteinladungen erscheinen erst nach PROJECT_INVITATION-Inbound.
+
+12. Leistungsanfragen erscheinen erst nach SERVICE_REQUEST-Inbound.
+
+13. „Projekt beitreten“ verwendet weiterhin den ProjectInvitation-Accept-Workflow.
+
+14. AG Membership wird erst durch PROJECT_INVITATION_RESPONSE-Inbound ACTIVE.
+
+15. Offene und erledigte Vorgänge können sinnvoll unterschieden werden.
+
+16. Das AN-Dashboard verweist nur noch auf die gemeinsame „Anfragen“-Seite.
+
+17. Alte Links und Breadcrumbs auf „Projekteinladungen“ wurden entfernt.
+
+18. Typecheck PASS.
+
+19. Tests PASS.
+
+20. Build PASS.

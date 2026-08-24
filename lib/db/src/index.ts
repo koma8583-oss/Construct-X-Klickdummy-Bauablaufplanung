@@ -14,24 +14,12 @@ const connectionStrings: Record<DatabaseRole, string | undefined> = {
 };
 
 /**
- * The preferred deployment uses three independent databases. Replit's default
- * single-database development setup can explicitly operate in logical
- * isolation mode through DATABASE_URL: requests still select one role-scoped
- * database handle, while route/org guards and Dataspace processing remain the
- * actual cross-domain boundary.
+ * AG, AN and Hub always have separate logical connection contexts. In the
+ * current PoC their URLs may intentionally point at the same PostgreSQL
+ * database and user; ownership checks and Dataspace processing remain the
+ * cross-domain boundary.
  */
 export function assertDatabaseConfiguration(): void {
-  const hasSharedDatabase = Boolean(process.env.DATABASE_URL);
-  const hasAnySeparateDatabase = Object.values({
-    ag: process.env.AG_DATABASE_URL,
-    an: process.env.AN_DATABASE_URL,
-    hub: process.env.HUB_DATABASE_URL,
-  }).some(Boolean);
-
-  if (hasSharedDatabase && !hasAnySeparateDatabase) {
-    return;
-  }
-
   const missing = (Object.entries(connectionStrings) as [DatabaseRole, string | undefined][])
     .filter(([, url]) => !url)
     .map(([role]) => `${role.toUpperCase()}_DATABASE_URL`);
@@ -42,20 +30,6 @@ export function assertDatabaseConfiguration(): void {
     );
   }
 
-  const urls = Object.values(connectionStrings) as string[];
-  const identities = urls.map((url) => {
-    try {
-      const parsed = new URL(url);
-      return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
-    } catch {
-      return url;
-    }
-  });
-  if (new Set(identities).size !== identities.length) {
-    throw new Error(
-      "AG_DATABASE_URL, AN_DATABASE_URL, and HUB_DATABASE_URL must point to three different databases.",
-    );
-  }
 }
 
 export function createDatabase(connectionString: string) {

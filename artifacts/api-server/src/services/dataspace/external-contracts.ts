@@ -65,6 +65,22 @@ export const externalProjectInvitationSchema = z.object({
     usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
     allowedConsumerParticipantId: nonEmpty(200),
   }).strict(),
+  dataOffer: z.object({
+    publicationId: nonEmpty(200),
+    title: nonEmpty(500),
+    dataProductType: z.literal("TAKT_INFORMATION_PACKAGE"),
+    selectedFields: z.array(nonEmpty(120)).min(1).max(100),
+    policy: z.object({
+      id: nonEmpty(200),
+      code: nonEmpty(200),
+      name: nonEmpty(500),
+      purpose: nonEmpty(2000),
+      permissions: z.array(nonEmpty(500)).max(100),
+      prohibitions: z.array(nonEmpty(500)).max(100),
+      validityRule: nonEmpty(2000),
+      retentionRule: z.string().trim().max(2000).nullable(),
+    }).strict(),
+  }).strict().optional(),
 }).strict();
 
 export const externalProjectInvitationResponseSchema = z.object({
@@ -72,9 +88,18 @@ export const externalProjectInvitationResponseSchema = z.object({
   invitationId: nonEmpty(200),
   projectReference: nonEmpty(200),
   decision: z.enum(["ACCEPTED", "REJECTED"]),
+  policyAccepted: z.boolean().optional(),
   message: z.string().trim().max(4000).optional(),
   respondedAt: z.string().datetime({ offset: true }),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (value.decision === "ACCEPTED" && value.policyAccepted !== true) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["policyAccepted"],
+      message: "policyAccepted=true is required when accepting a project invitation",
+    });
+  }
+});
 
 export const externalServiceRequestSchema = z.object({
   metadata: metadataSchema,
@@ -145,6 +170,22 @@ export type ExternalProjectInvitation = {
     usagePurpose: "PROJECT_MEMBERSHIP";
     allowedConsumerParticipantId: string;
   };
+  dataOffer?: {
+    publicationId: string;
+    title: string;
+    dataProductType: "TAKT_INFORMATION_PACKAGE";
+    selectedFields: string[];
+    policy: {
+      id: string;
+      code: string;
+      name: string;
+      purpose: string;
+      permissions: string[];
+      prohibitions: string[];
+      validityRule: string;
+      retentionRule: string | null;
+    };
+  };
 };
 
 export type ExternalProjectInvitationResponse = {
@@ -152,6 +193,7 @@ export type ExternalProjectInvitationResponse = {
   invitationId: string;
   projectReference: string;
   decision: "ACCEPTED" | "REJECTED";
+  policyAccepted?: boolean;
   message?: string;
   respondedAt: string;
 };

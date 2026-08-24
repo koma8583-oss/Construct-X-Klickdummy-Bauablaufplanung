@@ -26,6 +26,7 @@ import type {
   AgProjectDetailOverview,
   AgProjectSummary,
   AnDashboard,
+  AnProjectInvitation,
   AvailabilityCheckResponse,
   CreateDelegationRequest,
   CreateDelegationResponseRequest,
@@ -86,8 +87,11 @@ import type {
   PatchProjectSubcontractorRequest,
   Project,
   ProjectInvitation,
+  ProjectInvitationDecisionInput,
   ProjectInvitationResponse,
   ProjectMembership,
+  ProjectOnboardingInput,
+  ProjectOnboardingResult,
   ProjectSubcontractorAssignment,
   Resource,
   ResourceAssignment,
@@ -2003,6 +2007,299 @@ export const useInviteProjectParticipant = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getInviteProjectParticipantMutationOptions(options));
+    }
+
+export const getInviteProjectParticipantsWithDataUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/invitations-with-data`
+}
+
+/**
+ * @summary Atomically prepare project invitations, policy and data offers
+ */
+export const inviteProjectParticipantsWithData = async (projectId: string,
+    projectOnboardingInput: ProjectOnboardingInput, options?: RequestInit): Promise<ProjectOnboardingResult> => {
+
+  return customFetch<ProjectOnboardingResult>(getInviteProjectParticipantsWithDataUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(projectOnboardingInput)
+  }
+);}
+
+
+
+
+
+export const getInviteProjectParticipantsWithDataMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>, TError,{projectId: string;data: BodyType<ProjectOnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>, TError,{projectId: string;data: BodyType<ProjectOnboardingInput>}, TContext> => {
+
+const mutationKey = ['inviteProjectParticipantsWithData'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>, {projectId: string;data: BodyType<ProjectOnboardingInput>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  inviteProjectParticipantsWithData(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InviteProjectParticipantsWithDataMutationResult = NonNullable<Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>>
+    export type InviteProjectParticipantsWithDataMutationBody = BodyType<ProjectOnboardingInput>
+    export type InviteProjectParticipantsWithDataMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Atomically prepare project invitations, policy and data offers
+ */
+export const useInviteProjectParticipantsWithData = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>, TError,{projectId: string;data: BodyType<ProjectOnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inviteProjectParticipantsWithData>>,
+        TError,
+        {projectId: string;data: BodyType<ProjectOnboardingInput>},
+        TContext
+      > => {
+      return useMutation(getInviteProjectParticipantsWithDataMutationOptions(options));
+    }
+
+export const getListAnProjectInvitationsUrl = () => {
+
+
+
+
+  return `/api/an/project-invitations`
+}
+
+/**
+ * @summary List local AN invitation projections awaiting a decision
+ */
+export const listAnProjectInvitations = async ( options?: RequestInit): Promise<AnProjectInvitation[]> => {
+
+  return customFetch<AnProjectInvitation[]>(getListAnProjectInvitationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAnProjectInvitationsQueryKey = () => {
+    return [
+    `/api/an/project-invitations`
+    ] as const;
+    }
+
+
+export const getListAnProjectInvitationsQueryOptions = <TData = Awaited<ReturnType<typeof listAnProjectInvitations>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnProjectInvitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAnProjectInvitationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnProjectInvitations>>> = ({ signal }) => listAnProjectInvitations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAnProjectInvitations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAnProjectInvitationsQueryResult = NonNullable<Awaited<ReturnType<typeof listAnProjectInvitations>>>
+export type ListAnProjectInvitationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List local AN invitation projections awaiting a decision
+ */
+
+export function useListAnProjectInvitations<TData = Awaited<ReturnType<typeof listAnProjectInvitations>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnProjectInvitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAnProjectInvitationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAcceptAnProjectInvitationUrl = (id: string,) => {
+
+
+
+
+  return `/api/an/project-invitations/${id}/accept`
+}
+
+/**
+ * @summary Accept project invitation and its policy together
+ */
+export const acceptAnProjectInvitation = async (id: string,
+    projectInvitationDecisionInput: ProjectInvitationDecisionInput, options?: RequestInit): Promise<AnProjectInvitation> => {
+
+  return customFetch<AnProjectInvitation>(getAcceptAnProjectInvitationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(projectInvitationDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getAcceptAnProjectInvitationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext> => {
+
+const mutationKey = ['acceptAnProjectInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptAnProjectInvitation>>, {id: string;data: BodyType<ProjectInvitationDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  acceptAnProjectInvitation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptAnProjectInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof acceptAnProjectInvitation>>>
+    export type AcceptAnProjectInvitationMutationBody = BodyType<ProjectInvitationDecisionInput>
+    export type AcceptAnProjectInvitationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Accept project invitation and its policy together
+ */
+export const useAcceptAnProjectInvitation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptAnProjectInvitation>>,
+        TError,
+        {id: string;data: BodyType<ProjectInvitationDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getAcceptAnProjectInvitationMutationOptions(options));
+    }
+
+export const getRejectAnProjectInvitationUrl = (id: string,) => {
+
+
+
+
+  return `/api/an/project-invitations/${id}/reject`
+}
+
+/**
+ * @summary Reject a project invitation
+ */
+export const rejectAnProjectInvitation = async (id: string,
+    projectInvitationDecisionInput: ProjectInvitationDecisionInput, options?: RequestInit): Promise<AnProjectInvitation> => {
+
+  return customFetch<AnProjectInvitation>(getRejectAnProjectInvitationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(projectInvitationDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getRejectAnProjectInvitationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext> => {
+
+const mutationKey = ['rejectAnProjectInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectAnProjectInvitation>>, {id: string;data: BodyType<ProjectInvitationDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectAnProjectInvitation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectAnProjectInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof rejectAnProjectInvitation>>>
+    export type RejectAnProjectInvitationMutationBody = BodyType<ProjectInvitationDecisionInput>
+    export type RejectAnProjectInvitationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reject a project invitation
+ */
+export const useRejectAnProjectInvitation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAnProjectInvitation>>, TError,{id: string;data: BodyType<ProjectInvitationDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectAnProjectInvitation>>,
+        TError,
+        {id: string;data: BodyType<ProjectInvitationDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getRejectAnProjectInvitationMutationOptions(options));
     }
 
 export const getRevokeProjectMembershipUrl = (id: string,) => {

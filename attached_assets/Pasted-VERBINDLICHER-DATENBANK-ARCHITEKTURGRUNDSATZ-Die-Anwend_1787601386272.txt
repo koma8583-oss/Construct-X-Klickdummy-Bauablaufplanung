@@ -1,0 +1,332 @@
+VERBINDLICHER DATENBANK-ARCHITEKTURGRUNDSATZ
+
+Die Anwendung verwendet drei logisch getrennte Datenbankverbindungen:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+Diese drei Verbindungen sollen im aktuellen PoC ausdrücklich BEIBEHALTEN und verwendet werden.
+
+Aktuell gilt jedoch:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+zeigen auf:
+
+- dieselbe PostgreSQL-Datenbank
+- denselben PostgreSQL-Server
+- denselben PostgreSQL-Benutzer
+- denselben Datenbestand
+
+Beispiel:
+
+AG_DATABASE_URL
+= postgresql://app_user:...@host/constructx
+
+AN_DATABASE_URL
+= postgresql://app_user:...@host/constructx
+
+HUB_DATABASE_URL
+= postgresql://app_user:...@host/constructx
+
+
+Die drei Connection-Kontexte dienen aktuell der SOFTWAREARCHITEKTONISCHEN TRENNUNG der Rollen:
+
+AG
+AN
+Hub
+
+Sie stellen derzeit ausdrücklich KEINE physische Datenbank- oder Benutzertrennung dar.
+
+
+ZIEL DER DREI CONNECTION-KONTEXTE
+
+Die Anwendung soll bereits heute klar unterscheiden können:
+
+agDb
+→ AG-lokale Services und Daten
+
+anDb
+→ AN-lokale Services und Daten
+
+hubDb
+→ Datenraum-/Transport-/Hub-Funktionen
+
+
+Damit wird eine spätere Migration vorbereitet.
+
+Später kann beispielsweise konfiguriert werden:
+
+AG_DATABASE_URL
+→ AG-Datenbank
+
+AN_DATABASE_URL
+→ AN-Datenbank
+
+HUB_DATABASE_URL
+→ Hub-Datenbank
+
+ohne die fachliche Servicearchitektur vollständig umzubauen.
+
+
+WICHTIG
+
+Heute darf NICHT angenommen werden:
+
+agDb
+!=
+anDb
+!=
+hubDb
+
+auf physischer Datenbankebene.
+
+Die URLs können identisch sein.
+
+Ebenso darf NICHT behauptet werden:
+
+„AG und AN verwenden unterschiedliche PostgreSQL-Benutzer.“
+
+Aktuell verwenden sie denselben Datenbankbenutzer.
+
+
+DIE FACHLICHE ISOLATION MUSS DESHALB TROTZDEM IM CODE ERZWUNGEN WERDEN
+
+Da alle drei Connections aktuell auf denselben Datenbestand zeigen, darf die Sicherheit NICHT aus der Wahl von:
+
+agDb
+anDb
+hubDb
+
+abgeleitet werden.
+
+Beispiel:
+
+Nur weil ein Service anDb verwendet, ist eine Query auf eine AG-owned Tabelle technisch weiterhin möglich, wenn beide URLs auf dieselbe Datenbank zeigen.
+
+Deshalb müssen zusätzlich gelten:
+
+- klare fachliche AG-/AN-Sichten
+- Organisations-/Ownership-Prüfungen
+- keine direkten Cross-Org-Queries
+- DataspaceExchange als fachlicher Übergang
+- getrennte lokale Domain-Zustände
+
+
+BEISPIEL PROJEKTEINLADUNG
+
+AG verwendet:
+
+agDb
+
+und erzeugt:
+
+project_memberships
+status = INVITED
+
+
+AN darf diesen Datensatz NICHT einfach mit:
+
+anDb
+
+direkt lesen, obwohl anDb aktuell auf dieselbe Datenbank zeigt.
+
+
+Stattdessen:
+
+agDb
+→ AG Outbox
+→ DataspaceExchange
+→ hubDb / Transport
+→ AN Inbound
+→ anDb
+→ AN ProjectInvitation
+
+
+Die Connection-Auswahl unterstützt die Architektur.
+
+Sie ersetzt aber nicht die fachliche Kommunikationsgrenze.
+
+
+AN ACCEPT
+
+AN verwendet:
+
+anDb
+
+und setzt nur seine lokale ProjectInvitation:
+
+PENDING → ACCEPTED
+
+
+AN darf NICHT über anDb direkt die AG Membership ändern.
+
+
+Stattdessen:
+
+anDb
+→ AN Outbox
+→ DataspaceExchange
+→ hubDb / Transport
+→ AG Inbound
+→ agDb
+→ Membership INVITED → ACTIVE
+
+
+HUB
+
+hubDb soll für Datenraum-/Transportfunktionen genutzt werden, beispielsweise:
+
+- Message Transport
+- Inbound Claims
+- Delivery Status
+- technische Exchange-Daten
+- gegebenenfalls Participant-/Discovery-Metadaten
+
+Hub darf nicht automatisch fachlicher Eigentümer von AG-/AN-Domain-Daten werden.
+
+
+SCHEMA-ARCHITEKTUR
+
+Es ist zulässig und sinnvoll, weiterhin getrennte Schema-Exports bzw. fachliche Module zu haben, beispielsweise:
+
+schema/ag.ts
+schema/an.ts
+schema/hub-database.ts
+
+Diese beschreiben, welche Tabellen die jeweiligen Komponenten fachlich verwenden sollen.
+
+Aktuell können diese Tabellen trotzdem physisch in derselben PostgreSQL-Datenbank liegen.
+
+
+WICHTIGE KONSEQUENZ
+
+Eine Tabelle muss nicht dreimal physisch existieren, nur weil drei Connections vorhanden sind.
+
+Die drei Connections sind jetzt logische Zugriffspfade.
+
+Nicht automatisch drei physische Datenbanken.
+
+
+MIGRATIONEN
+
+Im aktuellen PoC darf nicht vorausgesetzt werden, dass:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+auf unterschiedliche Datenbanken zeigen.
+
+Migration-/Setup-Skripte müssen mit identischen URLs funktionieren.
+
+
+Insbesondere darf ein Script NICHT fehlschlagen mit einer Regel wie:
+
+„AG, AN and Hub databases must be different.“
+
+Diese Anforderung muss entfernt werden.
+
+
+Wenn die drei URLs identisch sind:
+
+Schema/Migration darf nicht dreimal destruktiv oder widersprüchlich angewendet werden.
+
+Bevorzugt:
+
+- erkennen, ob die URLs auf dasselbe Ziel zeigen
+oder
+- im aktuellen PoC eine gemeinsame vollständige Schema-Migration ausführen
+
+und die drei Connections danach für den Runtime-Zugriff verwenden.
+
+
+SPÄTERE PHYSISCHE TRENNUNG
+
+Die Architektur soll möglichst so gestaltet werden, dass später folgende Umstellung möglich ist:
+
+heute:
+
+AG_DATABASE_URL ─┐
+AN_DATABASE_URL ─┼→ dieselbe PostgreSQL-Datenbank
+HUB_DATABASE_URL ┘
+
+
+später:
+
+AG_DATABASE_URL  → AG PostgreSQL
+AN_DATABASE_URL  → AN PostgreSQL
+HUB_DATABASE_URL → Hub PostgreSQL
+
+
+Die spätere Trennung darf idealerweise primär eine Deployment-/Konfigurationsänderung sein.
+
+
+DESHALB SOLL DER CODE SCHON HEUTE VERMEIDEN:
+
+AG Service
+→ anDb direkte Domain Query
+
+AN Service
+→ agDb direkte Domain Query
+
+Hub Service
+→ direkte Änderung fachlicher AG-/AN-Zustände außerhalb definierter Inbound-Prozessoren
+
+
+KORREKTE DOKUMENTATIONSFORMULIERUNG
+
+„AG, AN und Hub verwenden separate Datenbank-Connection-Kontexte über AG_DATABASE_URL, AN_DATABASE_URL und HUB_DATABASE_URL. Im aktuellen PoC zeigen diese Verbindungen auf dieselbe verwaltete PostgreSQL-Datenbank und verwenden denselben Datenbankbenutzer. Die fachliche Isolation wird daher auf Anwendungsebene und durch getrennte Domain-Sichten erzwungen. Die Connection-Struktur bereitet eine spätere physische Trennung der Datenbanken vor.“
+
+
+NICHT SCHREIBEN
+
+„AG, AN und Hub besitzen heute physisch getrennte Datenbanken.“
+
+NICHT SCHREIBEN
+
+„AG und AN verwenden unterschiedliche PostgreSQL-Benutzer.“
+
+NICHT SCHREIBEN
+
+„Die Connection-Trennung allein verhindert Cross-Org-Zugriffe.“
+
+
+DEFINITION OF DONE
+
+Dieser Architekturpunkt ist korrekt umgesetzt, wenn:
+
+1. AG_DATABASE_URL existiert und wird verwendet.
+
+2. AN_DATABASE_URL existiert und wird verwendet.
+
+3. HUB_DATABASE_URL existiert und wird verwendet.
+
+4. Alle drei URLs dürfen aktuell identisch sein.
+
+5. Alle drei dürfen denselben PostgreSQL-Benutzer verwenden.
+
+6. Die Anwendung startet und funktioniert mit drei identischen URLs.
+
+7. Kein Setup-/Migration-Script verlangt unterschiedliche Datenbanken.
+
+8. Keine Dokumentation behauptet eine bereits vorhandene physische Trennung.
+
+9. agDb, anDb und hubDb bleiben als logische Connection-Kontexte erhalten.
+
+10. AG Services verwenden bevorzugt agDb.
+
+11. AN Services verwenden bevorzugt anDb.
+
+12. Hub-/Transportservices verwenden bevorzugt hubDb.
+
+13. Cross-Org-Kommunikation erfolgt trotzdem ausschließlich über DataspaceExchange und Inbound-Prozesse.
+
+14. Der AN liest keine AG-Membership direkt, nur weil anDb auf dieselbe DB zeigt.
+
+15. Der AG liest keine AN-Invitation direkt, nur weil agDb auf dieselbe DB zeigt.
+
+16. Eine spätere Konfiguration auf drei getrennte Datenbanken bleibt architektonisch möglich.

@@ -1,12 +1,8 @@
 /**
  * DataPublicationWizard (Task #112).
  *
- * 5-step wizard for AG to publish project/Takt data to selected ANs:
- *   Step 1 — Datenprodukt: product type selection
- *   Step 2 — Felder: checkbox selection from whitelist
- *   Step 3 — Empfänger: select from ACTIVE project contractors
- *   Step 4 — Policy + Gültigkeitsdatum: policy template + optional dates
- *   Step 5 — Vorschau: preview of what will be shared + publish action
+ * Single coordinated onboarding flow for AG: participants, policy, field
+ * whitelist and final review become one invitation plus data-offer message.
  */
 import React, { useState, useMemo } from 'react';
 import {
@@ -29,8 +25,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
   useGetPolicyTemplates,
-  useCreateDataPublication,
-  usePublishDataPublication,
+  useInviteParticipantsWithData,
   FIELD_WHITELISTS,
   FIELD_LABELS,
   FIELD_GROUPS,
@@ -185,8 +180,8 @@ interface Props {
 // The only product type is TAKT_INFORMATION_PACKAGE — no selection step needed.
 const PRODUCT_LABEL = 'Informationspaket Leistungsvergabe';
 
-// Steps: 0 = Felder, 1 = Empfänger, 2 = Policy, 3 = Vorschau
-const STEP_LABELS = ['Felder', 'Empfänger', 'Policy', 'Vorschau'];
+// Steps: 0 = Teilnehmer, 1 = Policy, 2 = Datenfelder, 3 = Übersicht
+const STEP_LABELS = ['Teilnehmer', 'Policy', 'Datenfelder', 'Übersicht'];
 const PRODUCT_TYPE: DataProductType = 'TAKT_INFORMATION_PACKAGE';
 const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
 
@@ -208,13 +203,13 @@ export function DataPublicationWizard({
   const [policyTemplateId, setPolicyTemplateId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [invitationMessage, setInvitationMessage] = useState('');
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [policyViewOpen, setPolicyViewOpen] = useState(false);
 
   const { data: policyTemplates } = useGetPolicyTemplates();
-  const createPub = useCreateDataPublication(projectId);
-  const publishPub = usePublishDataPublication();
+  const inviteWithData = useInviteParticipantsWithData(projectId);
 
   const activeContractors = contractors.filter((c) => c.assignmentStatus === 'ACTIVE');
   const selectedPolicy = policyTemplates?.find((p) => p.id === policyTemplateId);
@@ -232,6 +227,7 @@ export function DataPublicationWizard({
       setPolicyTemplateId('');
       setTitle('');
       setDescription('');
+      setInvitationMessage('');
       setValidFrom('');
       setValidUntil('');
     }
@@ -245,39 +241,38 @@ export function DataPublicationWizard({
     setSelectedRecipients((prev) => { const n = new Set(prev); n.has(orgId) ? n.delete(orgId) : n.add(orgId); return n; });
 
   const canNext = useMemo(() => {
-    if (step === 0) return selectedFields.size > 0;
-    if (step === 1) return selectedRecipients.size > 0;
-    if (step === 2) return !!policyTemplateId && !!title.trim();
+    if (step === 0) return selectedRecipients.size > 0;
+    if (step === 1) return !!policyTemplateId && !!title.trim();
+    if (step === 2) return selectedFields.size > 0;
     return true;
   }, [step, selectedFields, selectedRecipients, policyTemplateId, title]);
 
   const handleNext = () => {
-    if (step === 1 && !title) setTitle(autoTitle);
+    if (step === 0 && !title) setTitle(autoTitle);
     setStep((s) => Math.min(s + 1, 3));
   };
 
   const handlePublish = async () => {
     if (!policyTemplateId) return;
     try {
-      const pub = await createPub.mutateAsync({
-        dataProductType: PRODUCT_TYPE,
+      await inviteWithData.mutateAsync({
+        participantIds: Array.from(selectedRecipients),
+        invitationMessage: invitationMessage.trim() || undefined,
         title: title.trim() || autoTitle,
         description: description.trim() || undefined,
         policyTemplateId,
         selectedFields: Array.from(selectedFields),
-        recipientAnOrgIds: Array.from(selectedRecipients),
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
       });
-      await publishPub.mutateAsync(pub.id);
-      toast({ title: 'Daten erfolgreich bereitgestellt', description: 'Die ausgewählten Empfänger wurden benachrichtigt.' });
+      toast({ title: 'Einladungen versendet', description: 'Projekt, Policy und Datenangebot wurden gemeinsam bereitgestellt.' });
       handleOpenChange(false);
     } catch (err) {
-      toast({ title: 'Fehler bei der Bereitstellung', description: (err as Error).message, variant: 'destructive' });
+      toast({ title: 'Fehler beim Einladen', description: (err as Error).message, variant: 'destructive' });
     }
   };
 
-  const isPending = createPub.isPending || publishPub.isPending;
+  const isPending = inviteWithData.isPending;
 
   return (
     <>
@@ -286,7 +281,7 @@ export function DataPublicationWizard({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-            <span>{PRODUCT_LABEL}</span>
+             <span>Projekt einladen &amp; Datenraum freigeben</span>
           </DialogTitle>
           <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80 space-y-1">
             <p>
@@ -326,8 +321,8 @@ export function DataPublicationWizard({
 
         <div className="min-h-[300px] py-2">
 
-          {/* ── Step 0: Felder ────────────────────────────────────────────── */}
-          {step === 0 && (
+          {/* ── Step 2: Felder ────────────────────────────────────────────── */}
+          {step === 2 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
@@ -384,8 +379,8 @@ export function DataPublicationWizard({
             </div>
           )}
 
-          {/* ── Step 1: Empfänger ─────────────────────────────────────────── */}
-          {step === 1 && (
+          {/* ── Step 0: Empfänger ─────────────────────────────────────────── */}
+          {step === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 Wählen Sie die Nachunternehmen, die dieses Informationspaket erhalten sollen. Nur aktive Zuordnungen können ausgewählt werden.
@@ -422,8 +417,8 @@ export function DataPublicationWizard({
             </div>
           )}
 
-          {/* ── Step 2: Policy ────────────────────────────────────────────── */}
-          {step === 2 && (
+          {/* ── Step 1: Policy ────────────────────────────────────────────── */}
+          {step === 1 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Titel der Veröffentlichung</Label>
@@ -432,6 +427,10 @@ export function DataPublicationWizard({
               <div className="space-y-2">
                 <Label>Beschreibung (optional)</Label>
                 <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Kurze Beschreibung für die Empfänger…" rows={2} />
+              </div>
+              <div className="space-y-2">
+                <Label>Nachricht zur Einladung (optional)</Label>
+                <Textarea value={invitationMessage} onChange={(e) => setInvitationMessage(e.target.value)} placeholder="Hinweis für die eingeladenen Nachunternehmen…" rows={2} />
               </div>
               <div className="space-y-2">
                 <Label>Nutzungsrichtlinie</Label>
@@ -527,7 +526,7 @@ export function DataPublicationWizard({
               </Button>
             ) : (
               <Button type="button" onClick={handlePublish} disabled={isPending || !canNext} className="min-w-36">
-                {isPending ? 'Wird veröffentlicht…' : <><Globe className="h-4 w-4 mr-1.5" /> Veröffentlichen</>}
+                 {isPending ? 'Wird versendet…' : <><Globe className="h-4 w-4 mr-1.5" /> Einladung &amp; Freigabe versenden</>}
               </Button>
             )}
           </div>

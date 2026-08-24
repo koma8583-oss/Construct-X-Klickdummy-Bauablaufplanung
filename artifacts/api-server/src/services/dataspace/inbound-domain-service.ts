@@ -1,20 +1,28 @@
-import { db, taktRequestsTable, takteTable, projectMembershipsTable, projectsTable } from "@workspace/db";
+import {
+  agDb,
+  anDb,
+  dataPublicationRecipientsTable,
+  projectMembershipsTable,
+  taktRequestsTable,
+  takteTable,
+} from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 import { processNuResponse } from "../nu-response-service";
+import { storeIncomingProjectInvitation } from "../an-project-invitation-service";
 
 /**
  * Domain boundary for Dataspace deliveries. Transport code only validates the
  * envelope; this module applies the existing coordination persistence paths.
  */
 export async function processIncomingServiceRequest(payload: ExternalServiceRequest): Promise<void> {
-  const [request] = await db.select().from(taktRequestsTable)
+  const [request] = await anDb.select().from(taktRequestsTable)
     .where(eq(taktRequestsTable.id, payload.requestId)).limit(1);
   if (!request) throw new Error(`Inbound service request ${payload.requestId} does not exist`);
   if (request.guOrgId !== payload.metadata.senderOrgId || request.nuOrgId !== payload.metadata.receiverOrgId) {
     throw new Error("Inbound service request organisations do not match the coordination request");
   }
-  const [takt] = await db.select({ projectId: takteTable.projectId })
+  const [takt] = await anDb.select({ projectId: takteTable.projectId })
     .from(takteTable)
     .where(and(eq(takteTable.id, request.taktId), eq(takteTable.projectId, payload.projectReference)))
     .limit(1);
@@ -22,7 +30,7 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
   if (payload.requestVersion < request.taktVersion) {
     throw new Error("Inbound service request version is older than the current request");
   }
-  await db.update(taktRequestsTable).set({
+  await anDb.update(taktRequestsTable).set({
     taktVersion: payload.requestVersion,
     status: request.status === "DRAFT" ? "SENT" : request.status,
     sentAt: request.sentAt ?? new Date(payload.metadata.createdAt),
@@ -31,7 +39,7 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
 }
 
 export async function processIncomingServiceResponse(payload: ExternalServiceResponse): Promise<void> {
-  const [request] = await db.select().from(taktRequestsTable)
+  const [request] = await agDb.select().from(taktRequestsTable)
     .where(eq(taktRequestsTable.id, payload.requestId)).limit(1);
   if (!request) throw new Error(`Inbound service response ${payload.requestId} does not exist`);
   if (request.nuOrgId !== payload.metadata.senderOrgId || request.guOrgId !== payload.metadata.receiverOrgId) {
@@ -60,36 +68,11 @@ export async function processIncomingServiceResponse(payload: ExternalServiceRes
 }
 
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {
-  const [project] = await db.select().from(projectsTable)
-    .where(and(eq(projectsTable.id, payload.project.projectReference), eq(projectsTable.agOrgId, payload.metadata.senderOrgId))).limit(1);
-  if (!project) throw new Error(`Inbound project invitation references an unknown project ${payload.project.projectReference}`);
-  if (payload.metadata.receiverOrgId === payload.metadata.senderOrgId) throw new Error("Inbound project invitation has identical sender and receiver");
-
-  const [existing] = await db.select().from(projectMembershipsTable)
-    .where(eq(projectMembershipsTable.invitationId, payload.invitationId)).limit(1);
-  if (existing) {
-    if (existing.correlationId !== payload.metadata.correlationId || existing.agOrgId !== payload.metadata.senderOrgId ||
-        existing.anOrgId !== payload.metadata.receiverOrgId) {
-      throw new Error("Inbound project invitation conflicts with the existing invitation");
-    }
-    return;
-  }
-  await db.insert(projectMembershipsTable).values({
-    projectId: project.id,
-    agOrgId: payload.metadata.senderOrgId,
-    anOrgId: payload.metadata.receiverOrgId,
-    anParticipantId: `external:${payload.metadata.receiverOrgId}`,
-    status: "INVITED",
-    invitationId: payload.invitationId,
-    correlationId: payload.metadata.correlationId,
-    invitationMessage: payload.invitationMessage ?? null,
-    invitationExpiresAt: payload.validUntil ? new Date(payload.validUntil) : null,
-    invitedAt: new Date(payload.metadata.createdAt),
-  }).onConflictDoNothing();
+  await storeIncomingProjectInvitation(payload);
 }
 
 export async function processIncomingProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<void> {
-  const [membership] = await db.select().from(projectMembershipsTable)
+  const [membership] = await agDb.select().from(projectMembershipsTable)
     .where(and(
       eq(projectMembershipsTable.invitationId, payload.invitationId),
       eq(projectMembershipsTable.agOrgId, payload.metadata.receiverOrgId),
@@ -100,13 +83,25 @@ export async function processIncomingProjectInvitationResponse(payload: External
     throw new Error("Inbound project invitation response does not match the invitation");
   }
   const nextStatus = payload.decision === "ACCEPTED" ? "ACTIVE" : "REJECTED";
+  if (nextStatus === "ACTIVE" && payload.policyAccepted !== true) {
+    throw new Error("Inbound project invitation acceptance requires policyAccepted=true");
+  }
   if (membership.status === nextStatus) return;
   if (membership.status !== "INVITED") throw new Error("Inbound project invitation response conflicts with the current membership status");
-  await db.update(projectMembershipsTable).set({
-    status: nextStatus,
-    respondedAt: new Date(payload.respondedAt),
-    acceptedAt: nextStatus === "ACTIVE" ? new Date(payload.respondedAt) : null,
-    rejectedAt: nextStatus === "REJECTED" ? new Date(payload.respondedAt) : null,
-    updatedAt: new Date(),
-  }).where(and(eq(projectMembershipsTable.id, membership.id), eq(projectMembershipsTable.status, "INVITED")));
+  const respondedAt = new Date(payload.respondedAt);
+  await agDb.transaction(async (tx) => {
+    const [updated] = await tx.update(projectMembershipsTable).set({
+      status: nextStatus,
+      respondedAt,
+      acceptedAt: nextStatus === "ACTIVE" ? respondedAt : null,
+      rejectedAt: nextStatus === "REJECTED" ? respondedAt : null,
+      updatedAt: new Date(),
+    }).where(and(eq(projectMembershipsTable.id, membership.id), eq(projectMembershipsTable.status, "INVITED"))).returning();
+    if (!updated) throw new Error("Inbound project invitation response conflicts with the current membership status");
+    await tx.update(dataPublicationRecipientsTable).set(
+      nextStatus === "ACTIVE"
+        ? { status: "ACCEPTED", policyAcceptedAt: respondedAt }
+        : { status: "REJECTED", policyRejectedAt: respondedAt },
+    ).where(eq(dataPublicationRecipientsTable.projectMembershipId, membership.id));
+  });
 }

@@ -22,7 +22,6 @@
     "projects": "Projekte",
     "taktRequests": "Leistungsanfragen",
     "proposals": "Vorschläge",
-    "contractors": "Nachunternehmer",
     "datenraum": "Datenraum",
     "settings": "Einstellungen",
     "logout": "Abmelden"
@@ -80,14 +79,6 @@
     "accept": "Akzeptieren",
     "reject": "Ablehnen",
     "comment": "Kommentar (optional)"
-  },
-  "contractors": {
-    "title": "Nachunternehmer",
-    "search": "AN durchsuchen...",
-    "add": "Zum Projekt hinzufügen",
-    "remove": "Entfernen",
-    "email": "E-Mail",
-    "noContractors": "Keine Nachunternehmer gefunden."
   },
   "settings": {
     "title": "Einstellungen",

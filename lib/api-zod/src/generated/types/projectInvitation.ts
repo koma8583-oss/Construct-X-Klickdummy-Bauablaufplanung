@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { InboundExchangeMetadata } from './inboundExchangeMetadata';
+import type { ProjectInvitationDataOffer } from './projectInvitationDataOffer';
 import type { ProjectInvitationPolicy } from './projectInvitationPolicy';
 import type { ProjectInvitationProject } from './projectInvitationProject';
 import type { ProjectInvitationPurpose } from './projectInvitationPurpose';
@@ -21,4 +22,5 @@ export interface ProjectInvitation {
   invitationMessage?: string;
   validUntil?: Date;
   policy: ProjectInvitationPolicy;
+  dataOffer?: ProjectInvitationDataOffer;
 }
