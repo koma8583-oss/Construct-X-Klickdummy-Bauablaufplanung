@@ -1439,7 +1439,7 @@ export default function ProjectDetail() {
         </Card>
       </div>
 
-      <details open className="rounded-xl border border-border bg-card overflow-hidden">
+      <details className="rounded-xl border border-border bg-card overflow-hidden">
         <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-primary" />Koordination</span>
           <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform details-chevron" />
@@ -1451,7 +1451,7 @@ export default function ProjectDetail() {
 
       {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
       {dataPublications && dataPublications.length > 0 && (
-        <details open className="rounded-xl border border-border bg-card overflow-hidden">
+        <details className="rounded-xl border border-border bg-card overflow-hidden">
           <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
             <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />Datenraum-Bereitstellungen <span className="text-xs text-muted-foreground">({dataPublications.length})</span></span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
