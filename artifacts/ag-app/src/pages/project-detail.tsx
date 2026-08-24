@@ -10,7 +10,6 @@ import {
   useUpdateTakt,
   useDeleteTakt,
   useListProjectContractors,
-  useListOrganizations,
   useListTaktRequests,
   useCreateTaktRequestWithSnapshot,
   useSendTaktRequest,
@@ -29,14 +28,13 @@ import {
   useInviteProjectParticipant,
   useRevokeProjectMembership,
   getListProjectMembershipsQueryKey,
-  getListOrganizationsQueryKey,
   getListTaktDependenciesQueryKey,
   TaktStatus,
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
 import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult, ProjectMembership } from '@workspace/api-client-react';
-import { useQueryClient, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
 import { DatePicker } from '@/components/date-picker';
@@ -513,10 +511,37 @@ export default function ProjectDetail() {
   const { data: memberships } = useListProjectMemberships(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
-  const { data: allAnOrgs } = useListOrganizations(
-    { type: 'AN' },
-    { query: { queryKey: getListOrganizationsQueryKey({ type: 'AN' }) } },
-  );
+  const { data: allAnOrgs } = useQuery({
+    queryKey: ['dataspace-participants', projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/dataspace/participants?organizationType=AN&projectId=${encodeURIComponent(projectId)}`,
+      );
+      if (!response.ok) {
+        throw new Error('Nachunternehmer konnten nicht geladen werden.');
+      }
+      const participants = (await response.json()) as Array<{
+        localOrgId: string;
+        participantId: string;
+        organizationName: string;
+        identityStatus: string;
+        connectorStatus: string;
+        membershipStatus?: string | null;
+        selectable?: boolean;
+      }>;
+      return participants.map((participant) => ({
+        id: participant.localOrgId,
+        name: participant.organizationName,
+        contactEmail: null,
+        participantId: participant.participantId,
+        identityStatus: participant.identityStatus,
+        connectorStatus: participant.connectorStatus,
+        membershipStatus: participant.membershipStatus,
+        selectable: participant.selectable,
+      }));
+    },
+  });
   const { data: taktRequests } = useListTaktRequests(undefined, {
     query: { enabled: !!projectId, queryKey: getListTaktRequestsQueryKey() },
   });
