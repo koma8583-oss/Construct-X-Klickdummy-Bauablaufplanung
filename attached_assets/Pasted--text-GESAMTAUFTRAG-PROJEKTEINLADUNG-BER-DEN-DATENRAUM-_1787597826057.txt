@@ -1,0 +1,2449 @@
+```text
+GESAMTAUFTRAG – PROJEKTEINLADUNG ÜBER DEN DATENRAUM FACHLICH UND TECHNISCH KONSISTENT UMSETZEN
+
+ZIELBILD
+
+Die bestehende Projekteinladung soll vollständig auf das folgende fachliche Modell ausgerichtet werden:
+
+1. Der AG sieht eine Liste verifizierter AN, die als Teilnehmer des Datenraums registriert sind.
+2. Der AG wählt einen AN aus.
+3. Der AG führt die Aktion „Zum Projekt einladen“ aus.
+4. Auf AG-Seite entsteht eine lokale Projektmitgliedschaft mit Status INVITED.
+5. Die Einladung wird als PROJECT_INVITATION über den DataspaceExchange übertragen.
+6. Erst durch die Verarbeitung dieser Nachricht auf AN-Seite entsteht dort eine lokale Projekteinladung.
+7. Der AN kann „Projekt beitreten“ oder „Ablehnen“.
+8. Die Entscheidung des AN wird ausschließlich lokal auf AN-Seite gespeichert.
+9. Die Entscheidung wird als PROJECT_INVITATION_RESPONSE über den DataspaceExchange an den AG übertragen.
+10. Erst durch die Verarbeitung der ACCEPTED-Antwort auf AG-Seite wird die dortige Project Membership ACTIVE.
+11. Erst danach darf der AG dem AN konkrete Leistungen zuordnen bzw. Leistungsanfragen senden.
+12. Die spätere Leistungs- und Bauablaufkoordination läuft ebenfalls über den Datenraum.
+
+WICHTIGER ARCHITEKTURGRUNDSATZ
+
+Die Anwendung verwendet weiterhin:
+
+- EINE gemeinsame verwaltete PostgreSQL-Datenbank
+- denselben bestehenden technischen Datenbankzugang
+- dieselbe bestehende Datenbankverbindung bzw. denselben Connection Pool
+
+Es dürfen ausdrücklich NICHT eingeführt werden:
+
+- getrennte PostgreSQL-Benutzer für AG, AN oder Hub
+- getrennte Datenbankrollen als Mandantentrennung
+- getrennte Connection Strings für AG und AN
+- separate Datenbanken
+- separate PostgreSQL-Schemas nur zur Mandantentrennung
+
+AG, AN und Hub sind Anwendungsrollen bzw. Organisationskontexte und KEINE unterschiedlichen PostgreSQL-Benutzer.
+
+Die Datensouveränität wird LOGISCH innerhalb derselben Datenbank umgesetzt:
+
+Authentifizierung
+→ currentOrgId
+→ ownerOrgId
+→ Service-/Repository-Filter
+→ Authorization
+
+Die gemeinsame Datenbank darf nicht als fachlicher Kommunikationskanal zwischen AG und AN verwendet werden.
+
+Organisationsübergreifende fachliche Informationen dürfen ausschließlich über:
+
+DataspaceExchange
+→ Policy-/Identity-Prüfung
+→ Nachricht
+→ Inbound Processor
+→ lokale organisationsbezogene Sicht
+
+übertragen werden.
+
+
+======================================================================
+SCHRITT 1 – LOGISCHE ORGANISOLATION INNERHALB DER GEMEINSAMEN DATENBANK VERBINDLICH MACHEN
+======================================================================
+
+ZIEL
+
+AG und AN verwenden dieselbe PostgreSQL-Datenbank, dürfen aber über reguläre Services niemals direkt auf private Datensätze der jeweils anderen Organisation zugreifen.
+
+1. BESTEHENDES AUTHENTIFIZIERUNGSMODELL PRÜFEN
+
+Ermittle, wie die aktuelle Organisation bestimmt wird.
+
+Beispielsweise:
+
+req.user.orgId
+currentOrganization.id
+authContext.orgId
+
+Diese bestehende Quelle weiterverwenden.
+
+Keine neue parallele Organisationsauflösung einführen.
+
+
+2. currentOrgId VERBINDLICH AUS AUTH CONTEXT
+
+Für private Domain-APIs:
+
+const currentOrgId = req.user.orgId;
+
+oder vorhandenes Äquivalent.
+
+Nicht akzeptieren:
+
+{
+  "ownerOrgId": "..."
+}
+
+als frei vom Client bestimmbaren Datenbesitzer.
+
+
+3. ownerOrgId FÜR ORGANISATIONSSPEZIFISCHE DATEN
+
+Private organisationsbezogene Rows benötigen einen eindeutigen Eigentümer.
+
+Bevorzugt:
+
+ownerOrgId
+
+Falls im Bestand bereits eine andere eindeutige Tenant-Konvention existiert, diese konsistent weiterverwenden.
+
+Keine unnötige zweite Benennung einführen.
+
+
+4. PRIVATE QUERIES IMMER SCOPEN
+
+Nicht:
+
+SELECT ...
+FROM project_invitations
+WHERE id = ?
+
+sondern:
+
+SELECT ...
+FROM project_invitations
+WHERE id = ?
+AND ownerOrgId = currentOrgId
+
+
+5. DAS GILT FÜR LESEN UND SCHREIBEN
+
+UPDATE/DELETE ebenfalls:
+
+WHERE id = ?
+AND ownerOrgId = currentOrgId
+
+
+6. KEIN FRONTEND-FILTER ALS SICHERHEIT
+
+Nicht:
+
+Backend liefert alle Rows
+→ Frontend filtert nach Organisation.
+
+Filterung und Rechteprüfung müssen im Backend erfolgen.
+
+
+7. KEINE CROSS-ORG-JOINS ZU PRIVATEN DATEN
+
+AG darf nicht beispielsweise über einen Join direkt lesen:
+
+AN ResourceBookings
+AN interne Ressourcen
+AN interne Projekte
+AN ProjectInvitations
+
+AN darf nicht direkt lesen:
+
+AG Gesamtterminplanung
+AG interne Projektinformationen
+AG Memberships
+AG interne Outbox
+
+
+8. BEWUSST GETEILTE DATEN AUSNEHMEN
+
+Participant Directory ist bewusst ein geteilter Datenraumdienst.
+
+Dort dürfen beispielsweise sichtbar sein:
+
+participantId
+organizationName
+organizationType
+identityStatus
+connectorEndpoint
+capabilities
+
+Dies erzeugt aber kein Zugriffsrecht auf private Domain-Daten.
+
+
+9. KEINE POSTGRESQL-BENUTZERTRENNUNG
+
+Nicht implementieren:
+
+CREATE ROLE ag_user
+CREATE ROLE an_user
+CREATE ROLE hub_user
+
+Nicht implementieren:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+Die bestehende verwaltete Datenbankverbindung bleibt erhalten.
+
+
+10. OPTIONAL RLS NICHT ALS HAUPTLÖSUNG EINFÜHREN
+
+PostgreSQL Row Level Security ist für diesen Auftrag nicht erforderlich.
+
+Nur verwenden, wenn sie bereits sauber vorhanden ist.
+
+Die maßgebliche Sicherheitsgrenze bleibt:
+
+Application-Level Authorization + currentOrgId/ownerOrgId.
+
+
+11. PFLICHTTEST
+
+AG Context versucht AN-owned private Row zu lesen:
+
+→ nicht sichtbar / 403 / 404 gemäß bestehender API-Konvention.
+
+
+12. PFLICHTTEST
+
+AN Context versucht AG-owned private Row zu lesen:
+
+→ nicht sichtbar.
+
+
+ERGEBNIS
+
+Eine Datenbank bleibt bestehen.
+
+Die organisatorische Trennung erfolgt ausschließlich logisch auf Anwendungsebene.
+
+
+======================================================================
+SCHRITT 2 – AG-PROJEKTMITGLIEDSCHAFT UND AN-PROJEKTEINLADUNG ALS GETRENNTE LOGISCHE SICHTEN MODELLIEREN
+======================================================================
+
+ZIEL
+
+Die derzeitige gemeinsame project_memberships-Row darf nicht mehr gleichzeitig AG- und AN-Wahrheit darstellen.
+
+Physisch darf alles in derselben Datenbank liegen.
+
+Fachlich müssen aber zwei getrennte organisationsbezogene Datensichten existieren.
+
+
+1. AG-SICHT
+
+project_memberships bleibt die lokale Sicht des AG.
+
+Mindestens:
+
+id
+ownerOrgId
+projectId
+remoteParticipantId
+remoteOrgId nullable
+status
+invitationMessage nullable
+invitedAt
+acceptedAt nullable
+rejectedAt nullable
+revokedAt nullable
+correlationId
+createdAt
+updatedAt
+
+
+Für AG-Membership:
+
+ownerOrgId = AG_ORG_ID
+
+
+2. STATUS AG
+
+INVITED
+ACTIVE
+REJECTED
+REVOKED
+
+
+3. AN-SICHT
+
+Eigene Tabelle:
+
+project_invitations
+
+empfohlen.
+
+
+Mindestens:
+
+id
+ownerOrgId
+
+externalInvitationId
+correlationId
+
+externalProjectReference
+projectName
+projectDescription nullable
+projectLocation nullable
+
+senderParticipantId
+senderOrganizationName
+
+recipientParticipantId
+
+status
+
+invitationMessage nullable
+
+purpose
+policyJson nullable
+
+receivedAt
+respondedAt nullable
+acceptedAt nullable
+rejectedAt nullable
+
+createdAt
+updatedAt
+
+
+4. STATUS AN
+
+PENDING
+ACCEPTED
+REJECTED
+
+Optional, wenn Withdrawal umgesetzt wird:
+
+WITHDRAWN
+
+
+5. WICHTIGE ZUGRIFFSREGEL
+
+AG liest:
+
+project_memberships
+WHERE ownerOrgId = currentAgOrgId
+
+
+AN liest:
+
+project_invitations
+WHERE ownerOrgId = currentAnOrgId
+
+
+6. AN DARF AG MEMBERSHIP NICHT ALS INBOX VERWENDEN
+
+GET /project-invitations
+
+darf nicht mehr:
+
+project_memberships
+WHERE anOrgId = ...
+
+lesen.
+
+
+7. AG INVITE
+
+AG erzeugt zunächst nur:
+
+project_memberships
+
+ownerOrgId = AG
+status = INVITED
+
+
+Es darf dabei noch keine:
+
+project_invitations
+ownerOrgId = AN
+
+Row entstehen.
+
+
+8. ERST AN-INBOUND ERZEUGT AN-INVITATION
+
+PROJECT_INVITATION
+→ DataspaceExchange
+→ AN Inbound Processor
+
+erst dann:
+
+INSERT project_invitations
+ownerOrgId = AN
+status = PENDING
+
+
+9. AN ACCEPT
+
+AN verändert nur:
+
+project_invitations
+WHERE ownerOrgId = AN
+
+PENDING → ACCEPTED
+
+
+10. KEINE DIREKTE AG-MUTATION
+
+AN darf bei Accept NICHT direkt:
+
+project_memberships
+ownerOrgId = AG
+
+auf ACTIVE setzen.
+
+
+11. AG ACTIVE
+
+Nur:
+
+PROJECT_INVITATION_RESPONSE
+→ AG Inbound Processor
+
+darf:
+
+AG-owned project_memberships
+INVITED → ACTIVE
+
+setzen.
+
+
+12. PFLICHTTEST
+
+AG Membership INVITED vorhanden.
+
+Invitation noch nicht inbound beim AN.
+
+AN GET /project-invitations:
+
+→ keine Einladung.
+
+
+13. PFLICHTTEST
+
+AN Invitation ACCEPTED.
+
+Response noch nicht AG-inbound.
+
+AG Membership:
+
+→ weiterhin INVITED.
+
+
+ERGEBNIS
+
+AG- und AN-Sicht liegen zwar in derselben Datenbank, werden aber ausschließlich über den Datenraum synchronisiert.
+
+
+======================================================================
+SCHRITT 3 – DATASPACEEXCHANGE ALS EINZIGEN FACHLICHEN ORGANISATIONSÜBERGANG VERWENDEN
+======================================================================
+
+ZIEL
+
+Die gemeinsame Datenbank darf keinerlei fachlichen Shortcut zwischen AG und AN darstellen.
+
+
+1. VERBINDLICHER AG→AN FLOW
+
+AG Domain
+→ AG-owned Outbox
+→ DataspaceExchange
+→ AN Inbound Processor
+→ AN-owned Domain Data
+
+
+2. VERBINDLICHER AN→AG FLOW
+
+AN Domain
+→ AN-owned Outbox
+→ DataspaceExchange
+→ AG Inbound Processor
+→ AG-owned Domain Data
+
+
+3. PROJECT_INVITATION
+
+AG:
+
+publishProjectInvitation(...)
+
+
+AN:
+
+receive/processIncomingProjectInvitation(...)
+
+
+4. PROJECT_INVITATION_RESPONSE
+
+AN:
+
+publishProjectInvitationResponse(...)
+
+
+AG:
+
+receive/processIncomingProjectInvitationResponse(...)
+
+
+5. KEINE DIREKTE REMOTE-DATENERZEUGUNG
+
+Normale AG Services dürfen keine:
+
+ownerOrgId = AN
+
+private Rows erzeugen.
+
+Normale AN Services dürfen keine:
+
+ownerOrgId = AG
+
+private Rows erzeugen.
+
+
+6. AUSNAHME
+
+Explizite Dataspace-Inbound-Processor dürfen im organisatorischen Kontext des Empfängers lokale Rows erzeugen.
+
+
+7. INBOUND CONTEXT
+
+Beispiel:
+
+processIncomingProjectInvitation(
+  payload,
+  {
+    currentOrgId: recipientOrgId,
+    currentParticipantId: recipientParticipantId
+  }
+)
+
+
+8. OUTBOUND KENNT REMOTE DOMAIN TABLE NICHT
+
+publishProjectInvitation(...)
+
+darf nicht direkt:
+
+project_invitations
+
+schreiben.
+
+
+9. RESPONSE ANALOG
+
+publishProjectInvitationResponse(...)
+
+darf nicht direkt AG-Membership ändern.
+
+
+10. PFLICHTTEST
+
+Transport ausgeschaltet.
+
+AG Einladung erzeugt.
+
+Erwartung:
+
+AG Membership INVITED
+
+AN keine Invitation.
+
+
+11. PFLICHTTEST
+
+Erst Inbound Processing erzeugt AN Invitation.
+
+
+ERGEBNIS
+
+Der DataspaceExchange ist die einzige fachliche Kommunikationsgrenze zwischen AG und AN.
+
+
+======================================================================
+SCHRITT 4 – PROJECT_INVITATION UND PROJECT_INVITATION_RESPONSE DATENPAKETE KONSISTENT MODELLIEREN
+======================================================================
+
+ZIEL
+
+Externe Datenraumkommunikation muss Datenraumidentitäten verwenden und unabhängig von lokalen DB-IDs sein.
+
+
+1. METADATA
+
+Bevorzugt:
+
+senderParticipantId
+recipientParticipantId
+
+statt extern:
+
+senderOrgId
+receiverOrgId
+
+
+2. PROJECT_INVITATION
+
+Beispielstruktur:
+
+{
+  "metadata": {
+    "messageId": "...",
+    "correlationId": "...",
+    "schemaVersion": "1.0",
+    "createdAt": "...",
+    "senderParticipantId": "AG-123",
+    "recipientParticipantId": "AN-4711"
+  },
+
+  "project": {
+    "projectReference": "P-123",
+    "projectName": "Neubau Bochum",
+    "description": "...",
+    "location": "Bochum"
+  },
+
+  "requestedRole": "CONTRACTOR",
+
+  "purpose": "PROJECT_COLLABORATION",
+
+  "invitationMessage": "...",
+
+  "policy": {
+    "usagePurpose": "PROJECT_MEMBERSHIP",
+    "allowedConsumerParticipantId": "AN-4711"
+  }
+}
+
+
+3. NICHT ÜBERTRAGEN
+
+Keine:
+
+ResourceBookings
+interne Ressourcen
+gesamte AG-Planung
+andere Projektpartner
+interne User IDs
+interne Kommentare
+unnötige DB Primary Keys
+
+
+4. RESPONSE
+
+{
+  "metadata": {
+    "messageId": "...",
+    "correlationId": "...",
+    "schemaVersion": "1.0",
+    "createdAt": "...",
+    "senderParticipantId": "AN-4711",
+    "recipientParticipantId": "AG-123"
+  },
+
+  "invitationId": "...",
+  "projectReference": "P-123",
+
+  "decision": "ACCEPTED",
+
+  "respondedAt": "...",
+
+  "message": "..."
+}
+
+
+5. correlationId
+
+Invitation und Response müssen eindeutig zusammengehören.
+
+
+6. LOCALES MAPPING
+
+ParticipantDirectory:
+
+participantId
+↔
+localOrgId
+
+Nur innerhalb der Anwendung.
+
+
+7. participantId BLEIBT EXTERNE IDENTITÄT
+
+Keine lokale organization UUID als fachliche Datenraumidentität verwenden.
+
+
+ERGEBNIS
+
+Die Nachrichten sind unabhängig von der gemeinsamen internen Datenbankstruktur.
+
+
+======================================================================
+SCHRITT 5 – TRANSACTIONAL OUTBOX FÜR AG UND AN IMPLEMENTIEREN
+======================================================================
+
+ZIEL
+
+Fachlicher Zustand und ausgehende Datenraum-Nachricht müssen atomar entstehen.
+
+
+1. OUTBOX ownerOrgId
+
+Jede Outbox Row benötigt:
+
+ownerOrgId
+
+
+2. AG INVITE TRANSACTION
+
+In EINER DB-Transaktion:
+
+1. AG Membership INVITED erzeugen.
+2. invitationId erzeugen.
+3. correlationId erzeugen.
+4. PROJECT_INVITATION Payload erzeugen.
+5. AG-owned Outbox PENDING erzeugen.
+6. Commit.
+
+
+3. KEIN NETZWERK IN DB-TRANSAKTION
+
+DataspaceExchange erst nach Commit ausführen.
+
+
+4. DISPATCHER
+
+Outbox:
+
+PENDING
+→ SEND
+→ SENT/FAILED
+
+
+5. STATUS
+
+Mindestens:
+
+PENDING
+SENT
+FAILED
+
+DELIVERED nur wenn fachlich/technisch tatsächlich unterscheidbar.
+
+
+6. AN ACCEPT TRANSACTION
+
+In EINER Transaktion:
+
+1. AN-owned Invitation PENDING → ACCEPTED.
+2. acceptedAt/respondedAt setzen.
+3. PROJECT_INVITATION_RESPONSE Payload erzeugen.
+4. AN-owned Outbox PENDING erzeugen.
+5. Commit.
+
+
+7. REJECT ANALOG
+
+PENDING → REJECTED
+
+plus Response Outbox.
+
+
+8. INVITATION FAILURE
+
+AG Membership:
+
+INVITED
+
+Outbox:
+
+FAILED
+
+AN:
+
+keine Invitation.
+
+
+9. RESPONSE FAILURE
+
+AN:
+
+ACCEPTED
+
+Response Outbox:
+
+FAILED
+
+AG Membership:
+
+weiter INVITED.
+
+
+10. RETRY AG
+
+Fehlgeschlagene PROJECT_INVITATION erneut senden.
+
+Keine neue Membership.
+Keine neue fachliche Einladung.
+
+
+11. RETRY AN
+
+Fehlgeschlagene PROJECT_INVITATION_RESPONSE erneut senden können.
+
+
+12. OWNER-SCOPE RETRY
+
+AG darf nur AG-owned Outbox Messages retryen.
+
+AN nur AN-owned.
+
+
+13. PFLICHTTEST
+
+Crash nach Commit, vor Versand:
+
+Outbox PENDING bleibt vorhanden.
+
+
+14. PFLICHTTEST
+
+Retry erzeugt keine zweite Membership/Invitation.
+
+
+ERGEBNIS
+
+Transportfehler können nicht mehr zu verlorenen Projekteinladungen oder Antworten führen.
+
+
+======================================================================
+SCHRITT 6 – PARTICIPANT DIRECTORY ALS TATSÄCHLICHE QUELLE DES EINLADUNGSDIALOGS VERWENDEN
+======================================================================
+
+ZIEL
+
+Der AG soll nicht mehr einfach lokale AN-Organisationen auswählen.
+
+Er soll Datenraumteilnehmer auswählen.
+
+
+1. BESTEHENDE STRUKTUREN PRÜFEN
+
+dataspace-participant-resolver.ts
+
+GET /dataspace/participants
+
+bestehende DataspaceParticipant DTOs.
+
+
+2. INTERFACE
+
+Bevorzugt:
+
+interface ParticipantDirectory {
+  listParticipants(
+    filter?: ParticipantFilter
+  ): Promise<DataspaceParticipant[]>;
+
+  resolveParticipant(
+    participantId: string
+  ): Promise<DataspaceParticipant | null>;
+}
+
+
+3. DataspaceParticipant
+
+Mindestens:
+
+participantId
+
+localOrgId optional
+
+organizationName
+
+organizationType
+
+identityStatus
+
+connectorEndpoint optional
+
+connectorStatus
+
+capabilities optional
+
+
+4. identityStatus
+
+VERIFIED
+UNVERIFIED
+SUSPENDED
+
+
+5. connectorStatus
+
+AVAILABLE
+UNAVAILABLE
+UNKNOWN
+
+
+6. NICHT AUTOMATISCH JEDE ORGANISATION VERIFIED
+
+Die Existenz in:
+
+organizations
+
+darf nicht automatisch bedeuten:
+
+VERIFIED DATASPACE PARTICIPANT.
+
+
+7. PO C REGISTRY
+
+Darf lokal innerhalb derselben Datenbank umgesetzt werden.
+
+Beispielsweise:
+
+dataspace_participants
+
+
+8. SHARED SERVICE
+
+dataspace_participants ist bewusst organisationsübergreifend lesbar.
+
+Das ist zulässig.
+
+
+9. AG UI
+
+Nicht mehr:
+
+useListOrganizations({ type: "AN" })
+
+für „Zum Projekt einladen“.
+
+
+10. STATTDESSEN
+
+GET /dataspace/participants?organizationType=AN
+
+
+11. NUR VERIFIED EINLADBAR
+
+UNVERIFIED / SUSPENDED:
+
+nicht einladbar.
+
+
+12. INVITE API INPUT
+
+Bevorzugt:
+
+{
+  "participantId": "AN-4711",
+  "invitationMessage": "...",
+  "validUntil": "..."
+}
+
+
+13. BACKEND RESOLVT
+
+participantId
+→ ParticipantDirectory
+→ optional localOrgId
+→ connectorEndpoint
+
+
+14. CONNECTOR UNAVAILABLE
+
+Nicht als fachliche Ablehnung behandeln.
+
+Transportstatus separat.
+
+
+15. PFLICHTTEST
+
+VERIFIED AN erscheint.
+
+UNVERIFIED nicht einladbar.
+
+ACTIVE Teilnehmer nicht erneut einladbar.
+
+
+ERGEBNIS
+
+Der Einladungsprozess startet tatsächlich beim Datenraumteilnehmer.
+
+
+======================================================================
+SCHRITT 7 – POLICY UND IDENTITÄT BEIM INBOUND TATSÄCHLICH VALIDIEREN
+======================================================================
+
+ZIEL
+
+Die vorhandene Policy darf nicht nur JSON-Metadatum sein.
+
+
+1. PROJECT_INVITATION PRÜFEN
+
+metadata.senderParticipantId vorhanden
+
+metadata.recipientParticipantId vorhanden
+
+requestedRole === CONTRACTOR
+
+purpose === PROJECT_COLLABORATION
+
+policy.usagePurpose === PROJECT_MEMBERSHIP
+
+policy.allowedConsumerParticipantId
+=== metadata.recipientParticipantId
+
+
+2. EMPFÄNGER PRÜFEN
+
+recipientParticipantId entspricht lokalem Datenraumteilnehmer.
+
+
+3. SENDER PRÜFEN
+
+senderParticipantId ist im Participant Directory vertrauenswürdig/verifiziert.
+
+
+4. RESPONSE PRÜFEN
+
+senderParticipantId
+=== ursprünglich eingeladener AN
+
+recipientParticipantId
+=== AG
+
+correlationId
+=== Membership
+
+projectReference
+=== Membership/Project
+
+
+5. WRONG POLICY
+
+Keine fachliche Verarbeitung.
+
+Inbound Status FAILED.
+
+
+6. WRONG PARTICIPANT
+
+Keine lokale Domain-Mutation.
+
+
+7. PROJECT MEMBERSHIP PURPOSE
+
+Für Einladung:
+
+PROJECT_MEMBERSHIP
+
+
+8. SPÄTERE BAUABLAUF-KOMMUNIKATION
+
+Purpose:
+
+CONSTRUCTION_COORDINATION
+
+
+9. KEIN TRUST AUS SHARED DB
+
+Die Tatsache, dass eine organization Row existiert, ersetzt keine Participant-/Policy-Prüfung.
+
+
+10. PFLICHTTEST
+
+Wrong Consumer:
+Reject.
+
+Wrong Purpose:
+Reject.
+
+Unverified Sender:
+Reject.
+
+Wrong Response Sender:
+AG Membership bleibt INVITED.
+
+
+ERGEBNIS
+
+Policy und Identität haben tatsächliche Wirkung auf die Datenraumkommunikation.
+
+
+======================================================================
+SCHRITT 8 – OPENAPI, SERVERROUTEN UND CLIENTS KONSISTENT MACHEN
+======================================================================
+
+ZIEL
+
+Der im Review gefundene Konflikt zwischen:
+
+Server:
+POST /projects/:projectId/invitations
+
+und OpenAPI/Client:
+POST /projects/{projectId}/memberships
+
+muss beseitigt werden.
+
+
+1. KANONISCHE ROUTES
+
+Empfohlen:
+
+GET
+/projects/{projectId}/memberships
+
+POST
+/projects/{projectId}/invitations
+
+GET
+/project-invitations
+
+POST
+/project-invitations/{id}/accept
+
+POST
+/project-invitations/{id}/reject
+
+POST
+/project-memberships/{id}/revoke
+
+
+2. TRANSPORT APIs
+
+GET
+/projects/{projectId}/invitation-deliveries/failed
+
+POST
+/project-invitation-deliveries/{messageId}/retry
+
+Analog AN Response Retry.
+
+
+3. OPENAPI AUF EXAKT DIESE ROUTES
+
+Kein zweiter alternativer Invite-Pfad.
+
+
+4. REQUEST BODY
+
+{
+  participantId;
+  invitationMessage?;
+  validUntil?;
+}
+
+
+5. ownerOrgId NICHT IM BODY
+
+Kommt aus Auth Context.
+
+
+6. ProjectMembership SCHEMA
+
+AG-Sicht dokumentieren.
+
+
+7. ProjectInvitation SCHEMA
+
+AN-Sicht dokumentieren.
+
+
+8. DataspaceParticipant SCHEMA
+
+vollständig dokumentieren.
+
+
+9. ENUMS
+
+Membership:
+
+INVITED
+ACTIVE
+REJECTED
+REVOKED
+
+
+Invitation:
+
+PENDING
+ACCEPTED
+REJECTED
+WITHDRAWN optional
+
+
+10. CODEGEN
+
+Bestehenden Generator ausführen.
+
+
+11. AG UI
+
+Generierten Invite Hook verwenden.
+
+
+12. AN UI
+
+Nach Möglichkeit generierte Hooks statt manueller URL-Strings.
+
+
+13. CONTRACT TEST
+
+Generated Client:
+
+POST /api/projects/{id}/invitations
+
+
+14. PFLICHTCHECK
+
+Keine produktive Membership-Route ohne passende OpenAPI-Definition.
+
+
+ERGEBNIS
+
+Frontend, API und Spec verwenden denselben Vertrag.
+
+
+======================================================================
+SCHRITT 9 – ACTIVE PROJECT MEMBERSHIP ALS EINZIGES PROJEKTBEITRITTS-GATE FÜR LEISTUNGSZUORDNUNG VERWENDEN
+======================================================================
+
+ZIEL
+
+Der aktuelle doppelte Check:
+
+ProjectMembership ACTIVE
++
+project_contractors ACTIVE
+
+muss beseitigt werden.
+
+
+1. ZENTRALER GUARD
+
+Bevorzugt:
+
+requireActiveProjectMembership({
+  currentOrgId,
+  projectId,
+  remoteParticipantId
+})
+
+
+2. AG-SICHT PRÜFEN
+
+WHERE ownerOrgId = currentAgOrgId
+AND projectId = ?
+AND remoteParticipantId = ?
+AND status = ACTIVE
+
+
+3. createTaktRequestWithSnapshot
+
+Zusätzlichen:
+
+project_contractors.assignmentStatus === ACTIVE
+
+Membership-Berechtigungscheck entfernen.
+
+
+4. project_contractors DARF BLEIBEN
+
+Für:
+
+Gewerk
+Arbeitspaket
+fachliche Zuordnungsinformationen
+Gültigkeit
+
+Aber nicht als zweite Zustimmung des AN.
+
+
+5. LEISTUNGSEMPFÄNGER AG UI
+
+Quelle:
+
+ACTIVE project_memberships der aktuellen AG-Organisation.
+
+
+6. KEIN CROSS-ORG READ
+
+AG liest hierfür keine AN Invitations oder AN Ressourcen.
+
+
+7. DataPublicationWizard
+
+Empfänger ebenfalls aus ACTIVE Memberships.
+
+
+8. INVITED
+
+keine Leistung.
+
+
+9. REJECTED
+
+keine Leistung.
+
+
+10. REVOKED
+
+keine neue Leistung.
+
+
+11. PFLICHT END-TO-END TEST
+
+Neuer Participant.
+
+Kein project_contractors ACTIVE Seed.
+
+Invite
+→ Inbound AN
+→ Accept
+→ Response Inbound AG
+→ Membership ACTIVE
+→ neue Leistungsanfrage
+
+muss erfolgreich sein.
+
+
+ERGEBNIS
+
+Der Prozess:
+
+Projekt beitreten
+→ ACTIVE
+→ Leistung zuordnen
+
+funktioniert ohne versteckte zweite Aktivierung.
+
+
+======================================================================
+SCHRITT 10 – SERVICE REQUEST EBENFALLS ORGANISATIONSGETRENNT ÜBER DEN DATENRAUM FÜHREN
+======================================================================
+
+ZIEL
+
+Das für die Projekteinladung eingeführte Souveränitätsprinzip muss auch für spätere Leistungsanfragen gelten.
+
+
+1. AG ERZEUGT LOKALEN SERVICE REQUEST
+
+ownerOrgId = AG
+
+
+2. AN DARF AG-ROW NICHT DIREKT LESEN
+
+Vor Dataspace Inbound:
+
+AN sieht die Leistungsanfrage nicht.
+
+
+3. AG OUTBOUND
+
+SERVICE_REQUEST
+→ DataspaceExchange
+
+
+4. AN INBOUND
+
+erzeugt lokale AN-Sicht der empfangenen Leistungsanfrage.
+
+
+5. AN-SICHT
+
+ownerOrgId = AN
+
+
+6. AN RESPONSE
+
+lokaler AN Response
+
+→ SERVICE_RESPONSE
+→ DataspaceExchange
+
+
+7. AG EMPFÄNGT RESPONSE
+
+Inbound erzeugt bzw. aktualisiert AG-owned empfangene Response-Sicht.
+
+
+8. KEIN CROSS-ORG RESOURCE READ
+
+AG darf nicht:
+
+AN ResourceBookings
+
+direkt lesen.
+
+AG sieht nur explizit übermittelte:
+
+Response
+Availability Summary
+Alternativen
+Bedingungen
+
+
+9. PFLICHTTEST
+
+AG ServiceRequest erstellt.
+
+Vor AN Inbound:
+
+AN sieht nichts.
+
+
+10. NACH INBOUND
+
+AN sieht lokale empfangene Kopie.
+
+
+ERGEBNIS
+
+Projektbeitritt und Leistungskoordination folgen derselben Datenraumarchitektur.
+
+
+======================================================================
+SCHRITT 11 – ALLE WEITEREN KOORDINATIONSNACHRICHTEN AUF CROSS-ORG-SHORTCUTS PRÜFEN
+======================================================================
+
+ZIEL
+
+Auch bestehende:
+
+CHANGE_PROPOSAL
+CLARIFICATION
+CONSTRAINT
+READINESS
+
+dürfen keine unbeabsichtigten direkten gemeinsamen Domain Rows als Kommunikationsersatz verwenden.
+
+
+1. JEDE STRUKTUR KLASSIFIZIEREN
+
+Ist sie:
+
+A) lokale organisationsprivate Sicht
+
+oder
+
+B) bewusst geteilte Dataspace-Metadaten?
+
+
+2. PRIVATE DATA
+
+ownerOrgId erforderlich.
+
+
+3. WENN BEIDE ORGANISATIONEN INFORMATION BENÖTIGEN
+
+Organisationsspezifische lokale Kopien verwenden oder bestehende Message-/Inbound-Struktur sauber scopen.
+
+
+4. NICHT ZWANGHAFT JEDE TABELLE DUPLIZIEREN
+
+Eine Tabelle kann Rows beider Organisationen enthalten.
+
+Aber jede Row muss eindeutig owner-scoped sein.
+
+
+5. RESOURCE PLANNING BESONDERS SCHÜTZEN
+
+AN Resource Planning bleibt AN-intern.
+
+
+6. AG DARF NUR EXPLIZIT GETEILTE ERGEBNISSE SEHEN
+
+Beispielsweise:
+
+Response
+Alternative
+Availability Summary
+
+Nicht interne Kapazitätsberechnung.
+
+
+7. BOARD/LISTEN PRÜFEN
+
+Keine AG-Aggregation darf direkt AN-private Tabellen lesen, sofern die entsprechenden Informationen nicht als freigegebene empfangene Daten auf AG-Seite vorhanden sind.
+
+
+ERGEBNIS
+
+Das gesamte System verwendet ein konsistentes Datenhoheitsmodell.
+
+
+======================================================================
+SCHRITT 12 – REVOCATION UND INVITATION WITHDRAWAL ÜBER DEN DATENRAUM MODELLIEREN
+======================================================================
+
+ZIEL
+
+Auch das Beenden einer Beziehung darf nicht nur deshalb für beide Seiten sichtbar werden, weil beide dieselbe DB verwenden.
+
+
+1. INVITED WITHDRAWAL
+
+AG zieht Einladung zurück.
+
+Message:
+
+PROJECT_INVITATION_WITHDRAWN
+
+
+2. AG LOKAL
+
+Membership:
+
+INVITED → REVOKED
+
+oder eigener Withdrawn-State nur wenn wirklich nötig.
+
+
+3. AN ERFÄHRT ES ERST ÜBER INBOUND
+
+AN Invitation:
+
+PENDING → WITHDRAWN
+
+
+4. ACTIVE MEMBERSHIP REVOCATION
+
+Message:
+
+PROJECT_MEMBERSHIP_REVOKED
+
+
+5. AN LOKALE SICHT
+
+Erst nach Inbound als beendet markieren.
+
+
+6. AKTIVE LEISTUNGEN PRÜFEN
+
+Wenn aktive Service Requests / Agreements bestehen:
+
+bevorzugt:
+
+409 PROJECT_MEMBERSHIP_HAS_ACTIVE_SERVICES
+
+
+7. NICHT LÖSCHEN
+
+Historische:
+
+Requests
+Agreements
+Messages
+Audit
+
+behalten.
+
+
+8. OUTBOX
+
+Withdrawal/Revocation ebenfalls transactional.
+
+
+9. RETRY
+
+Transportfehler muss wiederholbar sein.
+
+
+10. PFLICHTTEST
+
+Withdrawal vor AN Inbound:
+
+AN sieht weiterhin seinen letzten lokalen Zustand.
+
+Nach Inbound:
+
+WITHDRAWN.
+
+
+ERGEBNIS
+
+Der gesamte Membership-Lifecycle respektiert die Datenraumgrenze.
+
+
+======================================================================
+SCHRITT 13 – UI KONSEQUENT AUF DEN FACHLICHEN EINLADUNGSPROZESS AUSRICHTEN
+======================================================================
+
+ZIEL
+
+Der Anwender soll erkennen:
+
+Teilnehmer entdecken
+→ einladen
+→ Zustimmung abwarten
+→ Projektpartner
+→ Leistung zuordnen.
+
+
+1. AG HAUPTAKTION
+
+Bezeichnung:
+
+„Zum Projekt einladen“
+
+
+2. NICHT NUR
+
+„Verknüpfen“
+„AN zuordnen“
+
+
+3. BEREICH
+
+„Projektpartner“
+
+
+4. GRUPPEN
+
+Aktive Projektpartner
+
+Ausstehende Einladungen
+
+
+5. INVITED
+
+„Einladung ausstehend“
+
+
+6. TRANSPORTSTATUS SEPARAT
+
+„Übertragung ausstehend“
+
+„Übermittelt“
+
+„Übertragung fehlgeschlagen“
+
+
+7. FAILED
+
+„Die Einladung wurde erstellt, konnte aber noch nicht an den AN übertragen werden.“
+
+[Erneut senden]
+
+
+8. AN MENÜ
+
+„Projekteinladungen“
+
+
+9. AN PRIMARY ACTION
+
+„Projekt beitreten“
+
+
+10. AN SECONDARY
+
+„Ablehnen“
+
+
+11. RESPONSE FAILED
+
+AN sieht:
+
+„Ihre Entscheidung wurde gespeichert, konnte aber noch nicht an den AG übertragen werden.“
+
+[Erneut senden]
+
+
+12. AG SIEHT KEINE AN-INTERNE INFORMATION
+
+Wenn AN lokal ACCEPTED, Response aber noch nicht beim AG:
+
+AG zeigt weiterhin:
+
+„Warten auf Zustimmung des AN“
+
+
+13. ERST NACH AG INBOUND
+
+„Projektpartner“
+
+
+14. ALTER DIALOG „AN ZUORDNEN“
+
+Wenn er weiterhin Gewerk/Arbeitspaket verwaltet:
+
+umbenennen, z. B.:
+
+„Fachliche Zuordnung“
+
+oder:
+
+„Gewerk / Arbeitspaket zuordnen“
+
+
+15. KEIN MEMBERSHIP ACTIVE DROPDOWN
+
+AG darf Membership nicht manuell aktivieren.
+
+
+ERGEBNIS
+
+Die Oberfläche entspricht exakt der tatsächlichen Datenraumkommunikation.
+
+
+======================================================================
+SCHRITT 14 – BUSINESS-AUDIT UND TECHNISCHEN TRANSPORT-AUDIT ORGANISATIONSSPEZIFISCH TRENNEN
+======================================================================
+
+ZIEL
+
+Businesshistorie und technischer Transport sollen nachvollziehbar sein, ohne private Auditdaten der anderen Organisation offenzulegen.
+
+
+1. BUSINESS EVENTS MIT ownerOrgId
+
+AG beispielsweise:
+
+PROJECT_INVITATION_CREATED
+PROJECT_MEMBERSHIP_ACTIVATED
+PROJECT_INVITATION_REJECTED
+PROJECT_MEMBERSHIP_REVOKED
+
+
+AN beispielsweise:
+
+PROJECT_INVITATION_RECEIVED
+PROJECT_INVITATION_ACCEPTED
+PROJECT_INVITATION_REJECTED
+
+
+2. TECHNISCHER AUDIT
+
+Separat:
+
+PENDING
+SENT
+FAILED
+DELIVERED
+RETRY
+
+
+3. AG SIEHT NUR AG-AUDIT
+
+
+4. AN SIEHT NUR AN-AUDIT
+
+
+5. KEINE AUTOMATISCHE REMOTE TIMELINE
+
+Wenn AN um 14:00 akzeptiert, AG die Nachricht erst 14:05 erhält:
+
+AG erfährt davon erst um 14:05.
+
+Falls respondedAt=14:00 im Payload enthalten ist, darf diese Information nach Empfang dargestellt werden.
+
+
+6. RETRY
+
+Kein zweites Business Event PROJECT_INVITATION_CREATED erzeugen.
+
+
+7. DUPLICATE INBOUND
+
+Kein doppeltes fachliches Event.
+
+
+ERGEBNIS
+
+Business- und Transporthistorie sind korrekt und souverän.
+
+
+======================================================================
+SCHRITT 15 – GLOBALEN SECURITY-REVIEW ALLER DATENBANKQUERIES DURCHFÜHREN
+======================================================================
+
+ZIEL
+
+Nach der Umstellung darf kein produktiver Service private Daten der jeweils anderen Organisation direkt aus der gemeinsamen Datenbank lesen.
+
+
+1. GLOBAL SUCHEN NACH ZUGRIFFEN AUF
+
+project_memberships
+project_invitations
+projects
+service requests
+responses
+resource_bookings
+resource_requirements
+outbox
+audit
+constraints
+clarifications
+readiness
+
+
+2. JEDE QUERY KLASSIFIZIEREN
+
+A) bewusst geteilter Datenraumdienst
+
+oder
+
+B) organisationsprivate Domain-Daten
+
+
+3. PRIVATE QUERY
+
+muss currentOrgId/ownerOrgId Scope besitzen.
+
+
+4. KRITISCHE SERVICES
+
+Insbesondere prüfen:
+
+project-membership-service
+project-invitation-service
+inbound-domain-service
+service-request-service
+response-service
+resource-planning-service
+data-publication-service
+coordination services
+board services
+audit services
+outbox/retry services
+
+
+5. KEINE REMOTE PRIVATE QUERY
+
+Beispiel verboten:
+
+AG Service:
+
+SELECT *
+FROM project_invitations
+WHERE ownerOrgId = AN
+
+
+6. AUTHORIZATION HELPER
+
+Wo sinnvoll zentralisieren:
+
+requireOwnedResource(...)
+requireProjectAccess(...)
+requireActiveProjectMembership(...)
+
+
+7. ownerOrgId SPOOFING
+
+Client darf ownerOrgId nicht überschreiben.
+
+
+8. API MIT FREMDER ID
+
+Private Ressource einer anderen Organisation:
+
+nicht sichtbar.
+
+
+ERGEBNIS
+
+Die gemeinsame DB ist keine Abkürzung für Cross-Org-Kommunikation.
+
+
+======================================================================
+SCHRITT 16 – TESTSUITE AUF DIE GEMEINSAME DATENBANK MIT LOGISCHER ISOLATION AUSRICHTEN
+======================================================================
+
+ZIEL
+
+Die Tests müssen ausdrücklich beweisen:
+
+Es gibt nur eine Datenbank und dieselbe technische DB-Verbindung.
+
+Trotzdem kann AG nicht direkt auf private AN-Daten zugreifen und umgekehrt.
+
+
+1. TESTINFRASTRUKTUR
+
+Eine gemeinsame Testdatenbank.
+
+Keine getrennten PostgreSQL-User.
+
+
+2. AG UND AN ALS APPLICATION CONTEXTS
+
+AG:
+
+currentOrgId = AG_ID
+
+AN:
+
+currentOrgId = AN_ID
+
+
+3. PARTICIPANT DIRECTORY
+
+AG und AN VERIFIED.
+
+
+4. INVITE TEST
+
+AG lädt AN ein.
+
+Erwartung:
+
+AG-owned Membership INVITED.
+
+
+5. BEFORE INBOUND
+
+AN:
+
+keine project_invitation.
+
+
+6. CROSS-ORG TEST
+
+AN kann AG Membership nicht lesen.
+
+
+7. INBOUND INVITATION
+
+AN Context.
+
+Danach:
+
+AN-owned Invitation PENDING.
+
+
+8. AG DARF AN INVITATION NICHT LESEN
+
+
+9. ACCEPT
+
+AN:
+
+PENDING → ACCEPTED
+
+Response Outbox AN-owned.
+
+
+10. VOR RESPONSE INBOUND
+
+AG:
+
+Membership weiterhin INVITED.
+
+
+11. CROSS-ORG SHORTCUT VERBOTEN
+
+Kein Service darf AN ACCEPTED direkt aus DB verwenden.
+
+
+12. RESPONSE INBOUND
+
+AG Context.
+
+Membership:
+
+ACTIVE.
+
+
+13. SERVICE REQUEST
+
+AG erstellt Leistungsanfrage.
+
+
+14. VOR AN SERVICE-REQUEST-INBOUND
+
+AN darf AG-owned Request nicht sehen.
+
+
+15. NACH INBOUND
+
+AN erhält lokale organisationsbezogene Kopie.
+
+
+16. RESOURCE PRIVACY
+
+AN ResourceBooking erzeugen.
+
+AG Resource API darf ihn nicht liefern.
+
+
+17. AG PLANNING PRIVACY
+
+AN darf AG-interne Planung nicht lesen.
+
+
+18. OUTBOX PRIVACY
+
+AG kann AN Outbox nicht lesen.
+
+AN kann AG Outbox nicht lesen.
+
+
+19. AUDIT PRIVACY
+
+AG nur AG Audit.
+
+AN nur AN Audit.
+
+
+20. PARTICIPANT DIRECTORY SHARED
+
+Beide dürfen bewusst freigegebene Participant Informationen sehen.
+
+
+21. ownerOrgId SPOOFING
+
+AG sendet:
+
+ownerOrgId = AN_ID
+
+im Body.
+
+Darf keine AN-owned Row erzeugen.
+
+
+22. E2E HAPPY PATH
+
+VERIFIED Participant
+
+→ Zum Projekt einladen
+
+→ AG Membership INVITED
+
+→ PROJECT_INVITATION
+
+→ AN Invitation PENDING
+
+→ Projekt beitreten
+
+→ AN ACCEPTED
+
+→ PROJECT_INVITATION_RESPONSE
+
+→ AG Membership ACTIVE
+
+→ Leistung zuordnen
+
+→ SERVICE_REQUEST
+
+→ AN Inbound
+
+→ AN sieht Leistung
+
+
+23. KEIN project_contractors ACTIVE SEED
+
+Der End-to-End-Test darf nicht von einem vorher manuell angelegten ACTIVE Contractor Assignment abhängen.
+
+
+ERGEBNIS
+
+Die Tests beweisen die Datenhoheit trotz gemeinsamer Datenbank.
+
+
+======================================================================
+SCHRITT 17 – OPENAPI CODEGEN, TYPECHECK, TESTS UND BUILD DURCHFÜHREN
+======================================================================
+
+ZIEL
+
+Nach den Architekturänderungen muss der vollständige Workspace technisch geprüft werden.
+
+
+1. INSTALL
+
+pnpm install --frozen-lockfile
+
+
+2. OPENAPI CODEGEN
+
+Falls Spec geändert:
+
+bestehenden Codegen ausführen.
+
+
+3. WORKSPACE TYPECHECK
+
+pnpm -r --if-present run typecheck
+
+
+4. LINT
+
+pnpm -r --if-present run lint
+
+falls vorhanden.
+
+
+5. TESTS
+
+pnpm -r --if-present run test
+
+
+6. BUILD
+
+pnpm -r --if-present run build
+
+
+7. AG EXPLIZIT
+
+pnpm --filter @workspace/ag-app typecheck
+
+pnpm --filter @workspace/ag-app build
+
+
+8. AN EXPLIZIT
+
+pnpm --filter @workspace/an-app typecheck
+
+pnpm --filter @workspace/an-app build
+
+
+9. API
+
+pnpm --filter @workspace/api-server typecheck
+
+Build falls vorhanden.
+
+
+10. KEINE TESTS SKIPPEN
+
+Keine neuen:
+
+.skip
+xit
+describe.skip
+
+
+11. GLOBALER CLEANUP
+
+Suchen nach:
+
+useListOrganizations
+im Projekteinladungsprozess
+
+project_memberships
+als AN Inbox
+
+project_invitations
+direkt aus AG Services
+
+assignmentStatus === ACTIVE
+als zweites Membership-Gate
+
+POST /projects/{projectId}/memberships
+als alte Invite-Route
+
+senderOrgId / receiverOrgId
+in externen Dataspace DTOs
+
+publishProjectInvitation
+ohne Outbox
+
+publishProjectInvitationResponse
+ohne Outbox
+
+
+======================================================================
+SCHRITT 18 – DEFINITION OF DONE UND ABSCHLUSSBERICHT
+======================================================================
+
+DIE UMSETZUNG IST ERST ABGESCHLOSSEN, WENN ALLE FOLGENDEN PUNKTE GELTEN:
+
+1. Es wird weiterhin eine gemeinsame verwaltete PostgreSQL-Datenbank verwendet.
+
+2. Es wurden keine getrennten PostgreSQL-Benutzer für AG, AN oder Hub eingeführt.
+
+3. Es wurden keine getrennten Connection Strings je Organisation eingeführt.
+
+4. AG und AN verwenden weiterhin dieselbe technische Datenbankinfrastruktur.
+
+5. Die Isolation erfolgt logisch über den authentifizierten Organisationskontext.
+
+6. Private Datensätze besitzen einen eindeutigen ownerOrgId-/äquivalenten Scope.
+
+7. ownerOrgId kann nicht vom Client frei manipuliert werden.
+
+8. AG kann keine privaten AN-owned Rows über reguläre APIs lesen.
+
+9. AN kann keine privaten AG-owned Rows über reguläre APIs lesen.
+
+10. Participant Directory ist bewusst geteilt und enthält ausschließlich freigegebene Teilnehmerinformationen.
+
+11. „Zum Projekt einladen“ verwendet das Participant Directory.
+
+12. Neue Einladungen verwenden participantId als externe Identität.
+
+13. AG Membership und AN Invitation sind logisch getrennte Domain-Sichten.
+
+14. AG Membership INVITED erzeugt nicht direkt eine AN Invitation.
+
+15. Erst PROJECT_INVITATION Inbound erzeugt AN Invitation PENDING.
+
+16. AN Acceptance ändert keine AG Membership direkt.
+
+17. Erst PROJECT_INVITATION_RESPONSE Inbound setzt AG Membership ACTIVE.
+
+18. PROJECT_INVITATION verwendet eine transactionale AG Outbox.
+
+19. PROJECT_INVITATION_RESPONSE verwendet eine transactionale AN Outbox.
+
+20. Failed Invitation kann AG retryen.
+
+21. Failed Response kann AN retryen.
+
+22. Policies werden beim Inbound tatsächlich validiert.
+
+23. Externe Nachrichten verwenden Participant IDs statt lokaler DB-Identitäten als primäre Identität.
+
+24. OpenAPI und tatsächliche Serverroutes stimmen überein.
+
+25. Der generierte AG Client verwendet POST /projects/{projectId}/invitations.
+
+26. ACTIVE Project Membership ist das zentrale Projektbeitritts-Gate.
+
+27. project_contractors ist kein zweites verstecktes ACTIVE-Gate.
+
+28. ACTIVE Membership allein ermöglicht die nachgelagerte Leistungszuordnung.
+
+29. SERVICE_REQUEST folgt ebenfalls der organisationsgetrennten Datenraumkommunikation.
+
+30. AN kann AG ServiceRequest-Originale nicht direkt lesen.
+
+31. AG kann AN ResourcePlanning nicht direkt lesen.
+
+32. Change Proposal, Clarification, Constraint und Readiness wurden auf Cross-Org-Shortcuts geprüft.
+
+33. Withdrawal/Revocation wird ebenfalls über den Datenraum kommuniziert.
+
+34. Business Audit und Transport Audit sind organisationsgescoped.
+
+35. Cross-Org-Read-Regressionstests existieren.
+
+36. Shared-DB-Bypass-Tests existieren.
+
+37. End-to-End Invite → Accept → Leistungsanfrage funktioniert ohne ACTIVE project_contractors Seed.
+
+38. Typecheck PASS.
+
+39. Tests PASS.
+
+40. Build PASS.
+
+
+ABSCHLUSSBERICHT
+
+Am Ende exakt berichten:
+
+1. Gemeinsame PostgreSQL-Datenbank
+   JA / NEIN
+
+2. Getrennte PostgreSQL-Benutzer eingeführt
+   NEIN / JA
+
+3. Getrennte Connection Strings eingeführt
+   NEIN / JA
+
+4. Logische Organisationsisolation
+   BEHOBEN / OFFEN
+
+5. verwendeter Organisations-Scope
+   Feld/Funktion nennen
+
+6. currentOrgId Quelle
+   Auth-/Application-Context nennen
+
+7. AG → AN direkter privater Datenzugriff
+   VERHINDERT / NOCH MÖGLICH
+
+8. AN → AG direkter privater Datenzugriff
+   VERHINDERT / NOCH MÖGLICH
+
+9. AG Membership Store
+   Tabelle nennen
+
+10. AN Invitation Store
+    Tabelle nennen
+
+11. Invitation vor Dataspace Inbound auf AN sichtbar
+    NEIN / JA
+
+12. AN Acceptance vor Response Inbound auf AG sichtbar
+    NEIN / JA
+
+13. Project Invitation über DataspaceExchange
+    JA / NEIN
+
+14. Invitation Response über DataspaceExchange
+    JA / NEIN
+
+15. AG Invitation Outbox transactional
+    JA / NEIN
+
+16. AN Response Outbox transactional
+    JA / NEIN
+
+17. AG Invitation Retry
+    JA / NEIN
+
+18. AN Response Retry
+    JA / NEIN
+
+19. Participant Directory
+    Implementierung nennen
+
+20. Invite-Auswahl nutzt Participant Directory
+    JA / NEIN
+
+21. Invite Input
+    participantId / anOrgId / anderes
+
+22. externe Sender-/Empfängeridentität
+    verwendete Felder nennen
+
+23. PROJECT_MEMBERSHIP Policy Enforcement
+    BEHOBEN / OFFEN
+
+24. OpenAPI Invite Route
+    Route nennen
+
+25. Server Invite Route
+    Route nennen
+
+26. Generated Client Invite Route
+    Route nennen
+
+27. ACTIVE Membership Gate
+    zentrale Funktion nennen
+
+28. project_contractors als zweites Membership-Gate
+    ENTFERNT / NOCH VORHANDEN
+
+29. Leistungsempfänger AG UI
+    Datenquelle nennen
+
+30. Data Publication Empfänger
+    Datenquelle nennen
+
+31. Service Request organisationsgetrennt
+    JA / NEIN
+
+32. AG kann AN ResourceBookings direkt lesen
+    NEIN / JA
+
+33. AN kann AG interne Projektplanung direkt lesen
+    NEIN / JA
+
+34. Withdrawal/Revocation Dataspace Flow
+    BEHOBEN / OFFEN
+
+35. Business Audit organisationsgescoped
+    JA / NEIN
+
+36. Transport Audit organisationsgescoped
+    JA / NEIN
+
+37. Cross-Org AG→AN Test
+    PASS / FAIL
+
+38. Cross-Org AN→AG Test
+    PASS / FAIL
+
+39. Invitation-before-Inbound Test
+    PASS / FAIL
+
+40. Acceptance-before-Response-Inbound Test
+    PASS / FAIL
+
+41. ServiceRequest-before-Inbound Test
+    PASS / FAIL
+
+42. End-to-End Invite → Accept → Service Request
+    PASS / FAIL
+
+43. Duplicate Invitation
+    PASS / FAIL
+
+44. Duplicate Response
+    PASS / FAIL
+
+45. Policy Tests
+    PASS / FAIL
+
+46. OpenAPI Codegen
+    PASS / FAIL
+
+47. AG Typecheck
+    PASS / FAIL
+
+48. AN Typecheck
+    PASS / FAIL
+
+49. API Typecheck
+    PASS / FAIL
+
+50. Workspace Tests
+    PASS / FAIL
+
+51. Workspace Build
+    PASS / FAIL
+
+52. verbleibende bekannte Probleme
+
+Für jedes offene Problem:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
+
+
+VERBINDLICHE KURZFORM DER ARCHITEKTUR
+
+EINE PostgreSQL-Datenbank.
+EINE bestehende verwaltete Datenbankverbindung.
+KEINE PostgreSQL-Benutzertrennung zwischen AG, AN und Hub.
+
+Aber logisch:
+
+AG-owned Daten
+≠
+AN-owned Daten.
+
+Private Zugriffe erfolgen ausschließlich über:
+
+Authentifizierter Benutzer
+→ currentOrgId
+→ ownerOrgId
+→ Service-/Repository-Scope
+→ Authorization.
+
+Der fachlich vorgesehene Übergang zwischen AG und AN erfolgt ausschließlich über:
+
+DataspaceExchange
+→ Participant Identity
+→ Policy
+→ Nachricht
+→ Inbound Processor
+→ lokale organisationsbezogene Sicht.
+```
