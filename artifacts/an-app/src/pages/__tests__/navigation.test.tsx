@@ -75,7 +75,8 @@ describe("AN-Navigation", () => {
       </Router>,
     );
 
-    expect(screen.getByRole("link", { name: "Interne Projekte" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ressourcen" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ressourcen" })).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Ressourcenbelegungen" }),
     ).not.toBeInTheDocument();
@@ -95,7 +96,7 @@ describe("AN-Navigation", () => {
     renderLocalProjects();
 
     expect(
-      await screen.findByRole("link", { name: "Ressourcenbelegungen" }),
+      await screen.findByRole("link", { name: "Gesamtbelegung" }),
     ).toHaveAttribute("href", "/resource-bookings");
   });
 
@@ -121,7 +122,7 @@ describe("AN-Navigation", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Ressourcenbelegungen" }),
+      await screen.findByRole("heading", { name: "Gesamtbelegung" }),
     ).toBeInTheDocument();
     expect(window.location.pathname).toBe("/resource-bookings");
   });
