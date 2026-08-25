@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   leistungenTable,
   leistungsanfragenTable,

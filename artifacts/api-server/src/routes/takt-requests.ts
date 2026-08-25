@@ -1210,7 +1210,7 @@ router.post(
 
     // ── 7. Send to GU inbox via transport ────────────────────────────────────
     const guPayload = buildGuPayload(
-      id, decision, reasonCode, comment, acceptedTimeWindow, canonicalAlternatives, nextAvailableDate,
+      id, request.taktVersion, decision, reasonCode, comment, acceptedTimeWindow, canonicalAlternatives, nextAvailableDate,
     );
     const envelope = {
       messageId:     msgId,
@@ -1481,7 +1481,7 @@ router.post(
 
     // ── 7. Send TaktResponseMessage to GU inbox ────────────────────────────────
     const guPayload = buildGuPayload(
-      id, decision, reasonCode, comment, acceptedTimeWindow, alternatives, nextAvailableDate,
+      id, request.taktVersion, decision, reasonCode, comment, acceptedTimeWindow, alternatives, nextAvailableDate,
     );
     const envelope = {
       messageId:      msgId,
@@ -1587,6 +1587,7 @@ function checkResponsePrivacy(body: unknown): string | null {
 /** Builds the GU-facing message payload — public fields only, no internal NU data. */
 function buildGuPayload(
   taktRequestId: string,
+  taktVersion: number,
   decision: string,
   reasonCode?: string,
   comment?: string,
@@ -1596,6 +1597,7 @@ function buildGuPayload(
 ): Record<string, unknown> {
   return {
     taktRequestId,
+    taktVersion,
     decision,
     reasonCode:         reasonCode         ?? null,
     comment:            comment            ?? null,

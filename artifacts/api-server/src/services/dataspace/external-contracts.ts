@@ -135,8 +135,15 @@ export const externalServiceResponseSchema = z.object({
   requestId: nonEmpty(200),
   requestVersion: z.number().int().min(1),
   decision: z.enum(["ACCEPTED", "REJECTED", "ALTERNATIVES_PROPOSED"]),
+  acceptedTimeWindow: timeWindowSchema.optional(),
+  reasonCode: nonEmpty(200).optional(),
+  comment: z.string().trim().max(2000).optional(),
   alternatives: z.array(alternativeSchema).max(3).optional(),
+  nextAvailableDate: externalDate.optional(),
 }).strict().superRefine((value, ctx) => {
+  if (value.decision === "ACCEPTED" && !value.acceptedTimeWindow) {
+    ctx.addIssue({ code: "custom", path: ["acceptedTimeWindow"], message: "acceptedTimeWindow is required for ACCEPTED" });
+  }
   if (value.decision === "ALTERNATIVES_PROPOSED" && (!value.alternatives || value.alternatives.length === 0)) {
     ctx.addIssue({ code: "custom", path: ["alternatives"], message: "alternatives are required for ALTERNATIVES_PROPOSED" });
   }
@@ -258,5 +265,9 @@ export type ExternalServiceResponse = {
   requestId: string;
   requestVersion: number;
   decision: "ACCEPTED" | "REJECTED" | "ALTERNATIVES_PROPOSED";
+  acceptedTimeWindow?: { start: string; end: string };
+  reasonCode?: string;
+  comment?: string;
   alternatives?: ExternalAlternativeProposal[];
+  nextAvailableDate?: string;
 };

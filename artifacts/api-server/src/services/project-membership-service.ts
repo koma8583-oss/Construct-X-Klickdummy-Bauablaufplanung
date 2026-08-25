@@ -1,5 +1,5 @@
 import {
-  db,
+  agDb as db,
   organizationsTable,
   messageOutboxTable,
   projectsTable,
@@ -118,6 +118,13 @@ export async function retryProjectInvitationDelivery(messageId: string, agOrgId:
   const result = published.status === "DELIVERED"
     ? published
     : await exchange.retryProjectInvitation(messageId);
+  if (published.status !== "DELIVERED" && result.status === "DELIVERED") {
+    if (outbox.messageType === "PROJECT_INVITATION") {
+      await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange);
+    } else {
+      await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
+    }
+  }
   if (result.status === "FAILED" && (result.attemptCount ?? 0) >= 5) {
     throw new ProjectMembershipError("PROJECT_INVITATION_RETRY_EXHAUSTED", "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.");
   }
@@ -287,7 +294,10 @@ export async function inviteParticipant(input: {
   const exchange = createDataspaceExchange();
   const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
   if (delivery.status === "PENDING") {
-    await exchange.retryProjectInvitation(messageId);
+    const retry = await exchange.retryProjectInvitation(messageId);
+    if (retry.status === "DELIVERED") {
+      await deliverLocalProjectInvitation(invitationPayload, exchange);
+    }
   }
   return membership;
 }

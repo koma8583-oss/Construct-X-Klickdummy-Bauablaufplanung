@@ -39,6 +39,7 @@ import {
   resourcesTable,
   resourceBookingsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   messageOutboxTable,
   messageInboxTable,
   taktRequestAuditEventsTable,
@@ -345,6 +346,15 @@ describe("Audit trail — new event types", () => {
     }).onConflictDoNothing();
     await db.insert(projectContractorsTable).values({
       projectId: projId, anOrgId: NU_ORG_A, assignmentStatus: "ACTIVE" as const,
+    }).onConflictDoNothing();
+    await db.insert(projectMembershipsTable).values({
+      id: "t105-audit-membership",
+      projectId: projId,
+      agOrgId: GU_ORG,
+      anOrgId: NU_ORG_A,
+      status: "ACTIVE",
+      invitationId: "t105-audit-invitation",
+      correlationId: "t105-audit-correlation",
     }).onConflictDoNothing();
 
     const res = await request(app)

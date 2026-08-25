@@ -84,7 +84,11 @@ export function toExternalServiceResponse(input: {
   receiverOrgId: string;
   correlationId?: string;
   messageId?: string;
+  acceptedTimeWindow?: { start: string; end: string };
+  reasonCode?: string;
+  comment?: string;
   alternatives?: ExternalAlternativeProposal[];
+  nextAvailableDate?: string;
 }): ExternalServiceResponse {
   return {
     metadata: {
@@ -98,7 +102,11 @@ export function toExternalServiceResponse(input: {
     requestId: input.requestId,
     requestVersion: input.requestVersion,
     decision: input.decision,
+    acceptedTimeWindow: input.acceptedTimeWindow,
+    reasonCode: input.reasonCode,
+    comment: input.comment,
     alternatives: input.alternatives,
+    nextAvailableDate: input.nextAvailableDate,
   };
 }
 
@@ -135,6 +143,20 @@ export function toExternalServiceResponseFromEnvelope(envelope: MessageEnvelope)
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,
     messageId: envelope.messageId,
-    alternatives: Array.isArray(payload.alternatives) ? payload.alternatives : undefined,
+    acceptedTimeWindow: payload.acceptedTimeWindow ?? undefined,
+    reasonCode: typeof payload.reasonCode === "string" ? payload.reasonCode : undefined,
+    comment: typeof payload.comment === "string" ? payload.comment : undefined,
+    alternatives: Array.isArray(payload.alternatives)
+      ? payload.alternatives.map((alternative) => {
+          const candidate = alternative as Record<string, unknown>;
+          return {
+            ...candidate,
+            conditions: Array.isArray(candidate.conditions)
+              ? candidate.conditions.filter((value): value is string => typeof value === "string").join("; ")
+              : candidate.conditions ?? null,
+          } as ExternalAlternativeProposal;
+        })
+      : undefined,
+    nextAvailableDate: typeof payload.nextAvailableDate === "string" ? payload.nextAvailableDate : undefined,
   });
 }

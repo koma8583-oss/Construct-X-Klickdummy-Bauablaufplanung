@@ -27,6 +27,13 @@ description: Both TaktRequest create routes use createTaktRequestWithSnapshot();
 **Idempotency return:**
 - `transportStatus: existingOutbox?.status ?? "UNKNOWN"` — never defaults to "DELIVERED" when outbox row is missing (bug fixed from prior code).
 
+**Legacy Dataspace bridge:**
+- The external response contract flattens alternative `conditions` into one `"; "`-joined string. When a locally pre-existing response must be recognized as the same inbound response, compare this external representation with `(storedConditions ?? []).join("; ")`; do not split the inbound text back into an array.
+
+**Why:** A condition itself may contain semicolons, so splitting the external text changes its meaning and turns an otherwise idempotent inbound response into a false payload conflict.
+
+**How to apply:** Keep the comparison at the serialization boundary whenever an internal array is checked against an externally normalized response payload.
+
 **Why:** Eliminates dual code paths for response processing; ensures business objects (response + request status) are always consistent even if transport fails. The schema models one current response per request, so revisions must not insert a second row.
 
 **How to apply:** Any future endpoint that accepts a NU response must call `processNuResponse()` — never insert into `taktResponsesTable` directly.

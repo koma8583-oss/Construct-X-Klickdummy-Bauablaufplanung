@@ -26,6 +26,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   usersTable,
   dataPublicationsTable,
@@ -97,6 +98,15 @@ beforeAll(async () => {
 
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG,
+  }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t38-membership",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t38-invitation",
+    correlationId: "t38-correlation",
   }).onConflictDoNothing();
 
   // Takt (version 1)

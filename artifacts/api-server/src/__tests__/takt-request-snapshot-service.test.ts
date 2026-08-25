@@ -13,6 +13,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -27,6 +28,7 @@ import {
   NuNotContractorError,
   InvalidTaktForSnapshotError,
 } from "../lib/takt-request-snapshot-service";
+import { ProjectMembershipError } from "../services/project-membership-service";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
 
@@ -98,6 +100,15 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG,
   }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t35-membership-nu",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t35-invitation-nu",
+    correlationId: "t35-correlation-nu",
+  }).onConflictDoNothing();
 
   await db.insert(takteTable).values({
     id: TAKT_ID, projectId: PROJECT_ID,
@@ -118,6 +129,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(ids.map(i => `'${i}'`).join(","))}])`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(ids.map(i => `'${i}'`).join(","))}])`).catch(() => {});
@@ -318,10 +330,10 @@ describe("createTaktRequestWithSnapshot() — DB integration", () => {
     ).rejects.toBeInstanceOf(UnauthorizedSnapshotError);
   });
 
-  it("throws NuNotContractorError when nuOrgId is not a project contractor", async () => {
+  it("rejects a NU without an active project membership", async () => {
     await expect(
       createTaktRequestWithSnapshot(makeInput({ nuOrgId: OTHER_NU })),
-    ).rejects.toBeInstanceOf(NuNotContractorError);
+    ).rejects.toBeInstanceOf(ProjectMembershipError);
   });
 
   it("rejects a second snapshot for the same request (immutability — DB UNIQUE)", async () => {

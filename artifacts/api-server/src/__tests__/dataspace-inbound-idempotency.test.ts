@@ -58,6 +58,10 @@ function responsePayload(messageId: string, senderOrgId: string, receiverOrgId: 
     requestId: `request-${messageId}`,
     requestVersion: 1,
     decision: "ACCEPTED",
+    acceptedTimeWindow: {
+      start: "2026-09-01T08:00:00.000Z",
+      end: "2026-09-02T17:00:00.000Z",
+    },
   };
 }
 

@@ -9,7 +9,7 @@
  *     in any response payload.
  *   - No transport logic (no Hub messages, webhooks, or EDC).
  */
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   taktResponsesTable,
   taktResponseAlternativesTable,

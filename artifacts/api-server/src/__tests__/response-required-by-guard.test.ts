@@ -26,6 +26,7 @@ import {
   taktRequestSnapshotsTable,
   taktRequestAuditEventsTable,
   projectContractorsTable,
+  projectMembershipsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import app from "../app";
@@ -101,6 +102,15 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: NU_ORG,
   });
+  await db.insert(projectMembershipsTable).values({
+    id: "t135-membership",
+    projectId: PROJECT,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t135-invitation",
+    correlationId: "t135-correlation",
+  });
 
   await db.insert(takteTable).values({
     id: TAKT, projectId: PROJECT,
@@ -126,6 +136,7 @@ afterAll(async () => {
 
   await db.delete(takteTable).where(eq(takteTable.id, TAKT));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG));

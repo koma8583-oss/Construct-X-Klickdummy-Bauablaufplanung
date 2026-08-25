@@ -364,7 +364,7 @@ describe("E2 — Contractor soft-delete regression: list and re-add", () => {
     await db.execute(sql`DELETE FROM organizations WHERE id = ${REGR_AN}`).catch(() => {});
   });
 
-  it("Add → then contractor appears in the GET list", async () => {
+  it("Add → creates a planned assignment, which is hidden until invitation acceptance", async () => {
     await request(app)
       .post(`/api/projects/${REGR_PROJECT}/contractors`)
       .set("Authorization", `Bearer ${agToken}`)
@@ -376,7 +376,7 @@ describe("E2 — Contractor soft-delete regression: list and re-add", () => {
 
     expect(list.status).toBe(200);
     const found = (list.body as any[]).some((c: any) => c.id === REGR_AN);
-    expect(found).toBe(true);
+    expect(found).toBe(false);
   });
 
   it("Soft-delete → contractor disappears from the GET list", async () => {
@@ -393,7 +393,7 @@ describe("E2 — Contractor soft-delete regression: list and re-add", () => {
     expect(found).toBe(false);
   });
 
-  it("Re-add after soft-delete reactivates the row (contractor reappears in list)", async () => {
+  it("Re-add after soft-delete restores the planned assignment", async () => {
     const addRes = await request(app)
       .post(`/api/projects/${REGR_PROJECT}/contractors`)
       .set("Authorization", `Bearer ${agToken}`)
@@ -409,7 +409,7 @@ describe("E2 — Contractor soft-delete regression: list and re-add", () => {
 
     expect(list.status).toBe(200);
     const found = (list.body as any[]).some((c: any) => c.id === REGR_AN);
-    expect(found).toBe(true);
+    expect(found).toBe(false);
   });
 });
 

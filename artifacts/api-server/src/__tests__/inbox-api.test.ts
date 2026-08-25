@@ -20,6 +20,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -83,6 +84,7 @@ async function cleanupFixtures() {
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`);
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
+  await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
@@ -108,6 +110,15 @@ beforeAll(async () => {
 
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG, assignmentStatus: "ACTIVE",
+  }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t37-membership",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t37-invitation",
+    correlationId: "t37-correlation",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({

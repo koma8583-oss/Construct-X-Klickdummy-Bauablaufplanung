@@ -44,6 +44,7 @@ import {
   taktResponsesTable,
   taktResponseAlternativesTable,
   projectContractorsTable,
+  projectMembershipsTable,
   messageOutboxTable,
   messageInboxTable,
   taktRequestAuditEventsTable,
@@ -178,6 +179,15 @@ beforeAll(async () => {
       assignmentStatus: "ACTIVE",
     },
   ]).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t81-membership",
+    projectId: PROJECT,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t81-invitation",
+    correlationId: "t81-correlation",
+  }).onConflictDoNothing();
 
   // Tokens
   guToken  = signToken({ userId: GU_USER, orgId: GU_ORG,   orgType: "AG" });
@@ -237,6 +247,7 @@ afterAll(async () => {
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.guOrgId, GU_ORG));
   await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
 
   // 5. Users + orgs

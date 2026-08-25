@@ -19,7 +19,7 @@
  *   - On technical failure: TaktRequest status is NOT automatically set to REJECTED.
  */
 import pino from "pino";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   taktRequestsTable,
   taktRequestSnapshotsTable,

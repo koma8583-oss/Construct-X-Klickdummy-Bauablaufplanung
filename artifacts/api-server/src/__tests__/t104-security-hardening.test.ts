@@ -46,6 +46,7 @@ import {
   takteTable,
   taktRequestsTable,
   taktRequestRemindersTable,
+  messageOutboxTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import app from "../app";
@@ -426,6 +427,8 @@ describe("Reminder transport status (via evaluateTaktRequestDeadlines)", () => {
     // Remove reminders between tests so each test starts clean
     await db.delete(taktRequestRemindersTable)
       .where(eq(taktRequestRemindersTable.taktRequestId, REQ_ID));
+    await db.delete(messageOutboxTable)
+      .where(eq(messageOutboxTable.correlationId, REQ_ID));
     // Reset reminderCount
     await db.update(taktRequestsTable)
       .set({ reminderCount: 0, lastReminderAt: null })

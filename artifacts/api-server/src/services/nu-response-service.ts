@@ -242,6 +242,9 @@ export async function createAnServiceResponse(
     requestId: request.externalLeistungsanfrageId,
     requestVersion: request.externalRequestVersion,
     decision: input.decision,
+    acceptedTimeWindow: input.acceptedTimeWindow,
+    reasonCode: input.reasonCode,
+    comment: input.comment,
     alternatives: input.alternatives?.map((alternative) => ({
       alternativeId: alternative.alternativeId,
       rank: alternative.rank,
@@ -249,6 +252,7 @@ export async function createAnServiceResponse(
       crewSize: alternative.crewSize ?? null,
       conditions: alternative.conditions?.join("; ") ?? null,
     })),
+    nextAvailableDate: input.nextAvailableDate,
   };
   return { ...saved, payload, payloadHash, idempotent: false };
 }
@@ -270,6 +274,11 @@ function buildExternalResponse(
     requestId: response.sourceRequestId,
     requestVersion: response.requestVersion,
     decision: response.decision,
+    acceptedTimeWindow: response.acceptedStart && response.acceptedEnd
+      ? { start: response.acceptedStart.toISOString(), end: response.acceptedEnd.toISOString() }
+      : undefined,
+    reasonCode: response.reasonCode ?? undefined,
+    comment: response.comment ?? undefined,
     alternatives: alternatives.map((alternative) => ({
       alternativeId: alternative.alternativeId,
       rank: alternative.rank,
@@ -280,6 +289,7 @@ function buildExternalResponse(
       crewSize: alternative.crewSize,
       conditions: alternative.conditions?.join("; ") ?? null,
     })),
+    nextAvailableDate: response.nextAvailableDate ?? undefined,
   };
 }
 
@@ -299,15 +309,15 @@ export async function applyIncomingServiceResponseOnAg(
   if (request.leistungVersion !== payload.requestVersion) {
     throw new ResponseConflictError(String(request.leistungVersion), String(payload.requestVersion), "DIFFERENT_PAYLOAD");
   }
-  const acceptedTimeWindow = payload.decision === "ACCEPTED" && payload.alternatives?.[0]?.timeWindow
-    ? payload.alternatives[0].timeWindow
-    : undefined;
+  const acceptedTimeWindow = payload.acceptedTimeWindow;
   const input: ProcessNuResponseInput = {
     taktRequestId: request.id,
     nuOrgId: request.nuOrgId,
     userId: request.createdByUserId,
     decision: payload.decision,
     acceptedTimeWindow,
+    reasonCode: payload.reasonCode,
+    comment: payload.comment,
     alternatives: payload.alternatives?.map((alternative) => ({
       alternativeId: alternative.alternativeId,
       rank: alternative.rank,
@@ -315,20 +325,71 @@ export async function applyIncomingServiceResponseOnAg(
       crewSize: alternative.crewSize ?? undefined,
       conditions: alternative.conditions ? [alternative.conditions] : undefined,
     })),
+    nextAvailableDate: payload.nextAvailableDate,
     answerableStatuses: new Set(["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
     currentRequestStatus: request.status,
     messageId: payload.metadata.messageId,
   };
   validateInput(input);
   const hash = computeResponsePayloadHash(responsePayload(payload.requestId, payload.requestVersion, input));
+  // The legacy /takt-requests response endpoints persist the public response
+  // before publishing its equivalent Dataspace envelope. Their historic hash
+  // omits the request version and uses the legacy `taktRequestId` field.
+  // Accept that exact persisted representation when the local transport
+  // immediately hands the envelope back to the AG inbound processor.
+  const legacyHash = computeResponsePayloadHash({
+    taktRequestId: request.id,
+    decision: input.decision,
+    reasonCode: input.reasonCode ?? null,
+    comment: input.comment ?? null,
+    acceptedTimeWindow: input.acceptedTimeWindow ?? null,
+    alternatives: input.alternatives?.map((alternative) => ({
+      alternativeId: alternative.alternativeId,
+      rank: alternative.rank,
+      timeWindow: alternative.timeWindow,
+      crewSize: alternative.crewSize ?? null,
+      conditions: alternative.conditions?.flatMap((condition) =>
+        condition.split("; ").filter(Boolean),
+      ) ?? null,
+    })) ?? null,
+    nextAvailableDate: input.nextAvailableDate ?? null,
+  });
   const [existing] = await agDb.select().from(taktResponsesTable)
     .where(eq(taktResponsesTable.taktRequestId, request.id)).limit(1);
   if (existing) {
-    if (existing.responsePayloadHash !== hash) {
+    const alternatives = await agDb.select().from(taktResponseAlternativesTable)
+      .where(eq(taktResponseAlternativesTable.responseId, existing.id))
+      .orderBy(taktResponseAlternativesTable.rank);
+    const incomingAlternatives = [...(payload.alternatives ?? [])]
+      .sort((left, right) => left.rank - right.rank);
+    const legacyEquivalent = (
+      existing.decision === payload.decision &&
+      existing.reasonCode === (payload.reasonCode ?? null) &&
+      existing.comment === (payload.comment ?? null) &&
+      existing.nextAvailableDate === (payload.nextAvailableDate ?? null) &&
+      (existing.acceptedStart?.getTime() ?? null) ===
+        (payload.acceptedTimeWindow ? new Date(payload.acceptedTimeWindow.start).getTime() : null) &&
+      (existing.acceptedEnd?.getTime() ?? null) ===
+        (payload.acceptedTimeWindow ? new Date(payload.acceptedTimeWindow.end).getTime() : null) &&
+      alternatives.length === incomingAlternatives.length &&
+      alternatives.every((alternative, index) => {
+        const incoming = incomingAlternatives[index];
+        return incoming !== undefined &&
+          alternative.alternativeId === incoming.alternativeId &&
+          alternative.rank === incoming.rank &&
+          alternative.proposedStart.getTime() === new Date(incoming.timeWindow.start).getTime() &&
+          alternative.proposedEnd.getTime() === new Date(incoming.timeWindow.end).getTime() &&
+          alternative.crewSize === (incoming.crewSize ?? null) &&
+          (alternative.conditions ?? []).join("; ") === (incoming.conditions ?? "");
+      })
+    );
+    if (
+      existing.responsePayloadHash !== hash &&
+      existing.responsePayloadHash !== legacyHash &&
+      !legacyEquivalent
+    ) {
       throw new ResponseConflictError(existing.decision, payload.decision, "DIFFERENT_PAYLOAD");
     }
-    const alternatives = await agDb.select().from(taktResponseAlternativesTable)
-      .where(eq(taktResponseAlternativesTable.responseId, existing.id));
     return {
       response: existing,
       alternatives,
@@ -344,11 +405,11 @@ export async function applyIncomingServiceResponseOnAg(
       taktRequestId: request.id,
       messageId: payload.metadata.messageId,
       decision: payload.decision,
-      reasonCode: null,
-      comment: null,
+      reasonCode: (payload.reasonCode as TaktResponse["reasonCode"]) ?? null,
+      comment: payload.comment ?? null,
       acceptedStart: acceptedTimeWindow ? new Date(acceptedTimeWindow.start) : null,
       acceptedEnd: acceptedTimeWindow ? new Date(acceptedTimeWindow.end) : null,
-      nextAvailableDate: null,
+      nextAvailableDate: payload.nextAvailableDate ?? null,
       responsePayloadHash: hash,
       createdByUserId: request.createdByUserId,
     }).returning();

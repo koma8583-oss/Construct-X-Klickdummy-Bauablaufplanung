@@ -8,7 +8,7 @@
  *     taktRequestId will throw (DB UNIQUE constraint).
  *   - No transport logic here (no Hub messages, webhooks, or EDC).
  */
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   taktRequestsTable,
   taktRequestSnapshotsTable,

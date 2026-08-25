@@ -64,7 +64,10 @@ router.post("/project-invitations/:id/:action", async (req, res) => {
     const exchange = createDataspaceExchange();
     const delivery = await deliverLocalProjectInvitationResponse(result.payload, exchange);
     if (delivery.status === "PENDING") {
-      await exchange.retryProjectInvitation(result.payload.metadata.messageId);
+      const retry = await exchange.retryProjectInvitation(result.payload.metadata.messageId);
+      if (retry.status === "DELIVERED") {
+        await deliverLocalProjectInvitationResponse(result.payload, exchange);
+      }
     }
     res.json(result.invitation);
   } catch (error) {

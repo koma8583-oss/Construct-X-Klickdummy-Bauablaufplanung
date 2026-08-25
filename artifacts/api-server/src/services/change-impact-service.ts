@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   leistungenTable,
   leistungsanfragenTable,

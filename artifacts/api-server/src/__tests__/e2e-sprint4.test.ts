@@ -32,6 +32,7 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -117,6 +118,15 @@ beforeAll(async () => {
   // Register NU as a contractor on the project (required by createTaktRequestWithSnapshot)
   await db.insert(projectContractorsTable).values({ projectId: PROJECT, anOrgId: NU_ORG })
     .onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t49-membership",
+    projectId: PROJECT,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t49-invitation",
+    correlationId: "t49-correlation",
+  }).onConflictDoNothing();
 
   // Create a published data publication so the AN can access /details (policy gate, Task 116)
   const now = new Date();
@@ -236,6 +246,8 @@ afterAll(async () => {
   // 9. project fixtures
   await db.delete(projectContractorsTable)
     .where(eq(projectContractorsTable.projectId, PROJECT));
+  await db.delete(projectMembershipsTable)
+    .where(eq(projectMembershipsTable.projectId, PROJECT));
   await db.execute(sql`DELETE FROM leistungen WHERE project_id = ${PROJECT}`);
   await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));

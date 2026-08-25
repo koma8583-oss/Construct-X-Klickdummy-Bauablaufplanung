@@ -16,6 +16,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -95,6 +96,15 @@ beforeAll(async () => {
     projectId: PROJECT_ID,
     anOrgId: NU_ORG,
   }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: "t177-membership",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t177-invitation",
+    correlationId: "t177-correlation",
+  }).onConflictDoNothing();
 
   await db.insert(takteTable).values({
     id: TAKT_ID,
@@ -114,6 +124,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY['${sql.raw(GU_ORG)}','${sql.raw(NU_ORG)}'])`).catch(() => {});
@@ -250,6 +261,15 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       projectId: BARE_PROJECT_ID,
       anOrgId: NU_ORG,
     }).onConflictDoNothing();
+    await db.insert(projectMembershipsTable).values({
+      id: "t177-bare-membership",
+      projectId: BARE_PROJECT_ID,
+      agOrgId: GU_ORG,
+      anOrgId: NU_ORG,
+      status: "ACTIVE",
+      invitationId: "t177-bare-invitation",
+      correlationId: "t177-bare-correlation",
+    }).onConflictDoNothing();
 
     await db.insert(takteTable).values({
       id: BARE_TAKT_ID,
@@ -279,6 +299,7 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       await db.execute(sql`DELETE FROM leistungsanfragen WHERE leistung_id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
+      await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
     }
   });

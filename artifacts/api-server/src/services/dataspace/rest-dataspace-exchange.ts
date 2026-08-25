@@ -1,6 +1,6 @@
 import { DataspaceMessageType } from "@workspace/api-zod";
 import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import type {
@@ -45,7 +45,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
     messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
   ): Promise<ExchangeReference> {
     const [existing] = await db.select().from(dataspaceExchangesTable)
-      .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      )).limit(1);
     if (existing?.status === "PUBLISHED") {
       return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
     }
@@ -70,19 +73,28 @@ export class RestDataspaceExchange implements DataspaceExchange {
       await db.update(dataspaceExchangesTable).set({
         status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
         externalReference: result.messageId, updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
       return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
     } catch (error) {
       await db.update(dataspaceExchangesTable).set({
         status: "FAILED", errorCode: error instanceof Error ? error.name : "TRANSPORT_FAILURE", updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
       throw error;
     }
   }
 
   async retryProjectInvitation(messageId: string): Promise<ExchangeReference> {
     const [exchange] = await db.select().from(dataspaceExchangesTable)
-      .where(eq(dataspaceExchangesTable.messageId, messageId)).limit(1);
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, messageId),
+      )).limit(1);
     if (!exchange || exchange.direction !== "OUTBOUND" ||
         !["PROJECT_INVITATION", "PROJECT_INVITATION_RESPONSE"].includes(exchange.messageType)) {
       throw new Error(`Project invitation delivery not found: ${messageId}`);
@@ -93,7 +105,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
       externalReference: result.messageId,
       errorCode: result.error?.code ?? null,
       updatedAt: new Date(),
-    }).where(eq(dataspaceExchangesTable.messageId, messageId));
+    }).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, messageId),
+    ));
     return {
       exchangeId: result.messageId,
       externalReference: result.messageId,
@@ -147,7 +162,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
   }
 
   async publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference> {
-    const [existing] = await db.select().from(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+    const [existing] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+    )).limit(1);
     if (existing?.status === "PUBLISHED") {
       return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
     }
@@ -174,19 +192,28 @@ export class RestDataspaceExchange implements DataspaceExchange {
       await db.update(dataspaceExchangesTable).set({
         status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
         externalReference: result.messageId, updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
     } catch (error) {
       await db.update(dataspaceExchangesTable).set({
         status: "FAILED", errorCode: error instanceof Error ? error.name : "TRANSPORT_FAILURE",
         updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
       throw error;
     }
     return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
   }
 
   async publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference> {
-    const [existing] = await db.select().from(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+    const [existing] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+    )).limit(1);
     if (existing?.status === "PUBLISHED") {
       return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
     }
@@ -213,12 +240,18 @@ export class RestDataspaceExchange implements DataspaceExchange {
       await db.update(dataspaceExchangesTable).set({
         status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
         externalReference: result.messageId, updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
     } catch (error) {
       await db.update(dataspaceExchangesTable).set({
         status: "FAILED", errorCode: error instanceof Error ? error.name : "TRANSPORT_FAILURE",
         updatedAt: new Date(),
-      }).where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId));
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
       throw error;
     }
     return { exchangeId: result.messageId, externalReference: result.messageId, ...result };

@@ -11,13 +11,14 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  anProjectInvitationsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -68,6 +69,9 @@ async function removeRequestData(projectId: string) {
 }
 
 beforeAll(async () => {
+  await anDb.delete(anProjectInvitationsTable).where(
+    inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
+  ).catch(() => {});
   await db.delete(projectMembershipsTable).where(
     inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
   ).catch(() => {});
@@ -91,7 +95,7 @@ beforeAll(async () => {
     { id: AN_ID, name: "Task 239 AN", type: "AN" },
     { id: OTHER_AN_ID, name: "Task 239 Other AN", type: "AN" },
     { id: BACKFILL_AN_ID, name: "Task 239 Backfill AN", type: "AN" },
-  ]);
+  ]).onConflictDoNothing();
   await db.insert(usersTable).values([
     { id: AG_USER_ID, name: "Task 239 AG", email: `${PREFIX}-ag@test.local`, passwordHash: "x" },
     { id: OTHER_AG_USER_ID, name: "Task 239 Other AG", email: `${PREFIX}-other-ag@test.local`, passwordHash: "x" },
@@ -117,6 +121,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await anDb.delete(anProjectInvitationsTable).where(
+    inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
+  ).catch(() => {});
   await removeRequestData(PROJECT_ID);
   await db.delete(projectMembershipsTable).where(
     inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
@@ -148,19 +155,29 @@ async function invite(anOrgId = AN_ID, projectId = PROJECT_ID, authToken = agTok
     .send({ anOrgId });
 }
 
+async function findAnInvitationId(invitationId: string, authToken = anToken) {
+  const pending = await request(app)
+    .get("/api/an/project-invitations")
+    .set("Authorization", `Bearer ${authToken}`);
+  expect(pending.status).toBe(200);
+  const invitation = pending.body.find((row: { invitationId: string }) => row.invitationId === invitationId);
+  expect(invitation).toBeDefined();
+  return invitation.id as string;
+}
+
 describe("invitation decisions", () => {
   it("invites an AN and exposes it only to the invited organization", async () => {
     const response = await invite();
     expect(response.status).toBe(201);
     expect(response.body.status).toBe("INVITED");
 
-    const pending = await request(app).get("/api/project-invitations")
+    const pending = await request(app).get("/api/an/project-invitations")
       .set("Authorization", `Bearer ${anToken}`);
     expect(pending.status).toBe(200);
     expect(pending.body).toHaveLength(1);
-    expect(pending.body[0].membership.id).toBe(response.body.id);
+    expect(pending.body[0].invitationId).toBe(response.body.invitationId);
 
-    const otherPending = await request(app).get("/api/project-invitations")
+    const otherPending = await request(app).get("/api/an/project-invitations")
       .set("Authorization", `Bearer ${otherAnToken}`);
     expect(otherPending.status).toBe(200);
     expect(otherPending.body).toHaveLength(0);
@@ -186,23 +203,28 @@ describe("invitation decisions", () => {
   it("does not allow the wrong AN organization to accept or reject an invitation", async () => {
     const membership = (await db.select().from(projectMembershipsTable)
       .where(and(eq(projectMembershipsTable.projectId, PROJECT_ID), eq(projectMembershipsTable.anOrgId, AN_ID))))[0];
-    const wrongAccept = await request(app).post(`/api/project-invitations/${membership.id}/accept`)
-      .set("Authorization", `Bearer ${otherAnToken}`);
+    const invitationId = await findAnInvitationId(membership.invitationId);
+    const wrongAccept = await request(app).post(`/api/an/project-invitations/${invitationId}/accept`)
+      .set("Authorization", `Bearer ${otherAnToken}`).send({ policyAccepted: true });
     expect(wrongAccept.status).toBe(404);
-    const wrongReject = await request(app).post(`/api/project-invitations/${membership.id}/reject`)
-      .set("Authorization", `Bearer ${otherAnToken}`);
+    const wrongReject = await request(app).post(`/api/an/project-invitations/${invitationId}/reject`)
+      .set("Authorization", `Bearer ${otherAnToken}`).send({});
     expect(wrongReject.status).toBe(404);
   });
 
   it("accepts once, rejects a second decision, and records ACTIVE membership", async () => {
     const membership = (await db.select().from(projectMembershipsTable)
       .where(and(eq(projectMembershipsTable.projectId, PROJECT_ID), eq(projectMembershipsTable.anOrgId, AN_ID))))[0];
-    const accepted = await request(app).post(`/api/project-invitations/${membership.id}/accept`)
-      .set("Authorization", `Bearer ${anToken}`);
+    const invitationId = await findAnInvitationId(membership.invitationId);
+    const accepted = await request(app).post(`/api/an/project-invitations/${invitationId}/accept`)
+      .set("Authorization", `Bearer ${anToken}`).send({ policyAccepted: true });
     expect(accepted.status).toBe(200);
-    expect(accepted.body.status).toBe("ACTIVE");
+    expect(accepted.body.status).toBe("ACCEPTED");
+    const [activeMembership] = await db.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, membership.id));
+    expect(activeMembership.status).toBe("ACTIVE");
 
-    const secondDecision = await request(app).post(`/api/project-invitations/${membership.id}/reject`)
+    const secondDecision = await request(app).post(`/api/an/project-invitations/${invitationId}/reject`)
       .set("Authorization", `Bearer ${anToken}`).send({ message: "too late" });
     expect(secondDecision.status).toBe(409);
     expect(secondDecision.body.code).toBe("PROJECT_INVITATION_ALREADY_RESOLVED");
@@ -210,9 +232,10 @@ describe("invitation decisions", () => {
 
   it("allows only one of two concurrent decisions to win", async () => {
     const created = await invite(OTHER_AN_ID);
+    const invitationId = await findAnInvitationId(created.body.invitationId, otherAnToken);
     const [accept, reject] = await Promise.all([
-      request(app).post(`/api/project-invitations/${created.body.id}/accept`).set("Authorization", `Bearer ${otherAnToken}`),
-      request(app).post(`/api/project-invitations/${created.body.id}/reject`).set("Authorization", `Bearer ${otherAnToken}`),
+      request(app).post(`/api/an/project-invitations/${invitationId}/accept`).set("Authorization", `Bearer ${otherAnToken}`).send({ policyAccepted: true }),
+      request(app).post(`/api/an/project-invitations/${invitationId}/reject`).set("Authorization", `Bearer ${otherAnToken}`).send({}),
     ]);
     expect([accept.status, reject.status].sort()).toEqual([200, 409]);
     const [row] = await db.select().from(projectMembershipsTable)
@@ -222,13 +245,14 @@ describe("invitation decisions", () => {
 
   it("rejects a pending invitation and does not allow a later acceptance", async () => {
     const created = await invite(AN_ID, OTHER_PROJECT_ID, otherAgToken);
-    const rejected = await request(app).post(`/api/project-invitations/${created.body.id}/reject`)
+    const invitationId = await findAnInvitationId(created.body.invitationId);
+    const rejected = await request(app).post(`/api/an/project-invitations/${invitationId}/reject`)
       .set("Authorization", `Bearer ${anToken}`).send({ message: "not available" });
     expect(rejected.status).toBe(200);
     expect(rejected.body.status).toBe("REJECTED");
 
-    const accepted = await request(app).post(`/api/project-invitations/${created.body.id}/accept`)
-      .set("Authorization", `Bearer ${anToken}`);
+    const accepted = await request(app).post(`/api/an/project-invitations/${invitationId}/accept`)
+      .set("Authorization", `Bearer ${anToken}`).send({ policyAccepted: true });
     expect(accepted.status).toBe(409);
   });
 });

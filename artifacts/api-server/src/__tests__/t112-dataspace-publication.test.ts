@@ -18,6 +18,7 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
@@ -119,6 +120,15 @@ beforeAll(async () => {
     anOrgId,
     assignmentStatus: "ACTIVE",
   });
+  await db.insert(projectMembershipsTable).values({
+    id: "t112-active-membership",
+    projectId,
+    agOrgId,
+    anOrgId,
+    status: "ACTIVE",
+    invitationId: "t112-active-invitation",
+    correlationId: "t112-active-correlation",
+  }).onConflictDoNothing();
 
   // Get or create the required policy templates (seeded by the server on startup;
   // in test environments they may not have been seeded yet).
@@ -179,6 +189,7 @@ afterAll(async () => {
   await db
     .delete(projectContractorsTable)
     .where(eq(projectContractorsTable.projectId, projectId));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, projectId));
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId));
 
   // Clean up messages that reference any of the test orgs (FK constraint)
@@ -550,6 +561,15 @@ describe("Suspended publication", () => {
       anOrgId: freshAnOrgId,
       assignmentStatus: "ACTIVE",
     });
+  await db.insert(projectMembershipsTable).values({
+    id: "t112-fresh-membership",
+    projectId,
+    agOrgId,
+    anOrgId: freshAnOrgId,
+    status: "ACTIVE",
+    invitationId: "t112-fresh-invitation",
+    correlationId: "t112-fresh-correlation",
+  }).onConflictDoNothing();
 
     // Create publication for freshAn
     const draft = await request(app)
@@ -587,6 +607,9 @@ describe("Suspended publication", () => {
       .where(eq(dataPublicationsTable.projectId, projectId));
     await db.delete(projectContractorsTable).where(
       eq(projectContractorsTable.anOrgId, freshAnOrgId),
+    );
+    await db.delete(projectMembershipsTable).where(
+      eq(projectMembershipsTable.anOrgId, freshAnOrgId),
     );
     await db
       .delete(messageOutboxTable)

@@ -34,7 +34,7 @@ vi.mock("@workspace/db", () => {
   };
 
   return {
-    db: {
+    agDb: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
         // Provide a minimal tx object that simulates insert().values().returning()
         const tx = {

@@ -42,6 +42,7 @@ import {
   takteTable,
   taktRequestsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   taktRequestSnapshotsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
@@ -119,6 +120,15 @@ beforeAll(async () => {
       eq(projectContractorsTable.anOrgId, NU_ORG),
     ));
   await db.insert(projectContractorsTable).values({ projectId: PROJ_ID, anOrgId: NU_ORG });
+  await db.insert(projectMembershipsTable).values({
+    id: "t83-membership",
+    projectId: PROJ_ID,
+    agOrgId: GU_ORG,
+    anOrgId: NU_ORG,
+    status: "ACTIVE",
+    invitationId: "t83-invitation",
+    correlationId: "t83-correlation",
+  }).onConflictDoNothing();
 
   // Upsert with DO UPDATE so repeated runs reset lifecycleStatus back to PLANNED
   // (a previous run may have left it as IN_COORDINATION after /send was called).
@@ -143,6 +153,8 @@ afterAll(async () => {
   await db.delete(projectContractorsTable)
     .where(and(eq(projectContractorsTable.projectId, PROJ_ID),
                eq(projectContractorsTable.anOrgId, NU_ORG)));
+  await db.delete(projectMembershipsTable)
+    .where(eq(projectMembershipsTable.projectId, PROJ_ID));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT_ID));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJ_ID));
   await db.delete(usersTable)

@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, text, timestamp, integer, index, unique } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations";
 
 export const dataspaceExchangeDirectionEnum = pgEnum("dataspace_exchange_direction", ["OUTBOUND", "INBOUND"]);
@@ -14,7 +14,7 @@ export const dataspaceExchangesTable = pgTable("dataspace_exchanges", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   direction: dataspaceExchangeDirectionEnum("direction").notNull(),
   messageType: dataspaceExchangeMessageTypeEnum("message_type").notNull(),
-  messageId: text("message_id").notNull().unique(),
+  messageId: text("message_id").notNull(),
   correlationId: text("correlation_id").notNull(),
   senderOrgId: text("sender_org_id").notNull().references(() => organizationsTable.id),
   receiverOrgId: text("receiver_org_id").notNull().references(() => organizationsTable.id),
@@ -28,6 +28,7 @@ export const dataspaceExchangesTable = pgTable("dataspace_exchanges", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (table) => ({
   correlationIdx: index("dataspace_exchanges_correlation_idx").on(table.correlationId),
+  directionMessageIdUnique: unique("dataspace_exchanges_direction_message_id_key").on(table.direction, table.messageId),
 }));
 
 export type DataspaceExchangeRow = typeof dataspaceExchangesTable.$inferSelect;

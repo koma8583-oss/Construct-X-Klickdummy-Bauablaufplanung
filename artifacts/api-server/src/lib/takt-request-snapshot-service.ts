@@ -15,7 +15,7 @@
  *   - `createTaktRequestWithSnapshot` is the single transactional entry point
  *     for all domain services that need to create a coordinated TaktRequest.
  */
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   takteTable,
   projectsTable,

@@ -29,6 +29,7 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -165,6 +166,15 @@ beforeAll(async () => {
     .insert(projectContractorsTable)
     .values({ projectId: PROJECT, anOrgId: AN_ORG, assignmentStatus: "ACTIVE" })
     .onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: `${PREFIX}-membership`,
+    projectId: PROJECT,
+    agOrgId: AG_ORG,
+    anOrgId: AN_ORG,
+    status: "ACTIVE",
+    invitationId: `${PREFIX}-invitation`,
+    correlationId: `${PREFIX}-correlation`,
+  }).onConflictDoNothing();
 
   // Takt
   await db
@@ -239,6 +249,8 @@ afterAll(async () => {
     .execute(sql`DELETE FROM leistungen WHERE id = ${TAKT}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM project_contractors WHERE project_id = ${PROJECT}`).catch(() => {});
+  await db
+    .execute(sql`DELETE FROM project_memberships WHERE project_id = ${PROJECT}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM projects WHERE id = ${PROJECT}`).catch(() => {});
   await db

@@ -79,7 +79,10 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   let exchange = inserted;
   if (!exchange) {
     const [existing] = await db.select().from(dataspaceExchangesTable)
-      .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      )).limit(1);
     if (!existing) {
       return { duplicate: true, status: "DUPLICATE" };
     }
@@ -142,7 +145,10 @@ async function processIncomingInvitation<T extends ExternalProjectInvitation | E
   let exchange = inserted;
   if (!exchange) {
     const [existing] = await db.select().from(dataspaceExchangesTable)
-      .where(eq(dataspaceExchangesTable.messageId, payload.metadata.messageId)).limit(1);
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      )).limit(1);
     if (!existing) {
       return { duplicate: true, status: "DUPLICATE" };
     }
