@@ -393,15 +393,6 @@ export default function NetzplanView({ takte, deps, alternativeImpacts = [] }: N
     );
   }
 
-  if (validDeps.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-16 space-y-2">
-        <p className="text-sm font-medium">Keine Abhängigkeiten definiert.</p>
-        <p className="text-xs">Legen Sie Anordnungsbeziehungen im Bearbeiten-Dialog an, um den Netzplan zu sehen.</p>
-      </div>
-    );
-  }
-
   const scaledW = svgWidth * zoom;
   const scaledH = svgHeight * zoom;
 
