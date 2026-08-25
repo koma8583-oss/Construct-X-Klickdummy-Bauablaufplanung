@@ -1,0 +1,3389 @@
+GESAMTAUFTRAG – DURCHGÄNGIGE FACHLICHE UND DATENFLUSS-TESTS FÜR DIE AG-/AN-KOORDINATION
+
+ZIEL
+
+Es sollen vollständige automatisierte End-to-End-Tests für die fachlichen Geschäftsprozesse zwischen Auftraggeber (AG) und Auftragnehmer (AN) implementiert werden.
+
+Die Tests sollen insbesondere prüfen:
+
+- fachlich korrekte Abläufe
+- korrekte Statusübergänge
+- vollständige Datenflüsse zwischen AG und AN
+- Transactional Outbox
+- DataspaceExchange
+- Inbound Processing
+- lokale Zustände bei Sender und Empfänger
+- Alternativen
+- Ressourcenprüfung
+- nachträgliche Änderungen
+- Versionierung
+- Idempotenz
+- Retry
+- Datensouveränität
+- Mehrparteienfähigkeit
+- Policy- und Identity-Prüfung
+
+Die Tests sollen den realen Geschäftsprozess abbilden und nicht nur einzelne API-Endpunkte isoliert testen.
+
+Die Benutzeroberfläche kann für die fachlichen Schritte verwendet werden.
+
+Für AN sind dabei insbesondere relevant:
+
+- Anfragen
+- Terminübersicht
+- Ressourcen
+
+Es werden jedoch KEINE Vorgaben dazu gemacht, welche anderen Menüpunkte vorhanden oder nicht vorhanden sein dürfen.
+
+Die separate technische Datenraum-Benutzeroberfläche ist nicht Gegenstand dieser Tests.
+
+Der technische Datenfluss über den Datenraum ist dagegen ausdrücklich Bestandteil der Tests.
+
+
+======================================================================
+1. GRUNDSÄTZLICHER DATENFLUSS
+======================================================================
+
+Für jeden organisationsübergreifenden fachlichen Vorgang soll grundsätzlich folgendes Muster geprüft werden:
+
+
+Sender
+
+→ lokale fachliche Aktion
+
+→ lokale Domainänderung
+
+→ Transactional Outbox
+
+→ DataspaceExchange
+
+→ Empfänger Inbound Processing
+
+→ lokale Domainänderung beim Empfänger
+
+
+WICHTIG:
+
+Eine organisationsübergreifende fachliche Zustandsänderung darf nicht dadurch entstehen, dass beide Organisationen zufällig dieselbe PostgreSQL-Datenbank verwenden.
+
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+dürfen im aktuellen PoC auf:
+
+- dieselbe PostgreSQL-Datenbank
+- denselben PostgreSQL-Benutzer
+
+zeigen.
+
+Trotzdem müssen AG- und AN-Domainzustände logisch voneinander getrennt sein.
+
+
+Beispiel:
+
+AG erstellt eine Projekteinladung.
+
+Dies darf NICHT dazu führen, dass der AN diese Einladung sofort über dieselbe Datenbankrow sieht.
+
+Erst:
+
+PROJECT_INVITATION
+→ DataspaceExchange
+→ AN Inbound
+
+darf den AN-lokalen Einladungsvorgang erzeugen.
+
+
+======================================================================
+2. TESTDATEN
+======================================================================
+
+Für die Tests reproduzierbare Testdaten verwenden.
+
+
+AG
+
+Organisation:
+
+Bau AG Bochum
+
+participantId:
+
+AG-BOCHUM-001
+
+
+AN
+
+Organisation:
+
+Müller Ausbau GmbH
+
+participantId:
+
+AN-MUELLER-001
+
+
+Beide Teilnehmer:
+
+identityStatus = VERIFIED
+
+
+TESTPROJEKT
+
+Name:
+
+Neubau Verwaltungsgebäude Bochum
+
+projectReference:
+
+PRJ-BO-001
+
+
+TESTLEISTUNG
+
+Name:
+
+Trockenbau 2. Obergeschoss
+
+serviceReference:
+
+SR-BO-001
+
+
+Ursprünglicher Zeitraum:
+
+12.10.2026 – 16.10.2026
+
+
+Beschreibung:
+
+Herstellung der Trockenbauwände im 2. Obergeschoss
+
+
+AN-INTERNE RESSOURCEN
+
+Beispielsweise:
+
+Kolonne Trockenbau 1
+
+Kolonne Trockenbau 2
+
+Vorarbeiter Schmidt
+
+Materiallift ML-01
+
+
+Diese konkreten Ressourcen sind AN-interne Informationen.
+
+
+######################################################################
+#
+# E2E-01
+# VOLLSTÄNDIGER HAUPTPROZESS
+#
+######################################################################
+
+TESTNAME
+
+E2E-01-project-invitation-service-alternatives-final-confirmation
+
+
+ZIEL
+
+Folgenden vollständigen Geschäftsprozess testen:
+
+AG definiert Projekt
+
+→ AG lädt AN ein
+
+→ AN akzeptiert
+
+→ AG definiert Leistung
+
+→ AG weist Leistung AN zu
+
+→ AN legt Ressourcen bzw. Ressourcenbedarf an
+
+→ AN prüft die Leistung
+
+→ ursprünglicher Termin ist nicht möglich
+
+→ AN schlägt zwei Alternativen vor
+
+→ AG prüft beide Alternativen
+
+→ AG übernimmt eine Alternative
+
+→ AN prüft die gewählte Alternative noch einmal
+
+→ AN bestätigt endgültig
+
+→ beide Seiten besitzen denselben vereinbarten Stand
+
+
+======================================================================
+3. AG LEGT PROJEKT AN
+======================================================================
+
+AG erstellt:
+
+Neubau Verwaltungsgebäude Bochum
+
+
+projectReference:
+
+PRJ-BO-001
+
+
+PRÜFEN
+
+- Projekt wurde AG-lokal korrekt angelegt.
+- Projektstatus ist fachlich korrekt.
+- Es existiert noch keine ProjectMembership zum AN.
+- Beim AN existiert noch keine ProjectInvitation.
+- Beim AN existiert noch keine aktive Projektbeziehung.
+
+
+======================================================================
+4. AG WÄHLT AN ALS PROJEKTPARTNER AUS
+======================================================================
+
+AG ruft die verfügbaren Datenraumteilnehmer ab.
+
+AN-MUELLER-001 muss als verifizierter Teilnehmer verfügbar sein.
+
+
+AG lädt diesen AN zum Projekt ein.
+
+
+======================================================================
+5. AG-SEITIGER ZUSTAND NACH EINLADUNG
+======================================================================
+
+Transactional prüfen:
+
+
+AG ProjectMembership:
+
+status = INVITED
+
+
+PROJECT_INVITATION Outbox:
+
+status = PENDING
+
+
+Outbox und Membership müssen in derselben fachlichen Transaktion entstehen.
+
+
+Wenn Outbox-Erstellung fehlschlägt:
+
+darf auch die fachliche Einladung nicht nur halb gespeichert werden.
+
+
+======================================================================
+6. VOR AN-INBOUND
+======================================================================
+
+Noch keine PROJECT_INVITATION beim AN verarbeiten.
+
+
+PRÜFEN
+
+AN besitzt noch KEINE lokale ProjectInvitation.
+
+
+Insbesondere:
+
+AN darf nicht allein deshalb eine Einladung sehen, weil AG und AN auf dieselbe physische PostgreSQL-Datenbank zugreifen.
+
+
+======================================================================
+7. PROJECT_INVITATION ÜBERTRAGEN
+======================================================================
+
+PROJECT_INVITATION
+
+über:
+
+AG Outbox
+→ DataspaceExchange
+→ AN Inbound
+
+
+übertragen.
+
+
+Prüfen:
+
+senderParticipantId = AG-BOCHUM-001
+
+recipientParticipantId = AN-MUELLER-001
+
+projectReference = PRJ-BO-001
+
+messageType = PROJECT_INVITATION
+
+
+Zusätzlich:
+
+Identity und Policy validieren.
+
+
+======================================================================
+8. AN-INBOUND ERZEUGT LOKALE EINLADUNG
+======================================================================
+
+Erst jetzt darf entstehen:
+
+AN ProjectInvitation
+
+status = PENDING
+
+
+PRÜFEN
+
+- genau eine Einladung
+- korrekte Projektinformationen
+- korrekter Absender
+- korrekte correlationId
+- korrekte Participant IDs
+- kein direkter Zugriff auf AG-private Membership erforderlich
+
+
+======================================================================
+9. AN AKZEPTIERT PROJEKT
+======================================================================
+
+AN bearbeitet die Projekteinladung.
+
+Aktion:
+
+Projekt beitreten
+
+
+AN-lokal:
+
+ProjectInvitation
+
+PENDING → ACCEPTED
+
+
+Transactional erzeugen:
+
+PROJECT_INVITATION_RESPONSE
+
+Outbox PENDING
+
+
+======================================================================
+10. VOR RESPONSE-INBOUND BEIM AG
+======================================================================
+
+Noch keine Response beim AG verarbeiten.
+
+
+PRÜFEN
+
+AG ProjectMembership bleibt:
+
+INVITED
+
+
+Nicht:
+
+ACTIVE
+
+
+Die AN-Aktion darf die AG-owned Membership nicht direkt verändern.
+
+
+======================================================================
+11. PROJECT_INVITATION_RESPONSE ÜBERTRAGEN
+======================================================================
+
+AN Outbox
+
+→ DataspaceExchange
+
+→ AG Inbound
+
+
+Response enthält mindestens:
+
+projectReference
+
+senderParticipantId
+
+recipientParticipantId
+
+decision = ACCEPTED
+
+correlationId
+
+
+======================================================================
+12. AG AKTIVIERT MEMBERSHIP ERST DURCH INBOUND
+======================================================================
+
+AG Inbound:
+
+ProjectMembership
+
+INVITED → ACTIVE
+
+
+PRÜFEN
+
+- genau eine aktive Membership
+- korrekter AN
+- keine zweite Membership
+- vorheriger INVITED-Zustand nachvollziehbar
+- AN ist jetzt fachlich Projektpartner
+
+
+======================================================================
+13. AG DEFINIERT LEISTUNG
+======================================================================
+
+AG erstellt innerhalb des Projekts:
+
+Trockenbau 2. Obergeschoss
+
+
+serviceReference:
+
+SR-BO-001
+
+
+Zeitraum:
+
+12.10.2026 – 16.10.2026
+
+
+PRÜFEN
+
+Leistung zunächst AG-lokal vorhanden.
+
+
+======================================================================
+14. AG WEIST LEISTUNG DEM AN ZU
+======================================================================
+
+AG wählt:
+
+Müller Ausbau GmbH
+
+
+Voraussetzung:
+
+ProjectMembership = ACTIVE
+
+
+PRÜFEN
+
+ACTIVE ProjectMembership ist die fachliche Voraussetzung.
+
+
+Nicht zusätzlich zwingend erforderlich:
+
+project_contractors.assignmentStatus = ACTIVE
+
+
+======================================================================
+15. SERVICE_REQUEST ERZEUGEN
+======================================================================
+
+AG erzeugt fachlich:
+
+ServiceRequest
+
+
+Transactional:
+
+SERVICE_REQUEST Outbox
+
+status = PENDING
+
+
+Payload enthält mindestens:
+
+projectReference
+
+serviceReference
+
+senderParticipantId
+
+recipientParticipantId
+
+requestedStart
+
+requestedEnd
+
+Beschreibung
+
+version / correlation information
+
+
+======================================================================
+16. VOR AN-INBOUND
+======================================================================
+
+Noch keinen SERVICE_REQUEST beim AN verarbeiten.
+
+
+PRÜFEN
+
+AN besitzt noch KEINE empfangene Leistungsanfrage.
+
+
+Auch bei gemeinsamer physischer DB darf der AN nicht den AG-owned ServiceRequest direkt als eigenen Vorgang verwenden.
+
+
+======================================================================
+17. SERVICE_REQUEST ÜBERTRAGEN
+======================================================================
+
+AG Outbox
+
+→ DataspaceExchange
+
+→ AN Inbound
+
+
+======================================================================
+18. AN-INBOUND ERZEUGT LOKALE LEISTUNGSANFRAGE
+======================================================================
+
+AN erhält eine lokale empfangene Leistungsanfrage.
+
+
+PRÜFEN
+
+Projekt:
+
+PRJ-BO-001
+
+
+Leistung:
+
+SR-BO-001
+
+
+Zeitraum:
+
+12.–16.10.2026
+
+
+Status:
+
+offen / zu prüfen
+
+
+Keine direkte gemeinsame AG-/AN-ServiceRequest-Row als fachliche Abkürzung verwenden.
+
+
+======================================================================
+19. AN STARTET RESSOURCENPRÜFUNG
+======================================================================
+
+AN öffnet die Leistungsanfrage und startet:
+
+Ressourcen prüfen
+
+
+Der Bezug zur Leistungsanfrage muss erhalten bleiben:
+
+projectReference
+
+serviceReference
+
+angefragter Zeitraum
+
+
+======================================================================
+20. AN LEGT ZUGEHÖRIGEN RESSOURCENBEDARF AN
+======================================================================
+
+Beispielsweise:
+
+2 Trockenbau-Fachkräfte
+
+1 Vorarbeiter
+
+1 Materiallift
+
+
+für:
+
+12.–16.10.2026
+
+
+PRÜFEN
+
+Diese Daten gehören ausschließlich zum AN-Kontext.
+
+
+======================================================================
+21. AN LEGT RESSOURCEN AN
+======================================================================
+
+Falls noch nicht vorhanden:
+
+Kolonne Trockenbau 1
+
+Kolonne Trockenbau 2
+
+Vorarbeiter Schmidt
+
+Materiallift ML-01
+
+
+PRÜFEN
+
+- Ressourcen gehören zum AN
+- kein Zugriff durch AG
+- owner/context korrekt gesetzt
+- Ressourcen anderer AN nicht sichtbar
+
+
+======================================================================
+22. AN PRÜFT RESSOURCENBELEGUNG
+======================================================================
+
+Testdaten so setzen, dass der ursprüngliche Zeitraum:
+
+12.–16.10.2026
+
+nicht vollständig verfügbar ist.
+
+
+Beispiel:
+
+Eine erforderliche Kapazität ist intern bereits belegt.
+
+
+PRÜFEN
+
+Ressourcenprüfung ergibt:
+
+ursprünglicher Zeitraum nicht möglich.
+
+
+======================================================================
+23. DATENSOUVERÄNITÄT
+======================================================================
+
+AG darf zu diesem Zeitpunkt NICHT erhalten:
+
+- konkrete Mitarbeiter
+- konkrete Kolonnen
+- konkrete Geräte
+- ResourceBooking IDs
+- interne Konflikte
+- andere interne Projekte
+- interne Kapazitätsplanung
+
+
+Diese Informationen verbleiben beim AN.
+
+
+======================================================================
+24. AN LEHNT URSPRÜNGLICHEN TERMIN AB UND SCHLÄGT ZWEI ALTERNATIVEN VOR
+======================================================================
+
+AN schlägt vor:
+
+
+Alternative A:
+
+19.10.2026 – 23.10.2026
+
+
+Alternative B:
+
+26.10.2026 – 30.10.2026
+
+
+Fachlich gilt:
+
+Der ursprüngliche angefragte Zeitraum wird nicht bestätigt.
+
+Stattdessen werden zwei mögliche Alternativen angeboten.
+
+
+======================================================================
+25. SERVICE_RESPONSE MIT ALTERNATIVEN
+======================================================================
+
+Bestehendes Domainmodell verwenden.
+
+
+Beispielsweise:
+
+status = ALTERNATIVE_PROPOSED
+
+
+oder:
+
+REJECTED mit alternatives
+
+
+je nachdem, welche fachliche Semantik das bestehende Modell verwendet.
+
+
+WICHTIG
+
+Nicht unnötig ein konkurrierendes zweites Statusmodell einführen.
+
+
+Response enthält:
+
+originalServiceReference
+
+ursprünglichen Zeitraum
+
+Alternative A
+
+Alternative B
+
+optional fachlichen Kommentar
+
+
+Keine internen Resource IDs.
+
+
+======================================================================
+26. TRANSACTIONAL OUTBOX AN
+======================================================================
+
+SERVICE_RESPONSE und Outbox atomar erzeugen.
+
+
+Outbox:
+
+messageType = SERVICE_RESPONSE
+
+status = PENDING
+
+
+======================================================================
+27. VOR AG-INBOUND
+======================================================================
+
+Noch keine Response beim AG verarbeiten.
+
+
+PRÜFEN
+
+AG kennt:
+
+Alternative A noch nicht.
+
+Alternative B noch nicht.
+
+
+======================================================================
+28. SERVICE_RESPONSE AN AG ÜBERTRAGEN
+======================================================================
+
+AN Outbox
+
+→ DataspaceExchange
+
+→ AG Inbound
+
+
+======================================================================
+29. AG ERHÄLT BEIDE ALTERNATIVEN
+======================================================================
+
+PRÜFEN
+
+Original:
+
+12.–16.10.
+
+
+Alternative A:
+
+19.–23.10.
+
+
+Alternative B:
+
+26.–30.10.
+
+
+Beide Alternativen besitzen eindeutige IDs oder fachlich eindeutige Referenzen.
+
+
+======================================================================
+30. AG WÄHLT ALTERNATIVE B
+======================================================================
+
+AG entscheidet:
+
+Alternative B übernehmen.
+
+
+Gewählter Zeitraum:
+
+26.10.2026 – 30.10.2026
+
+
+Diese Entscheidung darf noch NICHT direkt als endgültige Zustimmung des AN interpretiert werden.
+
+
+======================================================================
+31. AG ERZEUGT AUSWAHL-/ÄNDERUNGSNACHRICHT
+======================================================================
+
+Bestehenden geeigneten Nachrichtentyp verwenden.
+
+
+Beispielsweise:
+
+CHANGE_PROPOSAL
+
+oder vorhandene AlternativeSelection-/Agreement-Nachricht.
+
+
+Payload enthält:
+
+serviceReference
+
+selectedAlternativeId
+
+selectedStart
+
+selectedEnd
+
+baseVersion
+
+senderParticipantId
+
+recipientParticipantId
+
+
+======================================================================
+32. VOR AN-INBOUND
+======================================================================
+
+Noch keinen AN-Inbound verarbeiten.
+
+
+PRÜFEN
+
+AN weiß noch nicht, dass AG Alternative B gewählt hat.
+
+
+======================================================================
+33. AUSWAHL ERREICHT AN
+======================================================================
+
+AG Outbox
+
+→ DataspaceExchange
+
+→ AN Inbound
+
+
+AN erhält lokalen handlungsrelevanten Vorgang:
+
+AG möchte Alternative B übernehmen.
+
+
+Zeitraum:
+
+26.–30.10.2026
+
+
+======================================================================
+34. AN PRÜFT ALTERNATIVE B ERNEUT
+======================================================================
+
+AN führt erneut Ressourcenprüfung durch.
+
+
+Zeitraum:
+
+26.–30.10.2026
+
+
+Testdaten so setzen:
+
+Ressourcen sind verfügbar.
+
+
+======================================================================
+35. AN RESERVIERT / PLANT INTERNE RESSOURCEN
+======================================================================
+
+Interne Ressourcen können nun für den gewählten Zeitraum geplant bzw. reserviert werden.
+
+
+PRÜFEN
+
+Diese Belegung bleibt weiterhin AN-intern.
+
+
+======================================================================
+36. AN BESTÄTIGT ALTERNATIVE FINAL
+======================================================================
+
+AN bestätigt:
+
+26.–30.10.2026
+
+
+Bestehenden finalen Status verwenden:
+
+ACCEPTED
+
+CONFIRMED
+
+AGREED
+
+oder fachlich äquivalent.
+
+
+Keine redundanten Statuswerte einführen.
+
+
+======================================================================
+37. FINALE RESPONSE AN AG
+======================================================================
+
+AN-lokale Bestätigung
+
++ transactional Outbox
+
+
+→ DataspaceExchange
+
+→ AG Inbound
+
+
+======================================================================
+38. FINALER FACHLICHER ZUSTAND
+======================================================================
+
+AG:
+
+SR-BO-001
+
+vereinbart:
+
+26.–30.10.2026
+
+
+AN:
+
+SR-BO-001
+
+vereinbart:
+
+26.–30.10.2026
+
+
+Beide Seiten müssen denselben fachlichen finalen Stand besitzen.
+
+
+======================================================================
+39. HISTORIE
+======================================================================
+
+Nach Abschluss müssen weiterhin nachvollziehbar sein:
+
+ursprüngliche Anfrage:
+
+12.–16.10.
+
+
+Alternative A:
+
+19.–23.10.
+
+
+Alternative B:
+
+26.–30.10.
+
+
+AG-Auswahl:
+
+Alternative B
+
+
+AN finale Bestätigung:
+
+26.–30.10.
+
+
+Keine historischen Zustände überschreiben.
+
+
+######################################################################
+#
+# E2E-02
+# NACHTRÄGLICHE ÄNDERUNG DURCH AG
+#
+######################################################################
+
+TESTNAME
+
+E2E-02-change-by-ag
+
+
+AUSGANGSZUSTAND
+
+Final vereinbart:
+
+26.10.2026 – 30.10.2026
+
+
+======================================================================
+40. AG SCHLÄGT NACHTRÄGLICHE ÄNDERUNG VOR
+======================================================================
+
+AG möchte Zeitraum ändern auf:
+
+27.10.2026 – 31.10.2026
+
+
+Grund:
+
+Verschiebung vorgelagerter Arbeiten
+
+
+======================================================================
+41. CHANGE_PROPOSAL ERZEUGEN
+======================================================================
+
+AG erzeugt:
+
+CHANGE_PROPOSAL
+
+
+mit mindestens:
+
+serviceReference = SR-BO-001
+
+baseVersion = aktuelle Version
+
+oldStart = 26.10.2026
+
+oldEnd = 30.10.2026
+
+newStart = 27.10.2026
+
+newEnd = 31.10.2026
+
+reason
+
+
+Transactional Outbox.
+
+
+======================================================================
+42. ALTER ZUSTAND BLEIBT GÜLTIG
+======================================================================
+
+Vor Zustimmung des AN bleibt fachlich gültig:
+
+26.–30.10.2026
+
+
+Der neue Zeitraum ist lediglich:
+
+PENDING CHANGE
+
+
+======================================================================
+43. VOR AN-INBOUND
+======================================================================
+
+AN besitzt noch keinen lokalen Änderungsvorgang.
+
+
+Der aktuell vereinbarte Zeitraum bleibt:
+
+26.–30.10.2026
+
+
+======================================================================
+44. CHANGE_PROPOSAL ERREICHT AN
+======================================================================
+
+DataspaceExchange
+
+→ AN Inbound
+
+
+AN erhält lokale Änderungsanfrage.
+
+
+Prüfen:
+
+Bisher:
+
+26.–30.10.
+
+
+Vorschlag:
+
+27.–31.10.
+
+
+======================================================================
+45. AN PRÜFT RESSOURCEN
+======================================================================
+
+AN prüft intern:
+
+27.–31.10.2026
+
+
+Testsetup:
+
+Ressourcen verfügbar.
+
+
+======================================================================
+46. AN AKZEPTIERT AG-ÄNDERUNG
+======================================================================
+
+AN bestätigt Änderung.
+
+
+Transactional Response
+
+→ DataspaceExchange
+
+→ AG
+
+
+======================================================================
+47. VOR AG-INBOUND
+======================================================================
+
+AG finaler Zustand bleibt:
+
+26.–30.10.
+
+
+======================================================================
+48. AG EMPFÄNGT ACCEPTANCE
+======================================================================
+
+Erst jetzt:
+
+27.–31.10.2026
+
+wird neuer finaler vereinbarter Zeitraum.
+
+
+======================================================================
+49. HISTORIE
+======================================================================
+
+Erhalten:
+
+26.–30.10.
+
+AG Change Proposal:
+
+27.–31.10.
+
+AN Acceptance:
+
+27.–31.10.
+
+
+######################################################################
+#
+# E2E-03
+# NACHTRÄGLICHE ÄNDERUNG DURCH AN
+#
+######################################################################
+
+TESTNAME
+
+E2E-03-change-by-an
+
+
+AUSGANGSZUSTAND
+
+Vereinbart:
+
+27.10.2026 – 31.10.2026
+
+
+======================================================================
+50. AN ERKENNT INTERNEN RESSOURCENKONFLIKT
+======================================================================
+
+AN-intern entsteht ein Konflikt.
+
+
+Beispielsweise:
+
+benötigte Kapazität fällt aus
+
+oder:
+
+interne Überschneidung.
+
+
+WICHTIG
+
+Die konkrete interne Ursache bleibt AN-privat.
+
+
+======================================================================
+51. AN SCHLÄGT NEUEN TERMIN VOR
+======================================================================
+
+AN schlägt vor:
+
+02.11.2026 – 06.11.2026
+
+
+CHANGE_PROPOSAL
+
+
+mit:
+
+baseVersion = aktuelle Version
+
+
+======================================================================
+52. ALTER ZUSTAND BLEIBT GÜLTIG
+======================================================================
+
+Bis AG zustimmt:
+
+27.–31.10.
+
+bleibt vereinbart.
+
+
+02.–06.11.
+
+ist nur ein Vorschlag.
+
+
+======================================================================
+53. CHANGE_PROPOSAL AN → AG
+======================================================================
+
+AN Outbox
+
+→ DataspaceExchange
+
+→ AG Inbound
+
+
+AG erhält:
+
+bisheriger Zeitraum
+
+neuer Vorschlag
+
+fachliche Begründung
+
+
+Nicht übertragen:
+
+konkrete interne ResourceBookings.
+
+
+======================================================================
+54. AG PRÜFT VORSCHLAG
+======================================================================
+
+AG entscheidet:
+
+Änderung übernehmen.
+
+
+======================================================================
+55. AG BESTÄTIGT
+======================================================================
+
+AG erzeugt Acceptance Response.
+
+
+→ DataspaceExchange
+
+→ AN
+
+
+======================================================================
+56. VOR AN-INBOUND
+======================================================================
+
+AN final:
+
+weiter 27.–31.10.
+
+
+======================================================================
+57. AN EMPFÄNGT ACCEPTANCE
+======================================================================
+
+Nach AN Inbound:
+
+neuer finaler Zeitraum:
+
+02.–06.11.2026
+
+
+======================================================================
+58. HISTORIE
+======================================================================
+
+Alter Zustand und Change Proposal bleiben nachvollziehbar.
+
+
+######################################################################
+#
+# E2E-04
+# AG LEHNT NACHTRÄGLICHE AN-ÄNDERUNG AB
+#
+######################################################################
+
+AUSGANG:
+
+02.–06.11.2026
+
+
+AN schlägt vor:
+
+09.–13.11.2026
+
+
+AG lehnt ab.
+
+
+PRÜFEN
+
+- ChangeProposal = REJECTED
+- finaler Zeitraum bleibt 02.–06.11.
+- keine automatische Ressourcen-Neubelegung auf 09.–13.11.
+- Ablehnung wird zum AN übertragen
+- alter Zustand bleibt unverändert
+- Historie enthält abgelehnten Vorschlag
+
+
+######################################################################
+#
+# E2E-05
+# LEISTUNGSANFRAGE WIRD OHNE ALTERNATIVE ABGELEHNT
+#
+######################################################################
+
+1. ProjectMembership ACTIVE.
+
+2. AG erstellt zweite Leistung.
+
+3. AG weist diese dem AN zu.
+
+4. SERVICE_REQUEST wird übertragen.
+
+5. AN erhält lokale Leistungsanfrage.
+
+6. AN prüft Ressourcen.
+
+7. Keine ausreichende Kapazität.
+
+8. AN lehnt ohne Alternative ab.
+
+9. SERVICE_RESPONSE = REJECTED.
+
+10. AG erhält Response.
+
+
+PRÜFEN
+
+- Leistung = REJECTED
+- ProjectMembership bleibt ACTIVE
+- keine Vereinbarung entsteht
+- Ablehnung einer einzelnen Leistung beendet nicht die Projektpartnerschaft
+
+
+######################################################################
+#
+# E2E-06
+# AG ÄNDERUNG – AN LEHNT AB UND SCHLÄGT ALTERNATIVE VOR
+#
+######################################################################
+
+AUSGANG
+
+Vereinbart:
+
+02.–06.11.
+
+
+AG schlägt vor:
+
+09.–13.11.
+
+
+AN prüft Ressourcen.
+
+AG-Termin nicht möglich.
+
+
+AN lehnt den AG-Vorschlag ab und schlägt stattdessen vor:
+
+16.–20.11.
+
+
+PRÜFEN
+
+- bestehende Vereinbarung bleibt bis Abschluss gültig
+- AG-Vorschlag bleibt historisch erhalten
+- AN-Gegenvorschlag wird separat übertragen
+- AG kann Gegenvorschlag akzeptieren
+- erst nach vollständiger Bestätigung wird 16.–20.11. final
+
+
+######################################################################
+#
+# E2E-07
+# PROJECT_INVITATION TRANSPORTFEHLER UND RETRY
+#
+######################################################################
+
+AG lädt AN ein.
+
+
+AG:
+
+Membership = INVITED
+
+
+Outbox Transport schlägt fehl.
+
+
+Outbox:
+
+FAILED
+
+
+PRÜFEN VOR RETRY
+
+AN besitzt keine ProjectInvitation.
+
+
+Retry durchführen.
+
+
+PRÜFEN NACH RETRY + INBOUND
+
+AN besitzt genau eine ProjectInvitation.
+
+
+Keine doppelte Membership.
+
+Keine doppelte Invitation.
+
+
+######################################################################
+#
+# E2E-08
+# PROJECT_INVITATION_RESPONSE TRANSPORTFEHLER
+#
+######################################################################
+
+AN akzeptiert Einladung.
+
+
+AN lokal:
+
+Invitation ACCEPTED
+
+
+Response Transport schlägt fehl.
+
+
+PRÜFEN
+
+AG Membership bleibt INVITED.
+
+
+Retry.
+
+
+Nach AG-Inbound:
+
+Membership ACTIVE.
+
+
+Keine doppelte Business-Aktivierung.
+
+
+######################################################################
+#
+# E2E-09
+# SERVICE_REQUEST TRANSPORTFEHLER
+#
+######################################################################
+
+AG erstellt ServiceRequest.
+
+
+Outbox FAILED.
+
+
+PRÜFEN
+
+AN besitzt noch keine lokale Leistungsanfrage.
+
+
+Retry.
+
+
+Nach AN-Inbound:
+
+genau eine Leistungsanfrage.
+
+
+######################################################################
+#
+# E2E-10
+# SERVICE_RESPONSE TRANSPORTFEHLER
+#
+######################################################################
+
+AN sendet zwei Alternativen.
+
+
+Response lokal gespeichert.
+
+Outbox FAILED.
+
+
+PRÜFEN
+
+AG sieht noch keine Alternativen.
+
+
+Retry.
+
+
+Nach AG-Inbound:
+
+Alternative A genau einmal.
+
+Alternative B genau einmal.
+
+
+######################################################################
+#
+# E2E-11
+# ALTERNATIVENAUSWAHL TRANSPORTFEHLER
+#
+######################################################################
+
+AG wählt Alternative B.
+
+
+Lokale Auswahl gespeichert.
+
+Outbound Transport schlägt fehl.
+
+
+PRÜFEN
+
+AN kennt Auswahl noch nicht.
+
+
+Retry.
+
+
+Nach AN-Inbound:
+
+Auswahl genau einmal vorhanden.
+
+
+######################################################################
+#
+# E2E-12
+# FINALE BESTÄTIGUNG TRANSPORTFEHLER
+#
+######################################################################
+
+AN bestätigt die vom AG gewählte Alternative.
+
+
+AN lokal:
+
+Bestätigung gespeichert.
+
+
+Transport zum AG:
+
+FAILED
+
+
+PRÜFEN
+
+AG darf den neuen Zustand noch nicht als final vom AN bestätigt behandeln.
+
+
+Retry.
+
+
+Nach AG-Inbound:
+
+finaler Zustand korrekt.
+
+
+######################################################################
+#
+# E2E-13
+# DUPLICATE PROJECT_INVITATION
+#
+######################################################################
+
+Identische PROJECT_INVITATION zweimal inbound verarbeiten.
+
+
+PRÜFEN
+
+- genau eine AN ProjectInvitation
+- kein doppelter fachlicher Vorgang
+- kein doppeltes Business Event PROJECT_INVITATION_RECEIVED
+- technische Duplicate-Erkennung nachvollziehbar
+
+
+######################################################################
+#
+# E2E-14
+# DUPLICATE PROJECT_INVITATION_RESPONSE
+#
+######################################################################
+
+Identische Acceptance Response zweimal beim AG inbound.
+
+
+PRÜFEN
+
+- Membership genau einmal ACTIVE
+- kein zweites Membershipobjekt
+- kein doppeltes PROJECT_MEMBERSHIP_ACTIVATED Business Event
+
+
+######################################################################
+#
+# E2E-15
+# DUPLICATE SERVICE_REQUEST
+#
+######################################################################
+
+Identischen SERVICE_REQUEST zweimal AN-inbound.
+
+
+PRÜFEN
+
+- genau eine empfangene Leistungsanfrage
+- kein doppelter Ressourcenbedarf automatisch erzeugt
+- keine doppelte interne Planungsverknüpfung
+
+
+######################################################################
+#
+# E2E-16
+# DUPLICATE SERVICE_RESPONSE
+#
+######################################################################
+
+Response mit zwei Alternativen zweimal AG-inbound.
+
+
+PRÜFEN
+
+- Alternative A genau einmal
+- Alternative B genau einmal
+- keine doppelte History
+- keine doppelten Business Events
+
+
+######################################################################
+#
+# E2E-17
+# DUPLICATE CHANGE_PROPOSAL
+#
+######################################################################
+
+Gleichen ChangeProposal zweimal inbound.
+
+
+PRÜFEN
+
+genau ein offener Change.
+
+
+######################################################################
+#
+# E2E-18
+# STALE CHANGE PROPOSAL
+#
+######################################################################
+
+Aktuelle ServiceVersion:
+
+v3
+
+
+ChangeProposal basiert auf:
+
+v2
+
+
+PRÜFEN
+
+Change nicht automatisch anwenden.
+
+
+Bevorzugter fachlicher Konflikt:
+
+STALE_SERVICE_VERSION
+
+oder vorhandenes äquivalentes Modell.
+
+
+Aktuelle Vereinbarung bleibt unverändert.
+
+
+######################################################################
+#
+# E2E-19
+# KONKURRIERENDE CHANGE PROPOSALS
+#
+######################################################################
+
+ChangeProposal A ist offen.
+
+
+Bevor eine Entscheidung vorliegt:
+
+Gegenseite versucht unabhängig ChangeProposal B.
+
+
+Für den PoC bevorzugt:
+
+nur ein offener Change pro Leistung.
+
+
+PRÜFEN
+
+zweiter Vorgang wird mit fachlichem Konflikt abgelehnt.
+
+
+Beispielsweise:
+
+SERVICE_CHANGE_ALREADY_PENDING
+
+
+######################################################################
+#
+# E2E-20
+# EIN-TAGES-ALTERNATIVE
+#
+######################################################################
+
+AN schlägt vor:
+
+05.11.2026 – 05.11.2026
+
+
+PRÜFEN
+
+Alternative ist gültig.
+
+
+Regel:
+
+startDate <= endDate
+
+
+######################################################################
+#
+# E2E-21
+# PROJECT INVITATION REJECTION
+#
+######################################################################
+
+AG lädt AN ein.
+
+
+AN erhält Einladung.
+
+
+AN lehnt ab.
+
+
+PROJECT_INVITATION_RESPONSE
+
+decision = REJECTED
+
+
+AG Inbound.
+
+
+PRÜFEN
+
+AG Membership:
+
+REJECTED
+
+
+AN ist kein aktiver Projektpartner.
+
+
+Keine Leistungszuweisung an diesen AN erlaubt.
+
+
+######################################################################
+#
+# E2E-22
+# SERVICE REQUEST VOR ACTIVE MEMBERSHIP
+#
+######################################################################
+
+Membership:
+
+INVITED
+
+
+AG versucht ServiceRequest an AN zu senden.
+
+
+PRÜFEN
+
+Operation wird abgelehnt.
+
+
+Bevorzugt:
+
+PROJECT_MEMBERSHIP_NOT_ACTIVE
+
+
+Keine SERVICE_REQUEST Outbox.
+
+
+AN erhält keine Leistungsanfrage.
+
+
+######################################################################
+#
+# E2E-23
+# ACTIVE MEMBERSHIP GENÜGT FÜR LEISTUNGSZUWEISUNG
+#
+######################################################################
+
+Setup:
+
+ProjectMembership = ACTIVE
+
+
+Kein:
+
+project_contractors.assignmentStatus = ACTIVE
+
+
+AG erstellt ServiceRequest.
+
+
+PRÜFEN
+
+ServiceRequest erfolgreich.
+
+
+Damit beweisen:
+
+ProjectMembership ist das Membership-Gate.
+
+
+######################################################################
+#
+# E2E-24
+# RESSOURCENDATEN BLEIBEN PRIVAT
+#
+######################################################################
+
+AN erstellt:
+
+- Ressourcen
+- ResourceRequirements
+- ResourceBookings
+- interne Kapazitäten
+- interne Konflikte
+
+
+AG versucht regulär darauf zuzugreifen.
+
+
+PRÜFEN
+
+kein Zugriff.
+
+
+Auch bei Kenntnis einer internen ID:
+
+keine private AN-Ressource an AG ausliefern.
+
+
+######################################################################
+#
+# E2E-25
+# ZWEI AN IM SELBEN PROJEKT
+#
+######################################################################
+
+Zusätzlicher AN:
+
+Schmidt Elektro GmbH
+
+participantId:
+
+AN-SCHMIDT-002
+
+
+AG lädt beide AN ein.
+
+Beide akzeptieren.
+
+
+AG erstellt:
+
+Service A → Müller Ausbau
+
+Service B → Schmidt Elektro
+
+
+PRÜFEN
+
+Müller erhält nur Service A.
+
+Schmidt erhält nur Service B.
+
+
+Müller sieht keine:
+
+- Ressourcen von Schmidt
+- Requests von Schmidt
+- Responses von Schmidt
+
+
+Schmidt analog.
+
+
+######################################################################
+#
+# E2E-26
+# EIN AN IN MEHREREN AG-PROJEKTEN
+#
+######################################################################
+
+AG erstellt zwei Projekte.
+
+
+AN ist in beiden ACTIVE.
+
+
+AN erhält unterschiedliche Leistungen.
+
+
+PRÜFEN
+
+- Requests werden dem richtigen Projekt zugeordnet
+- Ressourcenplanung kann beide Projekte intern berücksichtigen
+- Antworten behalten richtige projectReference/serviceReference
+- keine Vermischung der Projekte
+
+
+######################################################################
+#
+# E2E-27
+# ZWEI AG MIT DEMSELBEN AN
+#
+######################################################################
+
+Falls Multi-AG im Datenmodell unterstützt wird:
+
+AG A und AG B senden jeweils eine Leistung an denselben AN.
+
+
+PRÜFEN
+
+- korrekte Senderzuordnung
+- korrekte Participant IDs
+- Ressourcenplanung kann beide Anforderungen berücksichtigen
+- Response an AG A darf nicht an AG B gelangen
+- correlationId bleibt korrekt
+
+
+######################################################################
+#
+# E2E-28
+# FALSCHE POLICY – WRONG CONSUMER
+#
+######################################################################
+
+Nachricht:
+
+recipientParticipantId = AN-B
+
+
+Policy:
+
+allowedConsumerParticipantId = AN-A
+
+
+PRÜFEN
+
+Inbound wird abgelehnt.
+
+
+Kein fachliches Domainobjekt entsteht.
+
+
+######################################################################
+#
+# E2E-29
+# FALSCHER RESPONSE-SENDER
+#
+######################################################################
+
+AG lädt:
+
+AN-MUELLER-001
+
+
+Response kommt von:
+
+AN-SCHMIDT-002
+
+
+PRÜFEN
+
+Response abweisen.
+
+
+Membership bleibt:
+
+INVITED
+
+
+######################################################################
+#
+# E2E-30
+# UNVERIFIED PARTICIPANT
+#
+######################################################################
+
+Participant:
+
+identityStatus = UNVERIFIED
+
+
+AG versucht Einladung.
+
+
+PRÜFEN
+
+Einladung nicht zulässig.
+
+
+Keine Membership / Outbox erzeugen.
+
+
+######################################################################
+#
+# E2E-31
+# FALSCHE RECIPIENT PARTICIPANT ID
+#
+######################################################################
+
+SERVICE_REQUEST ist fachlich für Müller bestimmt.
+
+recipientParticipantId zeigt jedoch auf Schmidt.
+
+
+PRÜFEN
+
+Müller erhält nichts.
+
+Schmidt darf die Nachricht wegen fehlender fachlicher Zuordnung/Policy nicht als gültigen Vorgang übernehmen.
+
+
+Kein unberechtigter ServiceRequest entsteht.
+
+
+######################################################################
+#
+# E2E-32
+# RESOURCE CONFLICT NACH BEREITS BESTÄTIGTER ALTERNATIVE
+#
+######################################################################
+
+AG hat Alternative B ausgewählt.
+
+
+Bevor AN final bestätigt:
+
+interne Ressource wird anderweitig gebunden.
+
+
+AN prüft erneut.
+
+
+PRÜFEN
+
+AN darf Alternative B jetzt nicht blind bestätigen.
+
+
+AN muss:
+
+- ablehnen
+- oder neue Alternative vorschlagen können
+
+
+Bestehende Auswahl des AG bleibt historisch erhalten.
+
+
+######################################################################
+#
+# E2E-33
+# AG ÄNDERT SERVICE-INHALT, NICHT NUR TERMIN
+#
+######################################################################
+
+Final vereinbarte Leistung vorhanden.
+
+
+AG schlägt Änderung beispielsweise vor:
+
+Menge:
+
+100 m² → 140 m²
+
+
+oder:
+
+zusätzlicher Leistungsumfang.
+
+
+PRÜFEN
+
+- ChangeProposal enthält Feldänderung
+- bisherige Version bleibt gültig, bis AN zustimmt
+- AN kann Ressourcenbedarf neu bewerten
+- AN kann akzeptieren / ablehnen / Alternative vorschlagen
+- erst nach Acceptance wird neue Version final
+
+
+######################################################################
+#
+# E2E-34
+# AN SCHLÄGT FACHLICHE ALTERNATIVE MIT ZEITRAUM UND BEDINGUNG VOR
+#
+######################################################################
+
+AN schlägt beispielsweise vor:
+
+26.–30.10.
+
+
+Bedingung:
+
+„Ausführung unter Voraussetzung der rechtzeitigen Baufreiheit.“
+
+
+PRÜFEN
+
+- Alternative enthält Termin
+- fachliche Bedingung wird übertragen
+- keine internen Ressourceninformationen werden übertragen
+- AG kann diese Alternative auswählen
+- Bedingung bleibt Bestandteil des vereinbarten Standes, sofern akzeptiert
+
+
+######################################################################
+#
+# E2E-35
+# PROJECT MEMBERSHIP REVOCATION
+#
+######################################################################
+
+Voraussetzung:
+
+keine aktiven Leistungen.
+
+
+AG beendet Projektpartnerschaft.
+
+
+Transactional:
+
+PROJECT_MEMBERSHIP_REVOKED
+
+
+PRÜFEN VOR AN-INBOUND
+
+AN kennt Revocation noch nicht.
+
+
+PRÜFEN NACH AN-INBOUND
+
+lokale AN-Beziehung entsprechend beendet.
+
+
+Historische Leistungen und Messages bleiben erhalten.
+
+
+Neue ServiceRequests nicht mehr zulässig.
+
+
+######################################################################
+#
+# E2E-36
+# REVOCATION BEI AKTIVER LEISTUNG
+#
+######################################################################
+
+Mindestens eine aktive/final vereinbarte Leistung vorhanden.
+
+
+AG versucht Membership zu beenden.
+
+
+PRÜFEN
+
+Operation wird blockiert.
+
+
+Bevorzugt:
+
+409 PROJECT_MEMBERSHIP_HAS_ACTIVE_SERVICES
+
+
+Keine Revocation Outbox.
+
+
+######################################################################
+#
+# E2E-37
+# INVITATION WITHDRAWAL VOR AN-ANTWORT
+#
+######################################################################
+
+AG hat ProjectInvitation versendet.
+
+
+AN hat noch nicht entschieden.
+
+
+AG zieht Einladung zurück.
+
+
+Fachliche Nachricht:
+
+PROJECT_INVITATION_WITHDRAWN
+
+
+PRÜFEN
+
+- AG Membership entsprechend beendet/zurückgezogen
+- AN erfährt Withdrawal erst nach Inbound
+- AN kann anschließend nicht mehr akzeptieren
+- bestehende History bleibt erhalten
+
+
+######################################################################
+#
+# E2E-38
+# ACCEPTANCE UND WITHDRAWAL RACE CONDITION
+#
+######################################################################
+
+AG zieht Einladung zurück.
+
+Nahezu gleichzeitig akzeptiert AN.
+
+
+Reihenfolge über Message-Version bzw. Businessregeln deterministisch behandeln.
+
+
+PRÜFEN
+
+Kein widersprüchlicher Zustand:
+
+AG REVOKED/WITHDRAWN
+
+während AN dauerhaft ACTIVE glaubt.
+
+
+Für Konfliktfall klare Regel implementieren.
+
+
+######################################################################
+#
+# E2E-39
+# OUTBOX ATOMARITÄT
+#
+######################################################################
+
+Für folgende Aktionen künstlich Outbox-Persistenz fehlschlagen lassen:
+
+- ProjectInvitation
+- ProjectInvitationResponse
+- ServiceRequest
+- ServiceResponse
+- ChangeProposal
+
+
+PRÜFEN
+
+Keine fachliche Domainänderung darf committed sein, wenn die zugehörige notwendige Outbox Message nicht gespeichert werden konnte.
+
+
+######################################################################
+#
+# E2E-40
+# INBOUND ATOMARITÄT
+#
+######################################################################
+
+Inbound Message wird erfolgreich geclaimt.
+
+Domain-Persistenz künstlich fehlschlagen lassen.
+
+
+PRÜFEN
+
+Message darf nicht als PROCESSED markiert sein, wenn Domainänderung fehlgeschlagen ist.
+
+
+Retry muss möglich sein.
+
+
+######################################################################
+#
+# E2E-41
+# BUSINESS EVENT VS TRANSPORT EVENT
+#
+######################################################################
+
+Beispiel:
+
+AN erstellt ServiceResponse.
+
+
+Transport:
+
+Versuch 1 FAILED
+
+Versuch 2 FAILED
+
+Versuch 3 SENT
+
+
+PRÜFEN
+
+Business Event:
+
+SERVICE_RESPONSE_CREATED
+
+genau einmal.
+
+
+Transport Events:
+
+mehrere Delivery Attempts erlaubt.
+
+
+Keine Vermischung von Business History und Transport History.
+
+
+######################################################################
+#
+# E2E-42
+# VOLLSTÄNDIGE BUSINESS-HISTORIE
+#
+######################################################################
+
+Für E2E-01 + E2E-02 + E2E-03 prüfen, dass fachlich nachvollziehbar sind:
+
+PROJECT_INVITATION_CREATED
+
+PROJECT_INVITATION_RECEIVED
+
+PROJECT_INVITATION_ACCEPTED
+
+PROJECT_MEMBERSHIP_ACTIVATED
+
+SERVICE_REQUEST_CREATED
+
+SERVICE_REQUEST_RECEIVED
+
+SERVICE_RESPONSE_CREATED
+
+ALTERNATIVES_RECEIVED
+
+ALTERNATIVE_SELECTED
+
+FINAL_CONFIRMATION
+
+CHANGE_PROPOSAL_CREATED_BY_AG
+
+CHANGE_PROPOSAL_RECEIVED_BY_AN
+
+CHANGE_ACCEPTED_BY_AN
+
+CHANGE_PROPOSAL_CREATED_BY_AN
+
+CHANGE_PROPOSAL_RECEIVED_BY_AG
+
+CHANGE_ACCEPTED_BY_AG
+
+
+Vorhandene Eventnamen verwenden, wenn diese bereits anders heißen.
+
+
+Keine redundanten parallelen Eventnamen einführen.
+
+
+######################################################################
+#
+# E2E-43
+# TERMINÜBERSICHT ZEIGT AKTUELL GÜLTIGEN STAND
+#
+######################################################################
+
+Nach mehreren Änderungen existieren historisch:
+
+12.–16.10. ursprünglicher Request
+
+26.–30.10. erste Vereinbarung
+
+27.–31.10. AG-Änderung
+
+02.–06.11. AN-Änderung
+
+
+Aktuell final:
+
+02.–06.11.
+
+
+PRÜFEN
+
+Terminübersicht zeigt als aktuell gültigen Zeitraum:
+
+02.–06.11.
+
+
+Nicht:
+
+- ursprünglichen Request
+- abgelehnte Alternative
+- offenen Vorschlag
+- alte Vereinbarung
+
+
+Historie darf separat verfügbar bleiben.
+
+
+######################################################################
+#
+# E2E-44
+# ANFRAGEN ZEIGT HANDLUNGSRELEVANTE VORGÄNGE
+#
+######################################################################
+
+Testsetup:
+
+- offene ProjectInvitation
+- offene ServiceRequest
+- offene ChangeProposal AG → AN
+
+
+PRÜFEN
+
+Alle drei Vorgänge sind fachlich unterscheidbar und bearbeitbar.
+
+
+Die zugrunde liegenden Domainmodelle bleiben getrennt.
+
+
+Keine generische gemeinsame Domainrow nur für die UI voraussetzen.
+
+
+######################################################################
+#
+# E2E-45
+# ANFRAGE → RESSOURCENPRÜFUNG → ANTWORT
+#
+######################################################################
+
+AN öffnet ServiceRequest.
+
+Startet Ressourcenprüfung.
+
+
+PRÜFEN
+
+Beim Wechsel zur Ressourcenplanung bleiben erhalten:
+
+projectReference
+
+serviceReference
+
+requestedStart
+
+requestedEnd
+
+
+Nach Ressourcenprüfung muss die Antwort eindeutig wieder dem ursprünglichen ServiceRequest zugeordnet sein.
+
+
+######################################################################
+#
+# E2E-46
+# REIN INTERNE RESSOURCENPLANUNG
+#
+######################################################################
+
+AN erstellt eine interne Ressourcenplanung ohne Bezug zu einem AG-ServiceRequest.
+
+
+PRÜFEN
+
+Dadurch entstehen NICHT automatisch:
+
+- SERVICE_REQUEST
+- SERVICE_RESPONSE
+- CHANGE_PROPOSAL
+- Dataspace Message
+- AG-Domainobjekte
+
+
+Interne Planung bleibt intern.
+
+
+======================================================================
+59. GEMEINSAME ASSERTIONS FÜR JEDE ORGANISATIONSÜBERGREIFENDE MESSAGE
+======================================================================
+
+Bei jeder Message zwischen AG und AN prüfen:
+
+
+1. SENDER
+
+Der Sender hat einen lokalen fachlichen Zustand.
+
+
+2. OUTBOX
+
+Die notwendige Message wird transactional erzeugt.
+
+
+3. BEFORE INBOUND
+
+Empfänger besitzt den neuen fachlichen Zustand noch nicht.
+
+
+4. TRANSPORT
+
+Message läuft über DataspaceExchange.
+
+
+5. PARTICIPANT IDENTITIES
+
+senderParticipantId und recipientParticipantId sind korrekt.
+
+
+6. POLICY
+
+Consumer/Usage Policy wird validiert.
+
+
+7. INBOUND
+
+Der Empfänger erzeugt oder aktualisiert ausschließlich seinen lokalen Domainzustand.
+
+
+8. IDEMPOTENZ
+
+Duplicate Messages erzeugen keine doppelten fachlichen Zustände.
+
+
+9. OWNERSHIP
+
+Keine Cross-Organization-Privatdaten werden direkt gelesen oder geschrieben.
+
+
+10. AUDIT
+
+Business Events und technische Transportevents bleiben unterscheidbar.
+
+
+======================================================================
+60. STATUSÜBERGÄNGE
+======================================================================
+
+Vorhandene Statuswerte wiederverwenden.
+
+Keine unnötigen neuen parallelen Enums einführen.
+
+
+Mindestens fachlich sicherstellen:
+
+
+PROJECT MEMBERSHIP
+
+INVITED
+→ ACTIVE
+
+oder:
+
+INVITED
+→ REJECTED
+
+später ggf.:
+
+ACTIVE
+→ REVOKED
+
+
+PROJECT INVITATION AN
+
+PENDING
+→ ACCEPTED
+
+oder:
+
+PENDING
+→ REJECTED
+
+ggf.:
+
+PENDING
+→ WITHDRAWN
+
+
+SERVICE
+
+REQUESTED
+
+→ ACCEPTED
+
+oder:
+
+→ REJECTED
+
+oder:
+
+→ ALTERNATIVE_PROPOSED
+
+
+ÄNDERUNG
+
+PENDING
+
+→ ACCEPTED
+
+oder:
+
+→ REJECTED
+
+
+Finale Vereinbarung erst nach vollständiger gegenseitiger Bestätigung.
+
+
+======================================================================
+61. VERSIONIERUNG
+======================================================================
+
+Jede nachträgliche Änderung muss auf einer bekannten Ausgangsversion basieren.
+
+
+Beispiel:
+
+ServiceVersion 1
+
+12.–16.10.
+
+
+ServiceVersion 2
+
+26.–30.10.
+
+
+ServiceVersion 3
+
+27.–31.10.
+
+
+ServiceVersion 4
+
+02.–06.11.
+
+
+Keine Version physisch überschreiben, wenn dadurch die fachliche Historie verloren geht.
+
+
+ChangeProposal enthält:
+
+baseVersion
+
+
+Bei veralteter baseVersion:
+
+Konflikt statt stiller Überschreibung.
+
+
+======================================================================
+62. TEST-FIXTURES
+======================================================================
+
+Wiederverwendbare Test Factories bereitstellen, beispielsweise:
+
+createVerifiedParticipant(...)
+
+createAgProject(...)
+
+createPendingProjectInvitation(...)
+
+createActiveProjectMembership(...)
+
+createReceivedServiceRequest(...)
+
+createConfirmedServiceAgreement(...)
+
+createResource(...)
+
+createResourceRequirement(...)
+
+createResourceBooking(...)
+
+createChangeProposal(...)
+
+
+WICHTIG
+
+Der zentrale Haupttest E2E-01 darf die organisationsübergreifenden Kernschritte nicht durch direkte DB-Statusmanipulation überspringen.
+
+
+Folgende Schritte müssen real ausgeführt werden:
+
+ProjectInvitation
+
+ProjectInvitationResponse
+
+ServiceRequest
+
+ServiceResponse
+
+Alternative Selection
+
+Final Confirmation
+
+
+======================================================================
+63. TESTISOLATION
+======================================================================
+
+Jeder Test muss unabhängig ausführbar sein.
+
+
+Nicht:
+
+E2E-03 setzt zwingend voraus, dass E2E-02 vorher gelaufen ist.
+
+
+Für Tests mit komplexem Ausgangszustand:
+
+geeignete Factory verwenden.
+
+
+======================================================================
+64. VERBINDLICHER HAUPT-HAPPY-PATH
+======================================================================
+
+Mindestens folgender komplette fachliche Ablauf muss als durchgängiger Test PASS sein:
+
+
+AG
+
+Projekt anlegen
+
+↓
+
+AN als Projektpartner auswählen
+
+↓
+
+Projekteinladung erzeugen
+
+↓
+
+PROJECT_INVITATION
+
+↓
+
+DataspaceExchange
+
+↓
+
+AN
+
+Projekteinladung empfangen
+
+↓
+
+Projektbeitritt akzeptieren
+
+↓
+
+PROJECT_INVITATION_RESPONSE
+
+↓
+
+DataspaceExchange
+
+↓
+
+AG
+
+ProjectMembership ACTIVE
+
+↓
+
+Leistung definieren
+
+↓
+
+Leistung dem AN zuweisen
+
+↓
+
+SERVICE_REQUEST
+
+↓
+
+DataspaceExchange
+
+↓
+
+AN
+
+Leistungsanfrage empfangen
+
+↓
+
+Ressourcenbedarf anlegen
+
+↓
+
+Ressourcen anlegen / auswählen
+
+↓
+
+Ressourcenbelegung prüfen
+
+↓
+
+ursprünglichen Zeitraum nicht bestätigen
+
+↓
+
+Alternative A erzeugen
+
+↓
+
+Alternative B erzeugen
+
+↓
+
+SERVICE_RESPONSE
+
+↓
+
+DataspaceExchange
+
+↓
+
+AG
+
+Alternative A und B empfangen
+
+↓
+
+Alternative B auswählen
+
+↓
+
+Auswahl an AN übermitteln
+
+↓
+
+DataspaceExchange
+
+↓
+
+AN
+
+gewählte Alternative empfangen
+
+↓
+
+Ressourcen erneut prüfen
+
+↓
+
+Alternative final bestätigen
+
+↓
+
+DataspaceExchange
+
+↓
+
+AG
+
+finale Bestätigung empfangen
+
+↓
+
+AG und AN besitzen denselben final vereinbarten Zustand
+
+
+======================================================================
+65. VERBINDLICHER CHANGE-FLOW DURCH AG
+======================================================================
+
+AG
+
+bestehende Vereinbarung
+
+↓
+
+Änderung vorschlagen
+
+↓
+
+CHANGE_PROPOSAL
+
+↓
+
+DataspaceExchange
+
+↓
+
+AN
+
+Änderung empfangen
+
+↓
+
+Ressourcen prüfen
+
+↓
+
+Änderung akzeptieren
+
+↓
+
+Response
+
+↓
+
+DataspaceExchange
+
+↓
+
+AG
+
+neuer Zustand wird final
+
+
+======================================================================
+66. VERBINDLICHER CHANGE-FLOW DURCH AN
+======================================================================
+
+AN
+
+internen Ressourcenkonflikt erkennen
+
+↓
+
+Änderung vorschlagen
+
+↓
+
+CHANGE_PROPOSAL
+
+↓
+
+DataspaceExchange
+
+↓
+
+AG
+
+Änderung prüfen
+
+↓
+
+akzeptieren
+
+↓
+
+Response
+
+↓
+
+DataspaceExchange
+
+↓
+
+AN
+
+neuer Zustand wird final
+
+
+======================================================================
+67. TESTREPORT
+======================================================================
+
+Nach dem vollständigen Lauf berichten:
+
+
+E2E-01 Hauptprozess Projekt → Leistung → Alternativen → finale Bestätigung
+PASS / FAIL
+
+E2E-02 Nachträgliche Änderung durch AG
+PASS / FAIL
+
+E2E-03 Nachträgliche Änderung durch AN
+PASS / FAIL
+
+E2E-04 AG lehnt AN-Änderung ab
+PASS / FAIL
+
+E2E-05 Leistung ohne Alternative abgelehnt
+PASS / FAIL
+
+E2E-06 AG-Änderung → AN-Gegenvorschlag
+PASS / FAIL
+
+E2E-07 ProjectInvitation Retry
+PASS / FAIL
+
+E2E-08 ProjectInvitationResponse Retry
+PASS / FAIL
+
+E2E-09 ServiceRequest Retry
+PASS / FAIL
+
+E2E-10 ServiceResponse Retry
+PASS / FAIL
+
+E2E-11 Alternative Selection Retry
+PASS / FAIL
+
+E2E-12 Final Confirmation Retry
+PASS / FAIL
+
+E2E-13 Duplicate ProjectInvitation
+PASS / FAIL
+
+E2E-14 Duplicate ProjectInvitationResponse
+PASS / FAIL
+
+E2E-15 Duplicate ServiceRequest
+PASS / FAIL
+
+E2E-16 Duplicate ServiceResponse
+PASS / FAIL
+
+E2E-17 Duplicate ChangeProposal
+PASS / FAIL
+
+E2E-18 Stale Change Proposal
+PASS / FAIL
+
+E2E-19 Concurrent Change Protection
+PASS / FAIL
+
+E2E-20 One-Day Alternative
+PASS / FAIL
+
+E2E-21 Project Invitation Rejection
+PASS / FAIL
+
+E2E-22 Service Before Active Membership
+PASS / FAIL
+
+E2E-23 Active Membership Is Sufficient
+PASS / FAIL
+
+E2E-24 Resource Privacy
+PASS / FAIL
+
+E2E-25 Multiple AN Isolation
+PASS / FAIL
+
+E2E-26 AN In Multiple Projects
+PASS / FAIL
+
+E2E-27 Multiple AG With Same AN
+PASS / FAIL / NOT SUPPORTED
+
+E2E-28 Wrong Policy Consumer
+PASS / FAIL
+
+E2E-29 Wrong Response Sender
+PASS / FAIL
+
+E2E-30 Unverified Participant
+PASS / FAIL
+
+E2E-31 Wrong Recipient
+PASS / FAIL
+
+E2E-32 Resource Conflict Before Final Confirmation
+PASS / FAIL
+
+E2E-33 Change Of Service Scope
+PASS / FAIL
+
+E2E-34 Alternative With Condition
+PASS / FAIL
+
+E2E-35 Membership Revocation
+PASS / FAIL
+
+E2E-36 Revocation With Active Service
+PASS / FAIL
+
+E2E-37 Invitation Withdrawal
+PASS / FAIL
+
+E2E-38 Acceptance/Withdrawal Race
+PASS / FAIL
+
+E2E-39 Outbox Atomicity
+PASS / FAIL
+
+E2E-40 Inbound Atomicity
+PASS / FAIL
+
+E2E-41 Business Event vs Transport Event
+PASS / FAIL
+
+E2E-42 Complete Business History
+PASS / FAIL
+
+E2E-43 Current Schedule State
+PASS / FAIL
+
+E2E-44 Actionable Requests
+PASS / FAIL
+
+E2E-45 Request → Resource Check → Response
+PASS / FAIL
+
+E2E-46 Pure Internal Resource Planning
+PASS / FAIL
+
+
+Zusätzlich:
+
+AG Typecheck:
+PASS / FAIL
+
+AN Typecheck:
+PASS / FAIL
+
+API Typecheck:
+PASS / FAIL
+
+OpenAPI / Client Codegen:
+PASS / FAIL
+
+Workspace Tests:
+PASS / FAIL
+
+Workspace Build:
+PASS / FAIL
+
+
+======================================================================
+68. FEHLERREPORT
+======================================================================
+
+Für jeden fehlgeschlagenen Test dokumentieren:
+
+Test:
+
+fachlicher Schritt:
+
+Akteur:
+
+erwarteter fachlicher Zustand:
+
+tatsächlicher fachlicher Zustand:
+
+erwartete Message:
+
+tatsächliche Message:
+
+Sender Participant:
+
+Recipient Participant:
+
+Correlation ID:
+
+betroffene Domainentität:
+
+betroffener Status:
+
+betroffene Version:
+
+Outbox Status:
+
+Inbound Status:
+
+Datei:
+
+Funktion:
+
+Ursache:
+
+notwendige Korrektur:
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+Die E2E-Suite gilt erst als vollständig, wenn mindestens folgende Kernaussagen nachgewiesen sind:
+
+1. AG kann ein Projekt anlegen.
+
+2. AG kann einen verifizierten AN einladen.
+
+3. AG-seitig entsteht zunächst ausschließlich eine INVITED Membership.
+
+4. AN erhält die Einladung erst nach PROJECT_INVITATION-Inbound.
+
+5. AN kann die Einladung akzeptieren.
+
+6. AG Membership wird erst nach PROJECT_INVITATION_RESPONSE-Inbound ACTIVE.
+
+7. AG kann danach eine Leistung definieren.
+
+8. ACTIVE ProjectMembership genügt zur Leistungszuweisung.
+
+9. AN erhält die Leistung erst nach SERVICE_REQUEST-Inbound.
+
+10. AN kann zur Leistung einen Ressourcenbedarf definieren.
+
+11. AN kann dafür eigene Ressourcen anlegen und belegen.
+
+12. Diese Ressourcen bleiben vollständig AN-intern.
+
+13. AN kann den ursprünglichen Termin nicht bestätigen und zwei Alternativen anbieten.
+
+14. Beide Alternativen werden vollständig zum AG übertragen.
+
+15. AG kann eine Alternative auswählen.
+
+16. Diese Auswahl wird zum AN übertragen.
+
+17. AN kann die ausgewählte Alternative erneut gegen die aktuelle Ressourcenlage prüfen.
+
+18. AN kann sie anschließend final bestätigen.
+
+19. Erst nach dieser Bestätigung gilt die Alternative auf beiden Seiten als final vereinbart.
+
+20. Ursprüngliche Anfrage und Alternativen bleiben historisch erhalten.
+
+21. AG kann eine bereits vereinbarte Leistung nachträglich ändern.
+
+22. AN muss dieser Änderung zustimmen, bevor sie final wird.
+
+23. AN kann seinerseits eine Änderung vorschlagen.
+
+24. AG muss dieser Änderung zustimmen, bevor sie final wird.
+
+25. Änderungen können abgelehnt werden.
+
+26. Gegenvorschläge sind möglich.
+
+27. Der bisherige vereinbarte Zustand bleibt solange gültig, bis eine Änderung vollständig bestätigt wurde.
+
+28. Jede Änderung basiert auf einer Version.
+
+29. Veraltete Änderungen werden erkannt.
+
+30. Konkurrierende offene Änderungen werden kontrolliert behandelt.
+
+31. Transportfehler erzeugen keinen vorzeitigen Remote-Zustand.
+
+32. Retry funktioniert.
+
+33. Retry erzeugt keine fachlichen Duplikate.
+
+34. Duplicate Messages sind idempotent.
+
+35. Outbox und fachliche Senderaktion sind atomar.
+
+36. Inbound Processing und lokale Empfängeränderung sind konsistent.
+
+37. Business Events und technische Transportevents werden getrennt behandelt.
+
+38. AG kann keine privaten AN-Ressourcendaten lesen.
+
+39. AN kann keine privaten AG-Domaininformationen lesen, die nicht übertragen wurden.
+
+40. Mehrere AN sind voneinander isoliert.
+
+41. Participant IDs werden korrekt für Sender und Empfänger geprüft.
+
+42. Falsche Empfänger werden abgewiesen.
+
+43. Falsche Sender werden abgewiesen.
+
+44. Nicht verifizierte Teilnehmer werden abgewiesen.
+
+45. Policies werden tatsächlich geprüft.
+
+46. Project Membership Revocation funktioniert fachlich korrekt.
+
+47. Historische Vorgänge bleiben auch nach Revocation nachvollziehbar.
+
+48. Eintägige Leistungszeiträume sind zulässig.
+
+49. Rein interne Ressourcenplanung erzeugt keinen organisationsübergreifenden Datenfluss.
+
+50. AG_DATABASE_URL, AN_DATABASE_URL und HUB_DATABASE_URL dürfen im PoC dieselbe physische Datenbank verwenden.
+
+51. Trotzdem erfolgt jeder organisationsübergreifende fachliche Zustandswechsel ausschließlich über den vorgesehenen Datenfluss.
+
+52. Typecheck ist erfolgreich.
+
+53. Tests sind erfolgreich.
+
+54. Build ist erfolgreich.
