@@ -98,7 +98,7 @@ export default function MessageDetailPage() {
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2 flex-1">
               <CardTitle className="text-2xl">
-                {delegation.takt?.taktBezeichnung || 'Takt'} – {delegation.takt?.gewerk || 'Gewerk'}
+                {delegation.takt?.taktBezeichnung || 'Leistung'} – {delegation.takt?.gewerk || 'Gewerk'}
               </CardTitle>
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">

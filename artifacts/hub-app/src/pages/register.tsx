@@ -24,7 +24,7 @@ export default function RegisterPage() {
     {
       value: 'AG',
       label: 'Auftraggeber (AG)',
-      description: 'Generalunternehmer, plant Projekte und Takte',
+      description: 'Generalunternehmer, plant Projekte und Leistungen',
       icon: Briefcase,
     },
     {
@@ -69,7 +69,7 @@ export default function RegisterPage() {
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">
-              Construct-X Takt Coordination
+              Construct-X Leistung Coordination
             </CardTitle>
             <CardDescription className="mt-2">
               Erstellen Sie ein Konto

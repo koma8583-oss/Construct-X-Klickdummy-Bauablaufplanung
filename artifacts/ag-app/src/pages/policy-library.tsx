@@ -3,7 +3,23 @@ import { ArrowLeft, ChevronRight, Globe, ShieldCheck } from "lucide-react";
 import { useGetPolicyTemplates } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { buildPreviewOdrl } from "@/components/DataPublicationWizard";
+
+function buildPolicyOdrl(code: string): Record<string, unknown> {
+  const purpose = code === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : code.toLowerCase().replace(/_/g, "");
+  return {
+    "@context": "http://www.w3.org/ns/odrl.jsonld",
+    "@type": "Set",
+    uid: "urn:odrl:data-publication:policy-library-preview",
+    permission: [{
+      target: "data-publication:policy-library-preview",
+      assigner: "organization:<ag-org-id>",
+      assignee: "organization:<nu-org-id>",
+      action: "use",
+      constraint: [{ leftOperand: "purpose", operator: "eq", rightOperand: purpose }],
+    }],
+    prohibition: [{ target: "data-publication:policy-library-preview", action: "distribute" }],
+  };
+}
 
 function PolicyDetails({ policy }: { policy: NonNullable<ReturnType<typeof useGetPolicyTemplates>["data"]>[number] }) {
   return (
@@ -34,7 +50,7 @@ export default function PolicyLibraryPage() {
         {isLoading && <p className="text-muted-foreground">Policies werden geladen…</p>}
         {isError && <p className="text-destructive">Policies konnten nicht geladen werden.</p>}
         {!isLoading && !selected && <p className="text-muted-foreground">Policy nicht gefunden.</p>}
-        {selected && <Card><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" />{selected.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">{selected.code}</p></div><Badge variant="secondary">Informativ</Badge></div></CardHeader><CardContent className="space-y-6"><PolicyDetails policy={selected} /><div><h2 className="mb-2 text-sm font-semibold">ODRL / JSON-LD</h2><pre className="max-h-[520px] overflow-auto rounded-lg bg-muted/50 p-4 text-[11px]">{JSON.stringify(buildPreviewOdrl(selected, "ag-org-preview"), null, 2)}</pre></div></CardContent></Card>}
+        {selected && <Card><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" />{selected.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">{selected.code}</p></div><Badge variant="secondary">Informativ</Badge></div></CardHeader><CardContent className="space-y-6"><PolicyDetails policy={selected} /><div><h2 className="mb-2 text-sm font-semibold">ODRL / JSON-LD</h2><pre className="max-h-[520px] overflow-auto rounded-lg bg-muted/50 p-4 text-[11px]">{JSON.stringify(buildPolicyOdrl(selected.code), null, 2)}</pre></div></CardContent></Card>}
       </div>
     );
   }

@@ -23,55 +23,7 @@ interface PolicySeed {
 }
 
 const CANONICAL_POLICIES: PolicySeed[] = [
-  // Deactivated — kept for ON CONFLICT upsert so existing DB rows are updated
-  {
-    code: "COORDINATION_USE",
-    name: "Koordinationsnutzung",
-    description:
-      "Standardrichtlinie für die projektbezogene Weitergabe von Takt- und " +
-      "Koordinationsdaten an Nachunternehmer.",
-    purpose:
-      "Nutzung der bereitgestellten Takt- und Koordinationsdaten ausschließlich " +
-      "zur Baustellenkoordination und Ressourcenplanung innerhalb des jeweiligen Projekts.",
-    permissions: ["Lesen", "Projektinterne Weitergabe", "Ressourcenplanung", "Terminplanung"],
-    prohibitions: [
-      "Kommerzielle Nutzung",
-      "Weitergabe an Dritte außerhalb des Projekts",
-      "Veränderung der Originaldaten",
-      "Speicherung über Projektende hinaus",
-    ],
-    validityRule:
-      "Gültig für die gesamte Laufzeit des Projekts, endet automatisch mit Projektabschluss.",
-    retentionRule: "Daten sind spätestens 30 Tage nach Projektabschluss zu löschen.",
-    active: false,
-  },
-  {
-    code: "READ_ONLY",
-    name: "Lesezugriff (eingeschränkt)",
-    description:
-      "Minimale Richtlinie für den reinen Lesezugriff ohne Weitergabemöglichkeit.",
-    purpose: "Reine Einsichtnahme zur Vorbereitung von Abstimmungsgesprächen.",
-    permissions: ["Lesen"],
-    prohibitions: ["Weitergabe jeglicher Art", "Kommerzielle Nutzung", "Speicherung"],
-    validityRule: "Gültig für 30 Tage ab Bereitstellung.",
-    retentionRule: "Keine Speicherung gestattet.",
-    active: false,
-  },
-  {
-    code: "SUBCONTRACTOR_FULL",
-    name: "Nachunternehmerpaket (vollständig)",
-    description:
-      "Erweiterte Richtlinie für Nachunternehmer mit umfangreichen Planungsaufgaben.",
-    purpose:
-      "Umfassende Nutzung der Takt- und Projektdaten zur Koordination und Dokumentation.",
-    permissions: ["Lesen", "Ressourcenplanung", "Terminplanung", "Interne Dokumentation"],
-    prohibitions: ["Kommerzielle Nutzung", "Weitergabe an Dritte außerhalb des Projekts"],
-    validityRule: "Gültig für die Vertragslaufzeit des Nachunternehmers.",
-    retentionRule:
-      "Daten sind innerhalb von 60 Tagen nach Vertragsende oder Projektabschluss zu löschen.",
-    active: false,
-  },
-  // ── Aktive Richtlinie ──────────────────────────────────────────────────────
+  // ── Einzige aktuell angebotene Richtlinie ──────────────────────────────────
   {
     code: "SCHEDULE_COORDINATION",
     name: "Project Coordination Subcontractor",

@@ -200,7 +200,7 @@ function PolicyGateView({ pubId, offerRef, onBack }: PolicyGateProps) {
               Schritt 1 — Datenfreigabe: Policy-Annahme erforderlich
             </p>
             <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-              Um die Taktdetails einsehen zu können, müssen Sie zunächst die Nutzungs-Policy
+              Um die Leistungsdetails einsehen zu können, müssen Sie zunächst die Nutzungs-Policy
               des zugehörigen Datenraum-Angebots akzeptieren.
             </p>
           </div>
@@ -211,8 +211,8 @@ function PolicyGateView({ pubId, offerRef, onBack }: PolicyGateProps) {
           </p>
         ) : (
           <p className="text-xs text-amber-700 dark:text-amber-400">
-            Wenden Sie sich an den Auftraggeber – für diese TaktAnfrage wurden noch keine
-            Taktinformationen veröffentlicht.
+            Wenden Sie sich an den Auftraggeber – für diese Leistungsanfrage wurden noch keine
+            Leistungsinformationen veröffentlicht.
           </p>
         )}
       </div>
@@ -737,7 +737,7 @@ export default function TaktRequestDetailPage() {
                 </div>
               )}
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Taktbezeichnung</div>
+                <div className="text-xs text-muted-foreground mb-0.5">Leistungsbezeichnung</div>
                 <div className="font-medium">{snapBez ?? '—'}</div>
               </div>
               <div>
@@ -749,7 +749,7 @@ export default function TaktRequestDetailPage() {
                 <div className="font-medium">{snapZone ?? '—'}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Taktversion</div>
+                <div className="text-xs text-muted-foreground mb-0.5">Leistungsversion</div>
                 <div className="font-medium">v{details.taktVersion}</div>
               </div>
               <div>

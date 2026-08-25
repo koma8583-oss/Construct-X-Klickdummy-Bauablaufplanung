@@ -288,7 +288,7 @@ export default function TaktRequestsInboxPage() {
               <TableRow>
                 <TableHead className="text-xs">Anfrage-Nr.</TableHead>
                 <TableHead className="text-xs hidden sm:table-cell">Auftraggeber</TableHead>
-                <TableHead className="text-xs">Takt</TableHead>
+                <TableHead className="text-xs">Leistung</TableHead>
                 <TableHead className="text-xs">Antwortfrist</TableHead>
                 <TableHead className="text-xs">Anfragestatus</TableHead>
                 <TableHead className="text-xs hidden sm:table-cell">Erinnerungen</TableHead>
