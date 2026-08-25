@@ -20,6 +20,28 @@ const policySchema = z.object({
   validUntil: externalDate.optional(),
 }).strict();
 
+const policySnapshotSchema = z.object({
+  policyId: nonEmpty(200),
+  templateId: nonEmpty(200),
+  templateVersion: z.number().int().positive(),
+  code: nonEmpty(200),
+  name: nonEmpty(500),
+  description: nonEmpty(4000),
+  permissions: z.array(nonEmpty(500)).max(100),
+  prohibitions: z.array(nonEmpty(500)).max(100),
+  provider: z.object({
+    organizationId: nonEmpty(200),
+    userId: nonEmpty(200).nullable(),
+  }).strict(),
+  recipientOrganizationId: nonEmpty(200),
+  purpose: nonEmpty(2000),
+  projectReference: nonEmpty(200).nullable(),
+  workPackageReference: nonEmpty(200).nullable(),
+  validFrom: externalDate.nullable(),
+  validUntil: externalDate.nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+}).strict();
+
 const invitationPolicySchema = z.object({
   usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
   allowedConsumerParticipantId: nonEmpty(200),
@@ -84,6 +106,7 @@ export const externalProjectInvitationSchema = z.object({
   invitationMessage: z.string().trim().max(4000).optional(),
   validUntil: externalDate.optional(),
   policy: invitationPolicySchema,
+  policySnapshot: policySnapshotSchema.optional(),
   dataOffer: z.object({
     publicationId: nonEmpty(200),
     title: nonEmpty(500),
@@ -126,6 +149,7 @@ export const externalServiceRequestSchema = z.object({
   plannedEnd: externalDate,
   resourceRequirements: z.array(resourceRequirementSchema).max(100),
   policy: policySchema.optional(),
+  policySnapshot: policySnapshotSchema.optional(),
 }).strict().refine((value) => Date.parse(value.plannedEnd) >= Date.parse(value.plannedStart), {
   message: "plannedEnd must not be before plannedStart",
 });
@@ -206,6 +230,25 @@ export type ExchangePolicy = {
   validUntil?: string;
 };
 
+export type ExternalPolicySnapshot = {
+  policyId: string;
+  templateId: string;
+  templateVersion: number;
+  code: string;
+  name: string;
+  description: string;
+  permissions: readonly string[];
+  prohibitions: readonly string[];
+  provider: { organizationId: string; userId: string | null };
+  recipientOrganizationId: string;
+  purpose: string;
+  projectReference: string | null;
+  workPackageReference: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  createdAt: string;
+};
+
 export type DataspaceParticipant = {
   localOrgId?: string;
   participantId: string;
@@ -240,6 +283,7 @@ export type ExternalProjectInvitation = {
     permissions?: string[];
     prohibitions?: string[];
   };
+  policySnapshot?: ExternalPolicySnapshot;
   dataOffer?: {
     publicationId: string;
     title: string;
@@ -300,6 +344,7 @@ export type ExternalServiceRequest = {
   plannedEnd: string;
   resourceRequirements: ExternalResourceRequirement[];
   policy?: ExchangePolicy;
+  policySnapshot?: ExternalPolicySnapshot;
 };
 
 export type ExternalServiceResponse = {

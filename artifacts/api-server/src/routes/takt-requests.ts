@@ -860,6 +860,7 @@ router.post(
         correlationId: id,
         messageId: notificationMessageId(id),
         resourceRequirements: toExternalResourceRequirements(requirementRows),
+        policySnapshot: (snapPayload.policySnapshot as Parameters<typeof toExternalServiceRequest>[0]["policySnapshot"]),
       });
     } catch (error) {
       res.status(422).json({ error: error instanceof Error ? error.message : "Invalid service request data." });

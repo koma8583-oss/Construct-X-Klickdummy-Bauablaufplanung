@@ -4,6 +4,7 @@ import type {
   ExternalServiceResponse,
   ExchangeMetadata,
   ExternalResourceRequirement,
+  ExternalPolicySnapshot,
 } from "./external-contracts";
 import type { MessageEnvelope } from "../../lib/transport/message-transport";
 
@@ -51,6 +52,7 @@ export function toExternalServiceRequest(input: {
   correlationId?: string;
   messageId?: string;
   resourceRequirements?: ExternalResourceRequirement[];
+  policySnapshot?: ExternalPolicySnapshot;
 }): ExternalServiceRequest {
   if (!input.plannedStart || !input.plannedEnd) {
     throw new Error("Service request cannot be published without plannedStart and plannedEnd");
@@ -73,6 +75,7 @@ export function toExternalServiceRequest(input: {
     plannedEnd: input.plannedEnd,
     resourceRequirements: input.resourceRequirements ?? [],
     policy: { allowedConsumerOrgId: input.receiverOrgId, usagePurpose: CONSTRUCTION_SERVICE_COORDINATION_PURPOSE },
+    ...(input.policySnapshot ? { policySnapshot: input.policySnapshot } : {}),
   };
 }
 

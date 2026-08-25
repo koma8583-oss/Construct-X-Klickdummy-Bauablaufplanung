@@ -21,6 +21,11 @@ export interface PolicySnapshot {
   readonly policyId: string;
   readonly templateId: string;
   readonly templateVersion: number;
+  readonly code: string;
+  readonly name: string;
+  readonly description: string;
+  readonly permissions: readonly string[];
+  readonly prohibitions: readonly string[];
   readonly provider: Readonly<{ organizationId: string; userId: string | null }>;
   readonly recipientOrganizationId: string;
   readonly purpose: string;
@@ -83,6 +88,11 @@ export function createPolicySnapshot(input: CreatePolicySnapshotInput): PolicySn
     policyId: `tk-policy-${crypto.randomUUID()}`,
     templateId: template.templateId,
     templateVersion: template.version,
+    code: template.code,
+    name: template.name,
+    description: template.description,
+    permissions: [...template.permissions],
+    prohibitions: [...template.prohibitions],
     provider: Object.freeze({
       organizationId: input.providerContext.organizationId,
       userId: input.providerContext.userId ?? null,

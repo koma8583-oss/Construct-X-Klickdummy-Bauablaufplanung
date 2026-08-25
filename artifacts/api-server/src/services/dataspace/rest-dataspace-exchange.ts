@@ -157,6 +157,7 @@ export class RestDataspaceExchange implements DataspaceExchange {
       plannedStart: payload.plannedStart,
       plannedEnd: payload.plannedEnd,
       policy: payload.policy ?? null,
+      ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
     };
   }
 

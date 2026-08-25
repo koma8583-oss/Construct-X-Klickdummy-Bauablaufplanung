@@ -24,6 +24,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
 } from "@workspace/db";
+import { createPolicySnapshot } from "../services/policy-snapshot-service";
 import { eq, and } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
@@ -396,6 +397,16 @@ export async function createTaktRequestWithSnapshot(
   // needing a separate DB lookup or a schema change to takt_requests.
   const snapshotPayload: Record<string, unknown> = {
     ...(basePayload as unknown as Record<string, unknown>),
+    policySnapshot: createPolicySnapshot({
+      templateId: "PERFORMANCE_COORDINATION",
+      providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
+      overrides: {
+        recipientOrganizationId: input.nuOrgId,
+        purpose: "construction-service-coordination",
+        projectReference: project.id,
+        workPackageReference: input.taktId,
+      },
+    }),
     ...(input.subject != null || input.message != null
       ? {
           coordinationContext: {

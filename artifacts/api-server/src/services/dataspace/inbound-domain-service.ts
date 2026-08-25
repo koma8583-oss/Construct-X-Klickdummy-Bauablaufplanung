@@ -92,7 +92,7 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
       leistungReference,
       plannedStart: payload.plannedStart,
       plannedEnd: payload.plannedEnd,
-      policySnapshot: payload.policy ?? null,
+      policySnapshot: payload.policySnapshot ?? payload.policy ?? null,
       payloadSnapshot: payload as unknown as Record<string, unknown>,
       status: "RECEIVED",
       receivedAt: new Date(metadata.createdAt),

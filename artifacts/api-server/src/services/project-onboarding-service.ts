@@ -14,6 +14,7 @@ import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory"
 import { deliverLocalProjectInvitation } from "./dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 import { ProjectMembershipError } from "./project-membership-service";
+import { createPolicySnapshot } from "./policy-snapshot-service";
 
 type CombinedInvitationInput = {
   projectId: string;
@@ -107,6 +108,17 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
       const invitationId = crypto.randomUUID();
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
+      const policySnapshot = createPolicySnapshot({
+        templateId: "PROJECT_COORDINATION",
+        providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
+        overrides: {
+          recipientOrganizationId: anOrgId,
+          purpose: "PROJECT_COLLABORATION",
+          projectReference: project.id,
+          ...(input.validFrom ? { validFrom: input.validFrom.toISOString() } : {}),
+          ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+        },
+      });
       const [membership] = await tx.insert(projectMembershipsTable).values({
         projectId: input.projectId,
         agOrgId: input.agOrgId,
@@ -149,6 +161,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
           usagePurpose: "PROJECT_MEMBERSHIP",
           allowedConsumerParticipantId: participant.participantId,
         },
+        policySnapshot,
         dataOffer: {
           publicationId: publication.id,
           title: publication.title,

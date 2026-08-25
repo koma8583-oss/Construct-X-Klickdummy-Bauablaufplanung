@@ -49,7 +49,7 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     dataPublicationId: payload.dataOffer?.publicationId ?? null,
     dataPublicationTitle: payload.dataOffer?.title ?? null,
     selectedFields: payload.dataOffer?.selectedFields ?? null,
-    policySnapshot: payload.dataOffer?.policy ?? {
+    policySnapshot: payload.policySnapshot ?? payload.dataOffer?.policy ?? {
       usagePurpose: payload.policy.usagePurpose,
       allowedConsumerParticipantId: payload.policy.allowedConsumerParticipantId,
     },

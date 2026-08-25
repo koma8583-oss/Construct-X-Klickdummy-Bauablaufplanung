@@ -25,6 +25,7 @@ import {
   buildContentSnapshot,
   computeContentHash,
 } from "./data-publication-service";
+import { createPolicySnapshot } from "./policy-snapshot-service";
 
 export class ProjectMembershipError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -241,6 +242,16 @@ export async function inviteParticipant(input: {
   const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
   const messageId = `project-invitation-${invitationId}`;
   const now = new Date();
+  const policySnapshot = createPolicySnapshot({
+    templateId: "PROJECT_COORDINATION",
+    providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
+    overrides: {
+      recipientOrganizationId: anOrgId,
+      purpose: "PROJECT_COLLABORATION",
+      projectReference: project.id,
+      ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+    },
+  });
   const invitationPayload: ExternalProjectInvitation = {
     metadata: {
       messageId,
@@ -265,6 +276,7 @@ export async function inviteParticipant(input: {
       usagePurpose: "PROJECT_MEMBERSHIP",
       allowedConsumerParticipantId: participant.participantId,
     },
+    policySnapshot,
   };
   const [membership] = await db.transaction(async (tx) => {
     const [created] = await tx.insert(projectMembershipsTable).values({
@@ -467,6 +479,17 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       const invitationId = crypto.randomUUID();
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
+      const policySnapshot = createPolicySnapshot({
+        templateId: "PROJECT_COORDINATION",
+        providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
+        overrides: {
+          recipientOrganizationId: anOrgId,
+          purpose: "PROJECT_COLLABORATION",
+          projectReference: project.id,
+          ...(input.validFrom ? { validFrom: input.validFrom.toISOString() } : {}),
+          ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+        },
+      });
       const previousMembership = existingMemberships.find((membership) => membership.anOrgId === anOrgId);
       const [membership] = previousMembership
         ? await tx.update(projectMembershipsTable).set({
@@ -563,6 +586,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           permissions: policy.permissions,
           prohibitions: policy.prohibitions,
         },
+        policySnapshot,
         dataOffer: {
           publicationId: publication.id,
           title: publication.title,
