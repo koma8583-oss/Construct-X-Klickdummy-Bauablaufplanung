@@ -17,7 +17,9 @@ import {
   takteTable,
   taktRequestsTable,
   taktResponsesTable,
+  taktResponseAlternativesTable,
   taktResponseDecisionsTable,
+  taktVersionsTable,
   taktRequestSnapshotsTable,
   taktResponseAlternativesTable,
   messageInboxTable,
@@ -55,6 +57,7 @@ async function cleanup() {
     const responses = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(inArray(taktResponsesTable.taktRequestId, requestIds));
     const responseIds = responses.map(({ id }) => id);
+    await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
     await db.delete(taktResponseDecisionsTable).where(inArray(taktResponseDecisionsTable.taktRequestId, requestIds));
     if (responseIds.length) {
       await db.delete(taktResponseAlternativesTable).where(inArray(taktResponseAlternativesTable.responseId, responseIds));
@@ -171,5 +174,105 @@ describe("independent AG–AN coordination flow", () => {
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: response.body.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
+  });
+
+  it("runs alternatives, revision and a shifted second agreement", async () => {
+    // Start a fresh coordination round through the public AG API.
+    const created = await request(app)
+      .post("/api/takt-requests")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({ taktId: TAKT, nuOrgId: AN });
+    expect(created.status).toBe(201);
+    const firstRoundId = created.body.id as string;
+
+    const sent = await request(app)
+      .post(`/api/takt-requests/${firstRoundId}/send`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(sent.status).toBe(200);
+
+    // The transport and inbound processing are separate boundaries.
+    await db.update(taktRequestsTable)
+      .set({ status: "UNDER_REVIEW" })
+      .where(eq(taktRequestsTable.id, firstRoundId));
+
+    const alternatives = await request(app)
+      .post(`/api/takt-requests/${firstRoundId}/responses`)
+      .set("Authorization", `Bearer ${anToken}`)
+      .send({
+        decision: "ALTERNATIVES_PROPOSED",
+        alternatives: [
+          { alternativeId: `${PREFIX}-alt-early`, rank: 1, timeWindow: { start: "2026-10-15", end: "2026-10-28" }, crewSize: 3 },
+          { alternativeId: `${PREFIX}-alt-late`, rank: 2, timeWindow: { start: "2026-11-01", end: "2026-11-14" }, crewSize: 4 },
+        ],
+      });
+    expect(alternatives.status).toBe(201);
+
+    const revisionDecision = await request(app)
+      .post(`/api/takt-requests/${firstRoundId}/gu-decisions`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        decisionType: "REQUEST_REVISION",
+        comment: "Bitte die Ausführung auf den späteren Bauabschnitt verschieben.",
+        idempotencyKey: `${PREFIX}-revision-decision`,
+      });
+    expect(revisionDecision.status).toBe(201);
+    expect(revisionDecision.body.updatedRequestStatus).toBe("REVISION_REQUIRED");
+
+    const revision = await request(app)
+      .post(`/api/takt-requests/${firstRoundId}/revisions`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        plannedTimeWindow: { start: "2026-11-01", end: "2026-11-14" },
+        subject: "Verschobene Leistungsplanung",
+        message: "Neue Abstimmungsrunde für den späteren Bauabschnitt.",
+        sendImmediately: false,
+      });
+    expect(revision.status).toBe(201);
+    expect(revision.body.newRequestStatus).toBe("DRAFT");
+    expect(revision.body.newTaktVersion).toBe(2);
+    const secondRoundId = revision.body.newRequestId as string;
+
+    const [oldRequest] = await db.select({ status: taktRequestsTable.status })
+      .from(taktRequestsTable).where(eq(taktRequestsTable.id, firstRoundId));
+    expect(oldRequest.status).toBe("SUPERSEDED");
+
+    await db.update(taktRequestsTable)
+      .set({ status: "UNDER_REVIEW" })
+      .where(eq(taktRequestsTable.id, secondRoundId));
+
+    const shiftedResponse = await request(app)
+      .post(`/api/takt-requests/${secondRoundId}/responses`)
+      .set("Authorization", `Bearer ${anToken}`)
+      .send({
+        decision: "ACCEPTED",
+        acceptedTimeWindow: { start: "2026-11-01", end: "2026-11-14" },
+        comment: "Der verschobene Zeitraum ist bestätigt.",
+      });
+    expect(shiftedResponse.status).toBe(201);
+
+    const finalDecision = await request(app)
+      .post(`/api/takt-requests/${secondRoundId}/gu-decisions`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        decisionType: "CONFIRM_ACCEPTED",
+        idempotencyKey: `${PREFIX}-final-decision`,
+      });
+    expect(finalDecision.status).toBe(201);
+    expect(finalDecision.body.updatedRequestStatus).toBe("ACCEPTED");
+
+    const [takt] = await db.select().from(takteTable).where(eq(takteTable.id, TAKT));
+    expect(String(takt.plannedStart)).toContain("2026-11-01");
+    expect(String(takt.plannedEnd)).toContain("2026-11-14");
+    expect(takt.version).toBe(2);
+
+    const versions = await db.select({ version: taktVersionsTable.version, sourceType: taktVersionsTable.sourceType })
+      .from(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
+    expect(versions.some((version) => version.version === 2 && version.sourceType === "REVISION")).toBe(true);
+
+    const alternativesInHistory = await db.select({ alternativeId: taktResponseAlternativesTable.alternativeId })
+      .from(taktResponseAlternativesTable)
+      .where(eq(taktResponseAlternativesTable.responseId, alternatives.body.responseId));
+    expect(alternativesInHistory.map((alternative) => alternative.alternativeId).sort())
+      .toEqual([`${PREFIX}-alt-early`, `${PREFIX}-alt-late`].sort());
   });
 });
