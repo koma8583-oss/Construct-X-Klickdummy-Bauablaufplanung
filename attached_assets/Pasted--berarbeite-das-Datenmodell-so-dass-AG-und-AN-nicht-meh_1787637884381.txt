@@ -1,0 +1,75 @@
+Überarbeite das Datenmodell so, dass AG und AN nicht mehr dieselbe Leistungsanfrage-Tabelle als gemeinsamen fachlichen Zustand verwenden.
+
+Ziel:
+- Die bestehende Tabelle `leistungsanfragen` bzw. ihr Legacy-Alias `taktRequestsTable` bleibt ausschließlich AG-owned.
+- Der AN benötigt eine eigene lokale Projektion einer per Dataspace empfangenen Leistungsanfrage.
+- Dass AG, AN und Hub im lokalen PoC dieselbe physische PostgreSQL-Datenbank verwenden dürfen, ändert daran nichts. Die fachlichen Zustände müssen logisch getrennt bleiben.
+
+Erzeuge eine neue AN-Tabelle, z. B.:
+
+`an_leistungsanfragen`
+
+Empfohlene Felder:
+- id: lokale AN-ID, Primärschlüssel
+- externalLeistungsanfrageId: ID der AG-Anfrage
+- externalRequestVersion
+- sourceMessageId
+- correlationId
+- senderAgOrgId
+- receiverAnOrgId
+- projectReference
+- leistungReference
+- plannedStart
+- plannedEnd
+- policySnapshot
+- payloadSnapshot
+- status
+- receivedAt
+- detailsRetrievedAt
+- respondedAt
+- createdAt
+- updatedAt
+
+Wichtig:
+- Die AG-ID darf nicht als lokale AN-Primäridentität verwendet werden.
+- `externalLeistungsanfrageId` dient ausschließlich der Referenz auf die externe AG-Anfrage.
+
+Füge mindestens folgende Unique Constraints hinzu:
+- UNIQUE(sourceMessageId)
+- UNIQUE(receiverAnOrgId, externalLeistungsanfrageId, externalRequestVersion)
+
+Verwende für den AN ein eigenes Statusmodell, z. B.:
+- RECEIVED
+- DETAILS_RETRIEVED
+- UNDER_REVIEW
+- RESPONDED
+- REVISION_REQUIRED
+- CONFIRMED
+- CANCELLED
+- SUPERSEDED
+
+Erzeuge zusätzlich eine AN-lokale Tabelle für die empfangenen Ressourcenanforderungen, z. B.:
+
+`an_leistungsanfrage_resource_requirements`
+
+Felder:
+- id
+- anLeistungsanfrageId
+- externalResourceTypeCode
+- externalResourceTypeName
+- localResourceTypeId nullable
+- requiredCapacity
+- capacityUnit
+- utilizationPercent
+- periodStart
+- periodEnd
+- requiredQualification
+- notes
+- createdAt
+- updatedAt
+
+`localResourceTypeId` ist ausschließlich eine AN-interne Zuordnung und darf niemals über den Dataspace an den AG übertragen werden.
+
+Passe die AN-Schemaexports entsprechend an.
+
+Noch keine bestehenden AG-Tabellen löschen.
