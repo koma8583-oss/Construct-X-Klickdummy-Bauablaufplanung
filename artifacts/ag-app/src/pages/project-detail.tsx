@@ -2422,7 +2422,8 @@ export default function ProjectDetail() {
                   ) : (
                     /* No active request — offer inline form */
                     <div>
-                      {!contractors?.length ? (
+                       {(!contractors?.some(c => c.assignmentStatus === 'ACTIVE') &&
+                         !memberships?.some(m => m.status === 'ACTIVE')) ? (
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
                           <Users className="w-4 h-4 mt-0.5 shrink-0" />
                           <span>
@@ -2460,14 +2461,28 @@ export default function ProjectDetail() {
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Nachunternehmer</Label>
                                 <div className="rounded-md border border-input bg-background divide-y">
-                                  {Array.from(new Map(
-                                    (assignments || [])
-                                      .filter(a => a.assignmentStatus === 'ACTIVE')
-                                      .map(a => [a.anOrgId, a]),
-                                  ).values()).map(a => {
-                                    const checked = vergabeAnOrgIds.includes(a.anOrgId);
+                                   {Array.from(new Map([
+                                     ...(assignments || [])
+                                       .filter(a => a.assignmentStatus === 'ACTIVE')
+                                       .map(a => [a.anOrgId, {
+                                         anOrgId: a.anOrgId,
+                                         anName: a.anName,
+                                         label: `${a.anName} – ${a.trade || 'Alle Gewerke'}`,
+                                       }]),
+                                     ...(memberships || [])
+                                       .filter(m => m.status === 'ACTIVE')
+                                       .map(m => {
+                                         const participant = allAnOrgs?.find(p => p.id === m.anOrgId);
+                                         return [m.anOrgId, {
+                                           anOrgId: m.anOrgId,
+                                           anName: participant?.name ?? m.anOrgId,
+                                           label: participant?.name ?? m.anOrgId,
+                                         }] as const;
+                                       }),
+                                   ] as const).values()).map(a => {
+                                     const checked = vergabeAnOrgIds.includes(a.anOrgId);
                                     return (
-                                      <label key={a.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50">
+                                       <label key={a.anOrgId} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50">
                                         <input
                                           type="checkbox"
                                           checked={checked}
@@ -2479,11 +2494,12 @@ export default function ProjectDetail() {
                                             setVergabePublicationId('');
                                           }}
                                         />
-                                        <span>{a.anName} – {a.trade || 'Alle Gewerke'}</span>
+                                         <span>{a.label}</span>
                                       </label>
                                     );
                                   })}
-                                  {(!assignments || assignments.filter(a => a.assignmentStatus === 'ACTIVE').length === 0) && (
+                                   {(!assignments || assignments.filter(a => a.assignmentStatus === 'ACTIVE').length === 0) &&
+                                    (!memberships || memberships.filter(m => m.status === 'ACTIVE').length === 0) && (
                                     <p className="px-3 py-2 text-xs text-muted-foreground">Keine aktiven Nachunternehmer zugeordnet.</p>
                                   )}
                                 </div>
