@@ -830,7 +830,7 @@ export default function TerminuebersichtPage() {
 
   // ── Lookup maps ────────────────────────────────────────────────────────────
   const localProjectMap = useMemo(
-    () => new Map(localProjects.map((p) => [p.id, p.displayName])),
+    () => new Map(localProjects.map((p) => [p.id, p.localProjectCode])),
     [localProjects],
   );
 
