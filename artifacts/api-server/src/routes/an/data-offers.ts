@@ -29,6 +29,7 @@ import {
 } from "../../services/an-project-invitation-service";
 import { createDataspaceExchange } from "../../services/dataspace/dataspace-exchange-factory";
 import { deliverLocalProjectInvitationResponse } from "../../services/dataspace/local-dataspace-delivery";
+import { buildOdrl } from "../../lib/odrl-builder";
 
 const router = Router();
 
@@ -91,6 +92,35 @@ async function loadLocalOffer(publicationId: string, anOrgId: string) {
     .limit(1);
   return invitation ?? null;
 }
+
+// ── GET /data-publications/:publicationId/odrl ────────────────────────────────
+// The AN app's /api/* requests are routed through /api/an/*. Build the ODRL
+// document from the AN-local invitation projection instead of reading AG
+// publication or project tables.
+router.get(
+  "/data-publications/:publicationId/odrl",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const anOrgId = requireAn(req, res);
+    if (!anOrgId) return;
+    const publicationId = req.params.publicationId as string;
+    const invitation = await loadLocalOffer(publicationId, anOrgId);
+    if (!invitation) {
+      res.status(404).json({ error: "Data offer not found" });
+      return;
+    }
+
+    const policy = asRecord(invitation.policySnapshot);
+    res.json(buildOdrl({
+      publicationId: invitation.dataPublicationId ?? invitation.id,
+      policyCode: asString(policy.code, "PROJECT_INVITATION") ?? "PROJECT_INVITATION",
+      agOrgId: invitation.senderAgOrgId,
+      nuOrgId: anOrgId,
+      validFrom: invitation.createdAt,
+      validUntil: invitation.invitationExpiresAt,
+    }));
+  },
+);
 
 async function deliverDecision(payload: Parameters<typeof deliverLocalProjectInvitationResponse>[0]) {
   const exchange = createDataspaceExchange();
