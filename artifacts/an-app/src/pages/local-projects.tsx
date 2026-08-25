@@ -330,7 +330,12 @@ export default function LocalProjectsPage() {
           <Button variant="outline" size="sm" asChild>
             <Link href="/resource-bookings">
               <CalendarDays className="w-4 h-4" />
-              Ressourcenbelegungen
+              Gesamtbelegung
+            </Link>
+          </Button>
+           <Button variant="outline" size="sm" asChild>
+            <Link href="/local-projects/resources">
+              Ressourcen verwalten
             </Link>
           </Button>
           <Button
@@ -421,6 +426,12 @@ export default function LocalProjectsPage() {
                 </div>
 
                 <div className="mt-auto flex justify-end gap-1 pt-4">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/local-projects/${p.id}/resources`}>
+                      <CalendarDays className="mr-1.5 h-4 w-4" />
+                      Ressourcenplanung
+                    </Link>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

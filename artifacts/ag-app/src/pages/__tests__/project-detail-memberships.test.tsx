@@ -146,13 +146,13 @@ describe("project participant directory membership lifecycle", () => {
   beforeEach(() => {
     memberships = [...membershipFixtures];
     updateMemberships = undefined;
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(JSON.stringify([
-        { localOrgId: "an-invited", organizationName: "Eingeladener Betrieb", participantId: "local:an-invited", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
-        { localOrgId: "an-active", organizationName: "Aktiver Betrieb", participantId: "local:an-active", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
-        { localOrgId: "an-revoked", organizationName: "Widerrufener Betrieb", participantId: "local:an-revoked", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
-        { localOrgId: "an-rejected", organizationName: "Abgelehnter Betrieb", participantId: "local:an-rejected", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
-        { localOrgId: "an-new", organizationName: "Neuer Betrieb", participantId: "local:an-new", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN" },
+         { localOrgId: "an-invited", organizationName: "Eingeladener Betrieb", participantId: "local:an-invited", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
+         { localOrgId: "an-active", organizationName: "Aktiver Betrieb", participantId: "local:an-active", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
+         { localOrgId: "an-revoked", organizationName: "Widerrufener Betrieb", participantId: "local:an-revoked", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
+         { localOrgId: "an-rejected", organizationName: "Abgelehnter Betrieb", participantId: "local:an-rejected", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
+         { localOrgId: "an-new", organizationName: "Neuer Betrieb", participantId: "local:an-new", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
       ]), { status: 200, headers: { "Content-Type": "application/json" } }),
     );
   });
@@ -166,7 +166,7 @@ describe("project participant directory membership lifecycle", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
 
     const rowFor = async (name: string) =>
       (await screen.findByText(name)).closest("div.rounded-lg") as HTMLElement;
@@ -176,26 +176,18 @@ describe("project participant directory membership lifecycle", () => {
     expect(within(await rowFor("Abgelehnter Betrieb")).getByText("Abgelehnt")).toBeInTheDocument();
   });
 
-  it("refreshes the directory with a pending row after inviting a participant", async () => {
+  it("does not offer an unassigned participant in the project partner dialog", async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
 
-    const newParticipant = (await screen.findByText("Neuer Betrieb")).closest("div.rounded-lg");
-    expect(newParticipant).not.toBeNull();
-    await user.click(within(newParticipant as HTMLElement).getByRole("button", { name: "Einladen" }));
-
-    await waitFor(() => {
-      const refreshedRow = screen.getByText("Neuer Betrieb").closest("div.rounded-lg");
-      expect(refreshedRow).not.toBeNull();
-      expect(within(refreshedRow as HTMLElement).getByText("Einladung ausstehend")).toBeInTheDocument();
-    });
+    expect(screen.queryByText("Neuer Betrieb")).not.toBeInTheDocument();
   });
 
   it("refreshes invited and active rows to revoked after confirmation", async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Teilnehmer/ }));
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
 
     const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
     await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Widerrufen" }));

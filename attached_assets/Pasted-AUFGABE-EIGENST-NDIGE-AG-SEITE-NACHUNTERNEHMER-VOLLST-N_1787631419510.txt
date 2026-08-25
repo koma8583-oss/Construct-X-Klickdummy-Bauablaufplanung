@@ -1,0 +1,305 @@
+AUFGABE – EIGENSTÄNDIGE AG-SEITE „NACHUNTERNEHMER“ VOLLSTÄNDIG ENTFERNEN
+
+ZIEL
+
+Die eigenständige AG-Seite „Nachunternehmer“ wird nicht mehr benötigt und soll vollständig aus der normalen AG-Oberfläche entfernt werden.
+
+Es soll KEINE Ersatzseite wie:
+
+- Datenraumteilnehmer
+- Partner
+- Nachunternehmen
+- Teilnehmerübersicht
+
+angelegt werden.
+
+Die Auswahl und Einbindung eines AN erfolgt ausschließlich projektbezogen:
+
+Projekt öffnen
+→ Projektpartner
+→ „Zum Projekt einladen“
+→ Datenraumteilnehmer auswählen
+→ Einladung senden
+→ AN stimmt zu
+→ Project Membership ACTIVE
+→ anschließend Leistung / Arbeitspaket zuordnen
+
+
+WICHTIG
+
+Nur die globale AG-Seite wird entfernt.
+
+NICHT entfernen:
+
+- ParticipantDirectory
+- GET /dataspace/participants
+- dataspace_participants
+- Project Membership
+- Project Invitation
+- project_contractors, sofern weiterhin für Gewerk/Arbeitspaket benötigt
+- DataspaceExchange
+- PROJECT_INVITATION
+- PROJECT_INVITATION_RESPONSE
+
+
+======================================================================
+1. AG-NAVIGATION
+======================================================================
+
+Den Menüpunkt:
+
+„Nachunternehmer“
+
+vollständig aus der AG-Navigation entfernen.
+
+Keine Ersatznavigation „Datenraumteilnehmer“ oder „Partner“ hinzufügen.
+
+
+======================================================================
+2. ROUTING
+======================================================================
+
+Die eigenständige AG-Route der Nachunternehmerseite aus dem normalen Router entfernen.
+
+Je nach bestehendem Routing beispielsweise:
+
+/nachunternehmer
+/ag/nachunternehmer
+/subcontractors
+
+oder vorhandenes Äquivalent.
+
+
+Falls Deep Links für den PoC noch abgefangen werden sollen:
+
+alte Route optional auf die AG-Projektübersicht umleiten.
+
+Bevorzugt:
+
+/projects
+
+bzw. bestehende Projektübersicht.
+
+Keinen Redirect auf eine neue Teilnehmerseite anlegen.
+
+
+======================================================================
+3. PAGE-KOMPONENTE
+======================================================================
+
+Die zugehörige globale Nachunternehmer-Page identifizieren.
+
+Wenn die Page ausschließlich für diese globale Übersicht verwendet wird:
+
+Datei entfernen.
+
+Wenn einzelne Komponenten weiterhin innerhalb einer Projektansicht benötigt werden:
+
+nur diese wiederverwendbaren Komponenten behalten.
+
+
+======================================================================
+4. PROJEKTSEITE IST KÜNFTIG DER EINZIGE EINSTIEG
+======================================================================
+
+Die Projektseite muss weiterhin folgende Funktionen enthalten:
+
+Bereich:
+„Projektpartner“
+
+Aktion:
+„Zum Projekt einladen“
+
+Anzeige:
+
+- aktive Projektpartner
+- ausstehende Einladungen
+- abgelehnte Einladungen, falls fachlich angezeigt
+- technische Übertragungsfehler, falls vorhanden
+
+
+======================================================================
+5. PARTICIPANT DIRECTORY BLEIBT
+======================================================================
+
+GET /dataspace/participants
+
+und der zugrunde liegende ParticipantDirectory-Service bleiben vollständig erhalten.
+
+Sie werden weiterhin benötigt für:
+
+Projekt
+→ „Zum Projekt einladen“
+→ Teilnehmerauswahl
+
+
+ParticipantDirectory soll nicht mehr als eigenständige AG-Seite dargestellt werden.
+
+
+======================================================================
+6. KEINE GLOBALE TEILNEHMERÜBERSICHT
+======================================================================
+
+Es soll im AG-Frontend keine globale Liste aller Datenraumteilnehmer geben.
+
+ParticipantDirectory wird nur kontextbezogen geladen, beispielsweise beim Öffnen des Dialogs:
+
+„Zum Projekt einladen“
+
+
+======================================================================
+7. ALTE DIREKTE PROJEKTZUORDNUNG ENTFERNEN
+======================================================================
+
+Falls die Nachunternehmerseite derzeit Funktionen enthält wie:
+
+- AN einem Projekt direkt zuordnen
+- AN auf ACTIVE setzen
+- Projektbeziehung manuell aktivieren
+
+diese Funktionen entfernen.
+
+Die Projektbeziehung entsteht ausschließlich durch:
+
+AG:
+„Zum Projekt einladen“
+
+→ PROJECT_INVITATION
+
+→ AN:
+„Projekt beitreten“
+
+→ PROJECT_INVITATION_RESPONSE
+
+→ AG:
+Project Membership ACTIVE
+
+
+======================================================================
+8. project_contractors NICHT FALSCH ENTFERNEN
+======================================================================
+
+Falls project_contractors weiterhin benötigt wird für:
+
+- Gewerk
+- Arbeitspaket
+- fachliche Zuständigkeit
+- Laufzeit
+- Zusatzinformationen
+
+diese Struktur behalten.
+
+Sie ist aber NICHT mehr für den Projektbeitritt verantwortlich.
+
+
+======================================================================
+9. DIREKTE LINKS ENTFERNEN
+======================================================================
+
+Global suchen nach Links auf die alte Seite.
+
+Insbesondere:
+
+Nachunternehmer
+/subcontractors
+/nachunternehmer
+/ag/nachunternehmer
+
+Prüfen:
+
+- Sidebar
+- Top Navigation
+- Dashboard
+- Quick Actions
+- Breadcrumbs
+- Projektseiten
+- Empty States
+- Footer
+- Tests
+
+
+======================================================================
+10. EMPTY STATES
+======================================================================
+
+Falls bisher irgendwo steht:
+
+„Noch keine Nachunternehmer vorhanden“
+
+und ein Link zur globalen Nachunternehmerseite angeboten wird:
+
+ersetzen durch eine projektbezogene Aktion:
+
+„Zum Projekt einladen“
+
+
+======================================================================
+11. BEGRIFFE BEREINIGEN
+======================================================================
+
+Global suchen nach:
+
+„Nachunternehmer verwalten“
+„AN verwalten“
+„AN zuordnen“
+
+Nicht jeden fachlichen Begriff „Nachunternehmer“ löschen.
+
+Nur Begriffe entfernen, die eine globale Verwaltung oder direkte Projektmitgliedschaft suggerieren.
+
+
+======================================================================
+12. TESTS
+======================================================================
+
+Tests der entfernten globalen Page löschen oder anpassen.
+
+Neuer Navigationstest:
+
+AG Navigation enthält NICHT:
+
+„Nachunternehmer“
+
+
+Projektfunktionstest:
+
+Projekt öffnen
+→ „Zum Projekt einladen“
+→ Participant Directory verfügbar
+
+
+Test:
+
+aktive Project Membership
+→ AN wird innerhalb des Projekts als Projektpartner angezeigt.
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+1. Kein Menüpunkt „Nachunternehmer“ im AG-Frontend.
+
+2. Keine eigenständige globale Nachunternehmerseite.
+
+3. Keine Ersatzseite „Datenraumteilnehmer“.
+
+4. Keine globale Teilnehmerübersicht.
+
+5. ParticipantDirectory bleibt technisch bestehen.
+
+6. „Zum Projekt einladen“ funktioniert innerhalb eines Projekts.
+
+7. Projektpartner werden innerhalb des Projekts angezeigt.
+
+8. Direkte Projektzuordnung über eine globale AN-Seite ist nicht mehr möglich.
+
+9. project_contractors bleibt nur für fachliche Zusatzzuordnungen bestehen, soweit benötigt.
+
+10. Keine verwaisten Links oder Imports.
+
+11. Typecheck PASS.
+
+12. Tests PASS.
+
+13. Build PASS.

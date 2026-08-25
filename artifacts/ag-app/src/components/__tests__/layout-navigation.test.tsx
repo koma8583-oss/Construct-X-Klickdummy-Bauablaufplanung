@@ -38,6 +38,7 @@ describe("AG navigation", () => {
 
     expect(screen.queryByRole("link", { name: "Nachunternehmer" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Datenraumteilnehmer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Datenraum" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Projekte" })).toBeInTheDocument();
   });
 });

@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Briefcase,
   Send,
-  Database,
   Settings,
   LogOut,
   Hexagon,
@@ -42,7 +41,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard, badge: pendingProposalsTotal },
     { name: t('nav.projects'), href: '/projects', icon: Briefcase },
     { name: 'Anfragen', href: '/leistungsanfragen', icon: Send, badge: pendingProposalsTotal },
-    { name: t('nav.datenraum'), href: '/datenraum', icon: Database },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
 

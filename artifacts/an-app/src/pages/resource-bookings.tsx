@@ -11,6 +11,7 @@
  * the whole day (00:00–23:59).
  */
 import { useState } from "react";
+import { useParams } from "wouter";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import {
@@ -444,6 +445,7 @@ function CreateBookingDialog({
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function ResourceBookingsPage() {
+  const { projectId } = useParams<{ projectId?: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -454,6 +456,7 @@ export default function ResourceBookingsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const queryParams: Record<string, unknown> = {
+    ...(projectId && { localProjectId: projectId }),
     ...(sourceFilter !== "ALL" && { sourceType: sourceFilter }),
     ...(statusFilter !== "ALL" && { status: statusFilter }),
     ...(startFrom && { startFrom: new Date(startFrom).toISOString() }),
@@ -535,9 +538,13 @@ export default function ResourceBookingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Ressourcenbelegungen</h1>
+          <h1 className="text-2xl font-bold">
+            {projectId ? "Ressourcenplanung" : "Gesamtbelegung"}
+          </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Alle Belegungen Ihrer Ressourcen — intern und aus Leistungsanfragen
+            {projectId
+              ? "Ressourcenbedarf und Belegungen dieses internen Projekts"
+              : "Projektübergreifende Übersicht Ihrer internen Ressourcenbelegungen"}
           </p>
         </div>
         <Button

@@ -1333,7 +1333,7 @@ export default function ProjectDetail() {
           {canManageContractors && (
           <Button variant="outline" onClick={() => setIsParticipantDirectoryOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
-            Teilnehmer
+             Projektpartner
             {memberships && memberships.length > 0 && (
               <span className="ml-1.5 text-xs bg-primary/15 text-primary rounded-full px-1.5 py-0.5 font-semibold">
                 {memberships.filter(m => m.status === 'ACTIVE').length}
@@ -1454,15 +1454,6 @@ export default function ProjectDetail() {
                       )}
                     </div>
                   </div>
-                  <Link
-                    href="/datenraum"
-                    onClick={(e) => e.stopPropagation()}
-                    className="shrink-0"
-                  >
-                    <Button size="sm" variant="outline" className="text-xs h-7">
-                      Details öffnen
-                    </Button>
-                  </Link>
                   {pub.status === 'PUBLISHED' && (
                     <Button
                       size="sm"
@@ -1807,9 +1798,9 @@ export default function ProjectDetail() {
                 <p className="text-sm text-muted-foreground">
                   Zuordnungen und Anfragen pro Nachunternehmen
                 </p>
-                <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  AN zuordnen
+                <Button size="sm" onClick={() => setIsInvitationPackageOpen(true)}>
+                  <Users className="w-4 h-4 mr-1.5" />
+                  Zum Projekt einladen
                 </Button>
               </div>
 
@@ -1820,11 +1811,11 @@ export default function ProjectDetail() {
                   </div>
                   <h3 className="font-medium text-base mb-1">Noch keine Nachunternehmen zugeordnet</h3>
                   <p className="text-sm text-muted-foreground max-w-xs mb-5">
-                    Ordnen Sie Nachunternehmen zu, um Leistungen an sie zu vergeben.
+                    Laden Sie einen Nachunternehmer ein. Nach der Zustimmung wird er als Projektpartner verfügbar.
                   </p>
-                  <Button size="sm" onClick={() => setIsAssignAnOpen(true)}>
-                    <Plus className="w-4 h-4 mr-1.5" />
-                    Erstes AN zuordnen
+                  <Button size="sm" onClick={() => setIsInvitationPackageOpen(true)}>
+                    <Users className="w-4 h-4 mr-1.5" />
+                    Zum Projekt einladen
                   </Button>
                 </div>
               ) : (
@@ -2320,13 +2311,13 @@ export default function ProjectDetail() {
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
                           <Users className="w-4 h-4 mt-0.5 shrink-0" />
                           <span>
-                            Noch kein Nachunternehmer verknüpft.{' '}
+                            Noch kein aktiver Projektpartner vorhanden.{' '}
                             <button
                               type="button"
                               className="font-medium text-primary hover:underline"
-                              onClick={() => setIsParticipantDirectoryOpen(true)}
+                              onClick={() => setIsInvitationPackageOpen(true)}
                             >
-                              Jetzt verknüpfen
+                              Zum Projekt einladen
                             </button>
                           </span>
                         </div>
@@ -3045,9 +3036,9 @@ export default function ProjectDetail() {
       <Dialog open={isParticipantDirectoryOpen} onOpenChange={setIsParticipantDirectoryOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+              <DialogTitle className="flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
-              Teilnehmer — {project?.projectName}
+              Projektpartner — {project?.projectName}
             </DialogTitle>
           </DialogHeader>
 
@@ -3099,119 +3090,6 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
-      {/* ── Assign AN Dialog ────────────────────────────────────────────────── */}
-      <Dialog open={isAssignAnOpen} onOpenChange={(open) => { setIsAssignAnOpen(open); if (!open) resetNewAssignmentForm(); }}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>AN zuordnen</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreateAssignment} className="space-y-4 py-4">
-            {/* AN selection */}
-            <div className="space-y-2">
-              <Label>Nachunternehmen</Label>
-              <Select value={newAnOrgId} onValueChange={setNewAnOrgId} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Nachunternehmen wählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allAnOrgs?.map(org => (
-                    <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Multi-trade input */}
-            <div className="space-y-2">
-              <Label>Gewerke <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <div className="flex gap-2">
-                <Input
-                  value={newTradeInput}
-                  onChange={(e) => setNewTradeInput(e.target.value)}
-                  placeholder="z.B. Trockenbau, Estrich …"
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTrade(); } }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 px-3"
-                  onClick={handleAddTrade}
-                  disabled={!newTradeInput.trim()}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              {/* Trade chips */}
-              {newTrades.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {newTrades.map(trade => (
-                    <span key={trade} className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
-                      {trade}
-                      <button
-                        type="button"
-                        onClick={() => setNewTrades(prev => prev.filter(t => t !== trade))}
-                        className="rounded-full hover:bg-primary/20 p-0.5 transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">
-                {newTrades.length === 0
-                  ? 'Ohne Gewerk → eine Zuordnung für alle Gewerke.'
-                  : `Es werden ${newTrades.length} Zuordnung${newTrades.length !== 1 ? 'en' : ''} angelegt (je eine pro Gewerk).`}
-              </p>
-            </div>
-
-            {/* Work package + dates */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Gültig ab <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                <DatePicker value={newValidFrom} onChange={setNewValidFrom} />
-              </div>
-              <div className="space-y-2">
-                <Label>Gültig bis <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                <DatePicker value={newValidTo} onChange={setNewValidTo} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Arbeitspaket-Referenz <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input
-                value={newWorkPackage}
-                onChange={(e) => setNewWorkPackage(e.target.value)}
-                placeholder="z.B. AP-12"
-              />
-            </div>
-
-            {/* Status */}
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={newAssignmentStatus} onValueChange={(v) => setNewAssignmentStatus(v as 'PLANNED' | 'ACTIVE')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PLANNED">Geplant</SelectItem>
-                  <SelectItem value="ACTIVE">Aktiv</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => { setIsAssignAnOpen(false); resetNewAssignmentForm(); }}>
-                Abbrechen
-              </Button>
-              <Button type="submit" disabled={!newAnOrgId || createAssignment.isPending}>
-                {newTrades.length > 1 ? `${newTrades.length} Zuordnungen anlegen` : 'Zuordnen'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Edit Assignment Dialog ────────────────────────────────────────────────── */}
       <Dialog open={!!editAssignmentId} onOpenChange={(open) => { if (!open) setEditAssignmentId(null); }}>
         <DialogContent className="sm:max-w-[500px]">

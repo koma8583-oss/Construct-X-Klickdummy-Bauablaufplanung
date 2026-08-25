@@ -79,6 +79,8 @@ function AuthRoutedApp() {
         </Route>
 
         <Route path="/local-projects" component={LocalProjects} />
+        <Route path="/local-projects/resources" component={Resources} />
+        <Route path="/local-projects/:projectId/resources" component={ResourceBookings} />
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />
         <Route path="/data-offers" component={DataOffers} />
@@ -87,7 +89,9 @@ function AuthRoutedApp() {
         </Route>
         <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />
-        <Route path="/resources" component={Resources} />
+        <Route path="/resources">
+          <Redirect to="/local-projects/resources" />
+        </Route>
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

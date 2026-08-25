@@ -1,0 +1,471 @@
+AUFGABE – EIGENSTÄNDIGE AG-SEITE „DATENRAUM“ AUS DER NORMALEN FACHOBERFLÄCHE ENTFERNEN
+
+ZIEL
+
+Der Datenraum bleibt ein zentraler technischer Bestandteil der Anwendung.
+
+Er soll für den normalen AG-Fachanwender jedoch NICHT mehr als eigenständiger Arbeitsbereich dargestellt werden.
+
+Der AG arbeitet fachlich über:
+
+- Projekte
+- Projektpartner
+- Leistungszuordnung / Koordination
+- Datenveröffentlichungen
+
+Der Datenraum ist der technische Mechanismus im Hintergrund.
+
+Daher soll die eigenständige AG-Seite:
+
+„Datenraum“
+
+aus der normalen Navigation entfernt werden.
+
+
+WICHTIG
+
+NICHT die Datenraumfunktionalität entfernen.
+
+Insbesondere NICHT entfernen:
+
+- DataspaceExchange
+- ParticipantDirectory
+- /api/dataspace/participants
+- Inbound APIs
+- Outbound APIs
+- Outbox
+- Message Delivery
+- Message Claims
+- Policies
+- Identity Validation
+- PROJECT_INVITATION
+- PROJECT_INVITATION_RESPONSE
+- SERVICE_REQUEST
+- SERVICE_RESPONSE
+- CHANGE_PROPOSAL
+- CLARIFICATION
+- CONSTRAINT
+- READINESS
+- Datenveröffentlichungen
+
+
+======================================================================
+1. AG-NAVIGATION
+======================================================================
+
+Den normalen AG-Menüpunkt:
+
+„Datenraum“
+
+entfernen.
+
+Keine Ersatznavigation wie:
+
+„Dataspace“
+„Connector“
+„Nachrichten“
+„Datenaustausch“
+
+im normalen AG-Fachmenü anlegen.
+
+
+======================================================================
+2. DATENRAUM IST INFRASTRUKTUR
+======================================================================
+
+Der Datenraum soll im Fachworkflow transparent verwendet werden.
+
+Beispiel:
+
+AG klickt:
+
+„Zum Projekt einladen“
+
+Intern:
+
+ParticipantDirectory
+→ PROJECT_INVITATION
+→ Outbox
+→ DataspaceExchange
+
+Der Nutzer muss dafür nicht zunächst eine Seite „Datenraum“ öffnen.
+
+
+======================================================================
+3. DATENRAUM-INFORMATIONEN KONTEXTBEZOGEN ANZEIGEN
+======================================================================
+
+Technische Zustände dort anzeigen, wo sie fachlich relevant sind.
+
+
+Beispiel Projekteinladung:
+
+Fachstatus:
+
+„Einladung ausstehend“
+
+zusätzlich optional Transportstatus:
+
+„Übertragung ausstehend“
+„Übermittelt“
+„Übertragung fehlgeschlagen“
+
+
+Bei Fehler:
+
+„Die Einladung wurde erstellt, konnte aber noch nicht übertragen werden.“
+
+Aktion:
+
+„Erneut senden“
+
+
+======================================================================
+4. DATENVERÖFFENTLICHUNG
+======================================================================
+
+Falls die bisherige Datenraumseite Funktionen für Datenveröffentlichungen enthält:
+
+diese NICHT ersatzlos löschen.
+
+Prüfen, ob sie bereits projektbezogen vorhanden sind.
+
+Datenveröffentlichung gehört bevorzugt in den Projektkontext:
+
+Projekt
+→ Datenveröffentlichungen
+
+
+Dort beispielsweise:
+
+- Empfänger
+- freigegebene Daten
+- Policy
+- Veröffentlichungsstatus
+- Übertragungsstatus
+
+
+======================================================================
+5. NACHRICHTEN-/TRANSPORT-HISTORIE
+======================================================================
+
+Falls die Datenraumseite eine technische Nachrichtenhistorie enthält:
+
+nicht automatisch als normale AG-Funktion an anderer Stelle neu aufbauen.
+
+Für den Fachanwender genügt normalerweise der kontextbezogene Status.
+
+
+Technische Details dürfen optional weiterhin für:
+
+- Entwicklung
+- Demonstration
+- Administration
+- Debugging
+
+verfügbar bleiben.
+
+
+======================================================================
+6. OPTIONAL: TECHNISCHE DEBUG-SEITE BEHALTEN
+======================================================================
+
+Falls die bestehende Datenraumseite für Entwicklung oder Demonstration wertvoll ist:
+
+Komponente darf intern bestehen bleiben.
+
+Aber:
+
+- nicht in normaler AG-Navigation anzeigen
+- nicht als reguläre Fachfunktion behandeln
+
+
+Optional nur über eine direkte technische Route erreichbar, beispielsweise:
+
+/debug/dataspace
+
+oder vorhandenes internes Äquivalent.
+
+Keine neue Debug-Route einführen, wenn sie nicht benötigt wird.
+
+
+======================================================================
+7. KEINE BACKEND-ROUTEN ENTFERNEN
+======================================================================
+
+Nur weil die AG-Seite verschwindet, dürfen keine notwendigen API-Routen gelöscht werden.
+
+Insbesondere behalten:
+
+/api/dataspace/participants
+
+Inbound Routes
+
+Delivery-/Retry Routes
+
+Policy-/Identity-Funktionen
+
+Exchange-/Message-Funktionen
+
+
+======================================================================
+8. PARTICIPANT DIRECTORY
+======================================================================
+
+ParticipantDirectory bleibt ausschließlich kontextbezogene Infrastruktur.
+
+Beispiel:
+
+Projekt
+→ „Zum Projekt einladen“
+→ GET /dataspace/participants
+
+
+Keine eigenständige:
+
+„Datenraumteilnehmer“
+
+Seite anlegen.
+
+
+======================================================================
+9. PROJECT MEMBERSHIP
+======================================================================
+
+Der Datenraumtransport soll für den Anwender über den fachlichen Projektworkflow sichtbar werden.
+
+Projektpartnerbereich:
+
+Ausstehende Einladung
+→ technischer Transferstatus optional
+
+ACTIVE
+→ Projektpartner
+
+REJECTED
+→ Einladung abgelehnt
+
+
+Keine zusätzliche Datenraumseite erforderlich.
+
+
+======================================================================
+10. SERVICE COORDINATION
+======================================================================
+
+Dasselbe Prinzip für:
+
+SERVICE_REQUEST
+SERVICE_RESPONSE
+CHANGE_PROPOSAL
+CLARIFICATION
+CONSTRAINT
+READINESS
+
+
+Der Nutzer arbeitet über:
+
+Projekt / Koordination
+
+und nicht über:
+
+Datenraum / Nachrichten senden.
+
+
+======================================================================
+11. RETRY-AKTIONEN KONTEXTBEZOGEN
+======================================================================
+
+Wenn eine Übertragung fehlschlägt:
+
+Retry direkt am betroffenen fachlichen Objekt anbieten.
+
+Beispielsweise:
+
+Einladung
+[Erneut senden]
+
+oder:
+
+Leistungsanfrage
+[Übertragung erneut versuchen]
+
+
+Nicht verlangen:
+
+„Öffne Datenraum → Nachrichten → Failed → Retry“
+
+
+======================================================================
+12. DIREKTE LINKS ENTFERNEN
+======================================================================
+
+Global suchen nach:
+
+Datenraum
+/dataspace
+/ag/dataspace
+
+und unterscheiden:
+
+A) Frontend-Navigation/Page-Link
+
+B) notwendiger API-/technischer Code
+
+
+Nur A entfernen.
+
+B ausdrücklich behalten.
+
+
+======================================================================
+13. DASHBOARD PRÜFEN
+======================================================================
+
+Falls im AG-Dashboard eine Kachel:
+
+„Datenraum“
+
+vorhanden ist:
+
+entfernen.
+
+Falls darin fachlich relevante Informationen enthalten sind:
+
+prüfen, ob diese besser projektbezogen angezeigt werden.
+
+
+======================================================================
+14. BREADCRUMBS / QUICK ACTIONS
+======================================================================
+
+Entfernen:
+
+Datenraum als eigener Fachbereich.
+
+Keine Quick Action:
+
+„Datenraum öffnen“
+
+für normale AG-Anwender.
+
+
+======================================================================
+15. TECHNISCHE TERMINOLOGIE REDUZIEREN
+======================================================================
+
+Der Fachnutzer muss Begriffe wie:
+
+Outbox
+Inbound
+Connector
+Exchange Message
+Claim
+
+nicht in der normalen UI sehen.
+
+Diese Begriffe gehören in:
+
+Debug
+Audit Details
+Developer Views
+
+
+======================================================================
+16. TESTS
+======================================================================
+
+Navigationstest:
+
+AG-Menü enthält NICHT:
+
+„Datenraum“
+
+
+Projekt-Invite-Test:
+
+Participant Directory funktioniert weiterhin.
+
+
+Transport-Test:
+
+Einladung wird weiterhin über DataspaceExchange übertragen.
+
+
+Retry-Test:
+
+fehlgeschlagene Einladung kann weiterhin aus dem Projektkontext erneut gesendet werden.
+
+
+Datenveröffentlichungstest:
+
+projektbezogene Veröffentlichung funktioniert weiterhin.
+
+
+======================================================================
+17. NICHT ÄNDERN
+======================================================================
+
+Folgende Architektur ausdrücklich beibehalten:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+agDb
+anDb
+hubDb
+
+DataspaceExchange
+
+ParticipantDirectory
+
+Outbox
+
+Inbound Processing
+
+Policies
+
+Identity Validation
+
+
+Die Entfernung der Seite „Datenraum“ ist ausschließlich eine Änderung der Benutzerführung.
+
+Sie ist KEIN Rückbau der Datenraumarchitektur.
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+1. Kein Menüpunkt „Datenraum“ mehr im normalen AG-Menü.
+
+2. Keine eigenständige Datenraumseite für den normalen AG-Fachanwender.
+
+3. Keine Ersatzseite „Datenraumteilnehmer“.
+
+4. DataspaceExchange funktioniert unverändert.
+
+5. ParticipantDirectory funktioniert unverändert.
+
+6. Projekteinladungen laufen weiterhin über den Datenraum.
+
+7. Leistungsanfragen laufen weiterhin über den Datenraum.
+
+8. Datenveröffentlichungen bleiben verfügbar.
+
+9. Transportfehler werden kontextbezogen am Fachobjekt angezeigt.
+
+10. Retry ist kontextbezogen möglich.
+
+11. Backend-Dataspace-Routen bleiben erhalten.
+
+12. Technische Debug-Funktionen dürfen intern erhalten bleiben.
+
+13. Keine verwaisten Navigationseinträge oder Imports.
+
+14. Typecheck PASS.
+
+15. Tests PASS.
+
+16. Build PASS.

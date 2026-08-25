@@ -1,0 +1,1215 @@
+AUFGABE – AN-NAVIGATION VEREINFACHEN UND „RESSOURCENBELEGUNG“ VOLLSTÄNDIG UNTER „INTERNE PROJEKTE“ INTEGRIEREN
+
+ZIEL
+
+Im AN-System soll der eigenständige Hauptmenüpunkt:
+
+„Ressourcenbelegung“
+
+entfallen.
+
+Die Funktionalität der Ressourcenplanung und Ressourcenbelegung bleibt vollständig erhalten, wird aber fachlich dem Bereich:
+
+„Interne Projekte“
+
+zugeordnet.
+
+Die Ressourcenplanung ist eine interne AN-Funktion und kein eigenständiger Datenraumprozess.
+
+Die bevorzugte AN-Navigation lautet danach:
+
+Übersicht
+
+Anfragen
+
+Projekte
+
+Interne Projekte
+
+Koordination
+
+
+WICHTIG:
+
+Nicht die Ressourcenplanung entfernen.
+
+Entfernt wird ausschließlich der eigenständige Hauptmenüpunkt bzw. die globale Navigation „Ressourcenbelegung“.
+
+Die Funktionen bleiben unter „Interne Projekte“ verfügbar.
+
+
+======================================================================
+1. HAUPTMENÜ „RESSOURCENBELEGUNG“ ENTFERNEN
+======================================================================
+
+Den Menüpunkt:
+
+„Ressourcenbelegung“
+
+vollständig aus der AN-Hauptnavigation entfernen.
+
+Keine Ersatznavigation wie:
+
+„Ressourcen“
+„Kapazitäten“
+„Belegungsplanung“
+„Ressourcenplanung“
+
+als neuen Hauptmenüpunkt anlegen.
+
+
+Die Ressourcenplanung gehört künftig ausschließlich unter:
+
+„Interne Projekte“.
+
+
+======================================================================
+2. ZIELNAVIGATION AN
+======================================================================
+
+Die normale AN-Navigation soll anschließend bevorzugt so aussehen:
+
+Übersicht
+
+Anfragen
+
+Projekte
+
+Interne Projekte
+
+Koordination
+
+
+Dabei gilt:
+
+Anfragen
+→ eingehende fachliche Vorgänge
+
+Projekte
+→ externe/gemeinsame Projekte aus der Zusammenarbeit mit AG
+
+Interne Projekte
+→ interne AN-Planung einschließlich Ressourcen
+
+Koordination
+→ laufende fachliche Abstimmungen
+
+
+======================================================================
+3. BEGRIFFLICHE TRENNUNG „PROJEKTE“ UND „INTERNE PROJEKTE“
+======================================================================
+
+Die beiden Bereiche müssen fachlich klar unterscheidbar sein.
+
+
+„Projekte“
+
+repräsentiert Projekte, an denen der AN über eine Projektmitgliedschaft mit einem AG beteiligt ist.
+
+Beispiel:
+
+AG lädt AN ein
+→ AN tritt bei
+→ externe Projektbeziehung
+→ Projekt erscheint unter „Projekte“.
+
+
+„Interne Projekte“
+
+repräsentiert ausschließlich die interne Planung des AN.
+
+Dort werden beispielsweise verwaltet:
+
+- interne Aufträge
+- eigene Planungsobjekte
+- Ressourcenbedarfe
+- Ressourcenbelegungen
+- Personal
+- Geräte
+- Kapazitäten
+- interne Zeitplanung
+
+
+WICHTIG:
+
+Interne Projekte sind private AN-Daten.
+
+Der AG darf keinen direkten Zugriff auf diese Daten erhalten.
+
+
+======================================================================
+4. RESSOURCENPLANUNG INNERHALB EINES INTERNEN PROJEKTS
+======================================================================
+
+Ein internes Projekt soll die Ressourcenplanung direkt enthalten.
+
+Bevorzugte Struktur innerhalb eines internen Projekts:
+
+Übersicht
+
+Ressourcenbedarf
+
+Ressourcenbelegung
+
+
+Optional können diese Funktionen als Tabs dargestellt werden.
+
+
+Beispiel:
+
+Interne Projekte
+→ Projekt A
+
+[Übersicht] [Ressourcenbedarf] [Ressourcenbelegung]
+
+
+======================================================================
+5. RESSOURCENBEDARF ALS EIGENE FUNKTION BEIBEHALTEN
+======================================================================
+
+Unter:
+
+„Ressourcenbedarf“
+
+wird festgelegt:
+
+Welche Ressourcen benötigt dieses interne Projekt?
+
+
+Beispiele:
+
+- 2 Facharbeiter
+- 1 Vorarbeiter
+- 1 Kran
+- 1 Bagger
+- 3 Tage Kolonnenkapazität
+
+
+Zusätzlich:
+
+- Zeitraum
+- Menge
+- Ressourcentyp
+- Qualifikation
+- Priorität
+- optional Bemerkung
+
+
+Diese Funktion bleibt intern beim AN.
+
+
+======================================================================
+6. RESSOURCENBELEGUNG INNERHALB DES INTERNEN PROJEKTS
+======================================================================
+
+Unter:
+
+„Ressourcenbelegung“
+
+wird festgelegt:
+
+Welche konkreten verfügbaren Ressourcen werden dem Bedarf zugeordnet?
+
+
+Beispiel:
+
+Bedarf:
+2 Facharbeiter
+
+Belegung:
+
+Facharbeiter 1
+→ Mitarbeiter A
+
+Facharbeiter 2
+→ Mitarbeiter B
+
+
+Bedarf:
+1 Minikran
+
+Belegung:
+
+→ Minikran M-04
+
+
+Die bestehende Ressourcenbelegungsfunktionalität soll soweit möglich wiederverwendet werden.
+
+
+======================================================================
+7. BESTEHENDE GLOBALE RESSOURCENBELEGUNGS-PAGE PRÜFEN
+======================================================================
+
+Die aktuelle Page/Route für:
+
+„Ressourcenbelegung“
+
+identifizieren.
+
+
+Prüfen:
+
+Welche Komponenten sind:
+
+A) nur globale Page-Komponenten
+
+und welche sind:
+
+B) wiederverwendbare Ressourcenplanungs-Komponenten?
+
+
+Globale Page-Struktur entfernen.
+
+Wiederverwendbare Komponenten in:
+
+„Interne Projekte“
+
+integrieren.
+
+
+Nicht unnötig komplette Ressourcenlogik neu implementieren.
+
+
+======================================================================
+8. ROUTING ANPASSEN
+======================================================================
+
+Die bisherige eigenständige AN-Route für Ressourcenbelegung aus dem normalen Routing entfernen.
+
+Beispiele abhängig vom vorhandenen Code:
+
+/resources
+/resource-planning
+/resource-allocation
+/an/resources
+/an/resource-allocation
+
+
+Keine neue eigenständige Hauptseite anlegen.
+
+
+Falls Deep Links für den PoC weiter unterstützt werden sollen:
+
+alte Route optional auf:
+
+/internal-projects
+
+umleiten.
+
+
+Wenn eine konkrete Projekt-ID bekannt ist, darf entsprechend auf:
+
+/internal-projects/{id}/resources
+
+oder vorhandenes Routing weitergeleitet werden.
+
+
+======================================================================
+9. RESSOURCENBELEGUNG PROJEKTBEZOGEN MACHEN
+======================================================================
+
+Alle Aktionen zur Ressourcenbelegung müssen künftig einen internen Projektkontext besitzen.
+
+Nicht mehr:
+
+Ressourcenbelegung öffnen
+→ anschließend Projekt auswählen
+
+
+Bevorzugt:
+
+Interne Projekte
+→ Projekt auswählen
+→ Ressourcenbelegung
+
+
+Dadurch ist immer eindeutig:
+
+Für welches interne Projekt wird geplant?
+
+
+======================================================================
+10. OPTIONAL – PROJEKTÜBERGREIFENDE GESAMTBELEGUNG INNERHALB „INTERNE PROJEKTE“
+======================================================================
+
+Ein projektübergreifender Ressourcenüberblick kann weiterhin sinnvoll sein.
+
+Dafür jedoch KEINEN eigenen Hauptmenüpunkt anlegen.
+
+
+Stattdessen innerhalb:
+
+„Interne Projekte“
+
+optional eine zweite Ansicht bereitstellen.
+
+
+Beispiel:
+
+Interne Projekte
+
+[Projektübersicht] [Gesamtbelegung]
+
+
+„Projektübersicht“
+
+zeigt:
+
+Liste der internen Projekte.
+
+
+„Gesamtbelegung“
+
+zeigt:
+
+projektübergreifende Ressourcenbelegung.
+
+
+Beispiel:
+
+Ressource       19.10.      20.10.      21.10.      22.10.
+
+Kolonne 1       Projekt A   Projekt A   Projekt A   frei
+
+Kolonne 2       frei        Projekt B   Projekt B   Projekt B
+
+Minikran M-04   Projekt C   Projekt C   frei        frei
+
+
+Diese Gesamtbelegung bleibt:
+
+- AN-intern
+- nicht für AG sichtbar
+- keine Datenraumveröffentlichung
+
+
+======================================================================
+11. BESTEHENDE FUNKTION „RESSOURCENBELEGUNG“ NICHT VERLIEREN
+======================================================================
+
+Bestehende Funktionen vollständig erhalten, insbesondere soweit vorhanden:
+
+- Ressourcen auswählen
+- Ressourcen suchen
+- verfügbare Ressourcen anzeigen
+- Ressourcen einem Projekt zuordnen
+- Zeitraum auswählen
+- Belegung ändern
+- Belegung entfernen
+- Überlappungen erkennen
+- Verfügbarkeit prüfen
+- Ressourcentyp filtern
+- bestehende Belegungen anzeigen
+
+
+Nur Navigation und fachliche Einordnung ändern.
+
+
+======================================================================
+12. INTERNE PROJEKTE SIND DIE ZENTRALE QUELLE DER RESSOURCENPLANUNG
+======================================================================
+
+Ressourcenbelegung darf nicht als isolierter Vorgang betrachtet werden.
+
+Bevorzugter Ablauf:
+
+Interne Projekte
+→ internes Projekt
+→ Ressourcenbedarf definieren
+→ konkrete Ressourcen belegen
+
+
+Fachlicher Flow:
+
+Interner Projektbedarf
+→ Ressourcenbedarf
+→ Verfügbarkeitsprüfung
+→ Ressourcenbelegung
+
+
+======================================================================
+13. VERKNÜPFUNG MIT EINGEHENDEN LEISTUNGSANFRAGEN
+======================================================================
+
+Die Seite:
+
+„Anfragen“
+
+enthält weiterhin eingehende:
+
+SERVICE_REQUEST / Leistungsanfragen.
+
+
+Eine Leistungsanfrage kann einen Ressourcenprüfprozess auslösen.
+
+
+Beispiel:
+
+Anfragen
+→ Leistungsanfrage öffnen
+→ „Ressourcen prüfen“
+
+
+Dieser Button darf den Nutzer in die interne Planungsfunktion führen.
+
+
+Bevorzugte Varianten:
+
+A)
+
+bestehendes internes Projekt öffnen
+
+oder
+
+B)
+
+ein internes Planungsobjekt für die Anfrage erzeugen.
+
+
+WICHTIG:
+
+Nicht automatisch private Ressourcen an den AG übertragen.
+
+
+======================================================================
+14. „RESSOURCEN PRÜFEN“ AUS EINER LEISTUNGSANFRAGE
+======================================================================
+
+Bei einer Leistungsanfrage kann beispielsweise eine Aktion angeboten werden:
+
+„Ressourcen prüfen“
+
+
+Diese Aktion öffnet eine fokussierte interne Ansicht mit:
+
+- angefragtem Zeitraum
+- angefragter Leistung
+- benötigten Ressourcentypen
+- vorhandenen internen Belegungen
+- freien Kapazitäten
+
+
+Danach kann der AN fachlich entscheiden:
+
+- Zusage
+- Alternative
+- Ablehnung
+
+
+======================================================================
+15. KEINE DIREKTE AG-SICHT AUF RESSOURCEN
+======================================================================
+
+Sehr wichtig:
+
+Die interne Ressourcenplanung ist PRIVATE AN-DOMAIN.
+
+
+AG darf NICHT direkt erhalten:
+
+- konkrete Mitarbeiter
+- konkrete Maschinen
+- interne Ressourcen-IDs
+- andere interne Projekte
+- interne Kapazitätsverteilung
+- vollständige Belegungspläne
+- Konflikte mit anderen AN-Projekten
+
+
+Der AG bekommt ausschließlich die explizit freigegebene fachliche Antwort.
+
+
+Beispiel:
+
+ACCEPTED
+
+oder:
+
+ALTERNATIVE
+
+mit:
+
+18.10.–22.10.2026
+
+
+oder:
+
+REJECTED
+
+
+======================================================================
+16. KEINE CROSS-ORG-DATENBANKQUERIES
+======================================================================
+
+Die Verlagerung der Ressourcenbelegung unter „Interne Projekte“ darf keine neue direkte AG-/AN-Kopplung erzeugen.
+
+
+AG Services dürfen nicht:
+
+anDb
+→ resource_bookings
+
+direkt abfragen.
+
+
+Auch wenn:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+aktuell auf dieselbe PostgreSQL-Datenbank zeigen.
+
+
+Die Daten bleiben fachlich AN-intern.
+
+
+======================================================================
+17. RESOURCE BOOKING OWNER/CONTEXT PRÜFEN
+======================================================================
+
+Alle ResourceBooking-/ResourcePlanning-Datensätze darauf prüfen, dass sie eindeutig zum AN-Kontext gehören.
+
+
+Soweit das bestehende Modell dies noch nicht zuverlässig sicherstellt:
+
+organisatorischen Scope ergänzen bzw. bestehende AN-Referenz konsequent prüfen.
+
+
+Beispielsweise:
+
+ownerOrgId
+oder bestehender AN-Org-Scope.
+
+
+Jede ResourcePlanning-Query muss auf die aktuell authentifizierte AN-Organisation begrenzt sein.
+
+
+======================================================================
+18. KEINE RESSOURCENBELEGUNG FÜR EXTERNE „PROJEKTE“ DIREKT
+======================================================================
+
+Nicht:
+
+Projekte
+→ externes AG-Projekt
+→ AG-Projekt direkt mit internen Mitarbeitern belegen
+
+
+Die saubere Trennung lautet:
+
+Externe Zusammenarbeit:
+
+„Projekte“
+
+
+Interne Ausführungs-/Ressourcenplanung:
+
+„Interne Projekte“
+
+
+Eine fachliche Referenz zwischen beiden darf existieren.
+
+Beispielsweise:
+
+internalProject.externalProjectReference
+
+oder:
+
+internalProject.serviceRequestReference
+
+
+Aber der AG sieht dadurch keine internen Ressourcen.
+
+
+======================================================================
+19. OPTIONALE VERKNÜPFUNG EXTERNES PROJEKT ↔ INTERNES PROJEKT
+======================================================================
+
+Wenn sinnvoll, darf ein internes Projekt auf ein externes gemeinsames Projekt verweisen.
+
+
+Beispiel:
+
+Interne Planung:
+
+„Trockenbau – Neubau Bochum“
+
+Verknüpft mit:
+
+externem Projekt:
+„Neubau Bochum“
+
+
+Diese Verknüpfung dient nur der AN-internen Organisation.
+
+
+Mögliche Felder:
+
+externalProjectReference
+
+externalServiceRequestReference
+
+
+Keine AG-interne Datenbank-ID als zwingende Kopplung verwenden.
+
+
+======================================================================
+20. DASHBOARD ANPASSEN
+======================================================================
+
+Falls das AN-Dashboard derzeit eine eigene Kachel:
+
+„Ressourcenbelegung“
+
+besitzt:
+
+entfernen.
+
+
+Falls ein Ressourcenhinweis weiterhin sinnvoll ist:
+
+unter:
+
+„Interne Projekte“
+
+oder:
+
+„Auslastung“
+
+als Information integrieren.
+
+
+Beispiel auf Dashboard:
+
+„3 interne Projekte mit Ressourcenbelegung“
+
+Klick:
+
+→ Interne Projekte
+
+
+Nicht:
+
+→ eigenständige Ressourcenbelegungsseite.
+
+
+======================================================================
+21. QUICK ACTIONS ENTFERNEN
+======================================================================
+
+Globale Quick Actions wie:
+
+„Ressourcen belegen“
+
+entfernen, wenn dabei kein Projektkontext vorhanden ist.
+
+
+Optional projektbezogene Aktion innerhalb eines internen Projekts:
+
+„Ressource zuordnen“
+
+
+======================================================================
+22. BREADCRUMBS
+======================================================================
+
+Bisher beispielsweise:
+
+Ressourcenbelegung
+→ Projekt A
+
+
+ändern zu:
+
+Interne Projekte
+→ Projekt A
+→ Ressourcenbelegung
+
+
+======================================================================
+23. EMPTY STATE
+======================================================================
+
+Wenn keine internen Projekte existieren:
+
+nicht auf eine globale Ressourcenbelegungsseite verweisen.
+
+
+Stattdessen beispielsweise:
+
+„Noch keine internen Projekte vorhanden.“
+
+Aktion:
+
+„Internes Projekt anlegen“
+
+
+Erst innerhalb des internen Projekts erfolgt Ressourcenplanung.
+
+
+======================================================================
+24. PROJEKTÜBERGREIFENDE GESAMTBELEGUNG
+======================================================================
+
+Falls die bisherige globale Ressourcenbelegungsseite eine wertvolle Kalender-/Timeline-Ansicht besitzt:
+
+diese NICHT löschen.
+
+
+Stattdessen als:
+
+„Gesamtbelegung“
+
+unter:
+
+„Interne Projekte“
+
+integrieren.
+
+
+Damit bleibt die projektübergreifende Kapazitätsübersicht erhalten.
+
+
+======================================================================
+25. BESTEHENDE API NICHT UNNÖTIG ENTFERNEN
+======================================================================
+
+Backend-Routen für:
+
+- ResourcePlanning
+- ResourceBookings
+- Availability
+- ResourceRequirements
+
+nicht nur wegen der Navigation löschen.
+
+
+Prüfen, welche APIs weiterhin von:
+
+Interne Projekte
+
+oder:
+
+Anfragen → Ressourcen prüfen
+
+benötigt werden.
+
+
+Nur wirklich ungenutzte globale UI-spezifische Endpunkte entfernen.
+
+
+======================================================================
+26. ANFRAGEN-SEITE INTEGRIEREN
+======================================================================
+
+Die bereits geplante gemeinsame Seite:
+
+„Anfragen“
+
+soll eine Leistungsanfrage anzeigen.
+
+
+Beispiel:
+
+LEISTUNGSANFRAGE
+
+Trockenbau 2. OG
+
+Zeitraum:
+12.–16.10.2026
+
+[Anfrage prüfen]
+
+
+Innerhalb der Detailansicht:
+
+[Ressourcen prüfen]
+
+
+Nicht die komplette Ressourcenbelegung direkt in der Inbox anzeigen.
+
+
+======================================================================
+27. PROJEKTEINLADUNGEN SIND DAVON UNABHÄNGIG
+======================================================================
+
+Projekteinladungen unter:
+
+„Anfragen“
+
+bleiben ein eigener fachlicher Typ.
+
+
+Sie führen zu:
+
+Project Membership ACTIVE.
+
+
+Sie erzeugen nicht automatisch eine Ressourcenbelegung.
+
+
+Erst konkrete Leistungsanfragen können interne Ressourcenplanung auslösen.
+
+
+======================================================================
+28. UI-BEGRIFFE
+======================================================================
+
+Bevorzugte Begriffe:
+
+„Interne Projekte“
+
+„Ressourcenbedarf“
+
+„Ressourcenbelegung“
+
+„Gesamtbelegung“
+
+„Ressourcen prüfen“
+
+
+Nicht bevorzugt als Hauptnavigation:
+
+„Ressourcen“
+
+„Ressourcenmanagement“
+
+„Ressourcenbelegung“
+
+
+======================================================================
+29. TEST – NAVIGATION
+======================================================================
+
+AN-Navigation enthält:
+
+Übersicht
+Anfragen
+Projekte
+Interne Projekte
+Koordination
+
+
+AN-Navigation enthält NICHT:
+
+Ressourcenbelegung
+
+
+======================================================================
+30. TEST – INTERNES PROJEKT
+======================================================================
+
+Internes Projekt öffnen.
+
+Erwartung:
+
+Ressourcenbedarf verfügbar.
+
+Ressourcenbelegung verfügbar.
+
+
+======================================================================
+31. TEST – RESSOURCENBELEGUNG
+======================================================================
+
+AN legt interne Ressource an bzw. verwendet bestehende Ressource.
+
+AN öffnet:
+
+Interne Projekte
+→ Projekt A
+→ Ressourcenbelegung
+
+Ressource zuordnen.
+
+Erwartung:
+
+Belegung erfolgreich.
+
+
+======================================================================
+32. TEST – GESAMTBELEGUNG
+======================================================================
+
+Wenn Gesamtbelegung umgesetzt/vorhanden:
+
+mehrere interne Projekte mit Belegungen.
+
+„Interne Projekte“
+→ „Gesamtbelegung“
+
+zeigt die projektübergreifende Belegung.
+
+
+======================================================================
+33. TEST – LEISTUNGSANFRAGE
+======================================================================
+
+AN erhält SERVICE_REQUEST.
+
+Unter:
+
+Anfragen
+
+erscheint Leistungsanfrage.
+
+
+Aktion:
+
+„Ressourcen prüfen“
+
+führt in den internen Ressourcenplanungsprozess.
+
+
+======================================================================
+34. TEST – DATENSOUVERÄNITÄT
+======================================================================
+
+AN besitzt:
+
+- internes Projekt
+- ResourceBookings
+- Mitarbeiterzuordnungen
+
+
+AG versucht über reguläre AG-API auf diese Daten zuzugreifen.
+
+Erwartung:
+
+nicht möglich.
+
+
+AG sieht ausschließlich eine später explizit übermittelte fachliche Response.
+
+
+======================================================================
+35. TEST – KEIN SHARED-DB-SHORTCUT
+======================================================================
+
+Besonders wichtig, da:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+aktuell auf dieselbe PostgreSQL-Datenbank zeigen können.
+
+
+AG darf trotzdem keine ResourceBookings über eigene Services abrufen.
+
+AN-interne Ressourcenplanung muss logisch isoliert bleiben.
+
+
+======================================================================
+36. ALTE ROUTE / LINKS BEREINIGEN
+======================================================================
+
+Global suchen nach:
+
+Ressourcenbelegung
+resource-allocation
+resource-planning
+/resources
+
+und unterscheiden:
+
+A) Hauptnavigation / Page Links
+
+B) weiterhin benötigte Domain-/API-Funktionalität
+
+
+A entfernen bzw. auf Interne Projekte umstellen.
+
+B behalten.
+
+
+======================================================================
+37. TESTS ANPASSEN
+======================================================================
+
+Tests entfernen oder umstellen, die voraussetzen:
+
+„Ressourcenbelegung“ ist eigener Menüpunkt.
+
+
+Neue Tests:
+
+Navigation ohne Ressourcenbelegung.
+
+Ressourcenbelegung innerhalb internes Projekt.
+
+Gesamtbelegung innerhalb Interne Projekte.
+
+Ressourcenprüfung aus Leistungsanfrage.
+
+Keine AG-Sicht auf interne Ressourcen.
+
+
+======================================================================
+38. ZIELBILD DES AN-FLOWS
+======================================================================
+
+Der gewünschte Ablauf lautet:
+
+AG
+→ PROJECT_INVITATION
+
+AN
+→ Anfragen
+→ Projekt beitreten
+
+→ Projekt erscheint unter „Projekte“
+
+
+Später:
+
+AG
+→ SERVICE_REQUEST
+
+AN
+→ Anfragen
+→ Leistungsanfrage prüfen
+→ Ressourcen prüfen
+
+→ Interne Projekte
+→ internes Planungsobjekt
+→ Ressourcenbedarf
+→ Ressourcenbelegung
+
+→ Entscheidung
+
+ACCEPTED
+oder
+ALTERNATIVE
+oder
+REJECTED
+
+→ SERVICE_RESPONSE
+→ DataspaceExchange
+→ AG
+
+
+Der AG erhält niemals automatisch die zugrunde liegende interne Ressourcenplanung.
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+1. „Ressourcenbelegung“ ist kein AN-Hauptmenüpunkt mehr.
+
+2. Es wurde kein Ersatz-Hauptmenüpunkt „Ressourcen“ angelegt.
+
+3. Ressourcenplanung bleibt vollständig erhalten.
+
+4. Ressourcenbedarf befindet sich innerhalb „Interne Projekte“.
+
+5. Ressourcenbelegung befindet sich innerhalb „Interne Projekte“.
+
+6. Bestehende wertvolle projektübergreifende Ressourcenansicht ist als „Gesamtbelegung“ unter „Interne Projekte“ integriert, sofern sie benötigt wird.
+
+7. Ressourcenbelegung erfolgt immer in einem internen Projektkontext.
+
+8. Leistungsanfragen können über „Ressourcen prüfen“ in die interne Planung führen.
+
+9. Projekteinladungen erzeugen nicht automatisch Ressourcenplanungen.
+
+10. „Projekte“ und „Interne Projekte“ bleiben fachlich getrennt.
+
+11. Externe Projekte repräsentieren AG-/AN-Zusammenarbeit.
+
+12. Interne Projekte repräsentieren AN-private Planung.
+
+13. ResourceBookings bleiben AN-private Daten.
+
+14. AG kann keine internen ResourceBookings direkt lesen.
+
+15. AG erhält ausschließlich explizit übermittelte Responses/Alternativen.
+
+16. Bestehende ResourcePlanning-APIs werden nicht unnötig entfernt.
+
+17. Keine verwaisten Links auf die alte Ressourcenbelegungsseite.
+
+18. AN-Navigation lautet bevorzugt:
+
+    Übersicht
+    Anfragen
+    Projekte
+    Interne Projekte
+    Koordination
+
+19. Typecheck PASS.
+
+20. Tests PASS.
+
+21. Build PASS.
+
+
+ABSCHLUSSBERICHT
+
+Am Ende berichten:
+
+1. Menüpunkt Ressourcenbelegung
+   ENTFERNT / NOCH VORHANDEN
+
+2. Ressourcenbedarf
+   unter Interne Projekte / anderes
+
+3. Ressourcenbelegung
+   unter Interne Projekte / anderes
+
+4. Gesamtbelegung
+   IMPLEMENTIERT / NICHT BENÖTIGT / NOCH SEPARAT
+
+5. alte Ressourcenroute
+   ENTFERNT / REDIRECT / NOCH VORHANDEN
+
+6. Leistungsanfrage → Ressourcen prüfen
+   IMPLEMENTIERT / NOCH OFFEN
+
+7. externe Projekte und interne Projekte getrennt
+   JA / NEIN
+
+8. ResourceBookings AN-intern
+   JA / NEIN
+
+9. AG direkter Zugriff auf AN ResourceBookings
+   VERHINDERT / NOCH MÖGLICH
+
+10. Navigationstest
+    PASS / FAIL
+
+11. Ressourcenbelegung-im-Projekt-Test
+    PASS / FAIL
+
+12. Gesamtbelegungs-Test
+    PASS / FAIL / NICHT BENÖTIGT
+
+13. Leistungsanfrage-Ressourcenprüfung
+    PASS / FAIL
+
+14. Datensouveränitäts-Test
+    PASS / FAIL
+
+15. AN Typecheck
+    PASS / FAIL
+
+16. API Typecheck
+    PASS / FAIL
+
+17. Tests
+    PASS / FAIL
+
+18. Build
+    PASS / FAIL
+
+19. verbleibende Probleme
+
+Für jedes offene Problem:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
