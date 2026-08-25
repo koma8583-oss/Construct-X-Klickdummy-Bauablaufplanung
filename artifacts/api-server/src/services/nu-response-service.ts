@@ -27,10 +27,11 @@ import {
   type TaktDecision,
   type TaktRequestStatus,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import type { ExternalServiceResponse } from "./dataspace/external-contracts";
 import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "../lib/takt-response-repository";
 import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
+import { writeAuditEvent } from "../lib/takt-request-audit-service";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,23 @@ export interface CreateAnServiceResponseResult {
   idempotent: boolean;
 }
 
+/**
+ * Resolves the newest usable AN projection for an externally addressed
+ * Leistungsanfrage. Routes deliberately use this instead of loading the
+ * AG-owned request: the external request ID is sufficient at the AN boundary.
+ */
+export async function getAnServiceRequestForResponse(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+) {
+  const [request] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+    ne(anLeistungsanfragenTable.status, "SUPERSEDED"),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  return request ?? null;
+}
+
 function responsePayload(
   requestId: string,
   requestVersion: number,
@@ -169,6 +187,10 @@ export async function createAnServiceResponse(
     eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
   )).limit(1);
   if (!request) throw new ResponseStatusError("NOT_FOUND", new Set(["AN-owned request"]));
+  const answerableStatuses = new Set(["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]);
+  if (!answerableStatuses.has(request.status)) {
+    throw new ResponseStatusError(request.status, answerableStatuses);
+  }
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);
@@ -428,6 +450,24 @@ export async function applyIncomingServiceResponseOnAg(
     await tx.update(leistungsanfragenTable).set({ status: nextStatus, updatedAt: new Date() })
       .where(eq(leistungsanfragenTable.id, request.id));
     return { response, alternatives };
+  });
+  await writeAuditEvent({
+    requestId: request.id,
+    eventType: "RESPONSE_SUBMITTED",
+    actorOrgId: payload.metadata.senderOrgId,
+    actorRole: "NU",
+    metadata: {
+      decision: payload.decision,
+      reasonCode: payload.reasonCode ?? null,
+      transportMessageId: payload.metadata.messageId,
+    },
+  });
+  await writeAuditEvent({
+    requestId: request.id,
+    eventType: "RESPONSE_DELIVERED",
+    actorOrgId: payload.metadata.senderOrgId,
+    actorRole: "NU",
+    metadata: { transportMessageId: payload.metadata.messageId },
   });
   return { ...saved, newStatus: nextStatus, payloadHash: hash, idempotent: false };
 }

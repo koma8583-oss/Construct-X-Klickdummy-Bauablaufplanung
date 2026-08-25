@@ -33,8 +33,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -52,6 +53,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, or } from "drizzle-orm";
 import app from "../app";
+import { processIncomingServiceRequest } from "../services/dataspace/inbound-domain-service";
 
 // ── JWT ───────────────────────────────────────────────────────────────────────
 
@@ -138,6 +140,24 @@ async function insertReviewRequest(suffix: string): Promise<string> {
       plannedTimeWindow: { start: "2026-10-10", end: "2026-10-15" },
     },
   }).onConflictDoNothing();
+
+  await processIncomingServiceRequest({
+    metadata: {
+      messageId: `t81-inbound-${suffix}`,
+      correlationId: reqId,
+      schemaVersion: "1.0",
+      senderOrgId: GU_ORG,
+      receiverOrgId: NU_ORG,
+      createdAt: new Date().toISOString(),
+    },
+    requestId: reqId,
+    requestVersion: 1,
+    projectReference: PROJECT,
+    leistungReference: taktId,
+    plannedStart: "2026-10-10",
+    plannedEnd: "2026-10-15",
+    resourceRequirements: [],
+  });
 
   return reqId;
 }
@@ -242,6 +262,8 @@ afterAll(async () => {
     .where(inArray(messageOutboxTable.senderOrgId, testOrgIds));
   await db.delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
 
   // 4. Domain tables
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.guOrgId, GU_ORG));
@@ -529,7 +551,7 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
     expect(res.body.error).toMatch(/REJECTED/);
   });
 
-  it("[14] idempotent response shows UNKNOWN transportStatus when no outbox row", async () => {
+  it("[14] idempotent response republishes the persisted AN payload", async () => {
     const reqId = await insertReviewRequest("resp-unknown-outbox");
 
     // First submission
@@ -538,18 +560,14 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
-    // Delete the outbox row to simulate missing row
-    await db.delete(messageOutboxTable)
-      .where(eq(messageOutboxTable.messageId, `taktresponse-${reqId}`));
-
-    // Retry: should return 200, transportStatus = UNKNOWN (not DELIVERED)
+    // Retry: the AN-owned response keeps the original outbound payload.
     const res = await request(app)
       .post(`/api/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
     expect(res.status).toBe(200);
-    expect(res.body.transportStatus).toBe("UNKNOWN");
+    expect(res.body.transportStatus).toBe("DELIVERED");
   });
 });
 
