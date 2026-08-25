@@ -5,6 +5,7 @@ import { Link, useParams } from 'wouter';
 import {
   useGetProject, useListTakte, getGetProjectQueryKey, getListTakteQueryKey,
   useUpdateTakt, useListProjectSubcontractors, getListProjectSubcontractorsQueryKey,
+  useListProjectMemberships, getListProjectMembershipsQueryKey,
   useGetProjectDataPublications, useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
   useListTaktRequests, useDeleteTakt,
   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
@@ -41,6 +42,9 @@ export default function TaktDetail() {
   });
   const { data: assignments } = useListProjectSubcontractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
+  });
+  const { data: memberships } = useListProjectMemberships(projectId, {
+    query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
   const { data: publications } = useGetProjectDataPublications(projectId);
   const updateTakt = useUpdateTakt();
@@ -101,6 +105,20 @@ export default function TaktDetail() {
   }
 
   const projectName = project?.name ?? 'Projekt';
+  const assignablePartners = Array.from(new Map([
+    ...(assignments ?? [])
+      .filter((assignment) => assignment.assignmentStatus === 'ACTIVE')
+      .map((assignment) => [assignment.anOrgId, {
+        id: assignment.anOrgId,
+        name: `${assignment.anName} – ${assignment.trade || 'Alle Gewerke'}`,
+      }] as const),
+    ...(memberships ?? [])
+      .filter((membership) => membership.status === 'ACTIVE')
+      .map((membership) => [membership.anOrgId, {
+        id: membership.anOrgId,
+        name: membership.anOrgId,
+      }] as const),
+  ]).values());
   const durationDays = (takt as { durationDays?: string | number | null }).durationDays;
   const eligiblePublications = (publications ?? []).filter(
     (publication) =>
@@ -253,11 +271,11 @@ export default function TaktDetail() {
               <h2 className="font-semibold">Vergabe</h2>
               <p className="text-sm text-muted-foreground">Leistung an einen oder mehrere Nachunternehmer anfragen.</p>
             </div>
-            <Button onClick={() => setAssignOpen(true)} disabled={!assignments?.some((a) => a.assignmentStatus === 'ACTIVE')}>
+            <Button onClick={() => setAssignOpen(true)} disabled={assignablePartners.length === 0}>
               <Send className="w-4 h-4 mr-2" />Leistung vergeben
             </Button>
           </div>
-          {!assignments?.some((a) => a.assignmentStatus === 'ACTIVE') && (
+          {assignablePartners.length === 0 && (
             <p className="text-sm text-muted-foreground">Keine aktiven Nachunternehmer diesem Projekt zugeordnet.</p>
           )}
         </CardContent>
@@ -373,12 +391,12 @@ export default function TaktDetail() {
             <div className="space-y-2">
               <Label>Nachunternehmer</Label>
               <div className="rounded-md border divide-y">
-                {(assignments ?? []).filter((a) => a.assignmentStatus === 'ACTIVE').map((assignment) => {
-                  const checked = selectedNuIds.includes(assignment.anOrgId);
+                {assignablePartners.map((partner) => {
+                  const checked = selectedNuIds.includes(partner.id);
                   return (
-                    <label key={assignment.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={checked} onChange={() => setSelectedNuIds((current) => checked ? current.filter((id) => id !== assignment.anOrgId) : [...current, assignment.anOrgId])} />
-                      {assignment.anName} – {assignment.trade || 'Alle Gewerke'}
+                    <label key={partner.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={checked} onChange={() => setSelectedNuIds((current) => checked ? current.filter((id) => id !== partner.id) : [...current, partner.id])} />
+                      {partner.name}
                     </label>
                   );
                 })}

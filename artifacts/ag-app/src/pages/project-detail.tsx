@@ -898,6 +898,28 @@ export default function ProjectDetail() {
     return map;
   }, [assignments]);
 
+  // A confirmed project membership is eligible for a Takt request even when
+  // no separate fachliche assignment has been created yet.
+  const assignablePartners: Array<{ anOrgId: string; label: string }> = [];
+  const assignableIds = new Set<string>();
+  for (const assignment of (assignments ?? [])) {
+    if (assignment.assignmentStatus !== 'ACTIVE' || assignableIds.has(assignment.anOrgId)) continue;
+    assignableIds.add(assignment.anOrgId);
+    assignablePartners.push({
+      anOrgId: assignment.anOrgId,
+      label: `${assignment.anName} – ${assignment.trade || 'Alle Gewerke'}`,
+    });
+  }
+  for (const membership of (memberships ?? [])) {
+    if (membership.status !== 'ACTIVE' || assignableIds.has(membership.anOrgId)) continue;
+    assignableIds.add(membership.anOrgId);
+    const participant = allAnOrgs?.find(p => p.id === membership.anOrgId);
+    assignablePartners.push({
+      anOrgId: membership.anOrgId,
+      label: participant?.name ?? membership.anOrgId,
+    });
+  }
+
   // Predecessors for the info panel (read-only display)
   const selectedTaktPredecessors = useMemo(
     () => deps?.filter(d => d.successorId === selectedTaktId) ?? [],
@@ -1896,7 +1918,6 @@ export default function ProjectDetail() {
              seenOrgIds.add(membership.anOrgId);
              uniqueAnOrgs.push(membership.anOrgId);
            }
-
           return (
             <div className="flex-1 overflow-auto p-4">
               <div className="flex items-center justify-between mb-4">
@@ -2422,8 +2443,7 @@ export default function ProjectDetail() {
                   ) : (
                     /* No active request — offer inline form */
                     <div>
-                       {(!contractors?.some(c => c.assignmentStatus === 'ACTIVE') &&
-                         !memberships?.some(m => m.status === 'ACTIVE')) ? (
+                      {assignablePartners.length === 0 ? (
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-sm text-muted-foreground">
                           <Users className="w-4 h-4 mt-0.5 shrink-0" />
                           <span>
@@ -2461,25 +2481,7 @@ export default function ProjectDetail() {
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Nachunternehmer</Label>
                                 <div className="rounded-md border border-input bg-background divide-y">
-                                   {Array.from(new Map([
-                                     ...(assignments || [])
-                                       .filter(a => a.assignmentStatus === 'ACTIVE')
-                                       .map(a => [a.anOrgId, {
-                                         anOrgId: a.anOrgId,
-                                         anName: a.anName,
-                                         label: `${a.anName} – ${a.trade || 'Alle Gewerke'}`,
-                                       }]),
-                                     ...(memberships || [])
-                                       .filter(m => m.status === 'ACTIVE')
-                                       .map(m => {
-                                         const participant = allAnOrgs?.find(p => p.id === m.anOrgId);
-                                         return [m.anOrgId, {
-                                           anOrgId: m.anOrgId,
-                                           anName: participant?.name ?? m.anOrgId,
-                                           label: participant?.name ?? m.anOrgId,
-                                         }] as const;
-                                       }),
-                                   ] as const).values()).map(a => {
+                                   {assignablePartners.map(a => {
                                      const checked = vergabeAnOrgIds.includes(a.anOrgId);
                                     return (
                                        <label key={a.anOrgId} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50">
@@ -2498,8 +2500,7 @@ export default function ProjectDetail() {
                                       </label>
                                     );
                                   })}
-                                   {(!assignments || assignments.filter(a => a.assignmentStatus === 'ACTIVE').length === 0) &&
-                                    (!memberships || memberships.filter(m => m.status === 'ACTIVE').length === 0) && (
+                                   {assignablePartners.length === 0 && (
                                     <p className="px-3 py-2 text-xs text-muted-foreground">Keine aktiven Nachunternehmer zugeordnet.</p>
                                   )}
                                 </div>
