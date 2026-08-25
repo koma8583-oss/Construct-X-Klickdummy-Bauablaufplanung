@@ -147,6 +147,7 @@ interface ResourceSection {
   id: string;
   name: string;
   resources: ResourceRow[];
+  typeBookings?: NuResourceBooking[];
 }
 
 interface TaktRequestDisplay {
@@ -634,9 +635,16 @@ export function ResourceGantt({
                     </>
                   )}
                   {row.kind === "resource" && (
-                    <span className="text-xs truncate text-foreground/80 leading-tight">
-                      {row.resource.name}
-                    </span>
+                    <>
+                      <span className="text-xs truncate text-foreground/80 leading-tight">
+                        {row.resource.name}
+                      </span>
+                      {!row.resource.bookings.length && (
+                        <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          frei
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -660,7 +668,10 @@ export function ResourceGantt({
 
                   {/* Section span bar */}
                   {row.kind === "section" && (() => {
-                    const allB = row.section.resources.flatMap((r) => r.bookings);
+                    const allB = [
+                      ...row.section.resources.flatMap((r) => r.bookings),
+                      ...(row.section.typeBookings ?? []),
+                    ];
                     if (!allB.length) return null;
                     const minS = Math.min(...allB.map((b) => new Date(b.startAt).getTime()));
                     const maxE = Math.max(...allB.map((b) => new Date(b.endAt).getTime()));
@@ -669,15 +680,44 @@ export function ResourceGantt({
                       new Date(maxE).toISOString(),
                     );
                     return (
-                      <div
-                        style={{
-                          position: "absolute", top: "50%",
-                          transform: "translateY(-50%)",
-                          left, width, height: 8, borderRadius: 4,
-                          background: "#6366f1", opacity: 0.15,
-                          pointerEvents: "none",
-                        }}
-                      />
+                      <>
+                        <div
+                          style={{
+                            position: "absolute", top: "50%",
+                            transform: "translateY(-50%)",
+                            left, width, height: 8, borderRadius: 4,
+                            background: "#6366f1", opacity: 0.15,
+                            pointerEvents: "none",
+                          }}
+                        />
+                        {(row.section.typeBookings ?? []).map((booking) => {
+                          const bookingStart = new Date(booking.startAt).getTime();
+                          const bookingEnd = new Date(booking.endAt).getTime();
+                          const geometry = barGeom(
+                            new Date(bookingStart).toISOString(),
+                            new Date(bookingEnd).toISOString(),
+                          );
+                          return (
+                            <div
+                              key={booking.id}
+                              data-item-id={booking.id}
+                              title={SOURCE_LABEL[booking.sourceType] ?? booking.sourceType}
+                              style={{
+                                position: "absolute",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                left: geometry.left,
+                                width: geometry.width,
+                                height: 8,
+                                borderRadius: 4,
+                                background: SOURCE_COLOR[booking.sourceType] ?? "#6b7280",
+                                opacity: 0.88,
+                                pointerEvents: "none",
+                              }}
+                            />
+                          );
+                        })}
+                      </>
                     );
                   })()}
 
@@ -732,6 +772,7 @@ export function ResourceGantt({
                           return (
                             <div
                               key={b.id}
+                              data-item-id={b.id}
                               onClick={() =>
                                 setSelectedBooking(
                                   isSelected
