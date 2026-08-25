@@ -27,6 +27,10 @@ import {
   taktResponsesTable,
   takteTable,
   usersTable,
+  anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
+  anLeistungsantwortAlternativenTable,
+  dataspaceExchangesTable,
 } from "@workspace/db";
 import app from "../app";
 
@@ -83,25 +87,47 @@ async function createBatch(taktId: string, nuOrgIds: string[]): Promise<{
 
 async function addAcceptedResponse(
   requestId: string,
-  createdByUserId: string,
+  anOrgId: string,
+  anUserId: string,
 ): Promise<string> {
-  const [response] = await db
-    .insert(taktResponsesTable)
-    .values({
-      taktRequestId: requestId,
+  const anToken = jwt.sign({
+    userId: anUserId, orgId: anOrgId, orgType: "AN", hubAdmin: false, roles: ["AN_ADMIN"],
+  }, JWT_SECRET, { expiresIn: "1h" });
+  const sent = await request(app)
+    .post(`/api/takt-requests/${requestId}/send`)
+    .set("Authorization", `Bearer ${guToken}`);
+  expect([200, 201]).toContain(sent.status);
+  const response = await request(app)
+    .post(`/api/an/takt-requests/${requestId}/responses`)
+    .set("Authorization", `Bearer ${anToken}`)
+    .send({
       decision: "ACCEPTED",
-      acceptedStart: new Date("2026-10-01T08:00:00Z"),
-      acceptedEnd: new Date("2026-10-07T17:00:00Z"),
-      createdByUserId,
-    })
-    .returning({ id: taktResponsesTable.id });
+      acceptedTimeWindow: { start: "2026-10-01", end: "2026-10-07" },
+    });
+  expect(response.status).toBe(201);
+  const [agResponse] = await db.select({ id: taktResponsesTable.id })
+    .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
+  expect(agResponse).toBeDefined();
+  return agResponse.id;
+}
 
-  await db
-    .update(taktRequestsTable)
-    .set({ status: "ACCEPTED" })
-    .where(eq(taktRequestsTable.id, requestId));
-
-  return response.id;
+async function addRejectedResponse(
+  requestId: string,
+  anOrgId: string,
+  anUserId: string,
+): Promise<void> {
+  const anToken = jwt.sign({
+    userId: anUserId, orgId: anOrgId, orgType: "AN", hubAdmin: false, roles: ["AN_ADMIN"],
+  }, JWT_SECRET, { expiresIn: "1h" });
+  const sent = await request(app)
+    .post(`/api/takt-requests/${requestId}/send`)
+    .set("Authorization", `Bearer ${guToken}`);
+  expect([200, 201]).toContain(sent.status);
+  const response = await request(app)
+    .post(`/api/an/takt-requests/${requestId}/responses`)
+    .set("Authorization", `Bearer ${anToken}`)
+    .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
+  expect(response.status).toBe(201);
 }
 
 async function createTakt(id: string): Promise<void> {
@@ -173,6 +199,23 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
+    .from(anLeistungsanfragenTable).where(inArray(anLeistungsanfragenTable.receiverAnOrgId, NU_ORGS));
+  const localRequestIds = localRequests.map(({ id }) => id);
+  if (localRequestIds.length) {
+    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+      .from(anLeistungsantwortenTable)
+      .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
+    const localResponseIds = localResponses.map(({ id }) => id);
+    if (localResponseIds.length) {
+      await db.delete(anLeistungsantwortAlternativenTable)
+        .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
+      await db.delete(anLeistungsantwortenTable)
+        .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
+    }
+    await db.delete(anLeistungsanfragenTable)
+      .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
+  }
   const takts = [BATCH_TAKT_ID, SELECTION_TAKT_ID, CONCURRENT_TAKT_ID];
   const requests = await db
     .select({ id: taktRequestsTable.id })
@@ -205,15 +248,25 @@ afterAll(async () => {
   await db.delete(messageInboxTable).where(
     or(
       eq(messageInboxTable.senderOrgId, GU_ORG),
+      inArray(messageInboxTable.senderOrgId, NU_ORGS),
+      eq(messageInboxTable.recipientOrgId, GU_ORG),
       inArray(messageInboxTable.recipientOrgId, NU_ORGS),
     ),
   );
   await db.delete(messageOutboxTable).where(
     or(
       eq(messageOutboxTable.senderOrgId, GU_ORG),
+      inArray(messageOutboxTable.senderOrgId, NU_ORGS),
+      eq(messageOutboxTable.recipientOrgId, GU_ORG),
       inArray(messageOutboxTable.recipientOrgId, NU_ORGS),
     ),
   );
+  await db.delete(dataspaceExchangesTable).where(or(
+    eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
+    inArray(dataspaceExchangesTable.senderOrgId, NU_ORGS),
+    inArray(dataspaceExchangesTable.receiverOrgId, NU_ORGS),
+  ));
   await db.delete(takteTable).where(inArray(takteTable.id, takts));
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT_ID));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT_ID));
@@ -282,16 +335,16 @@ describe("parallel TaktRequest selection", () => {
     const cancelledSibling = byOrg.get(NU_D)!;
     const expiredSibling = byOrg.get(NU_E)!;
 
-    const winnerResponseId = await addAcceptedResponse(winner.id, NU_A_USER);
-    await addAcceptedResponse(answeredSibling.id, NU_B_USER);
-    await db
-      .update(taktRequestsTable)
-      .set({ status: "UNDER_REVIEW" })
-      .where(eq(taktRequestsTable.id, openSibling.id));
-    await db
-      .update(taktRequestsTable)
-      .set({ status: "CANCELLED" })
-      .where(eq(taktRequestsTable.id, cancelledSibling.id));
+    const winnerResponseId = await addAcceptedResponse(winner.id, NU_A, NU_A_USER);
+    await addAcceptedResponse(answeredSibling.id, NU_B, NU_B_USER);
+    await addRejectedResponse(openSibling.id, NU_C, NU_USERS[2]);
+    await addRejectedResponse(cancelledSibling.id, NU_D, NU_USERS[3]);
+    const cancellation = await request(app)
+      .post(`/api/takt-requests/${cancelledSibling.id}/gu-decisions`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({ decisionType: "CLOSE_WITHOUT_AGREEMENT" });
+    expect(cancellation.status).toBe(201);
+    // EXPIRED is an AG-owned deadline state, not a simulated AN action.
     await db
       .update(taktRequestsTable)
       .set({ status: "EXPIRED" })
@@ -359,7 +412,7 @@ describe("parallel TaktRequest selection", () => {
         ),
       );
     expect(cancellationOutbox).toHaveLength(2);
-    expect(cancellationOutbox.map((message) => (message.payload as { reason: string }).reason))
+    expect(cancellationOutbox.map((message) => (message.payload as { comment: string }).comment))
       .toEqual([ "PARALLEL_REQUEST_OTHER_AN_CONFIRMED", "PARALLEL_REQUEST_OTHER_AN_CONFIRMED" ]);
 
     const cancellationInbox = await db
@@ -409,8 +462,8 @@ describe("parallel TaktRequest selection", () => {
     const result = await createBatch(CONCURRENT_TAKT_ID, [NU_A, NU_B]);
     const firstRequest = result.requests[0];
     const secondRequest = result.requests[1];
-    await addAcceptedResponse(firstRequest.id, NU_A_USER);
-    await addAcceptedResponse(secondRequest.id, NU_B_USER);
+    await addAcceptedResponse(firstRequest.id, NU_A, NU_A_USER);
+    await addAcceptedResponse(secondRequest.id, NU_B, NU_B_USER);
 
     const decisions = await Promise.all(
       result.requests.map((row) =>

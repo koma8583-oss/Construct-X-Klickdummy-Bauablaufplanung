@@ -1,14 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   anDb,
   anLeistungsanfragenTable,
   anLeistungsanfrageResourceRequirementsTable,
+  dataspaceExchangesTable,
+  hubDb,
+  organizationsTable,
 } from "@workspace/db";
 import type { ExternalServiceRequest } from "../services/dataspace/external-contracts";
 import { processIncomingServiceRequest } from "../services/dataspace/inbound-domain-service";
+import { handleIncomingServiceRequest } from "../services/dataspace/inbound-exchange-service";
 
 const messageIds: string[] = [];
+const AG = "ag-local-projection-test";
+const AN = "an-local-projection-test";
 
 function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServiceRequest {
   const messageId = overrides.metadata?.messageId ?? crypto.randomUUID();
@@ -18,8 +24,8 @@ function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServi
       messageId,
       correlationId: `correlation-${messageId}`,
       schemaVersion: "1.0",
-      senderOrgId: "ag-local-projection-test",
-      receiverOrgId: "an-local-projection-test",
+      senderOrgId: AG,
+      receiverOrgId: AN,
       createdAt: new Date().toISOString(),
       ...overrides.metadata,
     },
@@ -40,14 +46,22 @@ function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServi
       requiredQualification: "Qualifikation A",
     }],
     policy: {
-      allowedConsumerOrgId: "an-local-projection-test",
+      allowedConsumerOrgId: AN,
       usagePurpose: "PROJECT_COORDINATION",
     },
     ...overrides,
   };
 }
 
+async function receive(request: ExternalServiceRequest) {
+  return handleIncomingServiceRequest(request, processIncomingServiceRequest);
+}
+
 afterEach(async () => {
+  await hubDb.delete(dataspaceExchangesTable).where(and(
+    eq(dataspaceExchangesTable.senderOrgId, AG),
+    eq(dataspaceExchangesTable.receiverOrgId, AN),
+  ));
   for (const messageId of messageIds) {
     const rows = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
@@ -60,12 +74,21 @@ afterEach(async () => {
       .where(eq(anLeistungsanfragenTable.sourceMessageId, messageId));
   }
   messageIds.length = 0;
+  await anDb.delete(organizationsTable).where(eq(organizationsTable.id, AG));
+  await anDb.delete(organizationsTable).where(eq(organizationsTable.id, AN));
 });
 
 describe("AN-lokale Leistungsanfrage-Projektion", () => {
+  beforeEach(async () => {
+    await anDb.insert(organizationsTable).values([
+      { id: AG, name: "Projection source AG", type: "AG" },
+      { id: AN, name: "Projection receiver AN", type: "AN" },
+    ]);
+  });
+
   it("legt Payload-Snapshot und Ressourcen bei Erstempfang an", async () => {
     const request = payload();
-    await processIncomingServiceRequest(request);
+    expect(await receive(request)).toEqual({ duplicate: false, status: "PROCESSED" });
 
     const [projection] = await anDb.select().from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
@@ -82,8 +105,8 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
 
   it("behandelt gleiche Message-ID und gleichen Inhalt als No-op", async () => {
     const request = payload();
-    await processIncomingServiceRequest(request);
-    await processIncomingServiceRequest(request);
+    await receive(request);
+    expect(await receive(request)).toEqual({ duplicate: true, status: "DUPLICATE" });
 
     const rows = await anDb.select().from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
@@ -92,8 +115,8 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
 
   it("weist geänderten Inhalt unter derselben Message-ID als Konflikt ab", async () => {
     const request = payload();
-    await processIncomingServiceRequest(request);
-    await expect(processIncomingServiceRequest({
+    await receive(request);
+    await expect(receive({
       ...request,
       plannedEnd: "2026-09-03",
     })).rejects.toThrow(/conflicts/);
@@ -101,7 +124,7 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
 
   it("markiert die ältere Version bei höherer Version als SUPERSEDED", async () => {
     const first = payload();
-    await processIncomingServiceRequest(first);
+    await receive(first);
     const second = payload({
       requestVersion: 2,
       metadata: {
@@ -110,7 +133,7 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
       },
     });
     messageIds.push(second.metadata.messageId);
-    await processIncomingServiceRequest(second);
+    await receive(second);
 
     const rows = await anDb.select().from(anLeistungsanfragenTable).where(and(
       eq(anLeistungsanfragenTable.receiverAnOrgId, second.metadata.receiverOrgId),
@@ -123,8 +146,8 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
 
   it("weist eine niedrigere Version ab", async () => {
     const current = payload({ requestVersion: 2 });
-    await processIncomingServiceRequest(current);
-    await expect(processIncomingServiceRequest(payload({
+    await receive(current);
+    await expect(receive(payload({
       metadata: { ...current.metadata, messageId: crypto.randomUUID() },
       requestVersion: 1,
     }))).rejects.toThrow(/older/);

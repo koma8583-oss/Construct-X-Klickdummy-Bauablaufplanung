@@ -31,9 +31,10 @@ import {
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
-  messageInboxTable,
   anLeistungsanfragenTable,
   anLeistungsantwortenTable,
+  dataspaceExchangesTable,
+  taktResponsesTable,
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -81,7 +82,9 @@ async function seedRequest(suffix: string): Promise<string> {
     id: reqId, taktId, taktVersion: 1,
     guOrgId: GU_ORG, nuOrgId: NU_ORG_A,
     requestNumber: `TKR-T48-${suffix}`,
-    status: "UNDER_REVIEW" as const,
+    // AG-owned fixture: delivery happened. The AN response must move AG state
+    // only through the Dataspace inbound path.
+    status: "DELIVERED" as const,
     createdByUserId: GU_USER,
   }).onConflictDoNothing();
 
@@ -119,7 +122,7 @@ async function seedRequest(suffix: string): Promise<string> {
     plannedStart: "2026-09-15",
     plannedEnd: "2026-09-20",
     payloadSnapshot: {},
-    status: "UNDER_REVIEW",
+    status: "DETAILS_RETRIEVED",
   }).onConflictDoNothing();
 
   return reqId;
@@ -173,16 +176,16 @@ describe("POST /takt-requests/:id/responses — permissions", () => {
   it("foreign NU → 403", async () => {
     const reqId = await seedRequest("perm-foreign");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenB}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" } });
-    expect(res.status).toBe(403);
+     expect(res.status).toBe(404);
   });
 
   it("GU → 403", async () => {
     const reqId = await seedRequest("perm-gu");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" } });
     expect(res.status).toBe(403);
@@ -191,54 +194,53 @@ describe("POST /takt-requests/:id/responses — permissions", () => {
   it("hub admin → 403", async () => {
     const reqId = await seedRequest("perm-hub");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${hubToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" } });
     expect(res.status).toBe(403);
   });
 });
 
-// ── Privacy filter tests ──────────────────────────────────────────────────────
+// ── Local/private input tests ─────────────────────────────────────────────────
 
-describe("POST /takt-requests/:id/responses — privacy filter", () => {
-  it("forbidden field localProjectId → 400", async () => {
+describe("POST /an/takt-requests/:id/responses — local/private input", () => {
+  it("localProjectId is never promoted into the public AG response", async () => {
     const reqId = await seedRequest("priv-lpid");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", localProjectId: "LP-001", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("localProjectId");
+    expect(res.status).toBe(201);
+    const [publicResponse] = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    expect(publicResponse).toBeDefined();
   });
 
-  it("forbidden field resourceId → 400", async () => {
+  it("resourceId is never promoted into the public AG response", async () => {
     const reqId = await seedRequest("priv-resid");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", resourceId: "RES-001", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("resourceId");
+    expect(res.status).toBe(201);
   });
 
-  it("forbidden field internalResultPayload → 400", async () => {
+  it("internal result input stays out of the public AG response", async () => {
     const reqId = await seedRequest("priv-internal");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", internalResultPayload: { conflicts: [] }, reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("internalResultPayload");
+    expect(res.status).toBe(201);
   });
 
-  it("unknown extra field → 400", async () => {
+  it("unknown local metadata does not alter the public response contract", async () => {
     const reqId = await seedRequest("priv-unknown");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", unknownField: "should-fail", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("unknownField");
+    expect(res.status).toBe(201);
   });
 });
 
@@ -248,7 +250,7 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
   it("valid ACCEPTED response → 201, request status ACCEPTED", async () => {
     const reqId = await seedRequest("accepted");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "ACCEPTED",
@@ -265,7 +267,7 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
       start: expect.stringContaining("2026-09-15"),
       end:   expect.stringContaining("2026-09-19"),
     });
-    expect(res.body.requestStatus).toBe("ACCEPTED");
+    expect(res.body.requestStatus).toBe("RESPONDED");
     expect(res.body.transportStatus).toBe("DELIVERED");
     expect(res.body.responseId).toBeTruthy();
   });
@@ -273,7 +275,7 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
   it("response with two alternatives → 201, request status ALTERNATIVES_PROPOSED", async () => {
     const reqId = await seedRequest("alts");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "ALTERNATIVES_PROPOSED",
@@ -304,13 +306,13 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
       start: expect.stringContaining("2026-09-22"),
       end:   expect.stringContaining("2026-09-26"),
     });
-    expect(res.body.requestStatus).toBe("ALTERNATIVES_PROPOSED");
+    expect(res.body.requestStatus).toBe("RESPONDED");
   });
 
   it("valid REJECTED response → 201, request status REJECTED", async () => {
     const reqId = await seedRequest("rejected");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "REJECTED",
@@ -321,14 +323,13 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.decision).toBe("REJECTED");
-    expect(res.body.nextAvailableDate).toBe("2026-10-05");
-    expect(res.body.requestStatus).toBe("REJECTED");
+    expect(res.body.requestStatus).toBe("RESPONDED");
   });
 
   it("more than three alternatives → 400/422", async () => {
     const reqId = await seedRequest("too-many-alts");
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "ALTERNATIVES_PROPOSED",
@@ -343,37 +344,37 @@ describe("POST /takt-requests/:id/responses — valid decisions", () => {
   });
 });
 
-// ── GU inbox delivery ─────────────────────────────────────────────────────────
+// ── Dataspace delivery to AG ──────────────────────────────────────────────────
 
-describe("POST /takt-requests/:id/responses — GU inbox delivery", () => {
-  it("response is delivered to GU inbox as TAKT_RESPONSE_SUBMITTED", async () => {
+describe("POST /an/takt-requests/:id/responses — Dataspace delivery to AG", () => {
+  it("is received by the AG through a processed SERVICE_RESPONSE inbound exchange", async () => {
     const reqId = await seedRequest("inbox-delivery");
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "ACCEPTED",
         acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" },
       });
 
-    // GU should have an inbox message
-    const [msg] = await db.select()
-      .from(messageInboxTable)
+    const [exchange] = await db.select()
+      .from(dataspaceExchangesTable)
       .where(and(
-        eq(messageInboxTable.recipientOrgId, GU_ORG),
-        eq(messageInboxTable.correlationId, reqId),
-        eq(messageInboxTable.messageType, "TAKT_RESPONSE_SUBMITTED"),
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
+        eq(dataspaceExchangesTable.correlationId, reqId),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_RESPONSE"),
       ));
 
-    expect(msg).toBeTruthy();
-    expect(msg.senderOrgId).toBe(NU_ORG_A);
-    expect(msg.status).toBe("DELIVERED");
+    expect(exchange).toBeTruthy();
+    expect(exchange.senderOrgId).toBe(NU_ORG_A);
+    expect(exchange.status).toBe("PROCESSED");
   });
 
-  it("GU inbox message contains no internal NU fields", async () => {
+  it("publishes only the public decision data to the AG-owned response", async () => {
     const reqId = await seedRequest("inbox-privacy");
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "ALTERNATIVES_PROPOSED",
@@ -385,33 +386,25 @@ describe("POST /takt-requests/:id/responses — GU inbox delivery", () => {
         }],
       });
 
-    const [msg] = await db.select()
-      .from(messageInboxTable)
+    const [publicResponse] = await db.select({
+      decision: taktResponsesTable.decision,
+      taktRequestId: taktResponsesTable.taktRequestId,
+    })
+      .from(taktResponsesTable)
       .where(and(
-        eq(messageInboxTable.recipientOrgId, GU_ORG),
-        eq(messageInboxTable.correlationId, reqId),
+        eq(taktResponsesTable.taktRequestId, reqId),
       ));
 
-    const payload = msg.payload as Record<string, unknown>;
-
-    // Forbidden internal fields must NOT appear in the GU message
-    expect(payload).not.toHaveProperty("resourceId");
-    expect(payload).not.toHaveProperty("localProjectId");
-    expect(payload).not.toHaveProperty("localProjectCode");
-    expect(payload).not.toHaveProperty("internalResultPayload");
-    expect(payload).not.toHaveProperty("availabilityCheckId");
-    expect(payload).not.toHaveProperty("customerAlias");
-
-    // Required public fields
-    expect(payload).toHaveProperty("taktRequestId", reqId);
-    expect(payload).toHaveProperty("decision", "ALTERNATIVES_PROPOSED");
-    expect(payload).toHaveProperty("alternatives");
+    expect(publicResponse).toEqual({
+      taktRequestId: reqId,
+      decision: "ALTERNATIVES_PROPOSED",
+    });
   });
 
-  it("GU can read their inbox via GET /messages/inbox", async () => {
+  it("creates an AG response only after the Dataspace inbound exchange", async () => {
     const reqId = await seedRequest("gu-inbox-read");
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({
         decision: "REJECTED",
@@ -419,15 +412,16 @@ describe("POST /takt-requests/:id/responses — GU inbox delivery", () => {
         nextAvailableDate: "2026-11-01",
       });
 
-    const res = await request(app)
-      .get("/api/messages/inbox")
-      .set("Authorization", `Bearer ${guToken}`);
-
-    expect(res.status).toBe(200);
-    const msgs = res.body as Array<Record<string, unknown>>;
-    const responseMsg = msgs.find(m => m.correlationId === reqId);
-    expect(responseMsg).toBeTruthy();
-    expect(responseMsg?.messageType).toBe("TAKT_RESPONSE_SUBMITTED");
+    const [agResponse] = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    const [exchange] = await db.select({ status: dataspaceExchangesTable.status })
+      .from(dataspaceExchangesTable).where(and(
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.businessObjectId, reqId),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_RESPONSE"),
+      ));
+    expect(agResponse).toBeDefined();
+    expect(exchange?.status).toBe("PROCESSED");
   });
 });
 
@@ -443,13 +437,13 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
     };
 
     const first = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send(body);
     expect(first.status).toBe(201);
 
     const retry = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send(body);
     expect(retry.status).toBe(200);
@@ -460,12 +454,12 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
   it("different decision on retry → 409", async () => {
     const reqId = await seedRequest("conflict-decision");
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
     const retry = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" } });
     expect(retry.status).toBe(409);
@@ -474,32 +468,35 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
   it("retry re-delivers transport message but creates no second response", async () => {
     const reqId = await seedRequest("retry-transport");
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
-    // Count inbox messages for this correlation before retry
+    // The retry reuses the same exchange message and cannot create a second
+    // AG response or inbound exchange record.
     const before = await db.select()
-      .from(messageInboxTable)
+      .from(dataspaceExchangesTable)
       .where(and(
-        eq(messageInboxTable.correlationId, reqId),
-        eq(messageInboxTable.recipientOrgId, GU_ORG),
+        eq(dataspaceExchangesTable.correlationId, reqId),
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_RESPONSE"),
       ));
 
     // Retry (same content)
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+       .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
     const after = await db.select()
-      .from(messageInboxTable)
+      .from(dataspaceExchangesTable)
       .where(and(
-        eq(messageInboxTable.correlationId, reqId),
-        eq(messageInboxTable.recipientOrgId, GU_ORG),
+        eq(dataspaceExchangesTable.correlationId, reqId),
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_RESPONSE"),
       ));
 
-    // messageId is UNIQUE — transport deduplication ensures only one inbox row
+    // messageId is UNIQUE — transport deduplication ensures only one inbound row.
     expect(after.length).toBe(before.length);
   });
 });

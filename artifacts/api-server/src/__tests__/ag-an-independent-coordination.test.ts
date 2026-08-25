@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { sql, eq, inArray, or } from "drizzle-orm";
+import { sql, and, eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 import {
   agDb as db,
@@ -26,6 +26,7 @@ import {
   dataspaceExchangesTable,
   projectContractorsTable,
   anLeistungsanfragenTable,
+  anAvailabilityChecksTable,
   anLeistungsantwortAlternativenTable,
   anLeistungsantwortenTable,
 } from "@workspace/db";
@@ -149,12 +150,29 @@ describe("independent AG–AN coordination flow", () => {
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
     requestId = created.body.id;
+    const beforeInbound = await db.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
+    expect(beforeInbound).toHaveLength(0);
 
     const sent = await request(app)
       .post(`/api/takt-requests/${requestId}/send`)
       .set("Authorization", `Bearer ${agToken}`);
     expect([200, 201]).toContain(sent.status);
     expect(sent.body.status).toMatch(/SENT|DELIVERED/);
+    const afterInbound = await db.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
+    expect(afterInbound).toHaveLength(1);
+    const inbound = await db.select({ status: dataspaceExchangesTable.status })
+      .from(dataspaceExchangesTable)
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_REQUEST"),
+        eq(dataspaceExchangesTable.businessObjectId, requestId),
+      ));
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0].status).toBe("PROCESSED");
   });
 
   it("AN sees the request, but AG cannot use the AN response endpoint", async () => {
@@ -181,6 +199,11 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(details.status).toBe(200);
     expect(details.body.status).toBe("DETAILS_RETRIEVED");
+    const agStatusBeforeAvailability = agRequestBefore.status;
+    const [localProjection] = await db.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
+    expect(localProjection).toBeDefined();
 
     const availability = await request(app)
       .post(`/api/an/takt-requests/${requestId}/availability-checks`)
@@ -193,6 +216,13 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(latestAvailability.status).toBe(200);
     expect(latestAvailability.body.checkId).toBe(availability.body.checkId);
+    const localChecks = await db.select({ id: anAvailabilityChecksTable.id })
+      .from(anAvailabilityChecksTable)
+      .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, localProjection.id));
+    expect(localChecks).toHaveLength(1);
+    const [agRequestAfterAvailability] = await db.select({ status: taktRequestsTable.status })
+      .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
+    expect(agRequestAfterAvailability.status).toBe(agStatusBeforeAvailability);
 
     const response = await request(app)
       .post(`/api/an/takt-requests/${requestId}/responses`)
@@ -203,6 +233,10 @@ describe("independent AG–AN coordination flow", () => {
         comment: "Kapazität bestätigt",
       });
     expect(response.status).toBe(201);
+    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+      .from(anLeistungsantwortenTable)
+      .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, localProjection.id));
+    expect(localResponses).toHaveLength(1);
 
     const [agRequestAfterResponse] = await db.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
@@ -210,6 +244,15 @@ describe("independent AG–AN coordination flow", () => {
     const [agResponse] = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
     expect(agResponse).toBeDefined();
+    const responseInbound = await db.select({ status: dataspaceExchangesTable.status })
+      .from(dataspaceExchangesTable)
+      .where(and(
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+        eq(dataspaceExchangesTable.messageType, "SERVICE_RESPONSE"),
+        eq(dataspaceExchangesTable.businessObjectId, requestId),
+      ));
+    expect(responseInbound).toHaveLength(1);
+    expect(responseInbound[0].status).toBe("PROCESSED");
 
     const decision = await request(app)
       .post(`/api/takt-requests/${requestId}/gu-decisions`)
@@ -217,6 +260,10 @@ describe("independent AG–AN coordination flow", () => {
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: agResponse.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
+    const [confirmedProjection] = await db.select({ status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
+    expect(confirmedProjection.status).toBe("CONFIRMED");
   });
 
   it("runs alternatives, revision and a shifted second agreement", async () => {

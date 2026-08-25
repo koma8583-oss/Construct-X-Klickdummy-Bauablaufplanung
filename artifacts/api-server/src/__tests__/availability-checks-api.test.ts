@@ -30,13 +30,11 @@ import { anDb as db } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
-  projectsTable,
-  takteTable,
-  taktRequestsTable,
-  taktRequestSnapshotsTable,
   resourcesTable,
   resourceBookingsTable,
-  availabilityChecksTable,
+  anLeistungsanfragenTable,
+  anLeistungsanfrageResourceRequirementsTable,
+  anAvailabilityChecksTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import app from "../app";
@@ -96,7 +94,7 @@ function makeSnapshot(taktId: string) {
 }
 
 beforeAll(async () => {
-  // Seed orgs, users, project, takt, requests, snapshots, resources
+  // Seed AN-local projections, requirements, resources and identities.
   await db.insert(organizationsTable).values([
     { id: GU_ORG,   name: "T47 GU Org",   type: "AG" },
     { id: NU_ORG_A, name: "T47 NU Org A", type: "AN" },
@@ -108,41 +106,28 @@ beforeAll(async () => {
     { id: NU_USER, name: "T47 NU", email: "t47-nu@example.com", passwordHash: "x" },
   ]).onConflictDoNothing();
 
-  await db.insert(projectsTable).values([
-    { id: PROJECT, agOrgId: GU_ORG, name: "T47 Project", status: "ACTIVE" },
-  ]).onConflictDoNothing();
-
-  await db.insert(takteTable).values([
-    { id: TAKT_A, projectId: PROJECT, taktBezeichnung: "T47 Takt A", zone: "A", gewerk: "TRK", plannedStart: "2026-09-15", plannedEnd: "2026-09-20" },
-    { id: TAKT_B, projectId: PROJECT, taktBezeichnung: "T47 Takt B", zone: "B", gewerk: "TRK", plannedStart: "2026-09-15", plannedEnd: "2026-09-20" },
-  ]).onConflictDoNothing();
-
-  await db.insert(taktRequestsTable).values({
-    id: REQ_A, taktId: TAKT_A, taktVersion: 1,
-    guOrgId: GU_ORG, nuOrgId: NU_ORG_A,
-    requestNumber: "TKR-T47A", status: "DETAILS_RETRIEVED" as const,
-    createdByUserId: GU_USER,
-  }).onConflictDoNothing();
-  await db.insert(taktRequestsTable).values({
-    id: REQ_B, taktId: TAKT_B, taktVersion: 1,
-    guOrgId: GU_ORG, nuOrgId: NU_ORG_A,
-    requestNumber: "TKR-T47B", status: "DETAILS_RETRIEVED" as const,
-    createdByUserId: GU_USER,
-  }).onConflictDoNothing();
-
-  await db.insert(taktRequestSnapshotsTable).values([
+  await db.insert(anLeistungsanfragenTable).values([
     {
-      id: "t47-snap-a",
-      taktRequestId: REQ_A,
-      schemaVersion: "1.0",
-      snapshotPayload: makeSnapshot(TAKT_A),
+      id: REQ_A, externalLeistungsanfrageId: REQ_A, externalRequestVersion: 1,
+      sourceMessageId: "t47-message-a", payloadHash: "t47-payload-a", correlationId: REQ_A,
+      senderAgOrgId: GU_ORG, receiverAnOrgId: NU_ORG_A, projectReference: PROJECT,
+      leistungReference: TAKT_A, plannedStart: "2026-09-15", plannedEnd: "2026-09-20",
+      payloadSnapshot: makeSnapshot(TAKT_A), status: "DETAILS_RETRIEVED",
     },
     {
-      id: "t47-snap-b",
-      taktRequestId: REQ_B,
-      schemaVersion: "1.0",
-      snapshotPayload: makeSnapshot(TAKT_B),
+      id: REQ_B, externalLeistungsanfrageId: REQ_B, externalRequestVersion: 1,
+      sourceMessageId: "t47-message-b", payloadHash: "t47-payload-b", correlationId: REQ_B,
+      senderAgOrgId: GU_ORG, receiverAnOrgId: NU_ORG_A, projectReference: PROJECT,
+      leistungReference: TAKT_B, plannedStart: "2026-09-15", plannedEnd: "2026-09-20",
+      payloadSnapshot: makeSnapshot(TAKT_B), status: "DETAILS_RETRIEVED",
     },
+  ]).onConflictDoNothing();
+  await db.insert(anLeistungsanfrageResourceRequirementsTable).values([
+    ...[REQ_A, REQ_B].map((anLeistungsanfrageId) => ({
+      anLeistungsanfrageId, externalResourceTypeCode: "CREW",
+      externalResourceTypeName: "Crew", requiredCapacity: "2", capacityUnit: "PERSONS",
+      utilizationPercent: 100, periodStart: "2026-09-15", periodEnd: "2026-09-20",
+    })),
   ]).onConflictDoNothing();
 
   await db.insert(resourcesTable).values([
@@ -156,17 +141,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`
-    DELETE FROM availability_checks WHERE nu_org_id IN (${sql.raw(`'${NU_ORG_A}', '${NU_ORG_B}'`)});
-    DELETE FROM resource_bookings    WHERE nu_org_id = '${sql.raw(NU_ORG_A)}';
-    DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
-    DELETE FROM leistungsanfragen        WHERE id IN (${sql.raw(`'${REQ_A}', '${REQ_B}'`)});
-    DELETE FROM resources            WHERE an_org_id = '${sql.raw(NU_ORG_A)}';
-    DELETE FROM leistungen                WHERE id IN (${sql.raw(`'${TAKT_A}', '${TAKT_B}'`)});
-    DELETE FROM projects             WHERE id = '${sql.raw(PROJECT)}';
-    DELETE FROM users                WHERE id IN (${sql.raw(`'${GU_USER}', '${NU_USER}'`)});
-    DELETE FROM organizations        WHERE id IN (${sql.raw(`'${GU_ORG}', '${NU_ORG_A}', '${NU_ORG_B}'`)});
-  `);
+  await db.delete(anAvailabilityChecksTable).where(eq(anAvailabilityChecksTable.anOrgId, NU_ORG_A));
+  await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.nuOrgId, NU_ORG_A));
+  await db.delete(anLeistungsanfragenTable).where(
+    and(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG_A), eq(anLeistungsanfragenTable.projectReference, PROJECT)),
+  );
+  await db.delete(resourcesTable).where(eq(resourcesTable.anOrgId, NU_ORG_A));
+  await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
+  await db.delete(usersTable).where(eq(usersTable.id, NU_USER));
+  await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG));
+  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG_A));
+  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG_B));
 });
 
 // ── POST /takt-requests/:id/availability-checks ───────────────────────────────
@@ -174,7 +159,7 @@ afterAll(async () => {
 describe("POST /takt-requests/:id/availability-checks", () => {
   it("addressed NU can start a check → 201", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     expect(res.status).toBe(201);
@@ -185,30 +170,30 @@ describe("POST /takt-requests/:id/availability-checks", () => {
     expect(res.body.checkId).toBeTruthy();
   });
 
-  it("foreign NU is rejected → 403", async () => {
+  it("foreign NU cannot discover the local projection → 404", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenB}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("GU is rejected → 403", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${guToken}`);
     expect(res.status).toBe(403);
   });
 
   it("hub admin is rejected → 403", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${hubToken}`);
     expect(res.status).toBe(403);
   });
 
   it("unknown requestId → 404", async () => {
     const res = await request(app)
-      .post("/api/takt-requests/non-existent-req/availability-checks")
+       .post("/api/an/takt-requests/non-existent-req/availability-checks")
       .set("Authorization", `Bearer ${nuTokenA}`);
     expect(res.status).toBe(404);
   });
@@ -216,19 +201,19 @@ describe("POST /takt-requests/:id/availability-checks", () => {
   it("DETAILS_RETRIEVED → UNDER_REVIEW on first run", async () => {
     // REQ_B starts at DETAILS_RETRIEVED; after the check it must be UNDER_REVIEW
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_B}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_B}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
     expect(res.status).toBe(201);
 
-    const [req] = await db.select({ status: taktRequestsTable.status })
-      .from(taktRequestsTable)
-      .where(eq(taktRequestsTable.id, REQ_B));
+    const [req] = await db.select({ status: anLeistungsanfragenTable.status })
+       .from(anLeistungsanfragenTable)
+       .where(eq(anLeistungsanfragenTable.id, REQ_B));
     expect(req?.status).toBe("UNDER_REVIEW");
   });
 
   it("public result contains no internal IDs", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     // publicResult must have no resourceId or localProjectId in alternatives
@@ -248,13 +233,13 @@ describe("POST /takt-requests/:id/availability-checks", () => {
 
   it("result is saved in DB and has correct nuOrgId", async () => {
     const rows = await db.select()
-      .from(availabilityChecksTable)
+       .from(anAvailabilityChecksTable)
       .where(and(
-        eq(availabilityChecksTable.taktRequestId, REQ_A),
-        eq(availabilityChecksTable.nuOrgId, NU_ORG_A),
+         eq(anAvailabilityChecksTable.anLeistungsanfrageId, REQ_A),
+         eq(anAvailabilityChecksTable.anOrgId, NU_ORG_A),
       ));
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].nuOrgId).toBe(NU_ORG_A);
+    expect(rows[0].anOrgId).toBe(NU_ORG_A);
   });
 
   it("re-run after adding a conflicting booking is recorded as a new row", async () => {
@@ -272,22 +257,22 @@ describe("POST /takt-requests/:id/availability-checks", () => {
     }).onConflictDoNothing();
 
     const before = await db.select()
-      .from(availabilityChecksTable)
+       .from(anAvailabilityChecksTable)
       .where(and(
-        eq(availabilityChecksTable.taktRequestId, REQ_A),
-        eq(availabilityChecksTable.nuOrgId, NU_ORG_A),
+         eq(anAvailabilityChecksTable.anLeistungsanfrageId, REQ_A),
+         eq(anAvailabilityChecksTable.anOrgId, NU_ORG_A),
       ));
 
     const res = await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
     expect(res.status).toBe(201);
 
     const after = await db.select()
-      .from(availabilityChecksTable)
+       .from(anAvailabilityChecksTable)
       .where(and(
-        eq(availabilityChecksTable.taktRequestId, REQ_A),
-        eq(availabilityChecksTable.nuOrgId, NU_ORG_A),
+         eq(anAvailabilityChecksTable.anLeistungsanfrageId, REQ_A),
+         eq(anAvailabilityChecksTable.anOrgId, NU_ORG_A),
       ));
     expect(after.length).toBe(before.length + 1);
     expect(res.body.runNumber).toBe(before.length + 1);
@@ -304,11 +289,11 @@ describe("GET /takt-requests/:id/availability-checks/latest", () => {
   it("returns the latest check for the addressed NU", async () => {
     // First ensure at least one check exists
     await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     const res = await request(app)
-      .get(`/api/takt-requests/${REQ_A}/availability-checks/latest`)
+       .get(`/api/an/takt-requests/${REQ_A}/availability-checks/latest`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     expect(res.status).toBe(200);
@@ -317,30 +302,30 @@ describe("GET /takt-requests/:id/availability-checks/latest", () => {
     expect(res.body).toHaveProperty("publicResult");
   });
 
-  it("foreign NU → 403", async () => {
+  it("foreign NU cannot discover the local projection → 404", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${REQ_A}/availability-checks/latest`)
+       .get(`/api/an/takt-requests/${REQ_A}/availability-checks/latest`)
       .set("Authorization", `Bearer ${nuTokenB}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("GU → 403", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${REQ_A}/availability-checks/latest`)
+       .get(`/api/an/takt-requests/${REQ_A}/availability-checks/latest`)
       .set("Authorization", `Bearer ${guToken}`);
     expect(res.status).toBe(403);
   });
 
   it("unknown request → 404", async () => {
     const res = await request(app)
-      .get("/api/takt-requests/non-existent-req/availability-checks/latest")
+       .get("/api/an/takt-requests/non-existent-req/availability-checks/latest")
       .set("Authorization", `Bearer ${nuTokenA}`);
     expect(res.status).toBe(404);
   });
 
   it("prefers COMPLETED check over FAILED of the same run number", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${REQ_A}/availability-checks/latest`)
+       .get(`/api/an/takt-requests/${REQ_A}/availability-checks/latest`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     expect(res.status).toBe(200);
@@ -353,22 +338,22 @@ describe("GET /takt-requests/:id/availability-checks/latest", () => {
   it("latest check has the highest runNumber", async () => {
     // Run the check multiple times
     await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
     await request(app)
-      .post(`/api/takt-requests/${REQ_A}/availability-checks`)
+       .post(`/api/an/takt-requests/${REQ_A}/availability-checks`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     const all = await db.select()
-      .from(availabilityChecksTable)
+       .from(anAvailabilityChecksTable)
       .where(and(
-        eq(availabilityChecksTable.taktRequestId, REQ_A),
-        eq(availabilityChecksTable.nuOrgId, NU_ORG_A),
+         eq(anAvailabilityChecksTable.anLeistungsanfrageId, REQ_A),
+         eq(anAvailabilityChecksTable.anOrgId, NU_ORG_A),
       ));
     const maxRun = Math.max(...all.map(r => r.runNumber));
 
     const res = await request(app)
-      .get(`/api/takt-requests/${REQ_A}/availability-checks/latest`)
+       .get(`/api/an/takt-requests/${REQ_A}/availability-checks/latest`)
       .set("Authorization", `Bearer ${nuTokenA}`);
 
     expect(res.status).toBe(200);

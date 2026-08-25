@@ -3,6 +3,7 @@ import type { DataspaceExchange, ExchangeReference } from "../services/dataspace
 import {
   deliverLocalProjectInvitation,
   deliverLocalProjectInvitationResponse,
+  deliverLocalCoordinationDecision,
   deliverLocalServiceRequest,
   deliverLocalServiceResponse,
   isLocalDataspaceTransport,
@@ -10,6 +11,7 @@ import {
 import type {
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
+  ExternalCoordinationDecision,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "../services/dataspace/external-contracts";
@@ -20,10 +22,12 @@ function fakeExchange(overrides: Partial<Record<keyof DataspaceExchange, unknown
   const exchange = {
     publishServiceRequest: vi.fn().mockResolvedValue(delivered),
     publishServiceResponse: vi.fn().mockResolvedValue(delivered),
+    publishCoordinationDecision: vi.fn().mockResolvedValue(delivered),
     publishProjectInvitation: vi.fn().mockResolvedValue(delivered),
     publishProjectInvitationResponse: vi.fn().mockResolvedValue(delivered),
     receiveServiceRequest: vi.fn().mockResolvedValue({ duplicate: false, status: "PROCESSED" }),
     receiveServiceResponse: vi.fn().mockResolvedValue({ duplicate: false, status: "PROCESSED" }),
+    receiveCoordinationDecision: vi.fn().mockResolvedValue({ duplicate: false, status: "PROCESSED" }),
     receiveProjectInvitation: vi.fn().mockResolvedValue({ duplicate: false, status: "PROCESSED" }),
     receiveProjectInvitationResponse: vi.fn().mockResolvedValue({ duplicate: false, status: "PROCESSED" }),
     retryProjectInvitation: vi.fn(),
@@ -55,6 +59,15 @@ const serviceResponse = {
   requestVersion: 1,
   decision: "ACCEPTED",
 } satisfies ExternalServiceResponse;
+
+const coordinationDecision = {
+  metadata: { ...serviceRequest.metadata, messageId: "message-decision" },
+  requestId: "request-1",
+  requestVersion: 1,
+  taktVersion: 1,
+  decisionType: "CONFIRM_ACCEPTED",
+  confirmedTimeWindow: { start: "2026-09-01T08:00:00.000Z", end: "2026-09-02T17:00:00.000Z" },
+} satisfies ExternalCoordinationDecision;
 
 const invitation = {
   metadata: { ...serviceRequest.metadata, messageId: "message-invitation" },
@@ -94,11 +107,13 @@ describe("local Dataspace delivery", () => {
     const exchange = fakeExchange();
     await deliverLocalServiceRequest(serviceRequest, exchange);
     await deliverLocalServiceResponse(serviceResponse, exchange);
+    await deliverLocalCoordinationDecision(coordinationDecision, exchange);
     await deliverLocalProjectInvitation(invitation, exchange);
     await deliverLocalProjectInvitationResponse(invitationResponse, exchange);
 
     expect(exchange.receiveServiceRequest).toHaveBeenCalledWith(serviceRequest, expect.any(Function));
     expect(exchange.receiveServiceResponse).toHaveBeenCalledWith(serviceResponse, expect.any(Function));
+    expect(exchange.receiveCoordinationDecision).toHaveBeenCalledWith(coordinationDecision, expect.any(Function));
     expect(exchange.receiveProjectInvitation).toHaveBeenCalledWith(invitation, expect.any(Function));
     expect(exchange.receiveProjectInvitationResponse).toHaveBeenCalledWith(invitationResponse, expect.any(Function));
   });
@@ -117,5 +132,7 @@ describe("local Dataspace delivery", () => {
     const edcExchange = fakeExchange();
     await deliverLocalServiceResponse(serviceResponse, edcExchange);
     expect(edcExchange.receiveServiceResponse).not.toHaveBeenCalled();
+    await deliverLocalCoordinationDecision(coordinationDecision, edcExchange);
+    expect(edcExchange.receiveCoordinationDecision).not.toHaveBeenCalled();
   });
 });
