@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray } from "drizzle-orm";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, runWithDatabaseRole } from "@workspace/db";
 import {
   leistungsanfragenTable,
   leistungenTable,
@@ -55,6 +55,10 @@ function token(userId: string, orgId: string, orgType: "AG" | "AN") {
 const guToken = token(GU_USER, GU_ORG, "AG");
 const nuToken = token(NU_USER, NU_ORG, "AN");
 const otherToken = token(OTHER_USER, OTHER_ORG, "AN");
+
+function createAgChangeProposal(input: Parameters<typeof createChangeProposal>[0]) {
+  return runWithDatabaseRole("ag", () => createChangeProposal(input));
+}
 
 const originalStart = new Date("2026-09-01T08:00:00.000Z");
 const originalEnd = new Date("2026-09-05T17:00:00.000Z");
@@ -135,11 +139,11 @@ describe("bilateral change proposals", () => {
 
   it("allows only one open proposal, while the opposite party may replace it with a counter", async () => {
     const requestId = REQUEST_IDS[1];
-    const first = await createChangeProposal({
+    const first = await createAgChangeProposal({
       requestId, orgId: GU_ORG, userId: GU_USER,
       start: new Date("2026-09-03T08:00:00Z"), end: new Date("2026-09-07T17:00:00Z"),
     });
-    await expect(createChangeProposal({
+    await expect(createAgChangeProposal({
       requestId, orgId: GU_ORG, userId: GU_USER,
       start: new Date("2026-09-04T08:00:00Z"), end: new Date("2026-09-08T17:00:00Z"),
     })).rejects.toMatchObject({ statusCode: 409 });
@@ -166,7 +170,7 @@ describe("bilateral change proposals", () => {
 
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {
     const requestId = REQUEST_IDS[2];
-    const proposal = await createChangeProposal({
+    const proposal = await createAgChangeProposal({
       requestId, orgId: GU_ORG, userId: GU_USER,
       start: new Date("2026-09-02T08:00:00Z"), end: new Date("2026-09-04T17:00:00Z"),
     });
@@ -212,7 +216,7 @@ describe("bilateral change proposals", () => {
   });
 
   it("does not resolve a proposal through a different request URL", async () => {
-    const proposal = await createChangeProposal({
+    const proposal = await createAgChangeProposal({
       requestId: REQUEST_IDS[4], orgId: GU_ORG, userId: GU_USER,
       start: new Date("2026-09-02T08:00:00Z"), end: new Date("2026-09-04T17:00:00Z"),
     });
@@ -232,11 +236,11 @@ describe("bilateral change proposals", () => {
   it("leaves at most one open proposal when two submissions race", async () => {
     const requestId = REQUEST_IDS[5];
     const results = await Promise.allSettled([
-      createChangeProposal({
+      createAgChangeProposal({
         requestId, orgId: GU_ORG, userId: GU_USER,
         start: new Date("2026-09-02T08:00:00Z"), end: new Date("2026-09-04T17:00:00Z"),
       }),
-      createChangeProposal({
+      createAgChangeProposal({
         requestId, orgId: GU_ORG, userId: GU_USER,
         start: new Date("2026-09-03T08:00:00Z"), end: new Date("2026-09-05T17:00:00Z"),
       }),
