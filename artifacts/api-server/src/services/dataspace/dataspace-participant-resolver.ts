@@ -7,8 +7,13 @@ import type { DataspaceParticipant } from "./external-contracts";
  * enrich this at the transport boundary without changing domain services.
  */
 export async function resolveDataspaceParticipant(localOrgId: string): Promise<DataspaceParticipant | null> {
+  // The directory exposes participant IDs as `local:<organizationId>`, while
+  // legacy callers may still provide the local organization ID directly.
+  const organizationId = localOrgId.startsWith("local:")
+    ? localOrgId.slice("local:".length)
+    : localOrgId;
   const [org] = await db.select().from(organizationsTable)
-    .where(eq(organizationsTable.id, localOrgId)).limit(1);
+    .where(eq(organizationsTable.id, organizationId)).limit(1);
   if (!org) return null;
   return {
     localOrgId: org.id,
