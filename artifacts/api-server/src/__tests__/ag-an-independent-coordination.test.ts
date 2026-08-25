@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { sql, eq, inArray } from "drizzle-orm";
+import { sql, eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 import {
   agDb as db,
@@ -22,6 +22,7 @@ import {
   taktResponseAlternativesTable,
   messageInboxTable,
   messageOutboxTable,
+  dataspaceExchangesTable,
   projectContractorsTable,
 } from "@workspace/db";
 
@@ -63,7 +64,15 @@ async function cleanup() {
     await db.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
   }
   await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
+  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
+  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
+  await db.delete(dataspaceExchangesTable).where(or(
+    eq(dataspaceExchangesTable.senderOrgId, AG),
+    eq(dataspaceExchangesTable.receiverOrgId, AG),
+    eq(dataspaceExchangesTable.senderOrgId, AN),
+    eq(dataspaceExchangesTable.receiverOrgId, AN),
+  ));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
@@ -127,7 +136,7 @@ describe("independent AG–AN coordination flow", () => {
 
   it("AN sees the request, but AG cannot use the AN response endpoint", async () => {
     const inbox = await request(app)
-      .get("/api/takt-requests")
+      .get("/api/takt-requests?role=nu")
       .set("Authorization", `Bearer ${anToken}`);
     expect(inbox.status).toBe(200);
     expect(inbox.body.some((row: { id: string }) => row.id === requestId)).toBe(true);
@@ -140,6 +149,12 @@ describe("independent AG–AN coordination flow", () => {
   });
 
   it("AN accepts and AG confirms the response", async () => {
+    // Local transport delivery and AN inbound processing are separate
+    // boundaries. Simulate the committed inbound state before the AN action.
+    await db.update(taktRequestsTable)
+      .set({ status: "UNDER_REVIEW" })
+      .where(eq(taktRequestsTable.id, requestId));
+
     const response = await request(app)
       .post(`/api/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
@@ -155,6 +170,6 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`)
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: response.body.id });
     expect(decision.status).toBe(201);
-    expect(decision.body.requestStatus).toBe("ACCEPTED");
+    expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
   });
 });
