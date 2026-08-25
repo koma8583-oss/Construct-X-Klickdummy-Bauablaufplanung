@@ -7,4 +7,4 @@ When an invitation or invitation response writes its outbox row in the same tran
 
 **Why:** Idempotent transport normally treats an existing PENDING row as already claimed, but the domain transaction intentionally creates that row before the adapter runs.
 
-**How to apply:** Keep the persisted envelope payload identical to the adapter payload and make the follow-up transport operation transition PENDING to SENT/DELIVERED without recreating the business row.
+**How to apply:** Keep the persisted envelope payload identical to the adapter payload and make the follow-up transport operation transition PENDING to SENT/DELIVERED without recreating the business row. For local Dataspace mode, a successful retry must also invoke the local inbound-domain handler; technical delivery alone does not create the AN-side projection.

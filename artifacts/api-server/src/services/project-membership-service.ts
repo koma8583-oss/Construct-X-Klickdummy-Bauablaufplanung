@@ -405,15 +405,19 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   }
 
   const existingMemberships = await db.select({
+    id: projectMembershipsTable.id,
     anOrgId: projectMembershipsTable.anOrgId,
     status: projectMembershipsTable.status,
   }).from(projectMembershipsTable).where(and(
     eq(projectMembershipsTable.projectId, input.projectId),
     inArray(projectMembershipsTable.anOrgId, anOrgIds as [string, ...string[]]),
   ));
-  if (existingMemberships.length > 0) {
+  const blockedMemberships = existingMemberships.filter((membership) =>
+    membership.status === "INVITED" || membership.status === "ACTIVE",
+  );
+  if (blockedMemberships.length > 0) {
     throw new ProjectMembershipError(
-      existingMemberships.some((membership) => membership.status === "ACTIVE")
+      blockedMemberships.some((membership) => membership.status === "ACTIVE")
         ? "PROJECT_MEMBERSHIP_ALREADY_ACTIVE"
         : "PROJECT_INVITATION_ALREADY_EXISTS",
       "Für mindestens einen ausgewählten AN besteht bereits eine Projektbeziehung.",
@@ -463,19 +467,45 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       const invitationId = crypto.randomUUID();
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
-      const [membership] = await tx.insert(projectMembershipsTable).values({
-        projectId: input.projectId,
-        agOrgId: input.agOrgId,
-        anOrgId,
-        anParticipantId: participant.participantId,
-        dataPublicationId: publication.id,
-        status: "INVITED",
-        invitationId,
-        correlationId,
-        invitationMessage: input.invitationMessage ?? null,
-        invitationExpiresAt: input.validUntil ?? null,
-        invitedAt: now,
-      }).returning();
+      const previousMembership = existingMemberships.find((membership) => membership.anOrgId === anOrgId);
+      const [membership] = previousMembership
+        ? await tx.update(projectMembershipsTable).set({
+            anParticipantId: participant.participantId,
+            dataPublicationId: publication.id,
+            status: "INVITED",
+            invitationId,
+            correlationId,
+            invitationMessage: input.invitationMessage ?? null,
+            invitationExpiresAt: input.validUntil ?? null,
+            invitedAt: now,
+            respondedAt: null,
+            acceptedAt: null,
+            rejectedAt: null,
+            revokedAt: null,
+            updatedAt: now,
+          }).where(and(
+            eq(projectMembershipsTable.id, previousMembership.id),
+            inArray(projectMembershipsTable.status, ["REJECTED", "REVOKED"]),
+          )).returning()
+        : await tx.insert(projectMembershipsTable).values({
+            projectId: input.projectId,
+            agOrgId: input.agOrgId,
+            anOrgId,
+            anParticipantId: participant.participantId,
+            dataPublicationId: publication.id,
+            status: "INVITED",
+            invitationId,
+            correlationId,
+            invitationMessage: input.invitationMessage ?? null,
+            invitationExpiresAt: input.validUntil ?? null,
+            invitedAt: now,
+          }).returning();
+      if (!membership) {
+        throw new ProjectMembershipError(
+          "PROJECT_INVITATION_ALREADY_EXISTS",
+          "Die Projektbeziehung wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+        );
+      }
 
       await tx.insert(dataPublicationRecipientsTable).values({
         publicationId: publication.id,
@@ -614,7 +644,13 @@ async function dispatchProjectInvitationPackage(
   for (const row of rows) {
     const delivery = await deliverLocalProjectInvitation(row.payload, exchange);
     if (delivery.status === "PENDING" || delivery.status === "FAILED") {
-      await exchange.retryProjectInvitation(row.payload.metadata.messageId).catch(() => undefined);
+      const retry = await exchange.retryProjectInvitation(row.payload.metadata.messageId).catch(() => undefined);
+      // A pre-created transactional outbox row makes the first local send
+      // return PENDING. Once its retry delivers technically, invoke the local
+      // inbound leg too so the AN receives its own immutable invitation view.
+      if (retry?.status === "DELIVERED") {
+        await deliverLocalProjectInvitation(row.payload, exchange);
+      }
     }
   }
   const { publishCombinedDataPublicationNotifications } = await import("./data-publication-service");

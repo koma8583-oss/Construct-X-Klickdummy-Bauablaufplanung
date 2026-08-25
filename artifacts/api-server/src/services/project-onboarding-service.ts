@@ -186,7 +186,12 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
   const exchange = createDataspaceExchange();
   await Promise.all(prepared.rows.map(async ({ payload }) => {
     const delivery = await deliverLocalProjectInvitation(payload, exchange);
-    if (delivery.status === "PENDING") await exchange.retryProjectInvitation(payload.metadata.messageId);
+    if (delivery.status === "PENDING" || delivery.status === "FAILED") {
+      const retry = await exchange.retryProjectInvitation(payload.metadata.messageId);
+      if (retry.status === "DELIVERED") {
+        await deliverLocalProjectInvitation(payload, exchange);
+      }
+    }
   }));
 
   return {
