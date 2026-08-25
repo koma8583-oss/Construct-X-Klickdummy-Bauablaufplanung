@@ -404,6 +404,16 @@ async function requireProjectOwner(
 
 const router = Router();
 
+// Canonical AN endpoints are mounted separately at /api/an and must only use
+// AN-local projections. Do not let an AN bypass that boundary via /api.
+router.use(requireJwt, (req, res, next) => {
+  if (req.user?.orgType === "AN") {
+    res.status(403).json({ error: "AN Leistungsanfragen are available only through /api/an local projections" });
+    return;
+  }
+  next();
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Leistungen  (canonical aliases for /projects/:projectId/takte)
 // ══════════════════════════════════════════════════════════════════════════════

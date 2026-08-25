@@ -250,6 +250,17 @@ function taktResponseMessageId(
 
 const router = Router();
 
+// AN traffic has a dedicated /api/an router backed by AN-local projections.
+// Keeping it out of this shared router prevents direct URL access to AG-owned
+// request, takt and snapshot tables.
+router.use(requireJwt, (req, res, next) => {
+  if (req.user?.orgType === "AN") {
+    res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
+    return;
+  }
+  next();
+});
+
 // ── GET /takt-requests ────────────────────────────────────────────────────────
 // GU sees requests where they are the guOrgId.
 // NU sees requests where they are the nuOrgId.

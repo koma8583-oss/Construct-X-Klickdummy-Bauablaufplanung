@@ -9,6 +9,14 @@ import {
   timestamp,
   unique,
 } from "drizzle-orm/pg-core";
+import {
+  availabilityCheckStatusEnum,
+  availabilityResultEnum,
+  type InternalResultPayload,
+  type PublicResultPayload,
+} from "./availability-checks";
+import { organizationsTable } from "./organizations";
+import { usersTable } from "./users";
 
 export const anLeistungsanfrageStatusEnum = pgEnum("an_leistungsanfrage_status", [
   "RECEIVED",
@@ -85,6 +93,35 @@ export const anLeistungsanfrageResourceRequirementsTable = pgTable(
   ],
 );
 
+/** Availability history belongs to the AN-local projection, never to the AG request. */
+export const anAvailabilityChecksTable = pgTable(
+  "an_availability_checks",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    anLeistungsanfrageId: text("an_leistungsanfrage_id")
+      .notNull()
+      .references(() => anLeistungsanfragenTable.id, { onDelete: "cascade" }),
+    anOrgId: text("an_org_id").notNull().references(() => organizationsTable.id),
+    status: availabilityCheckStatusEnum("status").notNull().default("PENDING"),
+    result: availabilityResultEnum("result"),
+    runNumber: integer("run_number").notNull().default(1),
+    internalResultPayload: jsonb("internal_result_payload").$type<InternalResultPayload>(),
+    publicResultPayload: jsonb("public_result_payload").$type<PublicResultPayload>(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id").references(() => usersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("an_availability_checks_request_org_run_idx").on(
+      table.anLeistungsanfrageId,
+      table.anOrgId,
+      table.runNumber,
+    ),
+  ],
+);
+
 export type AnLeistungsanfrage = typeof anLeistungsanfragenTable.$inferSelect;
 export type AnLeistungsanfrageResourceRequirement =
   typeof anLeistungsanfrageResourceRequirementsTable.$inferSelect;
+export type AnAvailabilityCheck = typeof anAvailabilityChecksTable.$inferSelect;

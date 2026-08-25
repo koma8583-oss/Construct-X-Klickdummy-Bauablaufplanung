@@ -14,11 +14,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
   nuLocalProjectsTable,
   resourceBookingsTable,
   resourcesTable,
   resourceTypesTable,
-  taktRequestsTable,
 } from "@workspace/db";
 import { and, eq, lt, gt } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -81,11 +81,11 @@ async function sourceBelongsToNu(
 ): Promise<boolean> {
   if (sourceType === "TAKT_REQUEST") {
     if (!sourceReferenceId) return false;
-    const [request] = await db.select({ id: taktRequestsTable.id })
-      .from(taktRequestsTable)
+    const [request] = await db.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
       .where(and(
-        eq(taktRequestsTable.id, sourceReferenceId),
-        eq(taktRequestsTable.nuOrgId, nuOrgId),
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, sourceReferenceId),
+        eq(anLeistungsanfragenTable.receiverAnOrgId, nuOrgId),
       ))
       .limit(1);
     return Boolean(request);

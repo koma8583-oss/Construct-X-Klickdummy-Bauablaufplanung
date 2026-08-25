@@ -25,6 +25,9 @@ import {
   messageOutboxTable,
   dataspaceExchangesTable,
   projectContractorsTable,
+  anLeistungsanfragenTable,
+  anLeistungsantwortAlternativenTable,
+  anLeistungsantwortenTable,
 } from "@workspace/db";
 
 const PREFIX = "independent-ag-an";
@@ -49,6 +52,24 @@ const agToken = token(AG_USER, AG, "AG");
 const anToken = token(AN_USER, AN, "AN");
 
 async function cleanup() {
+  const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
+    .from(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN));
+  const localRequestIds = localRequests.map(({ id }) => id);
+  if (localRequestIds.length) {
+    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+      .from(anLeistungsantwortenTable)
+      .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
+    const localResponseIds = localResponses.map(({ id }) => id);
+    if (localResponseIds.length) {
+      await db.delete(anLeistungsantwortAlternativenTable)
+        .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
+      await db.delete(anLeistungsantwortenTable)
+        .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
+    }
+    await db.delete(anLeistungsanfragenTable)
+      .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
+  }
   const requests = await db.select({ id: taktRequestsTable.id })
     .from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT));
   const requestIds = requests.map(({ id }) => id);
@@ -138,27 +159,43 @@ describe("independent AG–AN coordination flow", () => {
 
   it("AN sees the request, but AG cannot use the AN response endpoint", async () => {
     const inbox = await request(app)
-      .get("/api/takt-requests?role=nu")
+      .get("/api/an/takt-requests?role=nu")
       .set("Authorization", `Bearer ${anToken}`);
     expect(inbox.status).toBe(200);
     expect(inbox.body.some((row: { id: string }) => row.id === requestId)).toBe(true);
 
     const forbidden = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${agToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-01", end: "2026-10-14" } });
     expect(forbidden.status).toBe(403);
   });
 
   it("AN accepts and AG confirms the response", async () => {
-    // Local transport delivery and AN inbound processing are separate
-    // boundaries. Simulate the committed inbound state before the AN action.
-    await db.update(taktRequestsTable)
-      .set({ status: "UNDER_REVIEW" })
-      .where(eq(taktRequestsTable.id, requestId));
+    const [agRequestBefore] = await db.select({ status: taktRequestsTable.status })
+      .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
+    expect(["SENT", "DELIVERED"]).toContain(agRequestBefore.status);
+
+    const details = await request(app)
+      .get(`/api/an/takt-requests/${requestId}/details`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(details.status).toBe(200);
+    expect(details.body.status).toBe("DETAILS_RETRIEVED");
+
+    const availability = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/availability-checks`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(availability.status).toBe(201);
+    expect(availability.body.status).toBe("COMPLETED");
+
+    const latestAvailability = await request(app)
+      .get(`/api/an/takt-requests/${requestId}/availability-checks/latest`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(latestAvailability.status).toBe(200);
+    expect(latestAvailability.body.checkId).toBe(availability.body.checkId);
 
     const response = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         decision: "ACCEPTED",
@@ -167,10 +204,17 @@ describe("independent AG–AN coordination flow", () => {
       });
     expect(response.status).toBe(201);
 
+    const [agRequestAfterResponse] = await db.select({ status: taktRequestsTable.status })
+      .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
+    expect(["SENT", "DELIVERED", "UNDER_REVIEW", "ACCEPTED"]).toContain(agRequestAfterResponse.status);
+    const [agResponse] = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
+    expect(agResponse).toBeDefined();
+
     const decision = await request(app)
       .post(`/api/takt-requests/${requestId}/gu-decisions`)
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ decisionType: "CONFIRM_ACCEPTED", responseId: response.body.id });
+      .send({ decisionType: "CONFIRM_ACCEPTED", responseId: agResponse.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
   });
@@ -189,13 +233,13 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect(sent.status).toBe(200);
 
-    // The transport and inbound processing are separate boundaries.
-    await db.update(taktRequestsTable)
-      .set({ status: "UNDER_REVIEW" })
-      .where(eq(taktRequestsTable.id, firstRoundId));
+    const receivedDetails = await request(app)
+      .get(`/api/an/takt-requests/${firstRoundId}/details`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(receivedDetails.status).toBe(200);
 
     const alternatives = await request(app)
-      .post(`/api/takt-requests/${firstRoundId}/responses`)
+      .post(`/api/an/takt-requests/${firstRoundId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         decision: "ALTERNATIVES_PROPOSED",
@@ -241,7 +285,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(oldRequest.status).toBe("SUPERSEDED");
 
     const shiftedResponse = await request(app)
-      .post(`/api/takt-requests/${secondRoundId}/responses`)
+      .post(`/api/an/takt-requests/${secondRoundId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         decision: "ACCEPTED",

@@ -34,7 +34,7 @@ import {
   messageOutboxTable,
   messageInboxTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -125,31 +125,38 @@ beforeAll(async () => {
 
   await db.insert(projectsTable).values({
     id: PROJECT_ID, name: "t69-Project", agOrgId: GU_ORG_ID,
-    location: "Test", startDate: "2026-01-01", endDate: "2026-12-31",
+    status: "ACTIVE", location: "Test", startDate: "2026-01-01", endDate: "2026-12-31",
   }).onConflictDoNothing();
 
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG_ID,
+    assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
+
+  await db.execute(sql`
+    INSERT INTO project_memberships
+      (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status)
+    VALUES (${`t69-membership`}, ${PROJECT_ID}, ${GU_ORG_ID}, ${NU_ORG_ID},
+      ${`t69-invitation`}, ${`t69-correlation`}, 'ACTIVE')
+    ON CONFLICT DO NOTHING
+  `);
 });
 
 afterAll(async () => {
   await flushRelated();
 });
 
-// ── Helper: create a fresh Takt + request (direct DB — established pattern) ───
+// ── Helper: create a fresh Takt + send a request across the AG–AN boundary ───
 //
-// All other test files insert test fixtures directly into the DB rather than
-// going through the API, which avoids brittle coupling to transport/snapshot
-// creation logic that is already unit-tested elsewhere.
+// The project/takt fixtures are inserted directly. The actual coordination
+// starts through the AG API, so Dataspace inbound creates the AN-local
+// projection rather than an AG-owned status mutation.
 
 async function createAndSendRequest(taktIdSuffix = ""): Promise<{
   taktId: string;
   requestId: string;
 }> {
   const taktId = taktIdSuffix ? `${TAKT_ID}-${taktIdSuffix}` : TAKT_ID;
-  const requestNumber = `TKR-T69-${taktIdSuffix.toUpperCase() || "X"}`;
-
   // Cleanup prior data for this specific takt (always filtered, never global)
   const priorRequests = await db
     .select({ id: taktRequestsTable.id })
@@ -196,19 +203,23 @@ async function createAndSendRequest(taktIdSuffix = ""): Promise<{
     lifecycleStatus: "IN_COORDINATION" as const,
   });
 
-  // Insert request directly with UNDER_REVIEW status so NU can respond via API
-  const [newReq] = await db.insert(taktRequestsTable).values({
-    taktId,
-    taktVersion: 1,
-    guOrgId: GU_ORG_ID,
-    nuOrgId: NU_ORG_ID,
-    requestNumber,
-    status: "UNDER_REVIEW" as const,
-    createdByUserId: GU_USER_ID,
-    responseRequiredBy: new Date("2026-04-01"),
-  }).returning();
+  const created = await request(app)
+    .post("/api/takt-requests")
+    .set("Authorization", `Bearer ${guToken}`)
+    .send({
+      taktId,
+      nuOrgId: NU_ORG_ID,
+      responseRequiredBy: "2027-04-01T00:00:00.000Z",
+    });
+  expect(created.status, JSON.stringify(created.body)).toBe(201);
+  const requestId = created.body.id as string;
 
-  return { taktId, requestId: newReq.id };
+  const sent = await request(app)
+    .post(`/api/takt-requests/${requestId}/send`)
+    .set("Authorization", `Bearer ${guToken}`);
+  expect([200, 201]).toContain(sent.status);
+
+  return { taktId, requestId };
 }
 
 // ── Helper: NU submits a response ─────────────────────────────────────────────
@@ -217,6 +228,11 @@ async function nuSubmitResponse(
   requestId: string,
   decision: "ACCEPTED" | "ALTERNATIVES_PROPOSED" | "REJECTED",
 ) {
+  const details = await request(app)
+    .get(`/api/an/takt-requests/${requestId}/details`)
+    .set("Authorization", `Bearer ${nuToken}`);
+  expect(details.status).toBe(200);
+
   const responseBody: Record<string, unknown> = { decision };
   if (decision === "ACCEPTED") {
     responseBody.acceptedTimeWindow = { start: "2026-03-01", end: "2026-03-15" };
@@ -233,11 +249,11 @@ async function nuSubmitResponse(
   }
 
   const respRes = await request(app)
-    .post(`/api/takt-requests/${requestId}/responses`)
+    .post(`/api/an/takt-requests/${requestId}/responses`)
     .set("Authorization", `Bearer ${nuToken}`)
     .send(responseBody);
   expect(respRes.status).toBe(201);
-  return respRes.body as { id: string };
+  return { id: respRes.body.responseId as string };
 }
 
 // ── Scenario A — Confirm original ─────────────────────────────────────────────
@@ -409,12 +425,12 @@ describe("t69-scenarioC: REQUEST_REVISION → createRevision → re-send", () =>
         plannedTimeWindow: { start: "2026-06-01", end: "2026-06-15" },
         subject: "Überarbeitete Anfrage",
         message: "Neuer Zeitplan",
-        sendImmediately: true,
+        sendImmediately: false,
       });
     expect(res.status).toBe(201);
     expect(res.body.newTaktVersion).toBe(2);
-    expect(res.body.newRequestStatus).toBe("DELIVERED");
-    expect(res.body.sent).toBe(true);
+    expect(res.body.newRequestStatus).toBe("DRAFT");
+    expect(res.body.sent).toBe(false);
     newRequestId = res.body.newRequestId;
   });
 
@@ -426,7 +442,7 @@ describe("t69-scenarioC: REQUEST_REVISION → createRevision → re-send", () =>
   it("t69-C4: New request references predecessor", async () => {
     const [newReq] = await db.select().from(taktRequestsTable).where(eq(taktRequestsTable.id, newRequestId));
     expect(newReq.supersedesRequestId).toBe(requestId);
-    expect(newReq.status).toBe("DELIVERED");
+    expect(newReq.status).toBe("DRAFT");
   });
 
   it("t69-C5: takt_versions row created with sourceType=REVISION", async () => {
@@ -441,21 +457,20 @@ describe("t69-scenarioC: REQUEST_REVISION → createRevision → re-send", () =>
     expect(takt.version).toBe(2);
   });
 
-  it("t69-C7: TAKT_REQUEST_REVISED outbox message created", async () => {
-    const msgs = await db.select().from(messageOutboxTable)
-      .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
-    const revised = msgs.find((m) => m.messageType === "TAKT_REQUEST_REVISED");
-    expect(revised).toBeDefined();
+  it("t69-C7: AG sends the revision and it becomes a local AN projection", async () => {
+    const sent = await request(app)
+      .post(`/api/takt-requests/${newRequestId}/send`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect([200, 201]).toContain(sent.status);
+
+    const details = await request(app)
+      .get(`/api/an/takt-requests/${newRequestId}/details`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(details.status).toBe(200);
+    expect(details.body.taktVersion).toBe(2);
   });
 
   it("t69-C8: NU confirms Version 2 and GU accepts — Takt ends CONFIRMED", async () => {
-    // The new request is in DELIVERED status (sendImmediately:true).
-    // Advance it to UNDER_REVIEW so NU can submit a response via API.
-    await db
-      .update(taktRequestsTable)
-      .set({ status: "UNDER_REVIEW" as const })
-      .where(eq(taktRequestsTable.id, newRequestId));
-
     // NU responds to the new request
     await nuSubmitResponse(newRequestId, "ACCEPTED");
 
