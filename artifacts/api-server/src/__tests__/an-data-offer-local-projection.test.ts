@@ -84,6 +84,19 @@ describe("AN data offers use local invitation projections", () => {
       },
     });
 
+    const odrl = await request(app)
+      .get(`/api/an/data-publications/${PUBLICATION_ID}/odrl`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(odrl.status).toBe(200);
+    expect(odrl.body).toMatchObject({
+      "@type": "Set",
+      uid: `urn:odrl:data-publication:${PUBLICATION_ID}`,
+      permission: [expect.objectContaining({
+        assigner: "organization:ag-local-offer-test",
+        assignee: "organization:an-local-offer-test",
+      })],
+    });
+
     await anDb.update(anProjectInvitationsTable).set({
       status: "ACCEPTED",
       policyAcceptedAt: new Date(),
