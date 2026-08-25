@@ -132,7 +132,7 @@ const POLICY_DEFINITIONS: Record<string, {
   },
 };
 
-function buildPreviewOdrl(policy: PolicyTemplate, agOrgId: string): Record<string, unknown> {
+export function buildPreviewOdrl(policy: PolicyTemplate, agOrgId: string): Record<string, unknown> {
   const def = POLICY_DEFINITIONS[policy.code] ?? {
     purposeValue:       policy.code.toLowerCase().replace(/_/g, ''),
     prohibitionActions: ['distribute', 'derive'],

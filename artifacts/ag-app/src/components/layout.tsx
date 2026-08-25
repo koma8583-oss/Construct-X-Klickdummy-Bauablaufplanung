@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   Menu,
   X,
+  Globe,
 } from 'lucide-react';
 
 interface NavItem {
@@ -41,6 +42,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard, badge: pendingProposalsTotal },
     { name: t('nav.projects'), href: '/projects', icon: Briefcase },
     { name: 'Anfragen', href: '/leistungsanfragen', icon: Send, badge: pendingProposalsTotal },
+    { name: 'Datenraum', href: '/data-room/policies', icon: Globe },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
 

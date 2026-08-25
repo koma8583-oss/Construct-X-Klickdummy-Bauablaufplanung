@@ -24,6 +24,7 @@ import ResourceBookings from '@/pages/resource-bookings';
 import AvailabilityChecks from '@/pages/availability-checks';
 import Reports from '@/pages/reports';
 import DataOffers from '@/pages/data-offers';
+import PolicyLibrary from '@/pages/policy-library';
 
 const queryClient = new QueryClient();
 
@@ -84,6 +85,8 @@ function AuthRoutedApp() {
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />
         <Route path="/data-offers" component={DataOffers} />
+        <Route path="/data-room/policies/:code" component={PolicyLibrary} />
+        <Route path="/data-room/policies" component={PolicyLibrary} />
         <Route path="/project-invitations">
           <Redirect to="/leistungsanfragen" />
         </Route>

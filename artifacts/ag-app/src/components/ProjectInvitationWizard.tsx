@@ -68,8 +68,6 @@ function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
     }],
     prohibition: [
       { target: "data-publication:project-invitation-preview", action: "distribute" },
-      { target: "data-publication:project-invitation-preview", action: "derive" },
-      { target: "data-publication:project-invitation-preview", action: "modify" },
     ],
   };
 }
@@ -180,7 +178,8 @@ export function ProjectInvitationWizard({
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
+    <>
+      <Dialog open={open} onOpenChange={close}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -246,23 +245,16 @@ export function ProjectInvitationWizard({
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Nutzungsrichtlinie</Label>
-                <Select value={policyTemplateId} onValueChange={setPolicyTemplateId}>
-                  <SelectTrigger><SelectValue placeholder="Policy auswählen…" /></SelectTrigger>
-                  <SelectContent>
-                    {policies?.map((policy) => <SelectItem key={policy.id} value={policy.id}>{policy.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              {selectedPolicy && (
-                <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-2">
-                  <div className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4 text-primary" />{selectedPolicy.name}</div>
-                  <p className="text-muted-foreground">{selectedPolicy.purpose}</p>
-                  <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                    <div><span className="font-medium">Erlaubt:</span> {selectedPolicy.permissions.join(", ")}</div>
-                    <div><span className="font-medium">Nicht erlaubt:</span> {selectedPolicy.prohibitions.join(", ")}</div>
-                  </div>
+                <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="flex-1">{selectedPolicy?.name ?? "Project Coordination Subcontractor"}</span>
+                  {selectedPolicy && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
+                      <Eye className="h-3.5 w-3.5" /> Details &amp; ODRL
+                    </Button>
+                  )}
                 </div>
-              )}
+              </div>
               <div className="space-y-2">
                 <Label>Titel des Informationspakets</Label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={autoTitle} />
@@ -327,6 +319,44 @@ export function ProjectInvitationWizard({
           )}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      {selectedPolicy && (
+      <Dialog open={policyViewOpen} onOpenChange={setPolicyViewOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selectedPolicy.name}</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="details">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="details">Policy-Details</TabsTrigger>
+              <TabsTrigger value="odrl">ODRL / JSON-LD</TabsTrigger>
+            </TabsList>
+            <TabsContent value="details" className="max-h-[440px] space-y-3 overflow-y-auto py-3 text-sm">
+              {selectedPolicy.description && <p>{selectedPolicy.description}</p>}
+              <p className="text-muted-foreground">{selectedPolicy.purpose}</p>
+              <div>
+                <strong>Erlaubt:</strong>
+                <ul className="ml-5 list-disc">{selectedPolicy.permissions.map((value) => <li key={value}>{value}</li>)}</ul>
+              </div>
+              <div>
+                <strong>Nicht erlaubt:</strong>
+                <ul className="ml-5 list-disc">{selectedPolicy.prohibitions.map((value) => <li key={value}>{value}</li>)}</ul>
+              </div>
+              <p><strong>Gültigkeit:</strong> {selectedPolicy.validityRule}</p>
+              {selectedPolicy.retentionRule && <p><strong>Aufbewahrung:</strong> {selectedPolicy.retentionRule}</p>}
+            </TabsContent>
+            <TabsContent value="odrl" className="py-3">
+              <pre className="max-h-[440px] overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">
+                {JSON.stringify(buildInvitationOdrl(selectedPolicy.code), null, 2)}
+              </pre>
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPolicyViewOpen(false)}>Schließen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      )}
+    </>
   );
 }

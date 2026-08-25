@@ -19,6 +19,7 @@ import dataOffersRouter from "./data-offers";
 import reportsRouter from "../reports";
 import inboxMessagesRouter from "./inbox-messages";
 import projectInvitationsRouter from "./project-invitations";
+import policiesRouter from "./policies";
 
 const router: IRouter = Router();
 
@@ -51,5 +52,6 @@ router.use(inboxMessagesRouter);
 
 // AN-local Dataspace invitation projection and decision endpoints.
 router.use(projectInvitationsRouter);
+router.use(policiesRouter);
 
 export default router;

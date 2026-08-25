@@ -20,6 +20,7 @@ import {
   getListAnProjectInvitationsQueryKey,
   useAcceptAnProjectInvitation,
   useRejectAnProjectInvitation,
+  useGetDataPublicationOdrl,
   type AnProjectInvitation,
   type TaktRequestListItem,
   type TaktRequestStatus,
@@ -33,6 +34,7 @@ import {
   Inbox,
   ChevronRight,
   Loader2,
+  Eye,
   Ban,
   Bell,
   Timer,
@@ -293,6 +295,7 @@ function InvitationStatusBadge({ status }: { status: AnProjectInvitation['status
 
 function ProjectInvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
   const [policyConfirmed, setPolicyConfirmed] = useState(false);
+  const [showOdrl, setShowOdrl] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const accept = useAcceptAnProjectInvitation();
@@ -304,6 +307,11 @@ function ProjectInvitationCard({ invitation }: { invitation: AnProjectInvitation
   const permissions = policyList(policy, 'permissions');
   const prohibitions = policyList(policy, 'prohibitions');
   const validityRule = policyText(policy, 'validityRule');
+  const retentionRule = policyText(policy, 'retentionRule');
+  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
+    invitation.dataPublicationId ?? '',
+    showOdrl,
+  );
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
@@ -371,9 +379,28 @@ function ProjectInvitationCard({ invitation }: { invitation: AnProjectInvitation
             <ShieldCheck className="h-4 w-4 text-primary" />{policyName}
           </div>
           {policyPurpose && <p className="text-muted-foreground">{policyPurpose}</p>}
+          {policyText(policy, 'description') && <p>{policyText(policy, 'description')}</p>}
           {permissions.length > 0 && <p><strong>Erlaubt:</strong> {permissions.join(', ')}</p>}
           {prohibitions.length > 0 && <p><strong>Nicht erlaubt:</strong> {prohibitions.join(', ')}</p>}
           {validityRule && <p><strong>Bedingungen:</strong> {validityRule}</p>}
+          {retentionRule && <p><strong>Aufbewahrung:</strong> {retentionRule}</p>}
+          {invitation.dataPublicationId && (
+            <>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowOdrl((visible) => !visible)}>
+                <Eye className="mr-2 h-4 w-4" />
+                {showOdrl ? 'ODRL ausblenden' : 'ODRL anzeigen'}
+              </Button>
+              {showOdrl && (
+                odrlLoading ? (
+                  <p className="text-xs text-muted-foreground">ODRL wird geladen…</p>
+                ) : odrl ? (
+                  <pre className="max-h-64 overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">{JSON.stringify(odrl, null, 2)}</pre>
+                ) : (
+                  <p className="text-xs text-muted-foreground">ODRL konnte nicht geladen werden.</p>
+                )
+              )}
+            </>
+          )}
         </div>
         {invitation.status === 'PENDING' ? (
           <>

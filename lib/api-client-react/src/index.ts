@@ -4,6 +4,7 @@ export { setBaseUrl, setAuthTokenGetter } from "./custom-fetch";
 export type { AuthTokenGetter } from "./custom-fetch";
 export * from './reports';
 export * from './data-publications';
+export * from './policy-library';
 export * from './data-offers';
 export {
   DTC_CLASSES,

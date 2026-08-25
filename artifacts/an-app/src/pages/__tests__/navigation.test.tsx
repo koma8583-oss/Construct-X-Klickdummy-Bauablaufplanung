@@ -79,9 +79,7 @@ describe("AN-Navigation", () => {
     expect(
       screen.queryByRole("link", { name: "Ressourcenbelegungen" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Datenraum" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Datenraum" })).toBeInTheDocument();
   });
 
   it("verlinkt Ressourcenbelegungen aus den Internen Projekten kontextuell", async () => {

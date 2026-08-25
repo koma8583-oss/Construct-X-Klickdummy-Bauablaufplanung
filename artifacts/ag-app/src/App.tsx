@@ -19,6 +19,7 @@ import Leistungsanfragen from '@/pages/leistungsanfragen';
 import LeistungsanfragenDetail from '@/pages/leistungsanfragen-detail';
 import Settings from '@/pages/settings';
 import NotFound from '@/pages/not-found';
+import PolicyLibrary from '@/pages/policy-library';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,8 @@ function AuthenticatedApp() {
           <Route path="/projects/:projectId/proposals" component={ProjectProposals} />
           <Route path="/leistungsanfragen" component={Leistungsanfragen} />
           <Route path="/leistungsanfragen/:requestId" component={LeistungsanfragenDetail} />
+          <Route path="/data-room/policies/:code" component={PolicyLibrary} />
+          <Route path="/data-room/policies" component={PolicyLibrary} />
           <Route path="/takt-requests">
             <Redirect to="/leistungsanfragen" />
           </Route>
