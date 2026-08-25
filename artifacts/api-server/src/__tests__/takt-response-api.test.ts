@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -32,6 +32,8 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   messageInboxTable,
+  anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -103,6 +105,23 @@ async function seedRequest(suffix: string): Promise<string> {
     },
   ]).onConflictDoNothing();
 
+  await anDb.insert(anLeistungsanfragenTable).values({
+    id: `t48-an-req-${suffix}`,
+    externalLeistungsanfrageId: reqId,
+    externalRequestVersion: 1,
+    sourceMessageId: `t48-source-${suffix}`,
+    payloadHash: `t48-payload-${suffix}`,
+    correlationId: reqId,
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG_A,
+    projectReference: PROJECT,
+    leistungReference: taktId,
+    plannedStart: "2026-09-15",
+    plannedEnd: "2026-09-20",
+    payloadSnapshot: {},
+    status: "UNDER_REVIEW",
+  }).onConflictDoNothing();
+
   return reqId;
 }
 
@@ -129,6 +148,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await anDb.execute(sql`
+    DELETE FROM an_leistungsantworten WHERE source_request_id LIKE 't48-req-%';
+    DELETE FROM an_leistungsanfragen WHERE external_leistungsanfrage_id LIKE 't48-req-%';
+  `);
   await db.execute(sql`
     DELETE FROM leistungsantworten         WHERE leistungsanfrage_id LIKE 't48-req-%';
     DELETE FROM message_inbox              WHERE correlation_id      LIKE 't48-req-%';
