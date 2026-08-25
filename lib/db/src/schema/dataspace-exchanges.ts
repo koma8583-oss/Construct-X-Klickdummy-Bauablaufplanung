@@ -7,6 +7,9 @@ export const dataspaceExchangeMessageTypeEnum = pgEnum("dataspace_exchange_messa
   "SERVICE_RESPONSE",
   "PROJECT_INVITATION",
   "PROJECT_INVITATION_RESPONSE",
+  "TAKT_RESPONSE_ACCEPTED",
+  "TAKT_RESPONSE_REVISION_REQUESTED",
+  "TAKT_REQUEST_CANCELLED",
 ]);
 export const dataspaceExchangeStatusEnum = pgEnum("dataspace_exchange_status", ["CREATED", "PUBLISHED", "RECEIVED", "PROCESSED", "FAILED"]);
 

@@ -1,4 +1,5 @@
 import type {
+  ExternalCoordinationDecision,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -31,6 +32,7 @@ export interface DataspaceExchange {
   ): Promise<InboundProcessResult>;
   publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference>;
   publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference>;
+  publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference>;
   receiveServiceRequest(
     payload: ExternalServiceRequest,
     process?: (payload: ExternalServiceRequest) => Promise<void>,
@@ -38,5 +40,9 @@ export interface DataspaceExchange {
   receiveServiceResponse(
     payload: ExternalServiceResponse,
     process?: (payload: ExternalServiceResponse) => Promise<void>,
+  ): Promise<InboundProcessResult>;
+  receiveCoordinationDecision(
+    payload: ExternalCoordinationDecision,
+    process?: (payload: ExternalCoordinationDecision) => Promise<void>,
   ): Promise<InboundProcessResult>;
 }

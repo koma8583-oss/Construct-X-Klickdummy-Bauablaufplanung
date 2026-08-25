@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import type {
+  ExternalCoordinationDecision,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -14,6 +15,7 @@ import {
   handleIncomingServiceResponse,
   handleIncomingProjectInvitation,
   handleIncomingProjectInvitationResponse,
+  handleIncomingCoordinationDecision,
 } from "./inbound-exchange-service";
 
 export class RestDataspaceExchange implements DataspaceExchange {
@@ -135,6 +137,13 @@ export class RestDataspaceExchange implements DataspaceExchange {
     return handleIncomingServiceResponse(payload, process);
   }
 
+  async receiveCoordinationDecision(
+    payload: ExternalCoordinationDecision,
+    process?: (payload: ExternalCoordinationDecision) => Promise<void>,
+  ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
+    return handleIncomingCoordinationDecision(payload, process);
+  }
+
   private requestPayload(payload: ExternalServiceRequest): Record<string, unknown> {
     return {
       taktRequestId: payload.requestId,
@@ -158,6 +167,25 @@ export class RestDataspaceExchange implements DataspaceExchange {
       taktVersion: payload.requestVersion,
       decision: payload.decision,
       alternatives: payload.alternatives ?? null,
+    };
+  }
+
+  private coordinationDecisionPayload(payload: ExternalCoordinationDecision): Record<string, unknown> {
+    if (payload.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
+      return {
+        taktRequestId: payload.requestId,
+        comment: payload.comment ?? null,
+        closedAt: payload.closedAt,
+      };
+    }
+    return {
+      taktRequestId: payload.requestId,
+      decisionType: payload.decisionType,
+      acceptedAlternativeId: payload.acceptedAlternativeId ?? null,
+      confirmedTimeWindow: payload.confirmedTimeWindow ?? null,
+      taktVersion: payload.taktVersion,
+      comment: payload.comment ?? null,
+      ...(payload.closedAt ? { closedAt: payload.closedAt } : {}),
     };
   }
 
@@ -255,5 +283,58 @@ export class RestDataspaceExchange implements DataspaceExchange {
       throw error;
     }
     return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
+  }
+
+  async publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference> {
+    const messageType = payload.decisionType === "CLOSE_WITHOUT_AGREEMENT"
+      ? "TAKT_REQUEST_CANCELLED" as const
+      : payload.decisionType === "REQUEST_REVISION"
+        ? "TAKT_RESPONSE_REVISION_REQUESTED" as const
+        : "TAKT_RESPONSE_ACCEPTED" as const;
+    const [existing] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+    )).limit(1);
+    if (existing?.status === "PUBLISHED") {
+      return { exchangeId: existing.messageId, externalReference: existing.externalReference ?? existing.messageId, status: "DELIVERED" };
+    }
+    await db.insert(dataspaceExchangesTable).values({
+      direction: "OUTBOUND", messageType,
+      messageId: payload.metadata.messageId, correlationId: payload.metadata.correlationId,
+      senderOrgId: payload.metadata.senderOrgId, receiverOrgId: payload.metadata.receiverOrgId,
+      businessObjectId: payload.requestId, businessObjectVersion: payload.requestVersion,
+      status: "CREATED",
+    }).onConflictDoNothing();
+    try {
+      const result = await this.transport.send({
+        messageId: payload.metadata.messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType: messageType as DataspaceMessageType,
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        createdAt: new Date(payload.metadata.createdAt),
+        causationId: null,
+        payload: this.coordinationDecisionPayload(payload),
+      });
+      await db.update(dataspaceExchangesTable).set({
+        status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
+        externalReference: result.messageId,
+        errorCode: result.error?.code ?? null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
+      return { exchangeId: result.messageId, externalReference: result.messageId, ...result };
+    } catch (error) {
+      await db.update(dataspaceExchangesTable).set({
+        status: "FAILED", errorCode: error instanceof Error ? error.name : "TRANSPORT_FAILURE", updatedAt: new Date(),
+      }).where(and(
+        eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+        eq(dataspaceExchangesTable.messageId, payload.metadata.messageId),
+      ));
+      throw error;
+    }
   }
 }

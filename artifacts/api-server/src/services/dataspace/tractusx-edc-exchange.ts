@@ -1,16 +1,17 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import { hubDb as db, messageOutboxTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import type { ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
+import type { ExternalCoordinationDecision, ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
 import {
   handleIncomingServiceRequest,
   handleIncomingServiceResponse,
   handleIncomingProjectInvitation,
   handleIncomingProjectInvitationResponse,
+  handleIncomingCoordinationDecision,
 } from "./inbound-exchange-service";
 
 export class TractusXEdcExchange implements DataspaceExchange {
-  private async publish(payload: ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalServiceRequest | ExternalServiceResponse, messageType: string): Promise<ExchangeReference> {
+  private async publish(payload: ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalServiceRequest | ExternalServiceResponse | ExternalCoordinationDecision, messageType: string): Promise<ExchangeReference> {
     const endpoint = process.env.DATASPACE_CONNECTOR_URL;
     if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
     const response = await fetch(`${endpoint.replace(/\/$/, "")}/messages`, {
@@ -126,6 +127,14 @@ export class TractusXEdcExchange implements DataspaceExchange {
   async publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference> {
     return this.publish(payload, "SERVICE_RESPONSE");
   }
+  async publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference> {
+    const messageType = payload.decisionType === "CLOSE_WITHOUT_AGREEMENT"
+      ? "TAKT_REQUEST_CANCELLED"
+      : payload.decisionType === "REQUEST_REVISION"
+        ? "TAKT_RESPONSE_REVISION_REQUESTED"
+        : "TAKT_RESPONSE_ACCEPTED";
+    return this.publish(payload, messageType);
+  }
 
   receiveProjectInvitation(payload: ExternalProjectInvitation, process?: (payload: ExternalProjectInvitation) => Promise<void>) {
     return handleIncomingProjectInvitation(payload, process);
@@ -146,5 +155,11 @@ export class TractusXEdcExchange implements DataspaceExchange {
     process?: (payload: ExternalServiceResponse) => Promise<void>,
   ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
     return handleIncomingServiceResponse(payload, process);
+  }
+  async receiveCoordinationDecision(
+    payload: ExternalCoordinationDecision,
+    process?: (payload: ExternalCoordinationDecision) => Promise<void>,
+  ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
+    return handleIncomingCoordinationDecision(payload, process);
   }
 }

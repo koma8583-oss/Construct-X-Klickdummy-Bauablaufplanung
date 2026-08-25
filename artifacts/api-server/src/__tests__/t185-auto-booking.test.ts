@@ -1,14 +1,10 @@
 /**
- * Task 185 — Auto-booking integration tests for createGuDecision
+ * AG decision / AN booking boundary regression tests.
  *
  * Tests:
- *   1. CONFIRM_ACCEPTED with a completed availability check → resource_bookings
- *      rows exist with sourceType="TAKT_REQUEST", correct sourceReferenceId,
- *      and the accepted time window from the NU response.
- *   2. ACCEPT_ALTERNATIVE with a completed availability check → resource_bookings
- *      rows use the alternative's time window, not the original.
- *   3. CONFIRM_ACCEPTED with NO completed availability check → no resource_bookings
- *      are created (graceful no-op).
+ *   1. AG acceptance must not use a private availability check to book AN resources.
+ *   2. AG alternative acceptance must not re-evaluate or book AN resources.
+ *   3. The decision remains valid without a completed availability check.
  *
  * Fixture prefix: "t185-"
  */
@@ -350,10 +346,10 @@ afterAll(async () => {
   }
 });
 
-// ── Test 1: CONFIRM_ACCEPTED creates resource_bookings ────────────────────────
+// ── Test 1: AG acceptance never creates AN resource bookings ──────────────────
 
-describe("CONFIRM_ACCEPTED — auto-booking", () => {
-  it("creates resource_bookings rows for each available resource", async () => {
+describe("CONFIRM_ACCEPTED — AN booking boundary", () => {
+  it("does not create AN resource_bookings even when a private availability check exists", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${reqConfirmId}/gu-decisions`)
       .set("Authorization", `Bearer ${guToken}`)
@@ -365,7 +361,7 @@ describe("CONFIRM_ACCEPTED — auto-booking", () => {
     expect(res.status).toBe(201);
     expect(res.body.decisionType).toBe("CONFIRM_ACCEPTED");
 
-    // Query the resource_bookings table
+    // A private check must not become a cross-domain booking source.
     const bookings = await db
       .select()
       .from(resourceBookingsTable)
@@ -376,29 +372,14 @@ describe("CONFIRM_ACCEPTED — auto-booking", () => {
         ),
       );
 
-    // Both resources from the availability check should be booked
-    expect(bookings).toHaveLength(2);
-
-    const resourceIds = bookings.map((b) => b.resourceId).sort();
-    expect(resourceIds).toEqual([RES_A, RES_B].sort());
-
-    for (const booking of bookings) {
-      expect(booking.nuOrgId).toBe(NU_ORG);
-      expect(booking.sourceType).toBe("TAKT_REQUEST");
-      expect(booking.sourceReferenceId).toBe(reqConfirmId);
-      expect(booking.status).toBe("CONFIRMED");
-      expect(booking.utilizationPercent).toBe(100);
-      // Time window must match the accepted start/end from the NU response
-      expect(new Date(booking.startAt!).toISOString()).toBe("2026-11-01T08:00:00.000Z");
-      expect(new Date(booking.endAt!).toISOString()).toBe("2026-11-07T17:00:00.000Z");
-    }
+    expect(bookings).toHaveLength(0);
   });
 });
 
-// ── Test 2: ACCEPT_ALTERNATIVE uses the alternative's time window ─────────────
+// ── Test 2: AG alternative acceptance never re-evaluates or books AN resources
 
-describe("ACCEPT_ALTERNATIVE — auto-booking with alternative time window", () => {
-  it("creates resource_bookings using the alternative's proposedStart/End, not the original window", async () => {
+describe("ACCEPT_ALTERNATIVE — AN booking boundary", () => {
+  it("does not create AN resource_bookings from the alternative or global availability data", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${reqAltId}/gu-decisions`)
       .set("Authorization", `Bearer ${guToken}`)
@@ -422,19 +403,7 @@ describe("ACCEPT_ALTERNATIVE — auto-booking with alternative time window", () 
         ),
       );
 
-    // Only RES_A was in the availability check's availableResources
-    expect(bookings).toHaveLength(1);
-
-    const [booking] = bookings;
-    expect(booking.resourceId).toBe(RES_A);
-    expect(booking.nuOrgId).toBe(NU_ORG);
-    expect(booking.sourceType).toBe("TAKT_REQUEST");
-    expect(booking.sourceReferenceId).toBe(reqAltId);
-    expect(booking.status).toBe("CONFIRMED");
-
-    // Time window must be the ALTERNATIVE's window, not the original takt window
-    expect(new Date(booking.startAt!).toISOString()).toBe("2026-11-10T08:00:00.000Z");
-    expect(new Date(booking.endAt!).toISOString()).toBe("2026-11-14T17:00:00.000Z");
+    expect(bookings).toHaveLength(0);
   });
 });
 

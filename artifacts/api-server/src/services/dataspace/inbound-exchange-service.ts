@@ -2,12 +2,14 @@ import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import type {
+  ExternalCoordinationDecision,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "./external-contracts";
 import {
+  externalCoordinationDecisionSchema,
   externalProjectInvitationSchema,
   externalProjectInvitationResponseSchema,
   externalServiceRequestSchema,
@@ -37,24 +39,31 @@ function payloadHash(payload: unknown): string {
 }
 
 function validatePayload(
-  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse,
+  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalCoordinationDecision,
 ): void {
   const result =
     "invitationId" in payload
       ? ("decision" in payload
         ? externalProjectInvitationResponseSchema.safeParse(payload)
         : externalProjectInvitationSchema.safeParse(payload))
-      : ("decision" in payload
+      : ("decisionType" in payload
+        ? externalCoordinationDecisionSchema.safeParse(payload)
+        : ("decision" in payload
         ? externalServiceResponseSchema.safeParse(payload)
-        : externalServiceRequestSchema.safeParse(payload));
+        : externalServiceRequestSchema.safeParse(payload)));
   if (!result.success) {
     throw new Error("Invalid external exchange payload");
   }
 }
 
-async function processIncoming<T extends ExternalServiceRequest | ExternalServiceResponse>(
+async function processIncoming<T extends ExternalServiceRequest | ExternalServiceResponse | ExternalCoordinationDecision>(
   payload: T,
-  messageType: "SERVICE_REQUEST" | "SERVICE_RESPONSE",
+  messageType:
+    | "SERVICE_REQUEST"
+    | "SERVICE_RESPONSE"
+    | "TAKT_RESPONSE_ACCEPTED"
+    | "TAKT_RESPONSE_REVISION_REQUESTED"
+    | "TAKT_REQUEST_CANCELLED",
   process?: (payload: T) => Promise<void>,
 ): Promise<InboundProcessResult> {
   validateMetadata(payload);
@@ -197,6 +206,19 @@ export async function handleIncomingServiceResponse(
   process?: (payload: ExternalServiceResponse) => Promise<void>,
 ): Promise<InboundProcessResult> {
   return processIncoming(payload, "SERVICE_RESPONSE", process);
+}
+
+export async function handleIncomingCoordinationDecision(
+  payload: ExternalCoordinationDecision,
+  process?: (payload: ExternalCoordinationDecision) => Promise<void>,
+): Promise<InboundProcessResult> {
+  const messageType =
+    payload.decisionType === "CLOSE_WITHOUT_AGREEMENT"
+      ? "TAKT_REQUEST_CANCELLED" as const
+      : payload.decisionType === "REQUEST_REVISION"
+        ? "TAKT_RESPONSE_REVISION_REQUESTED" as const
+        : "TAKT_RESPONSE_ACCEPTED" as const;
+  return processIncoming(payload, messageType, process);
 }
 
 export function handleIncomingProjectInvitation(

@@ -30,12 +30,8 @@ import {
   taktResponseAlternativesTable,
   taktResponseDecisionsTable,
   takteTable,
-  resourceBookingsTable,
-  availabilityChecksTable,
-  taktRequestResourceRequirementsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
-import { evaluateAvailabilityWindow } from "./availability-check-service";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import type {
   TaktResponseDecision,
   TaktCoordinationDecisionType,
@@ -52,11 +48,6 @@ import {
   applyAcceptAlternative,
   VersionConflictError,
 } from "./takt-version-service";
-import {
-  applyConfirmedBookingsFromRequirements,
-  type BookingRequirement,
-} from "./confirmed-booking-service";
-import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
   withCanonicalDecision,
@@ -64,9 +55,10 @@ import {
   withCanonicalVersion,
 } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
+import { deliverLocalCoordinationDecision } from "./dataspace/local-dataspace-delivery";
+import type { ExternalCoordinationDecision } from "./dataspace/external-contracts";
 
 const logger = pino({ name: "gu-decision-service" });
-const transport = new LocalHubTransport();
 
 // ── Domain errors ─────────────────────────────────────────────────────────────
 
@@ -132,7 +124,7 @@ export interface GuDecisionResult {
   /** true when the idempotency key matched an existing identical decision */
   idempotent:     boolean;
   /** Parallel requests automatically cancelled after this exclusive selection. */
-  autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }>;
+  autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string; requestVersion: number }>;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -284,16 +276,11 @@ export async function createGuDecision(
   if (!taktRow) throw new GuDecisionError("Referenced Takt no longer exists", 404);
 
   const expectedTaktVersion = taktRow.version;
-  const nextRequestStatus   = targetRequestStatus(decisionType);
-
-  // ── 7b. Resolve booking time window + available resources (pre-tx) ────────────
-  // For acceptance decisions we auto-create resource_bookings from the latest
-  // completed availability check so the resources appear in Ressourcenbelegung
-  // and Terminübersicht without any manual step by the NU.
+  // Public coordination data is allowed to stay in AG scope. It is later passed
+  // to the AN through the Dataspace; no private AN availability or booking data
+  // is consulted here.
   let bookingStart: Date | null = null;
   let bookingEnd:   Date | null = null;
-  let autoBookRequirements: BookingRequirement[] = [];
-  let legacyAvailableResourceIds: string[] = [];
 
   const isAcceptance =
     decisionType === "CONFIRM_ACCEPTED" || decisionType === "ACCEPT_ALTERNATIVE";
@@ -308,53 +295,6 @@ export async function createGuDecision(
       bookingEnd   = acceptedAltRow.proposedEnd;
     }
 
-    // Load the latest completed availability check to get concrete resource IDs
-    const [dtcRequirement] = decisionType === "ACCEPT_ALTERNATIVE"
-      ? await db
-          .select({ id: taktRequestResourceRequirementsTable.id })
-          .from(taktRequestResourceRequirementsTable)
-          .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId))
-          .limit(1)
-      : [];
-    if (bookingStart && bookingEnd && request.nuOrgId && decisionType === "ACCEPT_ALTERNATIVE" && dtcRequirement) {
-      const reevaluated = await evaluateAvailabilityWindow(
-        taktRequestId,
-        request.nuOrgId,
-        bookingStart,
-        bookingEnd,
-      );
-      if (reevaluated.conflicts.some((conflict) => !conflict.isTentative)) {
-        throw new GuDecisionError(
-          "The accepted alternative is no longer feasible for all resource requirements",
-          409,
-        );
-      }
-      autoBookRequirements = reevaluated.bookingRequirements ?? [];
-    } else if (bookingStart && bookingEnd && request.nuOrgId) {
-      const [latestCheck] = await db
-        .select({ internalResultPayload: availabilityChecksTable.internalResultPayload })
-        .from(availabilityChecksTable)
-        .where(
-          and(
-            eq(availabilityChecksTable.taktRequestId, taktRequestId),
-            eq(availabilityChecksTable.nuOrgId, request.nuOrgId),
-            eq(availabilityChecksTable.status, "COMPLETED"),
-          ),
-        )
-        .orderBy(desc(availabilityChecksTable.runNumber))
-        .limit(1);
-
-      autoBookRequirements = latestCheck?.internalResultPayload?.bookingRequirements ?? [];
-      // Compatibility for availability checks written before bookingRequirements
-      // existed. Keep this fallback deliberately narrow: it only uses concrete
-      // resource IDs and never turns an aggregate/type-level result into a
-      // concrete booking.
-      if (autoBookRequirements.length === 0) {
-        legacyAvailableResourceIds = (latestCheck?.internalResultPayload?.availableResources ?? [])
-          .map((resource: { resourceId?: string | null }) => resource.resourceId)
-          .filter((resourceId): resourceId is string => Boolean(resourceId));
-      }
-    }
   }
 
   // ── 8. Transactional write ────────────────────────────────────────────────────
@@ -362,7 +302,7 @@ export async function createGuDecision(
     // An acceptance selects exactly one AN from the immutable group. Lock every
     // group row before looking for an existing winner or cancelling siblings so
     // two concurrent requests cannot each confirm a different AN.
-    let autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }> = [];
+    let autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string; requestVersion: number }> = [];
     if (isAcceptance) {
       await tx.execute(sql`
         SELECT id
@@ -408,6 +348,7 @@ export async function createGuDecision(
           id: groupRequest.id,
           nuOrgId: groupRequest.nuOrgId,
           requestNumber: groupRequest.requestNumber,
+          requestVersion: groupRequest.taktVersion,
         }));
     }
 
@@ -464,24 +405,6 @@ export async function createGuDecision(
         .set({ lifecycleStatus: "PLANNED" })
         .where(eq(takteTable.id, request.taktId));
 
-      // Cancel any auto-created resource bookings for this TaktRequest so they
-      // no longer appear as blocked capacity in Terminübersicht / Ressourcenbelegung.
-      const cancelledBookings = await tx
-        .update(resourceBookingsTable)
-        .set({ status: "CANCELLED" })
-        .where(
-          and(
-            eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
-            eq(resourceBookingsTable.sourceReferenceId, taktRequestId),
-          ),
-        )
-        .returning({ id: resourceBookingsTable.id });
-      if (cancelledBookings.length > 0) {
-        logger.info(
-          { taktRequestId, count: cancelledBookings.length },
-          "Cancelled resource bookings on CLOSE_WITHOUT_AGREEMENT",
-        );
-      }
     }
 
     // c. Update TaktRequest status (for CONFIRM/ACCEPT this was already done inside apply*)
@@ -519,38 +442,6 @@ export async function createGuDecision(
         ));
     }
 
-    // d. Auto-create resource bookings for accepted resources
-    // Only for acceptance decisions where we have a time window and resources
-    // from the latest availability check.
-    if (isAcceptance && bookingStart && bookingEnd && request.nuOrgId) {
-      const bookingValues = await applyConfirmedBookingsFromRequirements(tx, {
-        serviceRequestId: taktRequestId,
-        nuOrgId: request.nuOrgId,
-        requirements: autoBookRequirements,
-        fallbackWindow: { start: bookingStart, end: bookingEnd },
-      });
-      if (bookingValues.length === 0 && legacyAvailableResourceIds.length > 0) {
-        await tx.insert(resourceBookingsTable).values(legacyAvailableResourceIds.map((resourceId) => ({
-          nuOrgId: request.nuOrgId,
-          resourceId,
-          resourceTypeId: null,
-          quantity: null,
-          sourceType: "TAKT_REQUEST" as const,
-          sourceReferenceId: taktRequestId,
-          startAt: bookingStart!,
-          endAt: bookingEnd!,
-          utilizationPercent: 100,
-          status: "CONFIRMED" as const,
-        })));
-      }
-      if (bookingValues.length > 0 || legacyAvailableResourceIds.length > 0) {
-      logger.info(
-        { taktRequestId, count: bookingValues.length || legacyAvailableResourceIds.length },
-        "Auto-created resource bookings for accepted TaktRequest",
-      );
-      }
-    }
-
     const [updatedRequest] = await tx
       .select()
       .from(taktRequestsTable)
@@ -584,6 +475,9 @@ export async function createGuDecision(
       decision:       withCanonicalDecision(result.decision),
       request,
       newTaktVersion: result.newTaktVersion,
+      confirmedTimeWindow: bookingStart && bookingEnd
+        ? { start: bookingStart.toISOString(), end: bookingEnd.toISOString() }
+        : null,
     });
   } catch (err) {
     // Transport failure is non-fatal — decision is already committed.
@@ -613,6 +507,7 @@ export async function createGuDecision(
         senderOrgId: guOrgId,
         selectedRequestId: taktRequestId,
         decisionId: result.decision.id,
+        requestVersion: sibling.requestVersion,
       });
     } catch (err) {
       logger.warn({ err, requestId: sibling.id, decisionId: result.decision.id }, "Sibling cancellation transport failed after GU decision commit");
@@ -636,85 +531,70 @@ interface SendGuDecisionMessageParams {
   decision:       TaktResponseDecision;
   request:        TaktRequest;
   newTaktVersion: TaktVersion | null;
+  confirmedTimeWindow: { start: string; end: string } | null;
 }
 
 async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promise<void> {
-  const { decision, request, newTaktVersion } = params;
-
-  // Load the current (possibly updated) takt for confirmedTimeWindow
-  const [takt] = await db
-    .select()
-    .from(takteTable)
-    .where(eq(takteTable.id, request.taktId))
-    .limit(1);
-
-  const messageId = `gu-decision-${decision.id}`;
+  const { decision, request, newTaktVersion, confirmedTimeWindow } = params;
 
   if (
     decision.decisionType === "CONFIRM_ACCEPTED" ||
     decision.decisionType === "ACCEPT_ALTERNATIVE"
   ) {
-    // TAKT_RESPONSE_ACCEPTED
-    const payload = {
-      taktRequestId:        decision.taktRequestId,
-      decisionType:         decision.decisionType,
-      acceptedAlternativeId: decision.acceptedAlternativeId ?? null,
-      confirmedTimeWindow: takt
-        ? { start: takt.plannedStart, end: takt.plannedEnd }
-        : null,
+    const messageId = `gu-decision-${decision.id}`;
+    await deliverLocalCoordinationDecision({
+      metadata: {
+        messageId,
+        correlationId: decision.taktRequestId,
+        schemaVersion: "1.0",
+        senderOrgId: request.guOrgId,
+        receiverOrgId: request.nuOrgId,
+        createdAt: new Date().toISOString(),
+      },
+      requestId: decision.taktRequestId,
+      requestVersion: request.taktVersion,
       taktVersion: newTaktVersion?.version ?? request.taktVersion,
-      comment:     decision.comment ?? null,
-    };
-
-    await transport.send({
-      messageId,
-      schemaVersion: "1.0",
-      messageType:   DataspaceMessageType.TAKT_RESPONSE_ACCEPTED,
-      senderOrgId:   request.guOrgId,
-      recipientOrgId: request.nuOrgId,
-      correlationId: decision.taktRequestId,
-      createdAt:     new Date(),
-      causationId:   null,
-      payload,
-    });
+      decisionType: decision.decisionType,
+      acceptedAlternativeId: decision.acceptedAlternativeId ?? null,
+      confirmedTimeWindow,
+      comment: decision.comment ?? null,
+    } satisfies ExternalCoordinationDecision);
   } else if (decision.decisionType === "REQUEST_REVISION") {
-    // TAKT_RESPONSE_REVISION_REQUESTED
-    const payload = {
-      taktRequestId: decision.taktRequestId,
-      decisionType:  "REQUEST_REVISION",
-      comment:       decision.comment ?? null,
-    };
-
-    await transport.send({
-      messageId,
-      schemaVersion: "1.0",
-      messageType:   DataspaceMessageType.TAKT_RESPONSE_REVISION_REQUESTED,
-      senderOrgId:   request.guOrgId,
-      recipientOrgId: request.nuOrgId,
-      correlationId: decision.taktRequestId,
-      createdAt:     new Date(),
-      causationId:   null,
-      payload,
-    });
+    const messageId = `gu-decision-${decision.id}`;
+    await deliverLocalCoordinationDecision({
+      metadata: {
+        messageId,
+        correlationId: decision.taktRequestId,
+        schemaVersion: "1.0",
+        senderOrgId: request.guOrgId,
+        receiverOrgId: request.nuOrgId,
+        createdAt: new Date().toISOString(),
+      },
+      requestId: decision.taktRequestId,
+      requestVersion: request.taktVersion,
+      taktVersion: newTaktVersion?.version ?? request.taktVersion,
+      decisionType: "REQUEST_REVISION",
+      comment: decision.comment ?? null,
+    } satisfies ExternalCoordinationDecision);
   } else if (decision.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
-    // TAKT_REQUEST_CANCELLED
-    const payload = {
-      taktRequestId: decision.taktRequestId,
-      comment:       decision.comment ?? null,
-      closedAt:      decision.decidedAt?.toISOString() ?? new Date().toISOString(),
-    };
-
-    await transport.send({
-      messageId,
-      schemaVersion: "1.0",
-      messageType:   DataspaceMessageType.TAKT_REQUEST_CANCELLED,
-      senderOrgId:   request.guOrgId,
-      recipientOrgId: request.nuOrgId,
-      correlationId: decision.taktRequestId,
-      createdAt:     new Date(),
-      causationId:   null,
-      payload,
-    });
+    const messageId = `gu-decision-${decision.id}`;
+    const closedAt = decision.decidedAt?.toISOString() ?? new Date().toISOString();
+    await deliverLocalCoordinationDecision({
+      metadata: {
+        messageId,
+        correlationId: decision.taktRequestId,
+        schemaVersion: "1.0",
+        senderOrgId: request.guOrgId,
+        receiverOrgId: request.nuOrgId,
+        createdAt: new Date().toISOString(),
+      },
+      requestId: decision.taktRequestId,
+      requestVersion: request.taktVersion,
+      taktVersion: newTaktVersion?.version ?? request.taktVersion,
+      decisionType: "CLOSE_WITHOUT_AGREEMENT",
+      comment: decision.comment ?? null,
+      closedAt,
+    } satisfies ExternalCoordinationDecision);
   }
 }
 
@@ -724,21 +604,24 @@ async function sendAutomaticSiblingCancellation(params: {
   recipientOrgId: string;
   selectedRequestId: string;
   decisionId: string;
+  requestVersion: number;
 }): Promise<void> {
-  await transport.send({
-    messageId: `gu-group-cancel-${params.requestId}-${params.decisionId}`,
-    schemaVersion: "1.0",
-    messageType: DataspaceMessageType.TAKT_REQUEST_CANCELLED,
-    senderOrgId: params.senderOrgId,
-    recipientOrgId: params.recipientOrgId,
-    correlationId: params.requestId,
-    createdAt: new Date(),
-    causationId: params.decisionId,
-    payload: {
-      taktRequestId: params.requestId,
-      selectedRequestId: params.selectedRequestId,
-      reason: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
-      closedAt: new Date().toISOString(),
+  const messageId = `gu-group-cancel-${params.requestId}-${params.decisionId}`;
+  const closedAt = new Date().toISOString();
+  await deliverLocalCoordinationDecision({
+    metadata: {
+      messageId,
+      correlationId: params.requestId,
+      schemaVersion: "1.0",
+      senderOrgId: params.senderOrgId,
+      receiverOrgId: params.recipientOrgId,
+      createdAt: new Date().toISOString(),
     },
-  });
+    requestId: params.requestId,
+    requestVersion: params.requestVersion,
+    taktVersion: params.requestVersion,
+    decisionType: "CLOSE_WITHOUT_AGREEMENT",
+    comment: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
+    closedAt,
+  } satisfies ExternalCoordinationDecision);
 }

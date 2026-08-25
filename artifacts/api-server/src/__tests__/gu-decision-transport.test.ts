@@ -32,9 +32,10 @@ import {
   messageOutboxTable,
   messageInboxTable,
   projectContractorsTable,
+  dataspaceExchangesTable,
 } from "@workspace/db";
 import { inArray } from "drizzle-orm";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import app from "../app";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
@@ -64,6 +65,14 @@ beforeAll(async () => {
   // Pre-cleanup: remove any stale data from a previous crashed run
   await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await db.delete(dataspaceExchangesTable).where(or(
+    eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, NU_ORG),
+    eq(dataspaceExchangesTable.senderOrgId, NU2_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, NU2_ORG),
+  )).catch(() => {});
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG)).catch(() => {});
   const staleReqs66 = await db.select({ id: taktRequestsTable.id }).from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT)).catch(() => []);
@@ -186,6 +195,14 @@ afterAll(async () => {
   // FK order: outbox/inbox → versions → decisions → alternatives → responses → requests → takt
   await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG));
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG));
+  await db.delete(dataspaceExchangesTable).where(or(
+    eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, NU_ORG),
+    eq(dataspaceExchangesTable.senderOrgId, NU2_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, NU2_ORG),
+  ));
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG));
   const reqIds66 = await db.select({ id: taktRequestsTable.id }).from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT));

@@ -149,6 +149,48 @@ export const externalServiceResponseSchema = z.object({
   }
 });
 
+export const externalCoordinationDecisionSchema = z.object({
+  metadata: metadataSchema,
+  requestId: nonEmpty(200),
+  requestVersion: z.number().int().min(1),
+  taktVersion: z.number().int().min(1),
+  decisionType: z.enum([
+    "CONFIRM_ACCEPTED",
+    "ACCEPT_ALTERNATIVE",
+    "REQUEST_REVISION",
+    "CLOSE_WITHOUT_AGREEMENT",
+  ]),
+  acceptedAlternativeId: nonEmpty(200).nullable().optional(),
+  confirmedTimeWindow: timeWindowSchema.nullable().optional(),
+  comment: z.string().trim().max(2000).nullable().optional(),
+  closedAt: z.string().datetime({ offset: true }).optional(),
+}).strict().superRefine((value, ctx) => {
+  const acceptance =
+    value.decisionType === "CONFIRM_ACCEPTED" ||
+    value.decisionType === "ACCEPT_ALTERNATIVE";
+  if (acceptance && !value.confirmedTimeWindow) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["confirmedTimeWindow"],
+      message: "confirmedTimeWindow is required for accepted decisions",
+    });
+  }
+  if (value.decisionType === "ACCEPT_ALTERNATIVE" && !value.acceptedAlternativeId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["acceptedAlternativeId"],
+      message: "acceptedAlternativeId is required for ACCEPT_ALTERNATIVE",
+    });
+  }
+  if (value.decisionType === "CLOSE_WITHOUT_AGREEMENT" && !value.closedAt) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["closedAt"],
+      message: "closedAt is required for CLOSE_WITHOUT_AGREEMENT",
+    });
+  }
+});
+
 export type ExchangeMetadata = {
   messageId: string;
   correlationId: string;
@@ -270,4 +312,17 @@ export type ExternalServiceResponse = {
   comment?: string;
   alternatives?: ExternalAlternativeProposal[];
   nextAvailableDate?: string;
+};
+
+/** Public AG → AN coordination result. Never contains AN resources or availability details. */
+export type ExternalCoordinationDecision = {
+  metadata: ExchangeMetadata;
+  requestId: string;
+  requestVersion: number;
+  taktVersion: number;
+  decisionType: "CONFIRM_ACCEPTED" | "ACCEPT_ALTERNATIVE" | "REQUEST_REVISION" | "CLOSE_WITHOUT_AGREEMENT";
+  acceptedAlternativeId?: string | null;
+  confirmedTimeWindow?: { start: string; end: string } | null;
+  comment?: string | null;
+  closedAt?: string;
 };

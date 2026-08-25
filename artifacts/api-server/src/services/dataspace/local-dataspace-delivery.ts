@@ -1,17 +1,20 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
 import {
+  processIncomingCoordinationDecision,
   processIncomingProjectInvitation,
   processIncomingProjectInvitationResponse,
   processIncomingServiceRequest,
   processIncomingServiceResponse,
 } from "./inbound-domain-service";
 import type {
+  ExternalCoordinationDecision,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "./external-contracts";
+import { handleIncomingCoordinationDecision } from "./inbound-exchange-service";
 
 /**
  * `rest` (and the unset value) is the local in-process PoC transport.
@@ -46,6 +49,21 @@ export async function deliverLocalServiceResponse(
   const delivery = await exchange.publishServiceResponse(payload);
   if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
     await exchange.receiveServiceResponse(payload, processIncomingServiceResponse);
+  }
+  return delivery;
+}
+
+/**
+ * Publish an AG decision through the same Dataspace abstraction as service
+ * requests. Only local adapters re-enter the AN inbound processor.
+ */
+export async function deliverLocalCoordinationDecision(
+  payload: ExternalCoordinationDecision,
+  exchange: DataspaceExchange = createDataspaceExchange(),
+): Promise<ExchangeReference> {
+  const delivery = await exchange.publishCoordinationDecision(payload);
+  if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
+    await exchange.receiveCoordinationDecision(payload, processIncomingCoordinationDecision);
   }
   return delivery;
 }
