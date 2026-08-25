@@ -1,11 +1,25 @@
-import { ArrowLeft, Calendar, Clock, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Calendar, Clock, MapPin, Pencil, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link, useParams } from 'wouter';
-import { useGetProject, useListTakte, getGetProjectQueryKey, getListTakteQueryKey } from '@workspace/api-client-react';
+import {
+  useGetProject, useListTakte, getGetProjectQueryKey, getListTakteQueryKey,
+  useUpdateTakt, useListProjectSubcontractors, getListProjectSubcontractorsQueryKey,
+  useGetProjectDataPublications, useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
+  getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
+} from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/date-picker';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -17,9 +31,26 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function TaktDetail() {
   const { projectId = '', taktId = '' } = useParams<{ projectId: string; taktId: string }>();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) } });
   const { data: takte, isLoading } = useListTakte(projectId, { query: { enabled: !!projectId, queryKey: getListTakteQueryKey(projectId) } });
+  const { data: assignments } = useListProjectSubcontractors(projectId, {
+    query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
+  });
+  const { data: publications } = useGetProjectDataPublications(projectId);
+  const updateTakt = useUpdateTakt();
+  const createRequestBatch = useCreateTaktRequestBatchWithSnapshot();
+  const sendRequest = useSendTaktRequest();
   const takt = takte?.find((item) => item.id === taktId);
+  const [editOpen, setEditOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
+  const [publicationId, setPublicationId] = useState('');
+  const [responseRequiredBy, setResponseRequiredBy] = useState('');
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [editPlannedStart, setEditPlannedStart] = useState('');
+  const [editPlannedEnd, setEditPlannedEnd] = useState('');
 
   if (isLoading) {
     return (
@@ -45,6 +76,74 @@ export default function TaktDetail() {
 
   const projectName = project?.name ?? 'Projekt';
   const durationDays = (takt as { durationDays?: string | number | null }).durationDays;
+  const eligiblePublications = (publications ?? []).filter(
+    (publication) =>
+      publication.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
+      publication.status === 'PUBLISHED' &&
+      (publication.selectedTaktIds == null || publication.selectedTaktIds.includes(takt.id)) &&
+      selectedNuIds.every((nuId) => (publication.recipients ?? []).some((recipient) => recipient.anOrgId === nuId)),
+  );
+
+  const refreshTaktData = () => {
+    queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(projectId) });
+    queryClient.invalidateQueries({ queryKey: getListTaktRequestsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetAgProjectsOverviewQueryKey() });
+  };
+
+  const handleEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await updateTakt.mutateAsync({
+        projectId,
+        taktId: takt.id,
+        data: {
+          taktBezeichnung: String(data.get('taktBezeichnung') ?? ''),
+          zone: String(data.get('zone') ?? ''),
+          gewerk: String(data.get('gewerk') ?? ''),
+          description: String(data.get('description') ?? '') || undefined,
+          plannedStart: String(data.get('plannedStart') ?? ''),
+          plannedEnd: String(data.get('plannedEnd') ?? ''),
+        } as any,
+      });
+      refreshTaktData();
+      setEditOpen(false);
+      toast({ title: 'Leistung gespeichert' });
+    } catch (error) {
+      toast({ title: 'Fehler beim Speichern', description: (error as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const handleAssign = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!publicationId || selectedNuIds.length === 0) {
+      toast({ title: 'Angaben fehlen', description: 'Wählen Sie mindestens einen Nachunternehmer und eine Veröffentlichung aus.', variant: 'destructive' });
+      return;
+    }
+    setSavingAssignment(true);
+    try {
+      const created = await createRequestBatch.mutateAsync({
+        data: {
+          taktId: takt.id,
+          nuOrgIds: selectedNuIds,
+          message: String(new FormData(event.currentTarget).get('message') ?? '') || undefined,
+          dataPublicationId: publicationId,
+          ...(responseRequiredBy ? { responseRequiredBy: new Date(responseRequiredBy).toISOString() } : {}),
+        },
+      });
+      await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));
+      refreshTaktData();
+      setAssignOpen(false);
+      setSelectedNuIds([]);
+      setPublicationId('');
+      setResponseRequiredBy('');
+      toast({ title: selectedNuIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
+    } catch (error) {
+      toast({ title: 'Fehler bei der Vergabe', description: (error as Error).message, variant: 'destructive' });
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
   const start = new Date(takt.plannedStart);
   const end = new Date(takt.plannedEnd);
 
@@ -54,15 +153,16 @@ export default function TaktDetail() {
         <Button asChild variant="ghost" className="-ml-3 mb-6">
           <Link href={`/projects/${projectId}`}><ArrowLeft className="w-4 h-4 mr-2" />Zurück zum Projekt</Link>
         </Button>
-        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground mb-2">{projectName} · Leistung</p>
             <h1 className="text-3xl font-semibold tracking-tight">{takt.taktBezeichnung}</h1>
             <p className="text-lg text-muted-foreground mt-1">{takt.gewerk}</p>
           </div>
-          <Badge variant="outline" className="text-sm px-3 py-1">
-            {STATUS_LABEL[takt.status] ?? takt.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-sm px-3 py-1">{STATUS_LABEL[takt.status] ?? takt.status}</Badge>
+            <Button variant="outline" onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4 mr-2" />Bearbeiten</Button>
+          </div>
         </div>
       </div>
 
@@ -100,6 +200,83 @@ export default function TaktDetail() {
           <p className="text-base leading-7">{takt.description}</p>
         </section>
       )}
+
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-semibold">Vergabe</h2>
+              <p className="text-sm text-muted-foreground">Leistung an einen oder mehrere Nachunternehmer anfragen.</p>
+            </div>
+            <Button onClick={() => setAssignOpen(true)} disabled={!assignments?.some((a) => a.assignmentStatus === 'ACTIVE')}>
+              <Send className="w-4 h-4 mr-2" />Leistung vergeben
+            </Button>
+          </div>
+          {!assignments?.some((a) => a.assignmentStatus === 'ACTIVE') && (
+            <p className="text-sm text-muted-foreground">Keine aktiven Nachunternehmer diesem Projekt zugeordnet.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Leistung bearbeiten</DialogTitle></DialogHeader>
+          <form id="takt-edit-form" onSubmit={handleEdit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Bezeichnung</Label><Input name="taktBezeichnung" defaultValue={takt.taktBezeichnung} required /></div>
+              <div className="space-y-2"><Label>Zone</Label><Input name="zone" defaultValue={takt.zone} required /></div>
+            </div>
+            <div className="space-y-2"><Label>Gewerk</Label><Input name="gewerk" defaultValue={takt.gewerk} required /></div>
+            <div className="space-y-2"><Label>Beschreibung</Label><Textarea name="description" defaultValue={takt.description ?? ''} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Plan-Start</Label><DatePicker name="plannedStart" required value={editPlannedStart || takt.plannedStart} onChange={setEditPlannedStart} /></div>
+              <div className="space-y-2"><Label>Plan-Ende</Label><DatePicker name="plannedEnd" required value={editPlannedEnd || takt.plannedEnd} onChange={setEditPlannedEnd} /></div>
+            </div>
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Abbrechen</Button>
+            <Button type="submit" form="takt-edit-form" disabled={updateTakt.isPending}>{updateTakt.isPending ? 'Speichert…' : 'Speichern'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Leistung vergeben</DialogTitle></DialogHeader>
+          <form id="takt-assign-form" onSubmit={handleAssign} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nachunternehmer</Label>
+              <div className="rounded-md border divide-y">
+                {(assignments ?? []).filter((a) => a.assignmentStatus === 'ACTIVE').map((assignment) => {
+                  const checked = selectedNuIds.includes(assignment.anOrgId);
+                  return (
+                    <label key={assignment.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={checked} onChange={() => setSelectedNuIds((current) => checked ? current.filter((id) => id !== assignment.anOrgId) : [...current, assignment.anOrgId])} />
+                      {assignment.anName} – {assignment.trade || 'Alle Gewerke'}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Veröffentlichte Leistungsinformationen *</Label>
+              <Select value={publicationId} onValueChange={setPublicationId}>
+                <SelectTrigger><SelectValue placeholder={selectedNuIds.length ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} /></SelectTrigger>
+                <SelectContent>{eligiblePublications.map((publication) => <SelectItem key={publication.id} value={publication.id}>{publication.title} (v{publication.version})</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <Textarea name="message" placeholder="Hinweis (optional)" />
+            <div className="space-y-2">
+              <Label>Antwortfrist (optional)</Label>
+              <DatePicker includeTime value={responseRequiredBy} onChange={setResponseRequiredBy} min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)} />
+            </div>
+          </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignOpen(false)}>Abbrechen</Button>
+            <Button type="submit" form="takt-assign-form" disabled={savingAssignment || !publicationId}>{savingAssignment ? 'Vergibt…' : 'Vergeben'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
