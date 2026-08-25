@@ -978,7 +978,8 @@ export default function ProjectDetail() {
         projectId,
         data: {
           taktBezeichnung: fd.get('taktBezeichnung') as string,
-          zone: fd.get('zone') as string,
+          kurzbezeichnung: ((fd.get('kurzbezeichnung') as string) || '').trim(),
+          zone: ((fd.get('zone') as string) || '').trim() || null,
           gewerk: fd.get('gewerk') as string,
           description: (fd.get('description') as string) || undefined,
           plannedStart: fd.get('plannedStart') as string,
@@ -1025,7 +1026,8 @@ export default function ProjectDetail() {
       taktId: editTargetId,
       data: {
         taktBezeichnung: fd.get('taktBezeichnung') as string,
-        zone: fd.get('zone') as string,
+        kurzbezeichnung: ((fd.get('kurzbezeichnung') as string) || '').trim(),
+        zone: ((fd.get('zone') as string) || '').trim() || null,
         gewerk: fd.get('gewerk') as string,
         description: (fd.get('description') as string) || undefined,
         plannedStart: fd.get('plannedStart') as string,
@@ -2529,9 +2531,13 @@ export default function ProjectDetail() {
                       <Input name="taktBezeichnung" required value={editTaktBezeichnung} onChange={e => setEditTaktBezeichnung(e.target.value)} placeholder="z.B. T1, Rohbau-A" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Zone</Label>
-                      <Input name="zone" required value={editZone} onChange={e => setEditZone(e.target.value)} placeholder="z.B. OG 1, Abschnitt A" />
+                      <Label>Zone <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Input name="zone" value={editZone} onChange={e => setEditZone(e.target.value)} placeholder="z.B. OG 1, Abschnitt A" />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Kurzbezeichnung</Label>
+                    <Input name="kurzbezeichnung" required defaultValue={editTargetId ? (takte.find(t => t.id === editTargetId)?.kurzbezeichnung ?? '') : ''} placeholder="z.B. R1" />
                   </div>
                   <div className="space-y-2">
                     <Label>Gewerk</Label>
@@ -2654,6 +2660,10 @@ export default function ProjectDetail() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Kurzbezeichnung</Label>
+                    <Input name="kurzbezeichnung" required placeholder="z.B. R1" />
                   </div>
                 </form>
 
@@ -2808,8 +2818,8 @@ export default function ProjectDetail() {
                     <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Zone</Label>
-                    <Input name="zone" required placeholder="z.B. OG 1, Abschnitt A" />
+                    <Label>Zone <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Input name="zone" placeholder="z.B. OG 1, Abschnitt A" />
                   </div>
                 </div>
                 <div className="space-y-2">

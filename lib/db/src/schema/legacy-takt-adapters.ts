@@ -80,7 +80,8 @@ export const takteTable = pgTable("leistungen", {
     .references(() => projectsTable.id, { onDelete: "cascade" }),
   /** @deprecated physical col renamed to leistungs_bezeichnung */
   taktBezeichnung: text("leistungs_bezeichnung").notNull(),
-  zone: text("zone").notNull(),
+  kurzbezeichnung: text("kurzbezeichnung").notNull().default(""),
+  zone: text("zone"),
   gewerk: text("gewerk").notNull(),
   description: text("description"),
   plannedStart: date("planned_start", { mode: "string" }).notNull(),

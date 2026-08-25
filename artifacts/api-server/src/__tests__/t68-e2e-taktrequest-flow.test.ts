@@ -227,17 +227,12 @@ afterAll(async () => {
 
 async function createTestPublication(taktId: string): Promise<string> {
   const now = new Date();
-  // Look up any existing policy template or create a synthetic one
-  const [existing] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1).catch(() => [] as { id: string }[]);
-  let policyTemplateId = existing?.id;
-  if (!policyTemplateId) {
-    const [pt] = await db
-      .insert(policyTemplatesTable)
-      .values({ id: `${T}-policy-template`, code: "STANDARD", name: "Standard Policy", description: "Auto-created for t68 tests", purpose: "Test", permissions: ["READ"], prohibitions: [], validityRule: "None", createdAt: now, updatedAt: now })
-      .onConflictDoNothing()
-      .returning();
-    policyTemplateId = pt?.id ?? `${T}-policy-template`;
-  }
+  const [policy] = await db.select({ id: policyTemplatesTable.id })
+    .from(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+    .limit(1);
+  if (!policy) throw new Error("SCHEDULE_COORDINATION policy template not found — run seed first");
+  const policyTemplateId = policy.id;
 
   const pubId = `${T}-pub-${taktId.replace(/[^a-z0-9]/gi, "-")}`;
   await db

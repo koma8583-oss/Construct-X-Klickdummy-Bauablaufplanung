@@ -14,7 +14,7 @@ export interface UpdateLeistungRequest {
   leistungBezeichnung?: string;
   /** Legacy-Alias */
   taktBezeichnung?: string;
-  zone?: string;
+  zone?: string | null;
   gewerk?: string;
   description?: string | null;
   plannedStart?: Date;

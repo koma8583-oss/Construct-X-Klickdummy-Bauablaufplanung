@@ -71,7 +71,8 @@ const BLOCKED_ALTERNATIVE_FIELDS = new Set([
  */
 function buildTaktSnapshotPayload(takt: {
   taktBezeichnung: string;
-  zone: string;
+  kurzbezeichnung: string;
+  zone: string | null;
   gewerk: string;
   description: string | null;
   plannedStart: string;
@@ -85,6 +86,7 @@ function buildTaktSnapshotPayload(takt: {
 }): Record<string, unknown> {
   return {
     taktBezeichnung:  takt.taktBezeichnung,
+    kurzbezeichnung: takt.kurzbezeichnung,
     zone:             takt.zone,
     gewerk:           takt.gewerk,
     description:      takt.description ?? null,

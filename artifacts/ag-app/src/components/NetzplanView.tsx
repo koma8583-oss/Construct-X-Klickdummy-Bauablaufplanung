@@ -632,7 +632,7 @@ export default function NetzplanView({ takte, deps, alternativeImpacts = [] }: N
                   fill="hsl(var(--muted-foreground))"
                   fontFamily="inherit"
                 >
-                  {takt.zone.length > 20 ? takt.zone.slice(0, 19) + '…' : takt.zone}
+                  {takt.zone && takt.zone.length > 20 ? takt.zone.slice(0, 19) + '…' : (takt.zone || 'Keine Zone')}
                 </text>
 
                 {/* Duration */}
@@ -750,7 +750,7 @@ export default function NetzplanView({ takte, deps, alternativeImpacts = [] }: N
               </div>
               <div style={{ fontWeight: 600, marginBottom: 2 }}>{hoveredTakt.gewerk}</div>
               <div style={{ color: 'hsl(var(--muted-foreground))', fontSize: 11, marginBottom: 6 }}>
-                Zone: {hoveredTakt.zone}
+                Zone: {hoveredTakt.zone || 'Keine Zone'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'hsl(var(--muted-foreground))', marginBottom: 6 }}>
                 <span>{format(new Date(hoveredTakt.plannedStart), 'dd.MM.yyyy')}</span>

@@ -130,16 +130,12 @@ beforeAll(async () => {
 
   // Create a published data publication so the AN can access /details (policy gate, Task 116)
   const now = new Date();
-  const [anyPolicy] = await db.select({ id: policyTemplatesTable.id }).from(policyTemplatesTable).limit(1).catch(() => [] as { id: string }[]);
-  let policyTemplateId = anyPolicy?.id;
-  if (!policyTemplateId) {
-    const [pt] = await db
-      .insert(policyTemplatesTable)
-      .values({ id: "t49-policy-template", code: "STANDARD", name: "Standard", description: "Auto-created for t49", purpose: "Test", permissions: ["READ"], prohibitions: [], validityRule: "None", createdAt: now, updatedAt: now })
-      .onConflictDoNothing()
-      .returning();
-    policyTemplateId = pt?.id ?? "t49-policy-template";
-  }
+  const [policy] = await db.select({ id: policyTemplatesTable.id })
+    .from(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+    .limit(1);
+  if (!policy) throw new Error("SCHEDULE_COORDINATION policy template not found — run seed first");
+  const policyTemplateId = policy.id;
   testPublicationId = "t49-test-publication";
   await db.insert(dataPublicationsTable).values({
     id: testPublicationId,

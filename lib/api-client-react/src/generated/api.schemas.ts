@@ -689,7 +689,7 @@ export interface Takt {
   projectId: string;
   /** Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord) */
   taktBezeichnung: string;
-  zone: string;
+  zone?: string | null;
   gewerk: string;
   description?: string | null;
   plannedStart: string;
@@ -716,7 +716,7 @@ export interface Takt {
 
 export interface CreateTaktRequest {
   taktBezeichnung: string;
-  zone: string;
+  zone?: string;
   gewerk: string;
   description?: string;
   plannedStart: string;
@@ -730,7 +730,7 @@ export interface CreateTaktRequest {
 
 export interface UpdateTaktRequest {
   taktBezeichnung?: string;
-  zone?: string;
+  zone?: string | null;
   gewerk?: string;
   description?: string;
   plannedStart?: string;
@@ -2626,7 +2626,7 @@ export interface Leistung {
   taktBezeichnung: string;
   /** Kanonisch: Leistungs-Bezeichnung */
   leistungBezeichnung: string;
-  zone: string;
+  zone: string | null;
   gewerk: string;
   description?: string | null;
   plannedStart: string;
@@ -2660,7 +2660,7 @@ export interface CreateLeistungRequest {
   leistungBezeichnung?: string;
   /** Legacy-Alias für leistungBezeichnung */
   taktBezeichnung?: string;
-  zone: string;
+  zone?: string;
   gewerk: string;
   description?: string;
   plannedStart: string;
@@ -2682,7 +2682,7 @@ export interface UpdateLeistungRequest {
   leistungBezeichnung?: string;
   /** Legacy-Alias */
   taktBezeichnung?: string;
-  zone?: string;
+  zone?: string | null;
   gewerk?: string;
   description?: string | null;
   plannedStart?: string;

@@ -4229,8 +4229,12 @@ components:
         taktBezeichnung:
           type: string
           description: "Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)"
+        kurzbezeichnung:
+          type: string
+          minLength: 1
         zone:
           type: string
+          nullable: true
         gewerk:
           type: string
         description:
@@ -4277,7 +4281,7 @@ components:
           description: "Monotonically incrementing version; starts at 1 for all existing Takte"
         lifecycleStatus:
           $ref: "#/components/schemas/TaktLifecycleStatus"
-      required: [id, projectId, taktBezeichnung, zone, gewerk, plannedStart, plannedEnd, status, createdAt]
+      required: [id, projectId, taktBezeichnung, kurzbezeichnung, gewerk, plannedStart, plannedEnd, status, createdAt]
       # version and lifecycleStatus are optional in responses for backward compatibility;
       # both fields are always populated in the database (have DEFAULT values).
 
@@ -4285,6 +4289,8 @@ components:
       type: object
       properties:
         taktBezeichnung:
+          type: string
+        kurzbezeichnung:
           type: string
         zone:
           type: string
@@ -4310,15 +4316,19 @@ components:
           type: string
         requiredResources:
           type: string
-      required: [taktBezeichnung, zone, gewerk, plannedStart, plannedEnd]
+      required: [taktBezeichnung, kurzbezeichnung, gewerk, plannedStart, plannedEnd]
 
     UpdateTaktRequest:
       type: object
       properties:
         taktBezeichnung:
           type: string
+        kurzbezeichnung:
+          type: string
+          minLength: 1
         zone:
           type: string
+          nullable: true
         gewerk:
           type: string
         description:
@@ -7160,6 +7170,7 @@ components:
           description: "Kanonisch: Leistungs-Bezeichnung"
         zone:
           type: string
+          nullable: true
         gewerk:
           type: string
         description:
@@ -7262,7 +7273,7 @@ components:
           type: string
         requiredResources:
           type: string
-      required: [zone, gewerk, plannedStart]
+      required: [gewerk, plannedStart]
 
     UpdateLeistungRequest:
       type: object
@@ -7278,6 +7289,7 @@ components:
           description: "Legacy-Alias"
         zone:
           type: string
+          nullable: true
         gewerk:
           type: string
         description:

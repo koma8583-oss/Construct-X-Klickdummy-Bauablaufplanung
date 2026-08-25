@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; vitest run \"$@\"; status=$?; pnpm run test:cleanup; exit $status' --",
+    "test:cleanup": "node scripts/cleanup-test-data.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

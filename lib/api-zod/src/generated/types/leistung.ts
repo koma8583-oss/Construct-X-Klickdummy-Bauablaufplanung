@@ -21,7 +21,7 @@ export interface Leistung {
   taktBezeichnung: string;
   /** Kanonisch: Leistungs-Bezeichnung */
   leistungBezeichnung: string;
-  zone: string;
+  zone: string | null;
   gewerk: string;
   description?: string | null;
   plannedStart: Date;

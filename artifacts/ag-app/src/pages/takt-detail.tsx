@@ -105,7 +105,8 @@ export default function TaktDetail() {
         taktId: takt.id,
         data: {
           taktBezeichnung: String(data.get('taktBezeichnung') ?? ''),
-          zone: String(data.get('zone') ?? ''),
+          kurzbezeichnung: String(data.get('kurzbezeichnung') ?? '').trim(),
+          zone: String(data.get('zone') ?? '').trim() || null,
           gewerk: String(data.get('gewerk') ?? ''),
           description: String(data.get('description') ?? '') || undefined,
           plannedStart: String(data.get('plannedStart') ?? ''),
@@ -197,7 +198,7 @@ export default function TaktDetail() {
               <MapPin className="w-5 h-5 text-primary mt-0.5" />
               <div>
                 <p className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Zone</p>
-                <p className="font-medium mt-1">{takt.zone}</p>
+                <p className="font-medium mt-1">{takt.zone || 'Keine Zone angegeben'}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -257,7 +258,8 @@ export default function TaktDetail() {
           <form id="takt-edit-form" onSubmit={handleEdit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Bezeichnung</Label><Input name="taktBezeichnung" defaultValue={takt.taktBezeichnung} required /></div>
-              <div className="space-y-2"><Label>Zone</Label><Input name="zone" defaultValue={takt.zone} required /></div>
+              <div className="space-y-2"><Label>Kurzbezeichnung</Label><Input name="kurzbezeichnung" defaultValue={takt.kurzbezeichnung ?? ''} required /></div>
+              <div className="space-y-2"><Label>Zone <span className="text-muted-foreground font-normal">(optional)</span></Label><Input name="zone" defaultValue={takt.zone ?? ''} /></div>
             </div>
             <div className="space-y-2"><Label>Gewerk</Label><Input name="gewerk" defaultValue={takt.gewerk} required /></div>
             <div className="space-y-2"><Label>Beschreibung</Label><Textarea name="description" defaultValue={takt.description ?? ''} /></div>

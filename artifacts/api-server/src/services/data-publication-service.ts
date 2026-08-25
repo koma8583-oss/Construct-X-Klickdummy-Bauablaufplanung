@@ -92,6 +92,7 @@ export const FIELD_WHITELISTS: Record<string, readonly string[]> = {
     "projectLocation",
     "projectDescription",
     // Leistungsdaten
+    "kurzbezeichnung",
     "workPackage",
     "trade",
     // Zeitplanung
@@ -275,6 +276,7 @@ async function buildTaktSnapshot(
   const takte = taktRows.map((t) => {
     const obj: Record<string, unknown> = {};
     if (include.has("location")) obj.location = t.zone;
+    if (include.has("kurzbezeichnung")) obj.kurzbezeichnung = t.kurzbezeichnung;
     if (include.has("trade")) obj.trade = t.gewerk;
     if (include.has("workPackage")) obj.workPackage = t.taktBezeichnung;
     if (include.has("plannedTimeWindow"))

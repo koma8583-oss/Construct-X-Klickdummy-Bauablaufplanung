@@ -73,7 +73,8 @@ function generateRequestNumber(): string {
 
 function buildVersionSnapshotPayload(takt: {
   taktBezeichnung: string;
-  zone:             string;
+  kurzbezeichnung: string;
+  zone:             string | null;
   gewerk:           string;
   description:      string | null;
   plannedStart:     string;
@@ -87,6 +88,7 @@ function buildVersionSnapshotPayload(takt: {
 }): Record<string, unknown> {
   return {
     taktBezeichnung:   takt.taktBezeichnung,
+    kurzbezeichnung:   takt.kurzbezeichnung,
     zone:              takt.zone,
     gewerk:            takt.gewerk,
     description:       takt.description  ?? null,

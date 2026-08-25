@@ -103,7 +103,8 @@ router.post(
 
     const schema = z.object({
       taktBezeichnung: z.string().min(1),
-      zone: z.string().min(1),
+      kurzbezeichnung: z.string().trim().min(1),
+      zone: z.string().trim().min(1).optional().nullable(),
       gewerk: z.string().min(1),
       description: z.string().optional(),
       plannedStart: z.string(),
@@ -229,7 +230,8 @@ router.patch(
 
     const schema = z.object({
       taktBezeichnung: z.string().min(1).optional(),
-      zone: z.string().min(1).optional(),
+      kurzbezeichnung: z.string().trim().min(1).optional(),
+      zone: z.string().trim().min(1).optional().nullable(),
       gewerk: z.string().min(1).optional(),
       description: z.string().optional().nullable(),
       plannedStart: z.string().optional(),

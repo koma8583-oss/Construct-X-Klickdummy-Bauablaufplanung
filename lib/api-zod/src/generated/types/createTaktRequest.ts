@@ -8,7 +8,7 @@
 
 export interface CreateTaktRequest {
   taktBezeichnung: string;
-  zone: string;
+  zone?: string;
   gewerk: string;
   description?: string;
   plannedStart: Date;

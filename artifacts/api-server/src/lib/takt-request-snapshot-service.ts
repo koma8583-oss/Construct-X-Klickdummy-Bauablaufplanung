@@ -49,11 +49,12 @@ export interface TaktRequestSnapshotPayload {
   trade: string;
   /** Work package name */
   workPackage: string;
+  kurzbezeichnung: string;
   /** Physical location of the Takt */
   location: {
     building: string | null;
     storey: string | null;
-    zone: string;
+    zone: string | null;
   };
   /** Planned execution time window */
   plannedTimeWindow: {
@@ -216,6 +217,7 @@ export function buildTaktRequestSnapshot(input: {
     // ── Whitelisted work description fields ───────────────────────────────────
     trade: takt.gewerk,
     workPackage: takt.taktBezeichnung,
+    kurzbezeichnung: takt.kurzbezeichnung,
 
     // ── Location: zone is the only current field; building/storey are reserved
     location: {

@@ -132,14 +132,6 @@ beforeAll(async () => {
     lifecycleStatus: "PLANNED",
     version: 1,
   });
-  await db.insert(policyTemplatesTable).values({
-    code: "T239_PROJECT_COLLABORATION",
-    name: "Task 239 Project Collaboration",
-    purpose: "Task 239 invitation regression",
-    permissions: ["READ"],
-    prohibitions: ["REDISTRIBUTE"],
-    validityRule: "Until project end",
-  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: REINVITE_MEMBERSHIP_ID,
     projectId: REINVITE_PROJECT_ID,
@@ -301,7 +293,7 @@ describe("membership gates and legacy compatibility", () => {
   it("reopens a revoked relationship with a delivered invitation package on both sides", async () => {
     const [policy] = await db.select({ id: policyTemplatesTable.id })
       .from(policyTemplatesTable)
-      .where(eq(policyTemplatesTable.code, "T239_PROJECT_COLLABORATION"))
+      .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
       .limit(1);
 
     const response = await request(app)
