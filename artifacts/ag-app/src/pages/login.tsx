@@ -128,7 +128,7 @@ export default function Login() {
       </div>
       
       <div className="hidden lg:block relative w-0 flex-1 bg-card border-l border-border">
-        <div className="absolute inset-0 h-full w-full object-cover bg-[url('https://images.unsplash.com/photo-1541888086925-eb2c1f4e1987?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity"></div>
+        <div className="absolute inset-0 h-full w-full object-cover bg-[url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent"></div>
         <div className="absolute bottom-12 left-12 right-12 text-foreground">
           <h3 className="text-2xl font-bold mb-2">Leistungsplanung für Auftraggeber</h3>
