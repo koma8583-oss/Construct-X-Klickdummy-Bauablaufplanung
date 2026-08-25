@@ -3305,6 +3305,10 @@ export default function ProjectDetail() {
           projectId={projectId}
           projectName={project.projectName ?? ''}
           participants={allAnOrgs ?? []}
+          onInvitationSent={() => {
+            void queryClient.invalidateQueries({ queryKey: getListProjectMembershipsQueryKey(projectId) });
+            void queryClient.invalidateQueries({ queryKey: ['dataspace-participants', projectId] });
+          }}
         />
       )}
 

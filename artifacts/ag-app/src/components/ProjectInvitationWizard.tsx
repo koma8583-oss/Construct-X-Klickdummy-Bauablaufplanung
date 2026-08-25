@@ -40,6 +40,7 @@ type Props = {
   projectId: string;
   projectName: string;
   participants: Participant[];
+  onInvitationSent?: () => void;
 };
 
 const PRODUCT_TYPE = "TAKT_INFORMATION_PACKAGE";
@@ -78,6 +79,7 @@ export function ProjectInvitationWizard({
   projectId,
   projectName,
   participants,
+  onInvitationSent,
 }: Props) {
   const { toast } = useToast();
   const [step, setStep] = useState(0);
@@ -177,6 +179,7 @@ export function ProjectInvitationWizard({
         title: "Einladung und Datenfreigabe vorbereitet",
         description: "Die ausgewählten AN erhalten die Einladung mit der zu bestätigenden Policy.",
       });
+      onInvitationSent?.();
       close(false);
     } catch (error) {
       toast({
