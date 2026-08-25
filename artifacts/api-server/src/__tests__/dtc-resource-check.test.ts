@@ -15,7 +15,7 @@
  * Fixture prefix: "dtc-"
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,

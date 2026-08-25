@@ -5,7 +5,7 @@
  * Tests verify the full outbox → inbox delivery flow against the real DB.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { db, messageOutboxTable, messageInboxTable } from "@workspace/db";
+import { hubDb as db, messageOutboxTable, messageInboxTable } from "@workspace/db";
 import { organizationsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";

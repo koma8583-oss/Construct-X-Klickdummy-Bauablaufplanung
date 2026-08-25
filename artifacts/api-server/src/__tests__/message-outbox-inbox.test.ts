@@ -5,7 +5,7 @@
  * Each test uses direct SQL inserts to stay independent of any service layer.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { db } from "@workspace/db";
+import { hubDb as db } from "@workspace/db";
 import {
   messageOutboxTable,
   messageInboxTable,

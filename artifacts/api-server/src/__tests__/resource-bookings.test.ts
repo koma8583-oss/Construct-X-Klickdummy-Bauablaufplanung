@@ -23,7 +23,7 @@
  * Fixture prefix: "t42-"
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   organizationsTable,
   resourcesTable,
