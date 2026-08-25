@@ -13,6 +13,8 @@ export interface Takt {
   projectId: string;
   /** Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord) */
   taktBezeichnung: string;
+  /** @minLength 1 */
+  kurzbezeichnung: string;
   zone?: string | null;
   gewerk: string;
   description?: string | null;

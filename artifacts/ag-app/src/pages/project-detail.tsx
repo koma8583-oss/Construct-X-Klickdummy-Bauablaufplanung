@@ -412,6 +412,12 @@ export default function ProjectDetail() {
   // Dependency reschedule prompt
   const [depRescheduleOpen, setDepRescheduleOpen] = useState(false);
   const [pendingDepData, setPendingDepData] = useState<{ predecessorId: string; successorId: string; type: TaktDependencyType; lagDays: number } | null>(null);
+  const [ganttLinkMode, setGanttLinkMode] = useState(false);
+  const [ganttLinkPredecessorId, setGanttLinkPredecessorId] = useState<string | null>(null);
+  const [ganttLinkSuccessorId, setGanttLinkSuccessorId] = useState<string | null>(null);
+  const [ganttLinkDialogOpen, setGanttLinkDialogOpen] = useState(false);
+  const [ganttLinkType, setGanttLinkType] = useState<TaktDependencyType>('EA');
+  const [ganttLinkLag, setGanttLinkLag] = useState(0);
 
   // Duration state — create form
   const [createDurationDays, setCreateDurationDays] = useState<string>('');
@@ -925,7 +931,54 @@ export default function ProjectDetail() {
       setLocation(`/leistungsanfragen/${requestUuid}`);
       return;
     }
+    if (ganttLinkMode) {
+      if (!ganttLinkPredecessorId) {
+        setGanttLinkPredecessorId(taskId);
+        return;
+      }
+      if (taskId === ganttLinkPredecessorId) {
+        toast({
+          title: 'Ungültige Auswahl',
+          description: 'Vorgänger und Nachfolger müssen unterschiedliche Leistungen sein.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setGanttLinkSuccessorId(taskId);
+      setGanttLinkDialogOpen(true);
+      return;
+    }
     setLocation(`/projects/${projectId}/takte/${taskId}`);
+  }
+
+  function resetGanttLinkMode() {
+    setGanttLinkMode(false);
+    setGanttLinkPredecessorId(null);
+    setGanttLinkSuccessorId(null);
+    setGanttLinkDialogOpen(false);
+    setGanttLinkType('EA');
+    setGanttLinkLag(0);
+  }
+
+  function startGanttLink() {
+    setGanttLinkPredecessorId(null);
+    setGanttLinkSuccessorId(null);
+    setGanttLinkType('EA');
+    setGanttLinkLag(0);
+    setGanttLinkMode(true);
+  }
+
+  function confirmGanttLink() {
+    if (!ganttLinkPredecessorId || !ganttLinkSuccessorId) return;
+    setPendingDepData({
+      predecessorId: ganttLinkPredecessorId,
+      successorId: ganttLinkSuccessorId,
+      type: ganttLinkType,
+      lagDays: ganttLinkLag,
+    });
+    setGanttLinkDialogOpen(false);
+    setGanttLinkMode(false);
+    setDepRescheduleOpen(true);
   }
 
   function handleOpenEdit() {
@@ -1606,6 +1659,16 @@ export default function ProjectDetail() {
           {/* Gantt controls — only shown on Gantt tab */}
           {activeChartTab === 'gantt' && (
             <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant={ganttLinkMode ? 'default' : 'outline'}
+                onClick={ganttLinkMode ? resetGanttLinkMode : startGanttLink}
+                className="h-8 text-xs"
+                title="Zwei Leistungen im Gantt miteinander verknüpfen"
+              >
+                <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                {ganttLinkMode ? 'Verknüpfen abbrechen' : 'Abhängigkeit verknüpfen'}
+              </Button>
               {/* Alternativvorschläge toggle */}
               {proposalRequests.length > 0 && (
                 <button
@@ -1690,7 +1753,24 @@ export default function ProjectDetail() {
             {takteLoading ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">Lade Plan…</div>
             ) : ganttTasks.length > 0 ? (
-              <div className="rounded-lg border border-border overflow-hidden bg-card text-card-foreground">
+              <div className={`rounded-lg border overflow-hidden bg-card text-card-foreground ${ganttLinkMode ? 'border-primary/60 ring-2 ring-primary/10' : 'border-border'}`}>
+                {ganttLinkMode && (
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-primary/20 bg-primary/5 text-sm">
+                    <Link2 className="w-4 h-4 text-primary shrink-0" />
+                    <span>
+                      {ganttLinkPredecessorId
+                        ? 'Jetzt die Nachfolger-Leistung anklicken.'
+                        : 'Zuerst die Vorgänger-Leistung anklicken.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={resetGanttLinkMode}
+                      className="ml-auto text-xs text-muted-foreground hover:text-foreground underline"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                )}
                 <style dangerouslySetInnerHTML={{__html: `
                   .gantt { font-family: inherit !important; }
                   ._CZjuD { background: hsl(var(--background)) !important; }
@@ -3167,6 +3247,75 @@ export default function ProjectDetail() {
               </form>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+      {/* ── Gantt dependency details dialog ─────────────────────────────────── */}
+      <Dialog
+        open={ganttLinkDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGanttLinkDialogOpen(false);
+            setGanttLinkSuccessorId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-primary" />
+              Abhängigkeit im Gantt anlegen
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-24">Vorgänger</span>
+                <span className="font-medium truncate">
+                  {ganttLinkPredecessorId ? taktNameById.get(ganttLinkPredecessorId) : '–'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-24">Nachfolger</span>
+                <span className="font-medium truncate">
+                  {ganttLinkSuccessorId ? taktNameById.get(ganttLinkSuccessorId) : '–'}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Beziehungstyp</Label>
+              <Select value={ganttLinkType} onValueChange={(value) => setGanttLinkType(value as TaktDependencyType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(DEP_TYPE_LABEL) as TaktDependencyType[]).map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type} — {DEP_TYPE_LABEL[type]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gantt-link-lag">Zeitversatz in Tagen</Label>
+              <Input
+                id="gantt-link-lag"
+                type="number"
+                min={0}
+                step={1}
+                value={ganttLinkLag}
+                onChange={(event) => setGanttLinkLag(Math.max(0, Number(event.target.value) || 0))}
+              />
+              <p className="text-xs text-muted-foreground">Optionaler Abstand zwischen den beiden Leistungen.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={resetGanttLinkMode}>Abbrechen</Button>
+            <Button type="button" onClick={confirmGanttLink}>
+              <Link2 className="w-4 h-4 mr-2" />
+              Verbindung vorbereiten
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* ── Dep reschedule confirmation dialog ───────────────────────────────── */}

@@ -8,6 +8,8 @@
 
 export interface UpdateTaktRequest {
   taktBezeichnung?: string;
+  /** @minLength 1 */
+  kurzbezeichnung?: string;
   zone?: string | null;
   gewerk?: string;
   description?: string;

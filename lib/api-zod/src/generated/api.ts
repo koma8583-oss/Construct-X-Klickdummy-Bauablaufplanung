@@ -1171,10 +1171,12 @@ export const ListTakteParams = zod.object({
 
 
 
+
 export const ListTakteResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1203,6 +1205,7 @@ export const CreateTaktParams = zod.object({
 
 export const CreateTaktBody = zod.object({
   "taktBezeichnung": zod.string(),
+  "kurzbezeichnung": zod.string(),
   "zone": zod.string().optional(),
   "gewerk": zod.string(),
   "description": zod.string().optional(),
@@ -1218,10 +1221,12 @@ export const CreateTaktBody = zod.object({
 
 
 
+
 export const CreateTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1251,10 +1256,12 @@ export const GetTaktParams = zod.object({
 
 
 
+
 export const GetTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1281,8 +1288,12 @@ export const UpdateTaktParams = zod.object({
   "taktId": zod.coerce.string()
 })
 
+
+
+
 export const UpdateTaktBody = zod.object({
   "taktBezeichnung": zod.string().optional(),
+  "kurzbezeichnung": zod.string().min(1).optional(),
   "zone": zod.string().nullish(),
   "gewerk": zod.string().optional(),
   "description": zod.string().optional(),
@@ -1300,11 +1311,15 @@ export const UpdateTaktBody = zod.object({
 
 
 
+
+
+
 export const UpdateTaktResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1325,6 +1340,7 @@ export const UpdateTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1346,6 +1362,7 @@ export const UpdateTaktResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1392,6 +1409,8 @@ export const listTaktDependenciesResponseLagDaysMin = 0;
 
 
 
+
+
 export const ListTaktDependenciesResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -1403,6 +1422,7 @@ export const ListTaktDependenciesResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1423,6 +1443,7 @@ export const ListTaktDependenciesResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1469,6 +1490,10 @@ export const createTaktDependencyResponseDependencyLagDaysMin = 0;
 
 
 
+
+
+
+
 export const CreateTaktDependencyResponse = zod.object({
   "dependency": zod.object({
   "id": zod.string(),
@@ -1481,6 +1506,7 @@ export const CreateTaktDependencyResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1501,6 +1527,7 @@ export const CreateTaktDependencyResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1522,6 +1549,7 @@ export const CreateTaktDependencyResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1543,6 +1571,7 @@ export const CreateTaktDependencyResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1577,11 +1606,14 @@ export const DeleteTaktDependencyParams = zod.object({
 
 
 
+
+
 export const DeleteTaktDependencyResponse = zod.object({
   "moved": zod.array(zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1603,6 +1635,7 @@ export const DeleteTaktDependencyResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1637,6 +1670,7 @@ export const ListDelegationsQueryParams = zod.object({
 
 
 
+
 export const ListDelegationsResponseItem = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -1647,6 +1681,7 @@ export const ListDelegationsResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1758,6 +1793,7 @@ export const CreateDelegationBody = zod.object({
 
 
 
+
 export const CreateDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -1768,6 +1804,7 @@ export const CreateDelegationResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1872,6 +1909,7 @@ export const GetDelegationParams = zod.object({
 
 
 
+
 export const GetDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -1882,6 +1920,7 @@ export const GetDelegationResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -1991,6 +2030,7 @@ export const UpdateDelegationBody = zod.object({
 
 
 
+
 export const UpdateDelegationResponse = zod.object({
   "id": zod.string(),
   "taktId": zod.string(),
@@ -2001,6 +2041,7 @@ export const UpdateDelegationResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -2333,6 +2374,7 @@ export const listResourceAssignmentsResponseResourceCapacityExclusiveMin = 0;
 
 
 
+
 export const ListResourceAssignmentsResponseItem = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -2365,6 +2407,7 @@ export const ListResourceAssignmentsResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -2481,6 +2524,7 @@ export const createResourceAssignmentResponseResourceCapacityExclusiveMin = 0;
 
 
 
+
 export const CreateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -2513,6 +2557,7 @@ export const CreateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -2630,6 +2675,7 @@ export const updateResourceAssignmentResponseResourceCapacityExclusiveMin = 0;
 
 
 
+
 export const UpdateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "resourceId": zod.string(),
@@ -2662,6 +2708,7 @@ export const UpdateResourceAssignmentResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -2868,6 +2915,8 @@ export const ListWebhookEventsResponse = zod.array(ListWebhookEventsResponseItem
 
 
 
+
+
 export const GetAgDashboardResponse = zod.object({
   "totalProjects": zod.number(),
   "activeProjects": zod.number(),
@@ -2879,6 +2928,7 @@ export const GetAgDashboardResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -2905,6 +2955,7 @@ export const GetAgDashboardResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -3004,7 +3055,9 @@ export const GetAgDashboardResponse = zod.object({
  * @summary AN dashboard summary
  */
 
+
 export const getAnDashboardResponseResourceUtilizationItemResourceCapacityExclusiveMin = 0;
+
 
 
 
@@ -3022,6 +3075,7 @@ export const GetAnDashboardResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -3145,6 +3199,7 @@ export const GetAnDashboardResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4173,6 +4228,8 @@ export const listLeistungsabhaengigkeitenResponseLagDaysMin = 0;
 
 
 
+
+
 export const ListLeistungsabhaengigkeitenResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -4184,6 +4241,7 @@ export const ListLeistungsabhaengigkeitenResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4204,6 +4262,7 @@ export const ListLeistungsabhaengigkeitenResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4254,6 +4313,10 @@ export const createLeistungsabhaengigkeitResponseDependencyLagDaysMin = 0;
 
 
 
+
+
+
+
 export const CreateLeistungsabhaengigkeitResponse = zod.object({
   "dependency": zod.object({
   "id": zod.string(),
@@ -4266,6 +4329,7 @@ export const CreateLeistungsabhaengigkeitResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4286,6 +4350,7 @@ export const CreateLeistungsabhaengigkeitResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4307,6 +4372,7 @@ export const CreateLeistungsabhaengigkeitResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4328,6 +4394,7 @@ export const CreateLeistungsabhaengigkeitResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4362,11 +4429,14 @@ export const DeleteLeistungsabhaengigkeitParams = zod.object({
 
 
 
+
+
 export const DeleteLeistungsabhaengigkeitResponse = zod.object({
   "moved": zod.array(zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),
@@ -4388,6 +4458,7 @@ export const DeleteLeistungsabhaengigkeitResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
   "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
+  "kurzbezeichnung": zod.string().min(1),
   "zone": zod.string().nullish(),
   "gewerk": zod.string(),
   "description": zod.string().nullish(),

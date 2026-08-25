@@ -689,6 +689,8 @@ export interface Takt {
   projectId: string;
   /** Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord) */
   taktBezeichnung: string;
+  /** @minLength 1 */
+  kurzbezeichnung: string;
   zone?: string | null;
   gewerk: string;
   description?: string | null;
@@ -716,6 +718,7 @@ export interface Takt {
 
 export interface CreateTaktRequest {
   taktBezeichnung: string;
+  kurzbezeichnung: string;
   zone?: string;
   gewerk: string;
   description?: string;
@@ -730,6 +733,8 @@ export interface CreateTaktRequest {
 
 export interface UpdateTaktRequest {
   taktBezeichnung?: string;
+  /** @minLength 1 */
+  kurzbezeichnung?: string;
   zone?: string | null;
   gewerk?: string;
   description?: string;
