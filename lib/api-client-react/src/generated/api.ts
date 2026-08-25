@@ -26,6 +26,8 @@ import type {
   AgProjectDetailOverview,
   AgProjectSummary,
   AnDashboard,
+  AnLeistungsanfrageDetails,
+  AnLeistungsanfrageListItem,
   AnProjectInvitation,
   AvailabilityCheckResponse,
   CreateDelegationRequest,
@@ -61,6 +63,7 @@ import type {
   LeistungUpdateResult,
   LeistungsanfrageDraftResponse,
   LeistungsanfrageListItem,
+  ListAnLeistungsanfragenParams,
   ListDelegationsParams,
   ListInboxMessagesParams,
   ListLeistungsanfragenParams,
@@ -2222,6 +2225,167 @@ export function useListAnProjectInvitations<TData = Awaited<ReturnType<typeof li
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListAnProjectInvitationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAnLeistungsanfragenUrl = (params?: ListAnLeistungsanfragenParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/an/leistungsanfragen?${stringifiedParams}` : `/api/an/leistungsanfragen`
+}
+
+/**
+ * @summary List local AN Leistungsanfrage projections
+ */
+export const listAnLeistungsanfragen = async (params?: ListAnLeistungsanfragenParams, options?: RequestInit): Promise<AnLeistungsanfrageListItem[]> => {
+
+  return customFetch<AnLeistungsanfrageListItem[]>(getListAnLeistungsanfragenUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAnLeistungsanfragenQueryKey = (params?: ListAnLeistungsanfragenParams,) => {
+    return [
+    `/api/an/leistungsanfragen`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAnLeistungsanfragenQueryOptions = <TData = Awaited<ReturnType<typeof listAnLeistungsanfragen>>, TError = ErrorType<ErrorResponse>>(params?: ListAnLeistungsanfragenParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnLeistungsanfragen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAnLeistungsanfragenQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnLeistungsanfragen>>> = ({ signal }) => listAnLeistungsanfragen(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAnLeistungsanfragen>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAnLeistungsanfragenQueryResult = NonNullable<Awaited<ReturnType<typeof listAnLeistungsanfragen>>>
+export type ListAnLeistungsanfragenQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List local AN Leistungsanfrage projections
+ */
+
+export function useListAnLeistungsanfragen<TData = Awaited<ReturnType<typeof listAnLeistungsanfragen>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListAnLeistungsanfragenParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnLeistungsanfragen>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAnLeistungsanfragenQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAnLeistungsanfrageDetailsUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/an/leistungsanfragen/${leistungsanfrageId}/details`
+}
+
+/**
+ * @summary Get a local AN Leistungsanfrage projection and its resource requirements
+ */
+export const getAnLeistungsanfrageDetails = async (leistungsanfrageId: string, options?: RequestInit): Promise<AnLeistungsanfrageDetails> => {
+
+  return customFetch<AnLeistungsanfrageDetails>(getGetAnLeistungsanfrageDetailsUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAnLeistungsanfrageDetailsQueryKey = (leistungsanfrageId: string,) => {
+    return [
+    `/api/an/leistungsanfragen/${leistungsanfrageId}/details`
+    ] as const;
+    }
+
+
+export const getGetAnLeistungsanfrageDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>, TError = ErrorType<ErrorResponse>>(leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAnLeistungsanfrageDetailsQueryKey(leistungsanfrageId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>> = ({ signal }) => getAnLeistungsanfrageDetails(leistungsanfrageId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: leistungsanfrageId !== null && leistungsanfrageId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAnLeistungsanfrageDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>>
+export type GetAnLeistungsanfrageDetailsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a local AN Leistungsanfrage projection and its resource requirements
+ */
+
+export function useGetAnLeistungsanfrageDetails<TData = Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>, TError = ErrorType<ErrorResponse>>(
+ leistungsanfrageId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnLeistungsanfrageDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAnLeistungsanfrageDetailsQueryOptions(leistungsanfrageId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -54,16 +54,17 @@ function toRequestView(projection: Projection, requirementCount = 0) {
     resourceRequirementCount: requirementCount,
     takt: {
       id: projection.leistungReference,
-      taktBezeichnung: snapshotValue(snapshot, "taktBezeichnung") ?? projection.leistungReference,
-      gewerk: snapshotValue(snapshot, "gewerk") ?? null,
-      zone: snapshotValue(snapshot, "zone") ?? null,
-      plannedStart: plannedTimeWindow?.start ?? projection.plannedStart,
-      plannedEnd: plannedTimeWindow?.end ?? projection.plannedEnd,
+      taktBezeichnung: typeof snapshotValue(snapshot, "taktBezeichnung") === "string"
+        ? snapshotValue(snapshot, "taktBezeichnung") : projection.leistungReference,
+      gewerk: typeof snapshotValue(snapshot, "gewerk") === "string" ? snapshotValue(snapshot, "gewerk") : null,
+      zone: typeof snapshotValue(snapshot, "zone") === "string" ? snapshotValue(snapshot, "zone") : null,
+      plannedStart: typeof plannedTimeWindow?.start === "string" ? plannedTimeWindow.start : projection.plannedStart,
+      plannedEnd: typeof plannedTimeWindow?.end === "string" ? plannedTimeWindow.end : projection.plannedEnd,
     },
     project: {
       id: projection.projectReference,
-      name: projectName ?? projection.projectReference,
-      location: location ?? null,
+      name: typeof projectName === "string" ? projectName : projection.projectReference,
+      location: typeof location === "string" ? location : null,
     },
   };
 }

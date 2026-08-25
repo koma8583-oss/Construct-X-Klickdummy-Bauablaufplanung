@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useListAnLeistungsanfragen, type ListAnLeistungsanfragenParams } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
@@ -33,32 +33,18 @@ const STATUS_LABELS: Record<string, string> = {
   SUPERSEDED: "Ersetzt",
 };
 
-type LocalAnRequest = {
-  id: string;
-  status: string;
-  guOrgId: string;
-  plannedStart: string;
-  plannedEnd: string;
-  project?: { id: string; name: string | null };
-  takt?: { gewerk: string | null; zone: string | null; taktBezeichnung: string | null };
-};
-
 export default function Requests() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: requests, isLoading } = useQuery({
-    queryKey: ["an-local-leistungsanfragen", statusFilter],
-    queryFn: async (): Promise<LocalAnRequest[]> => {
-      const params = statusFilter === "ALL" ? "" : `?status=${encodeURIComponent(statusFilter)}`;
-      const response = await fetch(`/api/leistungsanfragen${params}`);
-      if (!response.ok) throw new Error("Leistungsanfragen konnten nicht geladen werden");
-      return response.json() as Promise<LocalAnRequest[]>;
-    },
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: false,
-  });
+  const { data: requests, isLoading } = useListAnLeistungsanfragen(
+    statusFilter === "ALL" ? undefined : { status: statusFilter as ListAnLeistungsanfragenParams["status"] },
+    { query: {
+      queryKey: ["an-local-leistungsanfragen", statusFilter],
+      refetchInterval: 5_000,
+      refetchIntervalInBackground: false,
+    } },
+  );
 
   if (isLoading) {
     return (

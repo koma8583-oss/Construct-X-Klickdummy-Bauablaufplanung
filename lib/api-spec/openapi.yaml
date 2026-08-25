@@ -636,6 +636,63 @@ paths:
                 items:
                   $ref: "#/components/schemas/AnProjectInvitation"
 
+  /an/leistungsanfragen:
+    get:
+      operationId: listAnLeistungsanfragen
+      tags: [an, leistungsanfragen]
+      summary: List local AN Leistungsanfrage projections
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [RECEIVED, DETAILS_RETRIEVED, UNDER_REVIEW, RESPONDED, REVISION_REQUIRED, CONFIRMED, CANCELLED, SUPERSEDED]
+      responses:
+        "200":
+          description: Leistungsanfragen received in the authenticated AN context
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnLeistungsanfrageListItem"
+        "403":
+          description: Only AN organisations may access local projections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /an/leistungsanfragen/{leistungsanfrageId}/details:
+    get:
+      operationId: getAnLeistungsanfrageDetails
+      tags: [an, leistungsanfragen]
+      summary: Get a local AN Leistungsanfrage projection and its resource requirements
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Leistungsanfrage details available in the authenticated AN context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnLeistungsanfrageDetails"
+        "403":
+          description: Only AN organisations may access local projections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Leistungsanfrage was not received in the AN context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /an/project-invitations/{id}/accept:
     post:
       operationId: acceptAnProjectInvitation
@@ -3712,6 +3769,82 @@ components:
         rejectedAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    AnLeistungsanfrageListItem:
+      type: object
+      description: Local AN projection used by the AN worklist; distinct from AG coordination DTOs.
+      required: [id, leistungsanfrageId, taktRequestId, localProjectionId, requestNumber, status, guOrgId, nuOrgId, projektId, projectId, plannedStart, plannedEnd, receivedAt, createdAt, updatedAt, takt, project]
+      properties:
+        id: { type: string }
+        leistungsanfrageId: { type: string }
+        taktRequestId: { type: string }
+        localProjectionId: { type: string }
+        requestNumber: { type: string }
+        status: { type: string, enum: [RECEIVED, DETAILS_RETRIEVED, UNDER_REVIEW, RESPONDED, REVISION_REQUIRED, CONFIRMED, CANCELLED, SUPERSEDED] }
+        leistungVersion: { type: integer, minimum: 1 }
+        taktVersion: { type: integer, minimum: 1 }
+        guOrgId: { type: string }
+        nuOrgId: { type: string }
+        projektId: { type: string }
+        projectId: { type: string }
+        plannedStart: { type: string }
+        plannedEnd: { type: string }
+        responseRequiredBy: { type: ["string", "null"], format: date-time }
+        receivedAt: { type: string, format: date-time }
+        detailsRetrievedAt: { type: ["string", "null"], format: date-time }
+        policySnapshot: { type: ["object", "null"], additionalProperties: true }
+        resourceRequirementCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        takt: { $ref: "#/components/schemas/AnLeistungsanfrageTakt" }
+        project: { $ref: "#/components/schemas/AnLeistungsanfrageProject" }
+
+    AnLeistungsanfrageDetails:
+      allOf:
+        - $ref: "#/components/schemas/AnLeistungsanfrageListItem"
+        - type: object
+          required: [schemaVersion, snapshotPayload, resourceRequirements]
+          properties:
+            schemaVersion: { type: string }
+            snapshotPayload: { type: object, additionalProperties: true }
+            resourceRequirements:
+              type: array
+              items: { $ref: "#/components/schemas/AnLeistungsanfrageResourceRequirement" }
+
+    AnLeistungsanfrageTakt:
+      type: object
+      required: [id, taktBezeichnung, gewerk, zone, plannedStart, plannedEnd]
+      properties:
+        id: { type: string }
+        taktBezeichnung: { type: string }
+        gewerk: { type: ["string", "null"] }
+        zone: { type: ["string", "null"] }
+        plannedStart: { type: string }
+        plannedEnd: { type: string }
+
+    AnLeistungsanfrageProject:
+      type: object
+      required: [id, name, location]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        location: { type: ["string", "null"] }
+
+    AnLeistungsanfrageResourceRequirement:
+      type: object
+      required: [id, resourceTypeId, resourceTypeCode, resourceTypeName, requiredCapacity, capacityUnit, utilizationPercent, periodStart, periodEnd, requiredQualification, notes]
+      properties:
+        id: { type: string }
+        resourceTypeId: { type: ["string", "null"] }
+        resourceTypeCode: { type: ["string", "null"] }
+        resourceTypeName: { type: ["string", "null"] }
+        requiredCapacity: {}
+        capacityUnit: { type: ["string", "null"] }
+        utilizationPercent: { type: ["integer", "null"] }
+        periodStart: { type: string }
+        periodEnd: { type: string }
+        requiredQualification: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
 
     InboundServiceRequest:
       type: object

@@ -754,6 +754,125 @@ export const ListAnProjectInvitationsResponse = zod.array(ListAnProjectInvitatio
 
 
 /**
+ * @summary List local AN Leistungsanfrage projections
+ */
+export const ListAnLeistungsanfragenQueryParams = zod.object({
+  "status": zod.enum(['RECEIVED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'RESPONDED', 'REVISION_REQUIRED', 'CONFIRMED', 'CANCELLED', 'SUPERSEDED']).optional()
+})
+
+
+
+export const listAnLeistungsanfragenResponseResourceRequirementCountMin = 0;
+
+
+
+export const ListAnLeistungsanfragenResponseItem = zod.object({
+  "id": zod.string(),
+  "leistungsanfrageId": zod.string(),
+  "taktRequestId": zod.string(),
+  "localProjectionId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['RECEIVED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'RESPONDED', 'REVISION_REQUIRED', 'CONFIRMED', 'CANCELLED', 'SUPERSEDED']),
+  "leistungVersion": zod.number().min(1).optional(),
+  "taktVersion": zod.number().min(1).optional(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "projektId": zod.string(),
+  "projectId": zod.string(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string(),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()).nullish(),
+  "resourceRequirementCount": zod.number().min(listAnLeistungsanfragenResponseResourceRequirementCountMin).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "takt": zod.object({
+  "id": zod.string(),
+  "taktBezeichnung": zod.string(),
+  "gewerk": zod.string().nullable(),
+  "zone": zod.string().nullable(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string()
+}),
+  "project": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "location": zod.string().nullable()
+})
+}).describe('Local AN projection used by the AN worklist; distinct from AG coordination DTOs.')
+export const ListAnLeistungsanfragenResponse = zod.array(ListAnLeistungsanfragenResponseItem)
+
+
+/**
+ * @summary Get a local AN Leistungsanfrage projection and its resource requirements
+ */
+export const GetAnLeistungsanfrageDetailsParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+
+
+export const getAnLeistungsanfrageDetailsResponseOneResourceRequirementCountMin = 0;
+
+
+
+export const GetAnLeistungsanfrageDetailsResponse = zod.object({
+  "id": zod.string(),
+  "leistungsanfrageId": zod.string(),
+  "taktRequestId": zod.string(),
+  "localProjectionId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['RECEIVED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'RESPONDED', 'REVISION_REQUIRED', 'CONFIRMED', 'CANCELLED', 'SUPERSEDED']),
+  "leistungVersion": zod.number().min(1).optional(),
+  "taktVersion": zod.number().min(1).optional(),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "projektId": zod.string(),
+  "projectId": zod.string(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string(),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()).nullish(),
+  "resourceRequirementCount": zod.number().min(getAnLeistungsanfrageDetailsResponseOneResourceRequirementCountMin).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "takt": zod.object({
+  "id": zod.string(),
+  "taktBezeichnung": zod.string(),
+  "gewerk": zod.string().nullable(),
+  "zone": zod.string().nullable(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string()
+}),
+  "project": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "location": zod.string().nullable()
+})
+}).describe('Local AN projection used by the AN worklist; distinct from AG coordination DTOs.').and(zod.object({
+  "schemaVersion": zod.string(),
+  "snapshotPayload": zod.record(zod.string(), zod.unknown()),
+  "resourceRequirements": zod.array(zod.object({
+  "id": zod.string(),
+  "resourceTypeId": zod.string().nullable(),
+  "resourceTypeCode": zod.string().nullable(),
+  "resourceTypeName": zod.string().nullable(),
+  "requiredCapacity": zod.unknown(),
+  "capacityUnit": zod.string().nullable(),
+  "utilizationPercent": zod.number().nullable(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
+  "requiredQualification": zod.string().nullable(),
+  "notes": zod.string().nullable()
+}))
+}))
+
+
+/**
  * @summary Accept project invitation and its policy together
  */
 export const AcceptAnProjectInvitationParams = zod.object({

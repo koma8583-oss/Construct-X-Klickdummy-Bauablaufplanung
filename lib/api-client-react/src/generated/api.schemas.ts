@@ -195,6 +195,107 @@ export interface AnProjectInvitation {
   updatedAt: string;
 }
 
+export type AnLeistungsanfrageListItemStatus = typeof AnLeistungsanfrageListItemStatus[keyof typeof AnLeistungsanfrageListItemStatus];
+
+
+export const AnLeistungsanfrageListItemStatus = {
+  RECEIVED: 'RECEIVED',
+  DETAILS_RETRIEVED: 'DETAILS_RETRIEVED',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  RESPONDED: 'RESPONDED',
+  REVISION_REQUIRED: 'REVISION_REQUIRED',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AnLeistungsanfrageListItemPolicySnapshot = { [key: string]: unknown } | null;
+
+export interface AnLeistungsanfrageTakt {
+  id: string;
+  taktBezeichnung: string;
+  /** @nullable */
+  gewerk: string | null;
+  /** @nullable */
+  zone: string | null;
+  plannedStart: string;
+  plannedEnd: string;
+}
+
+export interface AnLeistungsanfrageProject {
+  id: string;
+  name: string;
+  /** @nullable */
+  location: string | null;
+}
+
+/**
+ * Local AN projection used by the AN worklist; distinct from AG coordination DTOs.
+ */
+export interface AnLeistungsanfrageListItem {
+  id: string;
+  leistungsanfrageId: string;
+  taktRequestId: string;
+  localProjectionId: string;
+  requestNumber: string;
+  status: AnLeistungsanfrageListItemStatus;
+  /** @minimum 1 */
+  leistungVersion?: number;
+  /** @minimum 1 */
+  taktVersion?: number;
+  guOrgId: string;
+  nuOrgId: string;
+  projektId: string;
+  projectId: string;
+  plannedStart: string;
+  plannedEnd: string;
+  /** @nullable */
+  responseRequiredBy?: string | null;
+  receivedAt: string;
+  /** @nullable */
+  detailsRetrievedAt?: string | null;
+  /** @nullable */
+  policySnapshot?: AnLeistungsanfrageListItemPolicySnapshot;
+  /** @minimum 0 */
+  resourceRequirementCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  takt: AnLeistungsanfrageTakt;
+  project: AnLeistungsanfrageProject;
+}
+
+export type AnLeistungsanfrageDetailsSnapshotPayload = { [key: string]: unknown };
+
+export interface AnLeistungsanfrageResourceRequirement {
+  id: string;
+  /** @nullable */
+  resourceTypeId: string | null;
+  /** @nullable */
+  resourceTypeCode: string | null;
+  /** @nullable */
+  resourceTypeName: string | null;
+  requiredCapacity: unknown;
+  /** @nullable */
+  capacityUnit: string | null;
+  /** @nullable */
+  utilizationPercent: number | null;
+  periodStart: string;
+  periodEnd: string;
+  /** @nullable */
+  requiredQualification: string | null;
+  /** @nullable */
+  notes: string | null;
+}
+
+export type AnLeistungsanfrageDetails = AnLeistungsanfrageListItem & {
+  schemaVersion: string;
+  snapshotPayload: AnLeistungsanfrageDetailsSnapshotPayload;
+  resourceRequirements: AnLeistungsanfrageResourceRequirement[];
+};
+
 export type InboundServiceRequestResourceRequirementsItem = { [key: string]: unknown };
 
 export type InboundServiceRequestPolicy = { [key: string]: unknown };
@@ -2797,6 +2898,24 @@ export const ListProjectsStatus = {
   ACTIVE: 'ACTIVE',
   COMPLETED: 'COMPLETED',
   ARCHIVED: 'ARCHIVED',
+} as const;
+
+export type ListAnLeistungsanfragenParams = {
+status?: ListAnLeistungsanfragenStatus;
+};
+
+export type ListAnLeistungsanfragenStatus = typeof ListAnLeistungsanfragenStatus[keyof typeof ListAnLeistungsanfragenStatus];
+
+
+export const ListAnLeistungsanfragenStatus = {
+  RECEIVED: 'RECEIVED',
+  DETAILS_RETRIEVED: 'DETAILS_RETRIEVED',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  RESPONDED: 'RESPONDED',
+  REVISION_REQUIRED: 'REVISION_REQUIRED',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+  SUPERSEDED: 'SUPERSEDED',
 } as const;
 
 export type DeactivateProjectSubcontractor200 = {
