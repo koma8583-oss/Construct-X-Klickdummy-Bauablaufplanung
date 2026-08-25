@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   resourcesTable,
   resourceTypesTable,

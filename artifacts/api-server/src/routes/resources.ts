@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   resourcesTable,
   resourceAssignmentsTable,
@@ -26,9 +26,18 @@ function requireAnWrite(req: { user?: { orgType?: string | null; orgId?: string 
   return true;
 }
 
+function requireAnAccess(req: { user?: { orgType?: string | null; orgId?: string | null } }, res: { status: (code: number) => { json: (body: unknown) => unknown } }): boolean {
+  if (req.user?.orgType !== "AN" || !req.user.orgId) {
+    res.status(403).json({ error: "Resource access is restricted to NU organisations" });
+    return false;
+  }
+  return true;
+}
+
 // ── GET /resources ────────────────────────────────────────────────────────────
 
 router.get("/resources", requireJwt, async (req, res): Promise<void> => {
+  if (!requireAnAccess(req, res)) return;
   const orgId = req.user!.orgId!;
   const type  = req.query.type as string | undefined;
 
@@ -259,6 +268,7 @@ router.get(
   "/resource-assignments",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnAccess(req, res)) return;
     const orgId = req.user!.orgId!;
     const { delegationId, resourceId, from, to } = req.query as Record<string, string>;
 
@@ -307,6 +317,7 @@ router.post(
   "/resource-assignments",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnAccess(req, res)) return;
     const orgId = req.user!.orgId!;
 
     const schema = z.object({
@@ -366,6 +377,7 @@ router.patch(
   "/resource-assignments/:assignmentId",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnAccess(req, res)) return;
     const orgId = req.user!.orgId!;
     const assignmentId = req.params.assignmentId as string;
 
@@ -426,6 +438,7 @@ router.delete(
   "/resource-assignments/:assignmentId",
   requireJwt,
   async (req, res): Promise<void> => {
+    if (!requireAnAccess(req, res)) return;
     const orgId = req.user!.orgId!;
     const assignmentId = req.params.assignmentId as string;
 

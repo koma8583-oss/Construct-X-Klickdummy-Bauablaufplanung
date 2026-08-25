@@ -79,11 +79,6 @@ import {
   ResponseStatusError,
 } from "../services/nu-response-service";
 import {
-  runAvailabilityCheck,
-  getLatestAvailabilityCheck,
-  AvailabilityCheckError,
-} from "../services/availability-check-service";
-import {
   createGuDecision,
   GuDecisionError,
   GuDecisionIdempotencyConflict,
@@ -248,20 +243,6 @@ async function safePublishServiceRequest(
 
 function notificationMessageId(requestId: string): string {
   return `taktrequest-notification-${requestId}`;
-}
-
-/** Formats a check row for NU-facing API responses. */
-function formatCheckResponse(check: import("@workspace/db").AvailabilityCheck) {
-  return {
-    checkId: check.id,
-    status: check.status,
-    result: check.result,
-    runNumber: check.runNumber,
-    internalResult: check.internalResultPayload,
-    publicResult: check.publicResultPayload,
-    checkedAt: check.checkedAt?.toISOString() ?? null,
-    createdAt: check.createdAt.toISOString(),
-  };
 }
 
 /**
@@ -1736,81 +1717,6 @@ router.get(
         createdAt:          snapshot.createdAt.toISOString(),
       }),
     );
-  },
-);
-
-// ── POST /leistungsanfragen/:id/availability-checks ───────────────────────────
-router.post(
-  "/leistungsanfragen/:id/availability-checks",
-  requireJwt,
-  requireRole("AN_ADMIN", "AN_DISPATCHER"),
-  async (req, res): Promise<void> => {
-    const user = req.user!;
-    const id = req.params.id as string;
-
-    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
-      res
-        .status(403)
-        .json({ error: "Only NU (AN) organisations may run availability checks" });
-      return;
-    }
-    const nuOrgId = user.orgId;
-    const userId = user.userId!;
-
-    try {
-      const check = await runAvailabilityCheck(id, nuOrgId, userId);
-      res.status(201).json(formatCheckResponse(check));
-    } catch (err) {
-      if (err instanceof AvailabilityCheckError) {
-        const status =
-          (err as any).code === "REQUEST_NOT_FOUND"  ? 404 :
-          (err as any).code === "SNAPSHOT_MISSING"   ? 404 :
-          (err as any).code === "WRONG_NU_ORG"       ? 403 :
-          (err as any).code === "INVALID_STATUS"     ? 409 :
-          (err as any).code === "INVALID_TIME_WINDOW"? 422 : 400;
-        res.status(status).json({ error: (err as Error).message, code: (err as any).code });
-        return;
-      }
-      throw err;
-    }
-  },
-);
-
-// ── GET /leistungsanfragen/:id/availability-checks/latest ─────────────────────
-router.get(
-  "/leistungsanfragen/:id/availability-checks/latest",
-  requireJwt,
-  async (req, res): Promise<void> => {
-    const user = req.user!;
-    const id = req.params.id as string;
-
-    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
-      res
-        .status(403)
-        .json({ error: "Only NU (AN) organisations may access availability checks" });
-      return;
-    }
-    const nuOrgId = user.orgId;
-
-    const request = await getTaktRequestById(id);
-    if (!request) {
-      res.status(404).json({ error: "Leistungsanfrage not found" });
-      return;
-    }
-    if (request.nuOrgId !== nuOrgId) {
-      res
-        .status(403)
-        .json({ error: "Only the addressed NU organisation may access these checks" });
-      return;
-    }
-
-    const check = await getLatestAvailabilityCheck(id, nuOrgId);
-    if (!check) {
-      res.status(404).json({ error: "No availability checks found for this Leistungsanfrage" });
-      return;
-    }
-
-    res.json(formatCheckResponse(check));
   },
 );
 

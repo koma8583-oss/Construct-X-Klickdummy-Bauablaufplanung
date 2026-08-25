@@ -11,7 +11,7 @@
  * AN Datenraum view alongside data-offer notifications.
  */
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import { messageInboxTable } from "@workspace/db";
 import { eq, inArray, desc, and } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
@@ -21,6 +21,10 @@ const router = Router();
 // ── GET /inbox-messages ───────────────────────────────────────────────────────
 
 router.get("/inbox-messages", requireJwt, async (req, res): Promise<void> => {
+  if (req.user?.orgType !== "AN") {
+    res.status(403).json({ error: "AN access only" });
+    return;
+  }
   const orgId = req.user!.orgId;
   if (!orgId) {
     res.status(403).json({ error: "Organisation required" });

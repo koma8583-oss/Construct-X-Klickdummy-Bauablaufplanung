@@ -86,11 +86,6 @@ import {
 } from "../lib/schema-version";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
-  runAvailabilityCheck,
-  getLatestAvailabilityCheck,
-  AvailabilityCheckError,
-} from "../services/availability-check-service";
-import {
   createGuDecision,
   GuDecisionError,
   GuDecisionIdempotencyConflict,
@@ -1349,95 +1344,6 @@ router.post(
   },
 );
 
-// ── POST /takt-requests/:id/availability-checks ──────────────────────────────
-// NU triggers a feasibility check. Only the addressed NU may call this.
-//
-// Flow: validate NU access → call runAvailabilityCheck() service →
-//   return full NU-visible result (internalResult + publicResult).
-//
-// Status transition (inside service): DETAILS_RETRIEVED → UNDER_REVIEW (first run).
-// Subsequent runs from UNDER_REVIEW are allowed (produces a new history row).
-//
-// Permissions: NU (AN) only, must be the addressed NU. GU, Hub → 403.
-router.post(
-  "/takt-requests/:id/availability-checks",
-  requireJwt,
-  requireRole("AN_ADMIN", "AN_DISPATCHER"),
-  async (req, res): Promise<void> => {
-    const user = req.user!;
-    const id = req.params.id as string;
-
-    // ── 1. NU-only guard ──────────────────────────────────────────────────────
-    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
-      res.status(403).json({ error: "Only NU (AN) organisations may run availability checks" });
-      return;
-    }
-    const nuOrgId = user.orgId;
-    const userId  = user.userId!;
-
-    try {
-      const check = await runAvailabilityCheck(id, nuOrgId, userId);
-      res.status(201).json(formatCheckResponse(check));
-    } catch (err) {
-      if (err instanceof AvailabilityCheckError) {
-        const status =
-          err.code === "REQUEST_NOT_FOUND"  ? 404 :
-          err.code === "SNAPSHOT_MISSING"   ? 404 :
-          err.code === "WRONG_NU_ORG"       ? 403 :
-          err.code === "INVALID_STATUS"     ? 409 :
-          err.code === "INVALID_TIME_WINDOW"? 422 : 400;
-        res.status(status).json({ error: err.message, code: err.code });
-        return;
-      }
-      throw err;
-    }
-  },
-);
-
-// ── GET /takt-requests/:id/availability-checks/latest ────────────────────────
-// Returns the latest availability check for this TaktRequest.
-//
-// "Latest" strategy: prefer the COMPLETED check with the highest runNumber;
-// fall back to the most recent check of any status if no COMPLETED exists.
-//
-// Only the addressed NU may retrieve checks (privacy — internalResult included).
-// GU, Hub → 403.
-router.get(
-  "/takt-requests/:id/availability-checks/latest",
-  requireJwt,
-  async (req, res): Promise<void> => {
-    const user = req.user!;
-    const id = req.params.id as string;
-
-    // ── 1. NU-only guard ──────────────────────────────────────────────────────
-    if (!user.orgId || user.orgType !== "AN" || user.hubAdmin) {
-      res.status(403).json({ error: "Only NU (AN) organisations may access availability checks" });
-      return;
-    }
-    const nuOrgId = user.orgId;
-
-    // ── 2. Load request to verify NU addressing ───────────────────────────────
-    const request = await getTaktRequestById(id);
-    if (!request) {
-      res.status(404).json({ error: "TaktRequest not found" });
-      return;
-    }
-    if (request.nuOrgId !== nuOrgId) {
-      res.status(403).json({ error: "Only the addressed NU organisation may access these checks" });
-      return;
-    }
-
-    // ── 3. Return latest check ────────────────────────────────────────────────
-    const check = await getLatestAvailabilityCheck(id, nuOrgId);
-    if (!check) {
-      res.status(404).json({ error: "No availability checks found for this TaktRequest" });
-      return;
-    }
-
-    res.json(formatCheckResponse(check));
-  },
-);
-
 // ── POST /takt-requests/:id/responses ────────────────────────────────────────
 // NU creates a business response (ACCEPTED / ALTERNATIVES_PROPOSED / REJECTED)
 // and delivers it to the GU's inbox via LocalHubTransport.
@@ -1580,20 +1486,6 @@ router.post(
 );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Formats a check row for NU-facing API responses (includes both internal + public results). */
-function formatCheckResponse(check: import("@workspace/db").AvailabilityCheck) {
-  return {
-    checkId:        check.id,
-    status:         check.status,
-    result:         check.result,
-    runNumber:      check.runNumber,
-    internalResult: check.internalResultPayload,
-    publicResult:   check.publicResultPayload,
-    checkedAt:      check.checkedAt?.toISOString() ?? null,
-    createdAt:      check.createdAt.toISOString(),
-  };
-}
 
 /** Strict privacy filter for the new /responses endpoint body.
  *  Returns an error string on failure, null on pass. */

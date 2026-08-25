@@ -12,7 +12,7 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "@workspace/db";
+import { anDb as db } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
   nuLocalProjectsTable,

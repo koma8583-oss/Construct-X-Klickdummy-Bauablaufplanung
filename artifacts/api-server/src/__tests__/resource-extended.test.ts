@@ -202,16 +202,12 @@ describe("GET /resources — API compatibility", () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
-  it("GU cannot read NU resources — orgId scoped to AG org → empty list (not 403)", async () => {
-    // Current behaviour: returns empty list (GU orgId filters to no AN resources)
-    // Future hardening (as per resource-planning.md): should return 403
+  it("GU cannot read NU resources — explicit AN-only boundary", async () => {
     const res = await request(app)
       .get("/api/resources")
       .set("Authorization", `Bearer ${guToken}`);
 
-    // Document current behaviour — GU gets empty list, not 403
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual([]); // no resources under GU orgId
+    expect(res.status).toBe(403);
   });
 
   it("NU B cannot see NU A resources — org isolation via anOrgId filter", async () => {

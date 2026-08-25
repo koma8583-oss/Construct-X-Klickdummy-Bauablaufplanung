@@ -304,22 +304,20 @@ describe("Contractor management (AG_ADMIN only)", () => {
 describe("AN routes — response + availability check (AN_ADMIN / AN_DISPATCHER)", () => {
   const BOGUS_ID = "t83-nonexistent-request-id";
 
-  it("[12] AN_ADMIN → POST /responses → not 403 (role passed → 404 from business logic)", async () => {
+  it("[12] AN_ADMIN → legacy POST /responses is blocked", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${BOGUS_ID}/responses`)
       .set("Authorization", `Bearer ${anAdminToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
-    expect(res.status).not.toBe(403);
-    expect(res.status).toBe(404); // bogus ID
+    expect(res.status).toBe(403);
   });
 
-  it("[13] AN_DISPATCHER → POST /responses → not 403", async () => {
+  it("[13] AN_DISPATCHER → legacy POST /responses is blocked", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${BOGUS_ID}/responses`)
       .set("Authorization", `Bearer ${anDispatcherToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
-    expect(res.status).not.toBe(403);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
   it("[14] AG_ADMIN (wrong org type) → POST /responses → 403", async () => {
@@ -331,30 +329,28 @@ describe("AN routes — response + availability check (AN_ADMIN / AN_DISPATCHER)
     expect(res.status).toBe(403);
   });
 
-  it("[15] AN_ADMIN → POST /availability-checks → not 403", async () => {
+  it("[15] AN_ADMIN → removed legacy availability endpoint → 403", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${BOGUS_ID}/availability-checks`)
       .set("Authorization", `Bearer ${anAdminToken}`)
       .send({});
-    expect(res.status).not.toBe(403);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  it("[16] AN_DISPATCHER → POST /availability-checks → not 403", async () => {
+  it("[16] AN_DISPATCHER → removed legacy availability endpoint → 403", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${BOGUS_ID}/availability-checks`)
       .set("Authorization", `Bearer ${anDispatcherToken}`)
       .send({});
-    expect(res.status).not.toBe(403);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  it("[17] AG user (any role) → POST /availability-checks → 403 (orgType guard)", async () => {
+  it("[17] AG user (any role) → removed legacy availability endpoint → 404", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${BOGUS_ID}/availability-checks`)
       .set("Authorization", `Bearer ${agAdminToken}`)
       .send({});
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 });
 

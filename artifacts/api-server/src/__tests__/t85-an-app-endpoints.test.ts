@@ -286,11 +286,10 @@ describe("Resource bookings", () => {
 // ── Availability check access guard ──────────────────────────────────────────
 
 describe("Availability check access", () => {
-  it("[16] AG → POST /api/takt-requests/does-not-exist/availability-checks → 403", async () => {
+  it("[16] AG → removed legacy availability endpoint → 404", async () => {
     const res = await request(app)
       .post("/api/takt-requests/does-not-exist/availability-checks")
       .set("Authorization", `Bearer ${agToken}`);
-    // The guard rejects AGs before hitting any DB lookup
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 });
