@@ -4,6 +4,12 @@ import { customFetch } from "./custom-fetch";
 import type { PolicyTemplate } from "./data-publications";
 
 export type PolicyLibraryItem = PolicyTemplate & {
+  projects: Array<{
+    id: string;
+    name: string;
+    agOrgId: string;
+    agName: string;
+  }>;
   odrl: Record<string, unknown>;
 };
 

@@ -1,8 +1,10 @@
 import { Link, useParams } from "wouter";
+import { useState } from "react";
 import { ArrowLeft, ChevronRight, Globe, ShieldCheck } from "lucide-react";
 import { useListAnPolicies } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function PolicyDetails({ policy }: { policy: NonNullable<ReturnType<typeof useListAnPolicies>["data"]>[number] }) {
   return (
@@ -34,7 +36,15 @@ function PolicyDetails({ policy }: { policy: NonNullable<ReturnType<typeof useLi
 export default function PolicyLibraryPage() {
   const { code } = useParams<{ code?: string }>();
   const { data: policies, isLoading, isError } = useListAnPolicies();
+  const [projectFilter, setProjectFilter] = useState("all");
   const selected = policies?.find((policy) => policy.code === code);
+  const projects = policies?.flatMap((policy) => policy.projects) ?? [];
+  const uniqueProjects = projects.filter(
+    (project, index) => projects.findIndex((candidate) => candidate.id === project.id) === index,
+  );
+  const visiblePolicies = policies?.filter((policy) =>
+    projectFilter === "all" || policy.projects.some((project) => project.id === projectFilter),
+  );
 
   if (code) {
     return (
@@ -77,9 +87,26 @@ export default function PolicyLibraryPage() {
       </div>
       {isLoading && <p className="text-muted-foreground">Policies werden geladen…</p>}
       {isError && <p className="text-destructive">Policies konnten nicht geladen werden.</p>}
-      {!isLoading && !isError && policies?.length === 0 && <p className="text-muted-foreground">Keine Policies vorhanden.</p>}
+      {!isLoading && !isError && policies?.length === 0 && <p className="text-muted-foreground">Aktuell keine vereinbart.</p>}
+      {policies && policies.length > 0 && (
+        <div className="max-w-sm space-y-2">
+          <label htmlFor="policy-project-filter" className="text-sm font-medium">Nach AG-Projekt filtern</label>
+          <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <SelectTrigger id="policy-project-filter"><SelectValue placeholder="Alle Projekte" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle Projekte</SelectItem>
+              {uniqueProjects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>{project.agName} · {project.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {policies && policies.length > 0 && visiblePolicies?.length === 0 && (
+        <p className="text-muted-foreground">Für dieses Projekt aktuell keine vereinbart.</p>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {policies?.map((policy) => (
+        {visiblePolicies?.map((policy) => (
           <Link key={policy.id} href={`/data-room/policies/${policy.code}`}>
             <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/20">
               <CardHeader>
@@ -91,6 +118,10 @@ export default function PolicyLibraryPage() {
               </CardHeader>
               <CardContent>
                 <p className="line-clamp-3 text-sm text-muted-foreground">{policy.description ?? policy.purpose}</p>
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Akzeptiert für:</div>
+                  {policy.projects.map((project) => <div key={project.id}>{project.agName} · {project.name}</div>)}
+                </div>
                 <div className="mt-4 flex flex-wrap gap-1">
                   <Badge variant="outline">{policy.permissions.length} Erlaubnisse</Badge>
                   <Badge variant="outline">{policy.prohibitions.length} Verbote</Badge>
