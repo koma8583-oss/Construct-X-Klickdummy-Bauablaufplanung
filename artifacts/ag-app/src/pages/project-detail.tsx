@@ -2617,7 +2617,7 @@ export default function ProjectDetail() {
                   </div>
                   <div className="space-y-2">
                     <Label>Kurzbezeichnung</Label>
-                    <Input name="kurzbezeichnung" required defaultValue={editTargetId ? (takte.find(t => t.id === editTargetId)?.kurzbezeichnung ?? '') : ''} placeholder="z.B. R1" />
+                    <Input name="kurzbezeichnung" required defaultValue={editTargetId ? ((takte ?? []).find(t => t.id === editTargetId)?.kurzbezeichnung ?? '') : ''} placeholder="z.B. R1" />
                   </div>
                   <div className="space-y-2">
                     <Label>Gewerk</Label>
