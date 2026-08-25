@@ -11,7 +11,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,

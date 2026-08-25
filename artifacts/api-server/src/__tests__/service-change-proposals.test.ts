@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   leistungsanfragenTable,
   leistungenTable,

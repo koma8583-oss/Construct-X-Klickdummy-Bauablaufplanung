@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { z } from "zod";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,

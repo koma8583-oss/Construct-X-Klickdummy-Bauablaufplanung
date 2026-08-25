@@ -14,7 +14,7 @@
  * Fixture prefix: "t82-"
  */
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
-import { db, pool } from "@workspace/db";
+import { agDb as db, pool } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,

@@ -32,7 +32,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-import { db } from "@workspace/db";
+import { agDb as db } from "@workspace/db";
 import { messageOutboxTable, messageInboxTable, organizationsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import {
