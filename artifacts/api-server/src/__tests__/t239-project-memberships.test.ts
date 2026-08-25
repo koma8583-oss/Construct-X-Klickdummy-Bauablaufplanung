@@ -19,6 +19,10 @@ import {
   projectContractorsTable,
   projectMembershipsTable,
   anProjectInvitationsTable,
+  dataPublicationRecipientsTable,
+  dataPublicationsTable,
+  policyTemplatesTable,
+  dataspaceExchangesTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -39,6 +43,9 @@ const OTHER_PROJECT_ID = `${PREFIX}-other-project`;
 const TAKT_ID = `${PREFIX}-takt`;
 const BACKFILL_PROJECT_ID = `${PREFIX}-backfill-project`;
 const BACKFILL_AN_ID = `${PREFIX}-backfill-an`;
+const REINVITE_PROJECT_ID = `${PREFIX}-reinvite-project`;
+const REINVITE_MEMBERSHIP_ID = `${PREFIX}-reinvite-membership`;
+const REINVITE_INVITATION_ID = `${PREFIX}-reinvite-old-invitation`;
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function token(userId: string, orgId: string, orgType: "AG" | "AN", roles?: string[]) {
@@ -73,14 +80,20 @@ beforeAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await db.delete(projectMembershipsTable).where(
-    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
+    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
+  ).catch(() => {});
+  await db.delete(dataPublicationRecipientsTable).where(
+    eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
+  ).catch(() => {});
+  await db.delete(dataPublicationsTable).where(
+    eq(dataPublicationsTable.projectId, REINVITE_PROJECT_ID),
   ).catch(() => {});
   await removeRequestData(PROJECT_ID);
   await db.delete(projectContractorsTable).where(
     inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
   ).catch(() => {});
   await db.delete(projectsTable).where(
-    inArray(projectsTable.id, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
+    inArray(projectsTable.id, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
   ).catch(() => {});
   await db.delete(usersTable).where(
     inArray(usersTable.id, [AG_USER_ID, OTHER_AG_USER_ID, AN_USER_ID, OTHER_AN_USER_ID]),
@@ -106,6 +119,7 @@ beforeAll(async () => {
     { id: PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Project" },
     { id: OTHER_PROJECT_ID, agOrgId: OTHER_AG_ID, name: "Task 239 Other Project" },
     { id: BACKFILL_PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Backfill Project" },
+    { id: REINVITE_PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Reinvite Project" },
   ]);
   await db.insert(takteTable).values({
     id: TAKT_ID,
@@ -118,6 +132,23 @@ beforeAll(async () => {
     lifecycleStatus: "PLANNED",
     version: 1,
   });
+  await db.insert(policyTemplatesTable).values({
+    code: "T239_PROJECT_COLLABORATION",
+    name: "Task 239 Project Collaboration",
+    purpose: "Task 239 invitation regression",
+    permissions: ["READ"],
+    prohibitions: ["REDISTRIBUTE"],
+    validityRule: "Until project end",
+  }).onConflictDoNothing();
+  await db.insert(projectMembershipsTable).values({
+    id: REINVITE_MEMBERSHIP_ID,
+    projectId: REINVITE_PROJECT_ID,
+    agOrgId: AG_ID,
+    anOrgId: AN_ID,
+    status: "REVOKED",
+    invitationId: REINVITE_INVITATION_ID,
+    correlationId: `${PREFIX}-reinvite-old-correlation`,
+  });
 });
 
 afterAll(async () => {
@@ -125,8 +156,14 @@ afterAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await removeRequestData(PROJECT_ID);
+  await db.delete(dataPublicationRecipientsTable).where(
+    eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
+  ).catch(() => {});
+  await db.delete(dataPublicationsTable).where(
+    eq(dataPublicationsTable.projectId, REINVITE_PROJECT_ID),
+  ).catch(() => {});
   await db.delete(projectMembershipsTable).where(
-    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
+    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
   ).catch(() => {});
   await db.delete(projectContractorsTable).where(
     inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
@@ -136,6 +173,9 @@ afterAll(async () => {
       sql`${messageOutboxTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
       sql`${messageOutboxTable.recipientOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
     ),
+  ).catch(() => {});
+  await db.delete(dataspaceExchangesTable).where(
+    sql`${dataspaceExchangesTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
   ).catch(() => {});
   await db.delete(projectsTable).where(
     inArray(projectsTable.id, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
@@ -258,6 +298,44 @@ describe("invitation decisions", () => {
 });
 
 describe("membership gates and legacy compatibility", () => {
+  it("reopens a revoked relationship with a delivered invitation package on both sides", async () => {
+    const [policy] = await db.select({ id: policyTemplatesTable.id })
+      .from(policyTemplatesTable)
+      .where(eq(policyTemplatesTable.code, "T239_PROJECT_COLLABORATION"))
+      .limit(1);
+
+    const response = await request(app)
+      .post(`/api/projects/${REINVITE_PROJECT_ID}/invitation-packages`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: policy.id,
+        selectedFields: ["projectName"],
+        title: "Task 239 re-invitation",
+        idempotencyKey: `${PREFIX}-reinvite-package`,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.memberships[0].status).toBe("INVITED");
+    const invitationId = response.body.memberships[0].invitationId as string;
+    const messageId = `project-invitation-${invitationId}`;
+    const [outbound] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, messageId),
+    ));
+    const [inbound] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "INBOUND"),
+      eq(dataspaceExchangesTable.messageId, messageId),
+    ));
+    const [anInvitation] = await anDb.select().from(anProjectInvitationsTable).where(
+      eq(anProjectInvitationsTable.invitationId, invitationId),
+    );
+
+    expect(outbound.status).toBe("PUBLISHED");
+    expect(inbound.status).toBe("PROCESSED");
+    expect(anInvitation.status).toBe("PENDING");
+  });
+
   it("blocks request creation for an invited AN and for an ACTIVE legacy contractor without membership", async () => {
     // The first invitation is now ACTIVE from the prior test, so use a fresh AN.
     await db.insert(projectContractorsTable).values({
