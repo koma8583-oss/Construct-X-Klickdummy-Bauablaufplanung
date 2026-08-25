@@ -187,10 +187,6 @@ export async function createAnServiceResponse(
     eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
   )).limit(1);
   if (!request) throw new ResponseStatusError("NOT_FOUND", new Set(["AN-owned request"]));
-  const answerableStatuses = new Set(["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]);
-  if (!answerableStatuses.has(request.status)) {
-    throw new ResponseStatusError(request.status, answerableStatuses);
-  }
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);
@@ -211,6 +207,10 @@ export async function createAnServiceResponse(
       payloadHash,
       idempotent: true,
     };
+  }
+  const answerableStatuses = new Set(["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]);
+  if (!answerableStatuses.has(request.status)) {
+    throw new ResponseStatusError(request.status, answerableStatuses);
   }
 
   const outboundMessageId = input.outboundMessageId ?? crypto.randomUUID();
@@ -252,30 +252,7 @@ export async function createAnServiceResponse(
     return { response, alternatives };
   });
 
-  const payload: ExternalServiceResponse = {
-    metadata: {
-      messageId: outboundMessageId,
-      correlationId: request.correlationId,
-      schemaVersion: "1.0",
-      senderOrgId: input.anOrgId,
-      receiverOrgId: request.senderAgOrgId,
-      createdAt: new Date().toISOString(),
-    },
-    requestId: request.externalLeistungsanfrageId,
-    requestVersion: request.externalRequestVersion,
-    decision: input.decision,
-    acceptedTimeWindow: input.acceptedTimeWindow,
-    reasonCode: input.reasonCode,
-    comment: input.comment,
-    alternatives: input.alternatives?.map((alternative) => ({
-      alternativeId: alternative.alternativeId,
-      rank: alternative.rank,
-      timeWindow: alternative.timeWindow,
-      crewSize: alternative.crewSize ?? null,
-      conditions: alternative.conditions?.join("; ") ?? null,
-    })),
-    nextAvailableDate: input.nextAvailableDate,
-  };
+  const payload = buildExternalResponse(request, saved.response, saved.alternatives);
   return { ...saved, payload, payloadHash, idempotent: false };
 }
 

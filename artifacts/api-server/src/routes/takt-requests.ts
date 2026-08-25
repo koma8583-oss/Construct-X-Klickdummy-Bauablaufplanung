@@ -144,7 +144,6 @@ async function safeSend(
       attemptCount: reference.attemptCount ?? 1,
     };
   } catch (err) {
-    console.error("AN response publish failed:", err);
     if (err instanceof IdempotencyConflictError) {
       res.status(409).json({ error: err.message, conflictingFields: err.conflictingFields });
       return null;
@@ -1207,7 +1206,6 @@ router.post(
         nextAvailableDate,
       });
     } catch (err) {
-      console.error("AN response creation failed:", err);
       if (err instanceof TaktResponseValidationError) {
         res.status(422).json({ error: err.message }); return;
       }

@@ -231,13 +231,14 @@ describe("independent AG–AN coordination flow", () => {
     expect(revision.body.newTaktVersion).toBe(2);
     const secondRoundId = revision.body.newRequestId as string;
 
+    const secondRoundSent = await request(app)
+      .post(`/api/takt-requests/${secondRoundId}/send`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect([200, 201]).toContain(secondRoundSent.status);
+
     const [oldRequest] = await db.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, firstRoundId));
     expect(oldRequest.status).toBe("SUPERSEDED");
-
-    await db.update(taktRequestsTable)
-      .set({ status: "UNDER_REVIEW" })
-      .where(eq(taktRequestsTable.id, secondRoundId));
 
     const shiftedResponse = await request(app)
       .post(`/api/takt-requests/${secondRoundId}/responses`)
@@ -268,9 +269,12 @@ describe("independent AG–AN coordination flow", () => {
       .from(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
     expect(versions.some((version) => version.version === 2 && version.sourceType === "REVISION")).toBe(true);
 
+    const [agResponse] = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable)
+      .where(eq(taktResponsesTable.taktRequestId, firstRoundId));
     const alternativesInHistory = await db.select({ alternativeId: taktResponseAlternativesTable.alternativeId })
       .from(taktResponseAlternativesTable)
-      .where(eq(taktResponseAlternativesTable.responseId, alternatives.body.responseId));
+      .where(eq(taktResponseAlternativesTable.responseId, agResponse.id));
     expect(alternativesInHistory.map((alternative) => alternative.alternativeId).sort())
       .toEqual([`${PREFIX}-alt-early`, `${PREFIX}-alt-late`].sort());
   });

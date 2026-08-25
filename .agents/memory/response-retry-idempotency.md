@@ -1,26 +1,22 @@
 ---
 name: Response retry idempotency
-description: Why the NU response retry path must query the outbox directly instead of calling transport.send() again.
+description: Retry payloads must be deterministic across the first send and every later delivery attempt.
 ---
 
 ## Rule
-On a retry (existing TaktResponse found with same decision), **do NOT call `transport.send()` again**.
-Instead, query `messageOutboxTable` by `messageId` directly and return its `status`:
-
-```typescript
-const [existingOutbox] = await db
-  .select()
-  .from(messageOutboxTable)
-  .where(eq(messageOutboxTable.messageId, msgId))
-  .limit(1);
-
-const transportStatus = existingOutbox?.status ?? "DELIVERED";
-```
+For an idempotent AN response retry, generate both the first outbound envelope and every
+later retry from the persisted AN response representation. Do not mix a freshly created
+timestamp or date-only request input into the first envelope and then reconstruct it from
+database timestamps on retry.
 
 ## Why
-`LocalHubTransport.send()` performs an idempotency check: if the messageId already exists in the outbox, it calls `envelopeMatchesRow()` which compares `stableStringify(payload)` of the new envelope vs. the stored row.
-
-The retry reconstructs the payload from DB data (e.g., `a.proposedStart.toISOString()` → `"2026-09-22T00:00:00.000Z"`), but the original payload stored date-only strings (`"2026-09-22"` from the alternative generator's `formatDate = toISOString().slice(0, 10)`). The strings differ → `envelopeMatchesRow` returns false → `InvalidEnvelopeError` is thrown → unhandled in the route → 500.
+Dataspace inbound/outbound idempotency compares the full persisted envelope. A first payload
+that uses a transient timestamp but a retry that uses the database-generated timestamp has
+the same business content but a different envelope, so the exchange correctly rejects it as
+a message-ID conflict.
 
 ## How to apply
-Any route that implements idempotent re-send via deterministic messageIds should look up the outbox row directly on retry, not rebuild and re-send the envelope. The message was already delivered on the first call; querying the outbox gives the accurate transport status without re-triggering delivery logic.
+When a route retries a deterministic message ID, build the publish payload from the saved
+response (including its created time, normalized dates, alternatives, and conditions) on the
+initial send as well as the retry. This preserves valid redelivery without bypassing the
+dataspace exchange.
