@@ -91,7 +91,7 @@ function fmtDateTime(s?: string | null): string {
 
 const STEPS = [
   { id: 1, label: 'Datenfreigabe', shortLabel: 'Policy' },
-  { id: 2, label: 'Taktdaten',     shortLabel: 'Daten' },
+  { id: 2, label: 'Aktivitätsdaten', shortLabel: 'Daten' },
   { id: 3, label: 'Ressourcen',    shortLabel: 'Ressourcen' },
   { id: 4, label: 'Verfügbarkeit', shortLabel: 'Verfügb.' },
   { id: 5, label: 'Antwort',       shortLabel: 'Antwort' },
@@ -311,7 +311,7 @@ export default function TaktRequestDetailPage() {
           <AlertTriangle className="w-10 h-10 text-amber-500" />
           <p className="font-medium">Datenveröffentlichung nicht mehr aktiv</p>
           <p className="text-sm text-muted-foreground text-center max-w-md">
-            Die mit dieser TaktAnfrage verknüpfte Datenveröffentlichung wurde zurückgezogen.
+            Die mit dieser Aktivitätsanfrage verknüpfte Datenveröffentlichung wurde zurückgezogen.
           </p>
           <Button variant="outline" onClick={() => setLocation('/takt-requests')}>
             Zurück zur Übersicht
@@ -336,7 +336,7 @@ export default function TaktRequestDetailPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               Der Auftraggeber hat eine neue Koordinierungsrunde gestartet. Diese Anfrage ist
-              abgeschlossen und wurde durch eine neue TaktAnfrage ersetzt. Bitte prüfen Sie
+              abgeschlossen und wurde durch eine neue Aktivitätsanfrage ersetzt. Bitte prüfen Sie
               Ihren Posteingang.
             </p>
             <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/takt-requests')}>
@@ -359,7 +359,7 @@ export default function TaktRequestDetailPage() {
               <p className="font-semibold text-foreground">Anfrage wurde storniert</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Diese TaktAnfrage wurde vom Auftraggeber ohne Einigung abgeschlossen.
+              Diese Aktivitätsanfrage wurde vom Auftraggeber ohne Einigung abgeschlossen.
             </p>
             <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/takt-requests')}>
               Zurück zur Übersicht
@@ -592,7 +592,7 @@ export default function TaktRequestDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{snapBez ?? 'TaktAnfrage'}</h1>
+          <h1 className="text-2xl font-bold">{snapBez ?? 'Aktivitätsanfrage'}</h1>
           <p className="text-muted-foreground font-mono text-sm mt-0.5">{details.requestNumber}</p>
         </div>
         <Badge variant={isExpired ? 'outline' : hasResponded ? 'secondary' : 'default'}>
@@ -682,7 +682,7 @@ export default function TaktRequestDetailPage() {
             </div>
             {details.detailsRetrievedAt && (
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Taktdaten abgerufen am</div>
+                <div className="text-xs text-muted-foreground mb-0.5">Aktivitätsdaten abgerufen am</div>
                 <div className="font-medium">{fmtDateTime(details.detailsRetrievedAt)}</div>
               </div>
             )}
@@ -690,13 +690,13 @@ export default function TaktRequestDetailPage() {
         </CardContent>
       </StepSection>
 
-      {/* ── Step 2: Taktdaten ─────────────────────────────────────────────── */}
+      {/* ── Step 2: Aktivitätsdaten ───────────────────────────────────────── */}
       <StepSection step={2} currentStep={currentStep} completedSteps={completedSteps} locked={!step1Done}>
         <CardHeader className="pb-2 px-5 pt-5">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-primary" />
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 2 — Taktdaten
+              Schritt 2 — Aktivitätsdaten
             </CardTitle>
           </div>
         </CardHeader>
@@ -704,12 +704,12 @@ export default function TaktRequestDetailPage() {
           {!detailsGot && canAct ? (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Rufen Sie die Taktdaten ab, um alle Details einzusehen. Dieser Schritt bestätigt
+                Rufen Sie die Aktivitätsdaten ab, um alle Details einzusehen. Dieser Schritt bestätigt
                 den Empfang der Anfrage beim Auftraggeber.
               </p>
               <Button variant="outline" onClick={() => refetch()} disabled={isLoading} className="w-fit gap-2">
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Taktdaten abrufen
+                Aktivitätsdaten abrufen
               </Button>
             </div>
           ) : (
