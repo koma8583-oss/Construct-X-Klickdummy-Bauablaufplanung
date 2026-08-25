@@ -291,6 +291,10 @@ export interface CreateTaktRequestWithSnapshotInput {
    * linked policy before the snapshot details can be retrieved.
    */
   dataPublicationId?: string;
+  /** Shared selection group for parallel requests; omitted means a singleton group. */
+  selectionGroupId?: string;
+  /** Internal transaction connection used by atomic batch creation. */
+  tx?: any;
 }
 
 export interface CreateTaktRequestWithSnapshotResult {
@@ -301,6 +305,7 @@ export interface CreateTaktRequestWithSnapshotResult {
     guOrgId: string;
     nuOrgId: string;
     requestNumber: string;
+    selectionGroupId: string;
     status: string;
     responseRequiredBy: Date | null;
     createdAt: Date;
@@ -334,8 +339,9 @@ export interface CreateTaktRequestWithSnapshotResult {
 export async function createTaktRequestWithSnapshot(
   input: CreateTaktRequestWithSnapshotInput,
 ): Promise<CreateTaktRequestWithSnapshotResult> {
+  const connection = input.tx ?? db;
   // ── Step 1: Load Takt ─────────────────────────────────────────────────────
-  const [takt] = await db
+  const [takt] = await connection
     .select()
     .from(takteTable)
     .where(eq(takteTable.id, input.taktId))
@@ -344,7 +350,7 @@ export async function createTaktRequestWithSnapshot(
   if (!takt) throw new TaktNotFoundError(input.taktId);
 
   // ── Step 2: Load Project ──────────────────────────────────────────────────
-  const [project] = await db
+  const [project] = await connection
     .select()
     .from(projectsTable)
     .where(eq(projectsTable.id, takt.projectId))
@@ -362,12 +368,12 @@ export async function createTaktRequestWithSnapshot(
   await assertActiveProjectMembership(takt.projectId, input.nuOrgId);
 
   // ── Step 4: Load dependencies ─────────────────────────────────────────────
-  const predecessors = await db
+  const predecessors = await connection
     .select()
     .from(taktDependenciesTable)
     .where(eq(taktDependenciesTable.successorId, input.taktId));
 
-  const successors = await db
+  const successors = await connection
     .select()
     .from(taktDependenciesTable)
     .where(eq(taktDependenciesTable.predecessorId, input.taktId));
@@ -399,7 +405,7 @@ export async function createTaktRequestWithSnapshot(
   };
 
   // ── Step 7: Atomically persist request + snapshot ─────────────────────────
-  return db.transaction(async (tx) => {
+  const persist = async (tx: any): Promise<CreateTaktRequestWithSnapshotResult> => {
     const requestId = crypto.randomUUID();
     const snapshotId = crypto.randomUUID();
     const now = new Date();
@@ -413,6 +419,7 @@ export async function createTaktRequestWithSnapshot(
         guOrgId: input.guOrgId,
         nuOrgId: input.nuOrgId,
         requestNumber: input.requestNumber,
+        selectionGroupId: input.selectionGroupId ?? requestId,
         status: "DRAFT",
         responseRequiredBy: input.responseRequiredBy ?? null,
         createdByUserId: input.createdByUserId,
@@ -440,6 +447,7 @@ export async function createTaktRequestWithSnapshot(
         guOrgId: requestRow.guOrgId,
         nuOrgId: requestRow.nuOrgId,
         requestNumber: requestRow.requestNumber,
+        selectionGroupId: requestRow.selectionGroupId,
         status: requestRow.status,
         responseRequiredBy: requestRow.responseRequiredBy ?? null,
         createdAt: requestRow.createdAt,
@@ -452,5 +460,68 @@ export async function createTaktRequestWithSnapshot(
         createdAt: snapshotRow.createdAt,
       },
     };
+  };
+
+  return input.tx ? persist(input.tx) : db.transaction(persist);
+}
+
+export interface CreateTaktRequestBatchInput {
+  taktId: string;
+  guOrgId: string;
+  nuOrgIds: string[];
+  responseRequiredBy?: Date;
+  createdByUserId: string;
+  subject?: string;
+  message?: string;
+  /**
+   * Optional publication reference applied to each request. This is valid only
+   * when the same publication has all selected AN organisations as recipients.
+   */
+  dataPublicationId?: string;
+}
+
+export interface CreateTaktRequestBatchResult {
+  selectionGroupId: string;
+  requests: CreateTaktRequestWithSnapshotResult[];
+}
+
+/**
+ * Atomically create one immutable snapshot request for each selected AN.
+ * All rows share one selectionGroupId; a failure for any recipient rolls back
+ * the complete batch. Deliveries intentionally remain a subsequent operation.
+ */
+export async function createTaktRequestBatchWithSnapshot(
+  input: CreateTaktRequestBatchInput,
+): Promise<CreateTaktRequestBatchResult> {
+  const nuOrgIds = [...new Set(input.nuOrgIds)];
+  if (nuOrgIds.length === 0) {
+    throw new Error("At least one NU organisation is required.");
+  }
+
+  // Reuse the established validation and snapshot builder for every recipient.
+  // Passing the outer transaction through keeps every insert on one connection,
+  // so validation or persistence failure rolls the whole batch back.
+  const selectionGroupId = crypto.randomUUID();
+  const requestNumberStem = `TKR-${Date.now().toString(36).toUpperCase()}-${selectionGroupId.slice(0, 6).toUpperCase()}`;
+
+  return db.transaction(async (tx) => {
+    const requests: CreateTaktRequestWithSnapshotResult[] = [];
+    for (const [index, nuOrgId] of nuOrgIds.entries()) {
+      const request = await createTaktRequestWithSnapshot({
+        taktId: input.taktId,
+        guOrgId: input.guOrgId,
+        nuOrgId,
+        requestNumber: `${requestNumberStem}-${String(index + 1).padStart(2, "0")}`,
+        responseRequiredBy: input.responseRequiredBy,
+        createdByUserId: input.createdByUserId,
+        subject: input.subject,
+        message: input.message,
+        dataPublicationId: input.dataPublicationId,
+        selectionGroupId,
+        tx,
+      });
+      requests.push(request);
+    }
+    return { selectionGroupId, requests };
   });
 }

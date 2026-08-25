@@ -5,6 +5,7 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { GuDecisionResponseAutoCancelledRequestsItem } from './guDecisionResponseAutoCancelledRequestsItem';
 import type { GuDecisionResponseDecisionType } from './guDecisionResponseDecisionType';
 import type { GuDecisionResponseUpdatedRequestStatus } from './guDecisionResponseUpdatedRequestStatus';
 
@@ -27,4 +28,6 @@ export interface GuDecisionResponse {
   updatedRequestStatus: GuDecisionResponseUpdatedRequestStatus;
   /** true when this was an idempotent retry returning an existing decision. */
   idempotent: boolean;
+  /** Parallel AN requests cancelled because another AN was confirmed. */
+  autoCancelledRequests: GuDecisionResponseAutoCancelledRequestsItem[];
 }

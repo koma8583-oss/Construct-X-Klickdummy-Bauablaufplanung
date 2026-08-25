@@ -105,6 +105,8 @@ import type {
   TaktDependencyCreateResult,
   TaktDependencyDeleteResult,
   TaktRequestAuditTrailResponse,
+  TaktRequestBatchInput,
+  TaktRequestBatchResponse,
   TaktRequestDetail,
   TaktRequestDetailsResponse,
   TaktRequestDraftResponse,
@@ -5610,6 +5612,78 @@ export const useCreateTaktRequestWithSnapshot = <TError = ErrorType<ErrorRespons
         TContext
       > => {
       return useMutation(getCreateTaktRequestWithSnapshotMutationOptions(options));
+    }
+
+export const getCreateTaktRequestBatchWithSnapshotUrl = () => {
+
+
+
+
+  return `/api/takt-requests/batch`
+}
+
+/**
+ * Creates one immutable request and snapshot per selected NU organisation in a single database transaction. Requests are delivered afterward through the existing per-request send endpoint.
+ * @summary Create parallel TaktRequest drafts in one exclusive selection group
+ */
+export const createTaktRequestBatchWithSnapshot = async (taktRequestBatchInput: TaktRequestBatchInput, options?: RequestInit): Promise<TaktRequestBatchResponse> => {
+
+  return customFetch<TaktRequestBatchResponse>(getCreateTaktRequestBatchWithSnapshotUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taktRequestBatchInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTaktRequestBatchWithSnapshotMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>, TError,{data: BodyType<TaktRequestBatchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>, TError,{data: BodyType<TaktRequestBatchInput>}, TContext> => {
+
+const mutationKey = ['createTaktRequestBatchWithSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>, {data: BodyType<TaktRequestBatchInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTaktRequestBatchWithSnapshot(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTaktRequestBatchWithSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>>
+    export type CreateTaktRequestBatchWithSnapshotMutationBody = BodyType<TaktRequestBatchInput>
+    export type CreateTaktRequestBatchWithSnapshotMutationError = ErrorType<void>
+
+    /**
+ * @summary Create parallel TaktRequest drafts in one exclusive selection group
+ */
+export const useCreateTaktRequestBatchWithSnapshot = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>, TError,{data: BodyType<TaktRequestBatchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTaktRequestBatchWithSnapshot>>,
+        TError,
+        {data: BodyType<TaktRequestBatchInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTaktRequestBatchWithSnapshotMutationOptions(options));
     }
 
 export const getGetTaktRequestDetailUrl = (requestId: string,) => {

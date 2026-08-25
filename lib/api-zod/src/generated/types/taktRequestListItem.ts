@@ -20,6 +20,8 @@ export interface TaktRequestListItem {
   id: string;
   /** Human-readable unique reference (e.g. TKR-2026-0042) */
   requestNumber: string;
+  /** Immutable group shared by parallel requests for one exclusive AN selection. */
+  selectionGroupId: string;
   taktId: string;
   /** Display name of the Takt */
   taktBezeichnung: string;

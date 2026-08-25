@@ -34,7 +34,7 @@ import {
   availabilityChecksTable,
   taktRequestResourceRequirementsTable,
 } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { evaluateAvailabilityWindow } from "./availability-check-service";
 import type {
   TaktResponseDecision,
@@ -63,6 +63,7 @@ import {
   withCanonicalTaktRequest,
   withCanonicalVersion,
 } from "../lib/legacy-takt-mappers";
+import { writeAuditEvent } from "../lib/takt-request-audit-service";
 
 const logger = pino({ name: "gu-decision-service" });
 const transport = new LocalHubTransport();
@@ -130,6 +131,8 @@ export interface GuDecisionResult {
   newTaktVersion: TaktVersion | null;
   /** true when the idempotency key matched an existing identical decision */
   idempotent:     boolean;
+  /** Parallel requests automatically cancelled after this exclusive selection. */
+  autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }>;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -236,6 +239,7 @@ export async function createGuDecision(
         updatedRequest: withCanonicalTaktRequest(updatedRequest!),
         newTaktVersion: null,
         idempotent: true,
+        autoCancelledRequests: [],
       };
     }
     if (idempotencyKey && existingDecision.idempotencyKey === idempotencyKey) {
@@ -355,6 +359,58 @@ export async function createGuDecision(
 
   // ── 8. Transactional write ────────────────────────────────────────────────────
   const result = await db.transaction(async (tx) => {
+    // An acceptance selects exactly one AN from the immutable group. Lock every
+    // group row before looking for an existing winner or cancelling siblings so
+    // two concurrent requests cannot each confirm a different AN.
+    let autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }> = [];
+    if (isAcceptance) {
+      await tx.execute(sql`
+        SELECT id
+        FROM leistungsanfragen
+        WHERE selection_group_id = ${request.selectionGroupId}
+        FOR UPDATE
+      `);
+
+      const groupRequests = await tx
+        .select()
+        .from(taktRequestsTable)
+        .where(eq(taktRequestsTable.selectionGroupId, request.selectionGroupId));
+      const groupIds = groupRequests.map((groupRequest) => groupRequest.id);
+      const groupDecisions = await tx
+        .select({
+          taktRequestId: taktResponseDecisionsTable.taktRequestId,
+          decisionType: taktResponseDecisionsTable.decisionType,
+        })
+        .from(taktResponseDecisionsTable)
+        .where(inArray(taktResponseDecisionsTable.taktRequestId, groupIds));
+      const decidedRequestIds = new Set(groupDecisions.map((decision) => decision.taktRequestId));
+      const acceptedSibling = groupDecisions.find(
+        (decision) =>
+          decision.taktRequestId !== taktRequestId &&
+          (decision.decisionType === "CONFIRM_ACCEPTED" || decision.decisionType === "ACCEPT_ALTERNATIVE"),
+      );
+      if (acceptedSibling) {
+        throw new GuDecisionError(
+          "Another AN has already been confirmed for this parallel request group.",
+          409,
+        );
+      }
+
+      // A returned AN response is not a final AG decision and must be cancelled
+      // too. Only finished/otherwise decided siblings remain untouched.
+      autoCancelledRequests = groupRequests
+        .filter((groupRequest) =>
+          groupRequest.id !== taktRequestId &&
+          !decidedRequestIds.has(groupRequest.id) &&
+          !["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(groupRequest.status),
+        )
+        .map((groupRequest) => ({
+          id: groupRequest.id,
+          nuOrgId: groupRequest.nuOrgId,
+          requestNumber: groupRequest.requestNumber,
+        }));
+    }
+
     // a. Insert GU decision
     const [decision] = await tx
       .insert(taktResponseDecisionsTable)
@@ -453,6 +509,16 @@ export async function createGuDecision(
       }
     }
 
+    if (autoCancelledRequests.length > 0) {
+      await tx
+        .update(taktRequestsTable)
+        .set({ status: "CANCELLED", updatedAt: new Date() })
+        .where(inArray(
+          taktRequestsTable.id,
+          autoCancelledRequests.map((sibling) => sibling.id),
+        ));
+    }
+
     // d. Auto-create resource bookings for accepted resources
     // Only for acceptance decisions where we have a time window and resources
     // from the latest availability check.
@@ -497,6 +563,7 @@ export async function createGuDecision(
       newTaktVersion: newTaktVersion
         ? withCanonicalVersion(newTaktVersion)
         : null,
+      autoCancelledRequests,
     };
   });
 
@@ -524,6 +591,34 @@ export async function createGuDecision(
     logger.warn({ err, decisionId: result.decision.id }, "Transport message failed after GU decision commit");
   }
 
+  // Cancellation notices and audit events are post-commit by design. Their
+  // deterministic message IDs make retries safe without reopening the selection.
+  await Promise.all(result.autoCancelledRequests.map(async (sibling) => {
+    await writeAuditEvent({
+      requestId: sibling.id,
+      eventType: "REQUEST_CANCELLED",
+      actorOrgId: guOrgId,
+      actorUserId: userId,
+      actorRole: "GU",
+      metadata: {
+        reason: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
+        selectedRequestId: taktRequestId,
+        selectionGroupId: request.selectionGroupId,
+      },
+    });
+    try {
+      await sendAutomaticSiblingCancellation({
+        requestId: sibling.id,
+        recipientOrgId: sibling.nuOrgId,
+        senderOrgId: guOrgId,
+        selectedRequestId: taktRequestId,
+        decisionId: result.decision.id,
+      });
+    } catch (err) {
+      logger.warn({ err, requestId: sibling.id, decisionId: result.decision.id }, "Sibling cancellation transport failed after GU decision commit");
+    }
+  }));
+
   return {
     decision:       withCanonicalDecision(result.decision),
     updatedRequest: withCanonicalTaktRequest(result.updatedRequest),
@@ -531,6 +626,7 @@ export async function createGuDecision(
       ? withCanonicalVersion(result.newTaktVersion)
       : null,
     idempotent:     false,
+    autoCancelledRequests: result.autoCancelledRequests,
   };
 }
 
@@ -620,4 +716,29 @@ async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promi
       payload,
     });
   }
+}
+
+async function sendAutomaticSiblingCancellation(params: {
+  requestId: string;
+  senderOrgId: string;
+  recipientOrgId: string;
+  selectedRequestId: string;
+  decisionId: string;
+}): Promise<void> {
+  await transport.send({
+    messageId: `gu-group-cancel-${params.requestId}-${params.decisionId}`,
+    schemaVersion: "1.0",
+    messageType: DataspaceMessageType.TAKT_REQUEST_CANCELLED,
+    senderOrgId: params.senderOrgId,
+    recipientOrgId: params.recipientOrgId,
+    correlationId: params.requestId,
+    createdAt: new Date(),
+    causationId: params.decisionId,
+    payload: {
+      taktRequestId: params.requestId,
+      selectedRequestId: params.selectedRequestId,
+      reason: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
+      closedAt: new Date().toISOString(),
+    },
+  });
 }

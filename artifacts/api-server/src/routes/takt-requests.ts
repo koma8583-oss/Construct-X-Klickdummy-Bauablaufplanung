@@ -51,6 +51,7 @@ import {
 } from "../lib/takt-request-repository";
 import {
   createTaktRequestWithSnapshot,
+  createTaktRequestBatchWithSnapshot,
   TaktNotFoundError,
   UnauthorizedSnapshotError,
   NuNotContractorError,
@@ -400,6 +401,7 @@ router.post(
       guOrgId:             result.request.guOrgId,
       nuOrgId:             result.request.nuOrgId,
       requestNumber:       result.request.requestNumber,
+      selectionGroupId:    result.request.selectionGroupId,
       status:              result.request.status,
       responseRequiredBy:  result.request.responseRequiredBy ?? null,
       snapshotId:          result.snapshot.id,
@@ -542,11 +544,106 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     guOrgId: result.request.guOrgId,
     nuOrgId: result.request.nuOrgId,
     requestNumber: result.request.requestNumber,
+    selectionGroupId: result.request.selectionGroupId,
     status: result.request.status,
     responseRequiredBy: result.request.responseRequiredBy ?? null,
     snapshotId: result.snapshot.id,
     createdAt: result.request.createdAt,
   });
+});
+
+// ── POST /takt-requests/batch and /leistungsanfragen/batch ─────────────────────
+// Creates every selected AN request and its immutable snapshot atomically.
+// Sending each created request remains an explicit follow-up using the existing
+// dataspace delivery route so a technical delivery failure never rolls back work.
+router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res): Promise<void> => {
+  const guOrgId = req.user!.orgId!;
+  const userId = req.user!.userId!;
+  const parsed = z.object({
+    taktId: z.string().min(1),
+    nuOrgIds: z.array(z.string().min(1)).min(1).max(50),
+    responseRequiredBy: z.string().datetime({ offset: true }).optional(),
+    subject: z.string().max(255).optional(),
+    message: z.string().max(2000).optional(),
+    dataPublicationId: z.string().min(1).optional(),
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (new Set(parsed.data.nuOrgIds).size !== parsed.data.nuOrgIds.length) {
+    res.status(400).json({ error: "Each NU organisation may appear only once in a batch." });
+    return;
+  }
+  if (parsed.data.responseRequiredBy && new Date(parsed.data.responseRequiredBy) < new Date(Date.now() + 60 * 60 * 1000)) {
+    res.status(400).json({ error: "Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen." });
+    return;
+  }
+
+  try {
+    const result = await createTaktRequestBatchWithSnapshot({
+      ...parsed.data,
+      guOrgId,
+      createdByUserId: userId,
+      responseRequiredBy: parsed.data.responseRequiredBy ? new Date(parsed.data.responseRequiredBy) : undefined,
+    });
+
+    await Promise.all(result.requests.flatMap((request) => [
+      writeAuditEvent({
+        requestId: request.request.id,
+        eventType: "REQUEST_CREATED",
+        actorOrgId: guOrgId,
+        actorUserId: userId,
+        actorRole: "GU",
+        metadata: {
+          requestNumber: request.request.requestNumber,
+          nuOrgId: request.request.nuOrgId,
+          taktId: request.request.taktId,
+          selectionGroupId: result.selectionGroupId,
+        },
+      }),
+      writeAuditEvent({
+        requestId: request.request.id,
+        eventType: "SNAPSHOT_CREATED",
+        actorOrgId: guOrgId,
+        actorUserId: userId,
+        actorRole: "GU",
+        metadata: { snapshotId: request.snapshot.id, taktVersion: request.request.taktVersion },
+      }),
+    ]));
+
+    res.status(201).json({
+      selectionGroupId: result.selectionGroupId,
+      requests: result.requests.map((request) => ({
+        id: request.request.id,
+        taktId: request.request.taktId,
+        taktVersion: request.request.taktVersion,
+        guOrgId: request.request.guOrgId,
+        nuOrgId: request.request.nuOrgId,
+        requestNumber: request.request.requestNumber,
+        selectionGroupId: request.request.selectionGroupId,
+        status: request.request.status,
+        responseRequiredBy: request.request.responseRequiredBy ?? null,
+        snapshotId: request.snapshot.id,
+        createdAt: request.request.createdAt,
+      })),
+    });
+  } catch (err) {
+    if (err instanceof TaktNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof UnauthorizedSnapshotError || err instanceof NuNotContractorError || err instanceof ProjectMembershipError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof InvalidTaktForSnapshotError) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 // ── POST /takt-requests/:id/send ─────────────────────────────────────────────
@@ -1670,6 +1767,7 @@ router.post(
         newTaktVersion:          newTaktVersion?.version ?? null,
         newTaktVersionId:        newTaktVersion?.id      ?? null,
         idempotent,
+        autoCancelledRequests:   result.autoCancelledRequests,
       });
     } catch (err) {
       if (err instanceof GuDecisionError) {

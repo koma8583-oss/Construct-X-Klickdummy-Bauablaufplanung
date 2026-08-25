@@ -92,6 +92,7 @@ export interface TaktRequestDetailTimeline {
 export interface TaktRequestDetail {
   id: string;
   requestNumber: string;
+  selectionGroupId: string;
   taktId: string;
   taktBezeichnung: string;
   taktVersion: number;
@@ -129,6 +130,7 @@ export interface TaktRequestDetail {
     createdAt: Date;
     updatedRequestStatus: string;
     idempotent: boolean;
+    autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }>;
   } | null;
   currentAgreement: { start: Date; end: Date } | null;
   openProposal: {
@@ -161,6 +163,7 @@ export async function getTaktRequestDetailForGu(
       // ── Request ──────────────────────────────────────────────────────────
       id: taktRequestsTable.id,
       requestNumber: taktRequestsTable.requestNumber,
+      selectionGroupId: taktRequestsTable.selectionGroupId,
       taktId: taktRequestsTable.taktId,
       taktBezeichnung: takteTable.taktBezeichnung,
       taktVersion: taktRequestsTable.taktVersion,
@@ -274,6 +277,7 @@ export async function getTaktRequestDetailForGu(
   return {
     id: row.id,
     requestNumber: row.requestNumber,
+    selectionGroupId: row.selectionGroupId,
     taktId: row.taktId,
     taktBezeichnung: row.taktBezeichnung,
     taktVersion: row.taktVersion,
@@ -332,6 +336,7 @@ export async function getTaktRequestDetailForGu(
           createdAt: row.guDecisionCreatedAt!,
           updatedRequestStatus: row.guDecisionUpdatedRequestStatus as string,
           idempotent: false,
+          autoCancelledRequests: [],
         }
       : null,
     currentAgreement: coordination?.currentAgreement ?? null,
@@ -369,6 +374,7 @@ export async function getTaktRequestDetailForGu(
 export interface TaktRequestListItem {
   id: string;
   requestNumber: string;
+  selectionGroupId: string;
   taktId: string;
   taktBezeichnung: string;
   taktVersion: number;
@@ -547,6 +553,7 @@ export async function listTaktRequestsForGuEnriched(
     .select({
       id: taktRequestsTable.id,
       requestNumber: taktRequestsTable.requestNumber,
+      selectionGroupId: taktRequestsTable.selectionGroupId,
       taktId: taktRequestsTable.taktId,
       taktBezeichnung: takteTable.taktBezeichnung,
       taktVersion: taktRequestsTable.taktVersion,
@@ -648,6 +655,7 @@ export async function listTaktRequestsForNuEnriched(
       guOrgId:            taktRequestsTable.guOrgId,
       nuOrgId:            taktRequestsTable.nuOrgId,
       requestNumber:      taktRequestsTable.requestNumber,
+      selectionGroupId:   taktRequestsTable.selectionGroupId,
       status:             taktRequestsTable.status,
       taktVersion:        taktRequestsTable.taktVersion,
       responseRequiredBy: taktRequestsTable.responseRequiredBy,
@@ -693,6 +701,7 @@ export async function listTaktRequestsForNuEnriched(
       guOrgId:            r.guOrgId,
       nuOrgId:            r.nuOrgId,
       requestNumber:      r.requestNumber,
+      selectionGroupId:   r.selectionGroupId,
       status:             r.status,
       taktVersion:        r.taktVersion,
       responseRequiredBy: r.responseRequiredBy,

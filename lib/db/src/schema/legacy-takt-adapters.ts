@@ -133,6 +133,10 @@ export const taktRequestsTable = pgTable(
       .notNull()
       .references(() => organizationsTable.id),
     requestNumber: text("request_number").notNull().unique(),
+    /** Shared selection group for parallel AN requests. */
+    selectionGroupId: text("selection_group_id")
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
     status: leistungsanfrageStatusEnum("status").notNull().default("DRAFT"),
     responseRequiredBy: timestamp("response_required_by", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
@@ -165,6 +169,7 @@ export const taktRequestsTable = pgTable(
     index("takt_requests_gu_org_id_idx").on(t.guOrgId),
     index("takt_requests_nu_org_id_idx").on(t.nuOrgId),
     index("takt_requests_status_idx").on(t.status),
+    index("takt_requests_selection_group_id_idx").on(t.selectionGroupId),
     index("takt_requests_response_required_by_idx").on(t.responseRequiredBy),
     index("takt_requests_expires_at_idx").on(t.expiresAt),
     index("takt_requests_created_at_idx").on(t.createdAt),

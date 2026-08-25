@@ -1770,6 +1770,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /takt-requests/batch:
+    post:
+      operationId: createTaktRequestBatchWithSnapshot
+      tags: [takt-requests]
+      summary: Create parallel TaktRequest drafts in one exclusive selection group
+      description: >
+        Creates one immutable request and snapshot per selected NU organisation in
+        a single database transaction. Requests are delivered afterward through
+        the existing per-request send endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaktRequestBatchInput"
+      responses:
+        "201":
+          description: Complete request batch created atomically
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaktRequestBatchResponse"
+        "400":
+          description: Invalid request body or duplicate NU organisation
+        "403":
+          description: GU org is not the project owner or an NU is not assigned
+        "404":
+          description: Takt not found
+        "422":
+          description: Takt has invalid time window or version
+
   /takt-requests/{requestId}:
     get:
       operationId: getTaktRequestDetail
@@ -5365,6 +5396,34 @@ components:
         - taktId
         - nuOrgId
 
+    TaktRequestBatchInput:
+      type: object
+      description: Body for atomically creating one request per selected NU.
+      properties:
+        taktId:
+          type: string
+          minLength: 1
+        nuOrgIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+        responseRequiredBy:
+          type: string
+          format: date-time
+        subject:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+          maxLength: 2000
+        dataPublicationId:
+          type: string
+          minLength: 1
+      required: [taktId, nuOrgIds]
+
     TaktRequestDraftResponse:
       type: object
       description: Response from POST /takt-requests — the newly created DRAFT request.
@@ -5384,6 +5443,9 @@ components:
           type: string
         requestNumber:
           type: string
+        selectionGroupId:
+          type: string
+          description: Immutable group that is exclusive when one request is confirmed
         status:
           $ref: "#/components/schemas/TaktRequestStatus"
         responseRequiredBy:
@@ -5403,9 +5465,21 @@ components:
         - guOrgId
         - nuOrgId
         - requestNumber
+        - selectionGroupId
         - status
         - snapshotId
         - createdAt
+
+    TaktRequestBatchResponse:
+      type: object
+      properties:
+        selectionGroupId:
+          type: string
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaktRequestDraftResponse"
+      required: [selectionGroupId, requests]
 
     TaktRequestSendResult:
       type: object
@@ -5509,6 +5583,9 @@ components:
         requestNumber:
           type: string
           description: "Human-readable unique reference (e.g. TKR-2026-0042)"
+        selectionGroupId:
+          type: string
+          description: Immutable group shared by parallel requests for one exclusive AN selection.
         taktId:
           type: string
         taktBezeichnung:
@@ -5633,6 +5710,7 @@ components:
       required:
         - id
         - requestNumber
+        - selectionGroupId
         - taktId
         - taktBezeichnung
         - taktVersion
@@ -5881,6 +5959,16 @@ components:
         idempotent:
           type: boolean
           description: true when this was an idempotent retry returning an existing decision.
+        autoCancelledRequests:
+          type: array
+          description: Parallel AN requests cancelled because another AN was confirmed.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              nuOrgId: { type: string }
+              requestNumber: { type: string }
+            required: [id, nuOrgId, requestNumber]
       required:
         - decisionId
         - taktRequestId
@@ -5890,6 +5978,7 @@ components:
         - createdAt
         - updatedRequestStatus
         - idempotent
+        - autoCancelledRequests
 
     TaktRequestDetail:
       type: object

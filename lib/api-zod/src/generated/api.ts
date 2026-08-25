@@ -3213,6 +3213,7 @@ export const listTaktRequestsResponseReminderCountMin = 0;
 export const ListTaktRequestsResponseItem = zod.object({
   "id": zod.string(),
   "requestNumber": zod.string().describe('Human-readable unique reference (e.g. TKR-2026-0042)'),
+  "selectionGroupId": zod.string().describe('Immutable group shared by parallel requests for one exclusive AN selection.'),
   "taktId": zod.string(),
   "taktBezeichnung": zod.string().describe('Display name of the Takt'),
   "taktVersion": zod.number().min(1),
@@ -3288,11 +3289,57 @@ export const CreateTaktRequestWithSnapshotResponse = zod.object({
   "guOrgId": zod.string(),
   "nuOrgId": zod.string(),
   "requestNumber": zod.string(),
+  "selectionGroupId": zod.string().describe('Immutable group that is exclusive when one request is confirmed'),
   "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
   "responseRequiredBy": zod.coerce.date().nullish(),
   "snapshotId": zod.string().describe('ID of the immutable snapshot created atomically with this request'),
   "createdAt": zod.coerce.date()
 }).describe('Response from POST \/takt-requests — the newly created DRAFT request.')
+
+
+/**
+ * Creates one immutable request and snapshot per selected NU organisation in a single database transaction. Requests are delivered afterward through the existing per-request send endpoint.
+ * @summary Create parallel TaktRequest drafts in one exclusive selection group
+ */
+
+
+export const createTaktRequestBatchWithSnapshotBodyNuOrgIdsMax = 50;
+
+export const createTaktRequestBatchWithSnapshotBodySubjectMax = 255;
+
+export const createTaktRequestBatchWithSnapshotBodyMessageMax = 2000;
+
+
+
+
+export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
+  "taktId": zod.string().min(1),
+  "nuOrgIds": zod.array(zod.string().min(1)).min(1).max(createTaktRequestBatchWithSnapshotBodyNuOrgIdsMax),
+  "responseRequiredBy": zod.coerce.date().optional(),
+  "subject": zod.string().max(createTaktRequestBatchWithSnapshotBodySubjectMax).optional(),
+  "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional(),
+  "dataPublicationId": zod.string().min(1).optional()
+}).describe('Body for atomically creating one request per selected NU.')
+
+
+
+
+export const CreateTaktRequestBatchWithSnapshotResponse = zod.object({
+  "selectionGroupId": zod.string(),
+  "requests": zod.array(zod.object({
+  "id": zod.string().describe('TaktRequest ID'),
+  "taktId": zod.string(),
+  "taktVersion": zod.number().min(1).describe('Takt version at the time of request creation'),
+  "guOrgId": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string(),
+  "selectionGroupId": zod.string().describe('Immutable group that is exclusive when one request is confirmed'),
+  "status": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('Status of one specific TaktRequest (coordination request from GU to NU). Transport states (DELIVERED) must not be confused with business decisions (ACCEPTED). Terminal states: ACCEPTED, CANCELLED, EXPIRED, SUPERSEDED.\n'),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "snapshotId": zod.string().describe('ID of the immutable snapshot created atomically with this request'),
+  "createdAt": zod.coerce.date()
+}).describe('Response from POST \/takt-requests — the newly created DRAFT request.'))
+})
 
 
 /**
@@ -3377,7 +3424,12 @@ export const GetTaktRequestDetailResponse = zod.object({
   "decidedAt": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
   "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
-  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.'),
+  "autoCancelledRequests": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string()
+})).describe('Parallel AN requests cancelled because another AN was confirmed.')
 }).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
 }).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
 
@@ -3432,7 +3484,12 @@ export const CreateGuDecisionResponse = zod.object({
   "decidedAt": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
   "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
-  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.'),
+  "autoCancelledRequests": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string()
+})).describe('Parallel AN requests cancelled because another AN was confirmed.')
 }).describe('Created or existing GU decision with updated TaktRequest status.')
 
 
@@ -4446,7 +4503,12 @@ export const GetLeistungsanfrageDetailResponse = zod.object({
   "decidedAt": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
   "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
-  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.'),
+  "autoCancelledRequests": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string()
+})).describe('Parallel AN requests cancelled because another AN was confirmed.')
 }).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
 }).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
 
@@ -4679,7 +4741,12 @@ export const CreateLeistungsanfrageGuDecisionResponse = zod.object({
   "decidedAt": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
   "updatedRequestStatus": zod.enum(['DRAFT', 'SENT', 'DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED', 'REVISION_REQUIRED', 'CANCELLED', 'EXPIRED', 'SUPERSEDED']).describe('The TaktRequest status after this decision was applied.'),
-  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.')
+  "idempotent": zod.boolean().describe('true when this was an idempotent retry returning an existing decision.'),
+  "autoCancelledRequests": zod.array(zod.object({
+  "id": zod.string(),
+  "nuOrgId": zod.string(),
+  "requestNumber": zod.string()
+})).describe('Parallel AN requests cancelled because another AN was confirmed.')
 }).describe('Created or existing GU decision with updated TaktRequest status.')
 
 

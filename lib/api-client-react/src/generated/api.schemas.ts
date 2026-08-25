@@ -1428,6 +1428,27 @@ export interface CreateTaktRequestBody {
 }
 
 /**
+ * Body for atomically creating one request per selected NU.
+ */
+export interface TaktRequestBatchInput {
+  /** @minLength 1 */
+  taktId: string;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     * @items.minLength 1
+     */
+  nuOrgIds: string[];
+  responseRequiredBy?: string;
+  /** @maxLength 255 */
+  subject?: string;
+  /** @maxLength 2000 */
+  message?: string;
+  /** @minLength 1 */
+  dataPublicationId?: string;
+}
+
+/**
  * Response from POST /takt-requests — the newly created DRAFT request.
  */
 export interface TaktRequestDraftResponse {
@@ -1442,11 +1463,18 @@ export interface TaktRequestDraftResponse {
   guOrgId: string;
   nuOrgId: string;
   requestNumber: string;
+  /** Immutable group that is exclusive when one request is confirmed */
+  selectionGroupId: string;
   status: TaktRequestStatus;
   responseRequiredBy?: string | null;
   /** ID of the immutable snapshot created atomically with this request */
   snapshotId: string;
   createdAt: string;
+}
+
+export interface TaktRequestBatchResponse {
+  selectionGroupId: string;
+  requests: TaktRequestDraftResponse[];
 }
 
 /**
@@ -1562,6 +1590,8 @@ export interface TaktRequestListItem {
   id: string;
   /** Human-readable unique reference (e.g. TKR-2026-0042) */
   requestNumber: string;
+  /** Immutable group shared by parallel requests for one exclusive AN selection. */
+  selectionGroupId: string;
   taktId: string;
   /** Display name of the Takt */
   taktBezeichnung: string;
@@ -1737,6 +1767,12 @@ export const GuDecisionResponseUpdatedRequestStatus = {
   SUPERSEDED: 'SUPERSEDED',
 } as const;
 
+export type GuDecisionResponseAutoCancelledRequestsItem = {
+  id: string;
+  nuOrgId: string;
+  requestNumber: string;
+};
+
 /**
  * Created or existing GU decision with updated TaktRequest status.
  */
@@ -1756,6 +1792,8 @@ export interface GuDecisionResponse {
   updatedRequestStatus: GuDecisionResponseUpdatedRequestStatus;
   /** true when this was an idempotent retry returning an existing decision. */
   idempotent: boolean;
+  /** Parallel AN requests cancelled because another AN was confirmed. */
+  autoCancelledRequests: GuDecisionResponseAutoCancelledRequestsItem[];
 }
 
 export type TaktRequestDetailSnapshot = {

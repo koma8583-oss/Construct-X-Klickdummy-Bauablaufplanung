@@ -79,6 +79,14 @@ export const leistungsanfragenTable = pgTable(
      */
     requestNumber: text("request_number").notNull().unique(),
 
+    /**
+     * Immutable selection group shared by all parallel requests for one
+     * procurement decision. Single-recipient requests receive their own group.
+     */
+    selectionGroupId: text("selection_group_id")
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
     status: leistungsanfrageStatusEnum("status").notNull().default("DRAFT"),
 
     /** Deadline by which the NU must respond. Nullable for DRAFT requests. */
@@ -163,6 +171,7 @@ export const leistungsanfragenTable = pgTable(
     index("leistungsanfragen_gu_org_id_idx").on(t.guOrgId),
     index("leistungsanfragen_nu_org_id_idx").on(t.nuOrgId),
     index("leistungsanfragen_status_idx").on(t.status),
+    index("leistungsanfragen_selection_group_id_idx").on(t.selectionGroupId),
     index("leistungsanfragen_response_required_by_idx").on(t.responseRequiredBy),
     index("leistungsanfragen_expires_at_idx").on(t.expiresAt),
     index("leistungsanfragen_created_at_idx").on(t.createdAt),

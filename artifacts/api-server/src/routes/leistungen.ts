@@ -1155,6 +1155,7 @@ router.post(
         guOrgId:            result.request.guOrgId,
         nuOrgId:            result.request.nuOrgId,
         requestNumber:      result.request.requestNumber,
+        selectionGroupId:   result.request.selectionGroupId,
         status:             result.request.status,
         responseRequiredBy: result.request.responseRequiredBy ?? null,
         snapshotId:         result.snapshot.id,
@@ -1266,6 +1267,7 @@ router.post(
         guOrgId:            result.request.guOrgId,
         nuOrgId:            result.request.nuOrgId,
         requestNumber:      result.request.requestNumber,
+        selectionGroupId:   result.request.selectionGroupId,
         status:             result.request.status,
         responseRequiredBy: result.request.responseRequiredBy ?? null,
         snapshotId:         result.snapshot.id,
@@ -2022,6 +2024,7 @@ router.post(
         newTaktVersion:        newTaktVersion?.version ?? null,
         newTaktVersionId:      newTaktVersion?.id      ?? null,
         idempotent,
+        autoCancelledRequests: result.autoCancelledRequests,
       });
     } catch (err) {
       if (err instanceof GuDecisionError) {

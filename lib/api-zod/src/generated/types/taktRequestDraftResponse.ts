@@ -22,6 +22,8 @@ export interface TaktRequestDraftResponse {
   guOrgId: string;
   nuOrgId: string;
   requestNumber: string;
+  /** Immutable group that is exclusive when one request is confirmed */
+  selectionGroupId: string;
   status: TaktRequestStatus;
   responseRequiredBy?: Date | null;
   /** ID of the immutable snapshot created atomically with this request */

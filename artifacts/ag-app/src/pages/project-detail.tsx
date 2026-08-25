@@ -11,7 +11,7 @@ import {
   useDeleteTakt,
   useListProjectContractors,
   useListTaktRequests,
-  useCreateTaktRequestWithSnapshot,
+  useCreateTaktRequestBatchWithSnapshot,
   useSendTaktRequest,
   useCreateGuDecision,
   useListTaktDependencies,
@@ -570,7 +570,7 @@ export default function ProjectDetail() {
   const createTakt = useCreateTakt();
   const updateTakt = useUpdateTakt();
   const deleteTakt = useDeleteTakt();
-  const createTaktRequest = useCreateTaktRequestWithSnapshot();
+  const createTaktRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendTaktRequest = useSendTaktRequest();
   const closeRequest = useCreateGuDecision();
   const revokeMembership = useRevokeProjectMembership();
@@ -589,7 +589,7 @@ export default function ProjectDetail() {
   const [confirmRevokeMembership, setConfirmRevokeMembership] = useState<ProjectMembership | null>(null);
   const [confirmCloseRequest, setConfirmCloseRequest] = useState(false);
   const [confirmDeleteDep, setConfirmDeleteDep] = useState<string | null>(null);
-  const [vergabeAnOrgId, setVergabeAnOrgId] = useState<string>('');
+  const [vergabeAnOrgIds, setVergabeAnOrgIds] = useState<string[]>([]);
   const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
   const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
   const [vergabeResponseRequiredByError, setVergabeResponseRequiredByError] = useState<string>('');
@@ -904,15 +904,15 @@ export default function ProjectDetail() {
   /** Publications eligible for the current Vergabe form (TAKT_INFORMATION_PACKAGE, PUBLISHED,
    *  contains the selected takt, and the selected AN is a recipient). */
   const vergabePubs = useMemo(() => {
-    if (!selectedTakt || !vergabeAnOrgId) return [];
+    if (!selectedTakt || vergabeAnOrgIds.length === 0) return [];
     return (dataPublications ?? []).filter(
       p =>
         p.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
         p.status === 'PUBLISHED' &&
         (p.selectedTaktIds == null || p.selectedTaktIds.includes(selectedTakt.id)) &&
-        (!p.recipients?.length || p.recipients.some(r => r.anOrgId === vergabeAnOrgId)),
+        (!p.recipients?.length || vergabeAnOrgIds.every(anOrgId => (p.recipients ?? []).some(r => r.anOrgId === anOrgId))),
     );
-  }, [dataPublications, selectedTakt, vergabeAnOrgId]);
+  }, [dataPublications, selectedTakt, vergabeAnOrgIds]);
 
   function handleGanttClick(taskId: string) {
     if (taskId.startsWith('alt-')) {
@@ -1060,9 +1060,12 @@ export default function ProjectDetail() {
     e.preventDefault();
     if (!selectedTakt || isDelegating) return;
     const fd = new FormData(e.currentTarget);
-    const nuOrgId = vergabeAnOrgId || (fd.get('anOrgId') as string);
+    const nuOrgIds = vergabeAnOrgIds;
     const message  = (fd.get('message') as string) || undefined;
-    if (!nuOrgId) return;
+    if (nuOrgIds.length === 0) {
+      toast({ title: 'Nachunternehmer auswählen', description: 'Wählen Sie mindestens einen Nachunternehmer aus.', variant: 'destructive' });
+      return;
+    }
     if (!vergabePublicationId) {
       toast({
         title: 'Veröffentlichung erforderlich',
@@ -1081,22 +1084,27 @@ export default function ProjectDetail() {
     }
     setIsDelegating(true);
     try {
-      const created = await createTaktRequest.mutateAsync({
+      const created = await createTaktRequestBatch.mutateAsync({
         data: {
           taktId: selectedTakt.id,
-          nuOrgId,
+          nuOrgIds,
           message,
           dataPublicationId: vergabePublicationId,
           ...(vergabeResponseRequiredBy
             ? { responseRequiredBy: new Date(vergabeResponseRequiredBy).toISOString() }
             : {}),
-        } as never,
+        },
       });
-      await sendTaktRequest.mutateAsync({ requestId: (created as { id: string }).id });
-      toast({ title: 'Anfrage gesendet' });
+      await Promise.all(created.requests.map(requestItem =>
+        sendTaktRequest.mutateAsync({ requestId: requestItem.id }),
+      ));
+      toast({
+        title: nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet',
+        description: nuOrgIds.length === 1 ? undefined : `${nuOrgIds.length} Nachunternehmer wurden parallel angefragt.`,
+      });
       invalidateTakte();
       setIsVergabeOpen(false);
-      setVergabeAnOrgId('');
+      setVergabeAnOrgIds([]);
       setVergabePublicationId('');
       setVergabeResponseRequiredBy('');
     } catch (err) {
@@ -2344,30 +2352,39 @@ export default function ProjectDetail() {
                             <form onSubmit={handleDelegateTakt} className="mt-3 space-y-3 p-3 rounded-lg border border-border/60 bg-muted/10">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Nachunternehmer</Label>
-                                <Select
-                                  name="anOrgId"
-                                  required
-                                  value={vergabeAnOrgId}
-                                  onValueChange={v => {
-                                    setVergabeAnOrgId(v);
-                                    setVergabePublicationId('');
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Auswählen…" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {Array.from(new Map(
-                                      (assignments || [])
-                                        .filter(a => a.assignmentStatus === 'ACTIVE')
-                                        .map(a => [a.anOrgId, a])
-                                    ).values()).map(a => (
-                                      <SelectItem key={a.id} value={a.anOrgId}>
-                                        {a.anName} – {a.trade || 'Alle Gewerke'}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <div className="rounded-md border border-input bg-background divide-y">
+                                  {Array.from(new Map(
+                                    (assignments || [])
+                                      .filter(a => a.assignmentStatus === 'ACTIVE')
+                                      .map(a => [a.anOrgId, a]),
+                                  ).values()).map(a => {
+                                    const checked = vergabeAnOrgIds.includes(a.anOrgId);
+                                    return (
+                                      <label key={a.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setVergabeAnOrgIds(current => checked
+                                              ? current.filter(id => id !== a.anOrgId)
+                                              : [...current, a.anOrgId],
+                                            );
+                                            setVergabePublicationId('');
+                                          }}
+                                        />
+                                        <span>{a.anName} – {a.trade || 'Alle Gewerke'}</span>
+                                      </label>
+                                    );
+                                  })}
+                                  {(!assignments || assignments.filter(a => a.assignmentStatus === 'ACTIVE').length === 0) && (
+                                    <p className="px-3 py-2 text-xs text-muted-foreground">Keine aktiven Nachunternehmer zugeordnet.</p>
+                                  )}
+                                </div>
+                                {vergabeAnOrgIds.length > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {vergabeAnOrgIds.length} Nachunternehmer ausgewählt
+                                  </p>
+                                )}
                               </div>
 
                               {/* Publication selector — required for the Dataspace policy gate */}
@@ -2376,9 +2393,9 @@ export default function ProjectDetail() {
                                   Veröffentlichte Leistungsinformationen{' '}
                                   <span className="text-destructive">*</span>
                                 </Label>
-                                {vergabeAnOrgId && vergabePubs.length === 0 ? (
+                                {vergabeAnOrgIds.length > 0 && vergabePubs.length === 0 ? (
                                   <p className="text-xs text-muted-foreground rounded border border-border/60 bg-muted/20 p-2">
-                                    Keine gültige Veröffentlichung für diese Leistung und diesen AN vorhanden.{' '}
+                                    Keine gültige Veröffentlichung für diese Leistung und alle ausgewählten AN vorhanden.{' '}
                                     <button
                                       type="button"
                                       className="underline text-primary"
@@ -2391,10 +2408,10 @@ export default function ProjectDetail() {
                                   <Select
                                     value={vergabePublicationId}
                                     onValueChange={setVergabePublicationId}
-                                    disabled={!vergabeAnOrgId}
+                                    disabled={vergabeAnOrgIds.length === 0}
                                   >
                                     <SelectTrigger>
-                                      <SelectValue placeholder={vergabeAnOrgId ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} />
+                                      <SelectValue placeholder={vergabeAnOrgIds.length > 0 ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {vergabePubs.map(p => (
@@ -2450,7 +2467,7 @@ export default function ProjectDetail() {
                                   className="flex-1"
                                   onClick={() => {
                                     setIsVergabeOpen(false);
-                                    setVergabeAnOrgId('');
+                                    setVergabeAnOrgIds([]);
                                     setVergabePublicationId('');
                                     setVergabeResponseRequiredBy('');
                                     setVergabeResponseRequiredByError('');
