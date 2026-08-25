@@ -12,8 +12,13 @@
  *   - Returns the saved response/alternatives plus the hash and idempotency flag
  */
 import { createHash } from "crypto";
-import { db } from "@workspace/db";
+import { agDb, anDb } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
+  anLeistungsanfrageResourceRequirementsTable,
+  anLeistungsantwortAlternativenTable,
+  anLeistungsantwortenTable,
+  leistungsanfragenTable,
   taktResponsesTable,
   taktResponseAlternativesTable,
   taktRequestsTable,
@@ -22,7 +27,8 @@ import {
   type TaktDecision,
   type TaktRequestStatus,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import type { ExternalServiceResponse } from "./dataspace/external-contracts";
 import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "../lib/takt-response-repository";
 import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 
@@ -87,6 +93,282 @@ export class ResponseStatusError extends Error {
     );
     this.name = "ResponseStatusError";
   }
+}
+
+export interface CreateAnServiceResponseInput {
+  anLeistungsanfrageId: string;
+  anOrgId: string;
+  userId: string;
+  decision: TaktDecision;
+  acceptedTimeWindow?: { start: string; end: string };
+  reasonCode?: string;
+  comment?: string;
+  alternatives?: NuResponseAlternativeInput[];
+  nextAvailableDate?: string;
+  outboundMessageId?: string;
+}
+
+export interface CreateAnServiceResponseResult {
+  response: typeof anLeistungsantwortenTable.$inferSelect;
+  alternatives: Array<typeof anLeistungsantwortAlternativenTable.$inferSelect>;
+  payload: ExternalServiceResponse;
+  payloadHash: string;
+  idempotent: boolean;
+}
+
+function responsePayload(
+  requestId: string,
+  requestVersion: number,
+  input: Pick<CreateAnServiceResponseInput, "decision" | "acceptedTimeWindow" | "reasonCode" | "comment" | "alternatives" | "nextAvailableDate">,
+): Record<string, unknown> {
+  return {
+    requestId,
+    requestVersion,
+    decision: input.decision,
+    reasonCode: input.reasonCode ?? null,
+    comment: input.comment ?? null,
+    acceptedTimeWindow: input.acceptedTimeWindow ?? null,
+    alternatives: input.alternatives?.map((alternative) => ({
+      alternativeId: alternative.alternativeId,
+      rank: alternative.rank,
+      timeWindow: alternative.timeWindow,
+      crewSize: alternative.crewSize ?? null,
+      conditions: alternative.conditions ?? null,
+    })) ?? null,
+    nextAvailableDate: input.nextAvailableDate ?? null,
+  };
+}
+
+function validateAnResponseInput(input: CreateAnServiceResponseInput): void {
+  validateInput({
+    taktRequestId: input.anLeistungsanfrageId,
+    nuOrgId: input.anOrgId,
+    userId: input.userId,
+    decision: input.decision,
+    acceptedTimeWindow: input.acceptedTimeWindow,
+    reasonCode: input.reasonCode,
+    comment: input.comment,
+    alternatives: input.alternatives,
+    nextAvailableDate: input.nextAvailableDate,
+    answerableStatuses: new Set(["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
+    currentRequestStatus: "UNDER_REVIEW",
+    messageId: input.outboundMessageId ?? "",
+  });
+}
+
+/**
+ * AN-owned response creation. This service deliberately has no AG database
+ * dependency: the request and response both live in the AN projection.
+ */
+export async function createAnServiceResponse(
+  input: CreateAnServiceResponseInput,
+): Promise<CreateAnServiceResponseResult> {
+  validateAnResponseInput(input);
+  const [request] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.id, input.anLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
+  )).limit(1);
+  if (!request) throw new ResponseStatusError("NOT_FOUND", new Set(["AN-owned request"]));
+
+  const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
+  const payloadHash = computeResponsePayloadHash(canonical);
+  const [existing] = await anDb.select().from(anLeistungsantwortenTable).where(and(
+    eq(anLeistungsantwortenTable.anLeistungsanfrageId, request.id),
+    eq(anLeistungsantwortenTable.requestVersion, request.externalRequestVersion),
+  )).limit(1);
+  if (existing) {
+    if (existing.payloadHash !== payloadHash) {
+      throw new ResponseConflictError(existing.decision, input.decision, "DIFFERENT_PAYLOAD");
+    }
+    const alternatives = await anDb.select().from(anLeistungsantwortAlternativenTable)
+      .where(eq(anLeistungsantwortAlternativenTable.responseId, existing.id));
+    return {
+      response: existing,
+      alternatives,
+      payload: buildExternalResponse(request, existing, alternatives),
+      payloadHash,
+      idempotent: true,
+    };
+  }
+
+  const outboundMessageId = input.outboundMessageId ?? crypto.randomUUID();
+  const saved = await anDb.transaction(async (tx) => {
+    const [response] = await tx.insert(anLeistungsantwortenTable).values({
+      anLeistungsanfrageId: request.id,
+      sourceRequestId: request.externalLeistungsanfrageId,
+      requestVersion: request.externalRequestVersion,
+      decision: input.decision,
+      reasonCode: input.reasonCode ?? null,
+      comment: input.comment ?? null,
+      acceptedStart: input.acceptedTimeWindow ? new Date(input.acceptedTimeWindow.start) : null,
+      acceptedEnd: input.acceptedTimeWindow ? new Date(input.acceptedTimeWindow.end) : null,
+      nextAvailableDate: input.nextAvailableDate ?? null,
+      payloadHash,
+      outboundMessageId,
+      createdByUserId: input.userId,
+    }).returning();
+    if (!response) throw new Error("Failed to create AN service response");
+    let alternatives: Array<typeof anLeistungsantwortAlternativenTable.$inferSelect> = [];
+    if (input.alternatives?.length) {
+      alternatives = await tx.insert(anLeistungsantwortAlternativenTable).values(
+        input.alternatives.map((alternative) => ({
+          responseId: response.id,
+          alternativeId: alternative.alternativeId,
+          rank: alternative.rank,
+          proposedStart: new Date(alternative.timeWindow.start),
+          proposedEnd: new Date(alternative.timeWindow.end),
+          crewSize: alternative.crewSize ?? null,
+          conditions: alternative.conditions ?? null,
+        })),
+      ).returning();
+    }
+    await tx.update(anLeistungsanfragenTable).set({
+      status: "RESPONDED",
+      respondedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(anLeistungsanfragenTable.id, request.id));
+    return { response, alternatives };
+  });
+
+  const payload: ExternalServiceResponse = {
+    metadata: {
+      messageId: outboundMessageId,
+      correlationId: request.correlationId,
+      schemaVersion: "1.0",
+      senderOrgId: input.anOrgId,
+      receiverOrgId: request.senderAgOrgId,
+      createdAt: new Date().toISOString(),
+    },
+    requestId: request.externalLeistungsanfrageId,
+    requestVersion: request.externalRequestVersion,
+    decision: input.decision,
+    alternatives: input.alternatives?.map((alternative) => ({
+      alternativeId: alternative.alternativeId,
+      rank: alternative.rank,
+      timeWindow: alternative.timeWindow,
+      crewSize: alternative.crewSize ?? null,
+      conditions: alternative.conditions?.join("; ") ?? null,
+    })),
+  };
+  return { ...saved, payload, payloadHash, idempotent: false };
+}
+
+function buildExternalResponse(
+  request: typeof anLeistungsanfragenTable.$inferSelect,
+  response: typeof anLeistungsantwortenTable.$inferSelect,
+  alternatives: Array<typeof anLeistungsantwortAlternativenTable.$inferSelect>,
+): ExternalServiceResponse {
+  return {
+    metadata: {
+      messageId: response.outboundMessageId,
+      correlationId: request.correlationId,
+      schemaVersion: "1.0",
+      senderOrgId: request.receiverAnOrgId,
+      receiverOrgId: request.senderAgOrgId,
+      createdAt: response.createdAt.toISOString(),
+    },
+    requestId: response.sourceRequestId,
+    requestVersion: response.requestVersion,
+    decision: response.decision,
+    alternatives: alternatives.map((alternative) => ({
+      alternativeId: alternative.alternativeId,
+      rank: alternative.rank,
+      timeWindow: {
+        start: alternative.proposedStart.toISOString(),
+        end: alternative.proposedEnd.toISOString(),
+      },
+      crewSize: alternative.crewSize,
+      conditions: alternative.conditions?.join("; ") ?? null,
+    })),
+  };
+}
+
+/**
+ * AG-owned application of an incoming AN response. This is the only response
+ * processor used by Dataspace inbound and it never touches AN tables.
+ */
+export async function applyIncomingServiceResponseOnAg(
+  payload: ExternalServiceResponse,
+): Promise<ProcessNuResponseResult> {
+  const [request] = await agDb.select().from(leistungsanfragenTable)
+    .where(eq(leistungsanfragenTable.id, payload.requestId)).limit(1);
+  if (!request) throw new Error(`Inbound service response ${payload.requestId} does not exist`);
+  if (request.nuOrgId !== payload.metadata.senderOrgId || request.guOrgId !== payload.metadata.receiverOrgId) {
+    throw new Error("Inbound service response organisations do not match the coordination request");
+  }
+  if (request.leistungVersion !== payload.requestVersion) {
+    throw new ResponseConflictError(String(request.leistungVersion), String(payload.requestVersion), "DIFFERENT_PAYLOAD");
+  }
+  const acceptedTimeWindow = payload.decision === "ACCEPTED" && payload.alternatives?.[0]?.timeWindow
+    ? payload.alternatives[0].timeWindow
+    : undefined;
+  const input: ProcessNuResponseInput = {
+    taktRequestId: request.id,
+    nuOrgId: request.nuOrgId,
+    userId: request.createdByUserId,
+    decision: payload.decision,
+    acceptedTimeWindow,
+    alternatives: payload.alternatives?.map((alternative) => ({
+      alternativeId: alternative.alternativeId,
+      rank: alternative.rank,
+      timeWindow: alternative.timeWindow,
+      crewSize: alternative.crewSize ?? undefined,
+      conditions: alternative.conditions ? [alternative.conditions] : undefined,
+    })),
+    answerableStatuses: new Set(["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
+    currentRequestStatus: request.status,
+    messageId: payload.metadata.messageId,
+  };
+  validateInput(input);
+  const hash = computeResponsePayloadHash(responsePayload(payload.requestId, payload.requestVersion, input));
+  const [existing] = await agDb.select().from(taktResponsesTable)
+    .where(eq(taktResponsesTable.taktRequestId, request.id)).limit(1);
+  if (existing) {
+    if (existing.responsePayloadHash !== hash) {
+      throw new ResponseConflictError(existing.decision, payload.decision, "DIFFERENT_PAYLOAD");
+    }
+    const alternatives = await agDb.select().from(taktResponseAlternativesTable)
+      .where(eq(taktResponseAlternativesTable.responseId, existing.id));
+    return {
+      response: existing,
+      alternatives,
+      newStatus: existing.decision === "ACCEPTED" ? "ACCEPTED" : existing.decision === "REJECTED" ? "REJECTED" : "ALTERNATIVES_PROPOSED",
+      payloadHash: hash,
+      idempotent: true,
+    };
+  }
+  const nextStatus: TaktRequestStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" :
+    payload.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" : "REJECTED";
+  const saved = await agDb.transaction(async (tx) => {
+    const [response] = await tx.insert(taktResponsesTable).values({
+      taktRequestId: request.id,
+      messageId: payload.metadata.messageId,
+      decision: payload.decision,
+      reasonCode: null,
+      comment: null,
+      acceptedStart: acceptedTimeWindow ? new Date(acceptedTimeWindow.start) : null,
+      acceptedEnd: acceptedTimeWindow ? new Date(acceptedTimeWindow.end) : null,
+      nextAvailableDate: null,
+      responsePayloadHash: hash,
+      createdByUserId: request.createdByUserId,
+    }).returning();
+    if (!response) throw new Error("Failed to apply incoming service response on AG");
+    const alternatives = payload.alternatives?.length ? await tx.insert(taktResponseAlternativesTable).values(
+      payload.alternatives.map((alternative) => ({
+        responseId: response.id,
+        alternativeId: alternative.alternativeId,
+        rank: alternative.rank,
+        proposedStart: new Date(alternative.timeWindow.start),
+        proposedEnd: new Date(alternative.timeWindow.end),
+        crewSize: alternative.crewSize ?? null,
+        conditions: alternative.conditions ? [alternative.conditions] : null,
+      })),
+    ).returning() : [];
+    await tx.update(leistungsanfragenTable).set({ status: nextStatus, updatedAt: new Date() })
+      .where(eq(leistungsanfragenTable.id, request.id));
+    return { response, alternatives };
+  });
+  return { ...saved, newStatus: nextStatus, payloadHash: hash, idempotent: false };
 }
 
 // ── Canonical JSON (sorted keys, deterministic) ───────────────────────────────
@@ -245,7 +527,7 @@ export async function processNuResponse(
     decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
                                            "REJECTED";
 
-  const txResult = await db.transaction(async (tx) => {
+  const txResult = await agDb.transaction(async (tx) => {
     const responseValues = {
       messageId,
       decision,

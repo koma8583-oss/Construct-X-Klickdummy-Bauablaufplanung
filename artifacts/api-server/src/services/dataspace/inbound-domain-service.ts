@@ -1,14 +1,16 @@
 import {
   agDb,
   anDb,
+  anLeistungsanfragenTable,
+  anLeistungsanfrageResourceRequirementsTable,
   dataPublicationRecipientsTable,
   projectMembershipsTable,
   taktRequestsTable,
-  takteTable,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
-import { processNuResponse } from "../nu-response-service";
+import { applyIncomingServiceResponseOnAg } from "../nu-response-service";
 import { storeIncomingProjectInvitation } from "../an-project-invitation-service";
 
 /**
@@ -16,55 +18,101 @@ import { storeIncomingProjectInvitation } from "../an-project-invitation-service
  * envelope; this module applies the existing coordination persistence paths.
  */
 export async function processIncomingServiceRequest(payload: ExternalServiceRequest): Promise<void> {
-  const [request] = await anDb.select().from(taktRequestsTable)
-    .where(eq(taktRequestsTable.id, payload.requestId)).limit(1);
-  if (!request) throw new Error(`Inbound service request ${payload.requestId} does not exist`);
-  if (request.guOrgId !== payload.metadata.senderOrgId || request.nuOrgId !== payload.metadata.receiverOrgId) {
-    throw new Error("Inbound service request organisations do not match the coordination request");
+  const { metadata } = payload;
+  if (!metadata.senderOrgId || !metadata.receiverOrgId || metadata.senderOrgId === metadata.receiverOrgId) {
+    throw new Error("Inbound service request organisations conflict");
   }
-  const [takt] = await anDb.select({ projectId: takteTable.projectId })
-    .from(takteTable)
-    .where(and(eq(takteTable.id, request.taktId), eq(takteTable.projectId, payload.projectReference)))
-    .limit(1);
-  if (!takt) throw new Error("Inbound service request project does not match the coordination request");
-  if (payload.requestVersion < request.taktVersion) {
-    throw new Error("Inbound service request version is older than the current request");
+
+  const canonical = JSON.stringify(payload, (_, value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.keys(value).sort().reduce<Record<string, unknown>>((sorted, key) => {
+      sorted[key] = value[key];
+      return sorted;
+    }, {});
+  });
+  const hash = createHash("sha256").update(canonical).digest("hex");
+  const leistungReference = payload.leistungReference ?? payload.taktReference ?? payload.requestId;
+
+  const [sameMessage] = await anDb.select().from(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.sourceMessageId, metadata.messageId)).limit(1);
+  if (sameMessage) {
+    if (sameMessage.payloadHash !== hash) {
+      throw new Error("Inbound service request messageId conflicts with existing AN projection");
+    }
+    return;
   }
-  await anDb.update(taktRequestsTable).set({
-    taktVersion: payload.requestVersion,
-    status: request.status === "DRAFT" ? "SENT" : request.status,
-    sentAt: request.sentAt ?? new Date(payload.metadata.createdAt),
-    updatedAt: new Date(),
-  }).where(eq(taktRequestsTable.id, request.id));
+
+  const [sameVersion] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.requestId),
+    eq(anLeistungsanfragenTable.externalRequestVersion, payload.requestVersion),
+  )).limit(1);
+  if (sameVersion) {
+    if (sameVersion.payloadHash !== hash) {
+      throw new Error("Inbound service request version conflicts with existing AN projection");
+    }
+    return;
+  }
+
+  const [latest] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.requestId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (latest && payload.requestVersion < latest.externalRequestVersion) {
+    throw new Error("Inbound service request version is older than the current AN projection");
+  }
+
+  await anDb.transaction(async (tx) => {
+    if (latest && payload.requestVersion > latest.externalRequestVersion) {
+      await tx.update(anLeistungsanfragenTable).set({
+        status: "SUPERSEDED",
+        updatedAt: new Date(),
+      }).where(and(
+        eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.requestId),
+        gt(anLeistungsanfragenTable.externalRequestVersion, 0),
+      ));
+    }
+    const [projection] = await tx.insert(anLeistungsanfragenTable).values({
+      externalLeistungsanfrageId: payload.requestId,
+      externalRequestVersion: payload.requestVersion,
+      sourceMessageId: metadata.messageId,
+      payloadHash: hash,
+      correlationId: metadata.correlationId,
+      senderAgOrgId: metadata.senderOrgId,
+      receiverAnOrgId: metadata.receiverOrgId,
+      projectReference: payload.projectReference,
+      leistungReference,
+      plannedStart: payload.plannedStart,
+      plannedEnd: payload.plannedEnd,
+      policySnapshot: payload.policy ?? null,
+      payloadSnapshot: payload as unknown as Record<string, unknown>,
+      status: "RECEIVED",
+      receivedAt: new Date(metadata.createdAt),
+    }).returning({ id: anLeistungsanfragenTable.id });
+    if (!projection) throw new Error("Inbound service request projection could not be created");
+    if (payload.resourceRequirements.length) {
+      await tx.insert(anLeistungsanfrageResourceRequirementsTable).values(
+        payload.resourceRequirements.map((resource) => ({
+          anLeistungsanfrageId: projection.id,
+          externalResourceTypeCode: resource.resourceTypeCode,
+          externalResourceTypeName: resource.resourceTypeName,
+          requiredCapacity: String(resource.requiredCapacity),
+          capacityUnit: resource.capacityUnit,
+          utilizationPercent: resource.utilizationPercent,
+          periodStart: resource.periodStart,
+          periodEnd: resource.periodEnd,
+          requiredQualification: resource.requiredQualification ?? null,
+          localResourceTypeId: null,
+          notes: null,
+        })),
+      );
+    }
+  });
 }
 
 export async function processIncomingServiceResponse(payload: ExternalServiceResponse): Promise<void> {
-  const [request] = await agDb.select().from(taktRequestsTable)
-    .where(eq(taktRequestsTable.id, payload.requestId)).limit(1);
-  if (!request) throw new Error(`Inbound service response ${payload.requestId} does not exist`);
-  if (request.nuOrgId !== payload.metadata.senderOrgId || request.guOrgId !== payload.metadata.receiverOrgId) {
-    throw new Error("Inbound service response organisations do not match the coordination request");
-  }
-  const acceptedTimeWindow = payload.decision === "ACCEPTED" && payload.alternatives?.[0]?.timeWindow
-    ? payload.alternatives[0].timeWindow
-    : undefined;
-  await processNuResponse({
-    taktRequestId: request.id,
-    nuOrgId: request.nuOrgId,
-    userId: request.createdByUserId,
-    decision: payload.decision,
-    acceptedTimeWindow,
-    alternatives: payload.alternatives?.map((alternative) => ({
-      alternativeId: alternative.alternativeId,
-      rank: alternative.rank,
-      timeWindow: alternative.timeWindow,
-      crewSize: alternative.crewSize ?? undefined,
-      conditions: alternative.conditions ? [alternative.conditions] : undefined,
-    })),
-    answerableStatuses: new Set(["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
-    currentRequestStatus: request.status,
-    messageId: payload.metadata.messageId,
-  });
+  await applyIncomingServiceResponseOnAg(payload);
 }
 
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {

@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { FIELD_WHITELISTS, buildContentSnapshot, computeContentHash } from "./data-publication-service";
 import { resolveDataspaceParticipant } from "./dataspace/dataspace-participant-resolver";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
+import { deliverLocalProjectInvitation } from "./dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 import { ProjectMembershipError } from "./project-membership-service";
 
@@ -184,7 +185,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
   // invitation and its original outbox envelope available for retry.
   const exchange = createDataspaceExchange();
   await Promise.all(prepared.rows.map(async ({ payload }) => {
-    const delivery = await exchange.publishProjectInvitation(payload);
+    const delivery = await deliverLocalProjectInvitation(payload, exchange);
     if (delivery.status === "PENDING") await exchange.retryProjectInvitation(payload.metadata.messageId);
   }));
 

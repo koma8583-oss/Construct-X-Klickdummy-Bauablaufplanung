@@ -14,8 +14,7 @@
  *   - An explicit runNow() method is exposed for tests and the internal endpoint
  */
 
-import { db, pool } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { agPool, runWithDatabaseRole } from "@workspace/db";
 import pino from "pino";
 import { evaluateTaktRequestDeadlines, type DeadlineEvaluationResult } from "../services/deadline-evaluation-service";
 import type { DeadlineConfig } from "../services/deadline-config";
@@ -71,7 +70,7 @@ export async function runDeadlineEvaluationOnce(
   const effectiveNow = now ?? new Date();
 
   // Acquire advisory lock (non-blocking — returns false if another instance holds it)
-  const client = await pool.connect();
+  const client = await agPool.connect();
   let lockAcquired = false;
 
   try {
@@ -95,7 +94,9 @@ export async function runDeadlineEvaluationOnce(
 
   try {
     logger.info({ now: effectiveNow.toISOString() }, "Deadline worker run starting");
-    const result = await evaluateTaktRequestDeadlines(effectiveNow, config);
+    const result = await runWithDatabaseRole("ag", () =>
+      evaluateTaktRequestDeadlines(effectiveNow, config),
+    );
     logger.info(
       {
         checkedRequests:   result.checkedRequests,

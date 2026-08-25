@@ -1,11 +1,24 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { webhookSubscriptionsTable, webhookEventsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { z } from "zod";
+import { InvalidWebhookTargetUrlError, validateWebhookTargetUrl } from "../lib/webhookDispatcher";
 
 const router = Router();
+
+export function toWebhookSubscriptionDto(sub: typeof webhookSubscriptionsTable.$inferSelect) {
+  return {
+    id: sub.id,
+    orgId: sub.orgId,
+    url: sub.url,
+    events: sub.events,
+    active: sub.active,
+    secretConfigured: Boolean(sub.secret),
+    createdAt: sub.createdAt,
+  };
+}
 
 // GET /webhooks
 router.get("/webhooks", requireJwt, async (req, res): Promise<void> => {
@@ -15,7 +28,7 @@ router.get("/webhooks", requireJwt, async (req, res): Promise<void> => {
     .from(webhookSubscriptionsTable)
     .where(eq(webhookSubscriptionsTable.orgId, orgId));
 
-  res.json(subscriptions);
+  res.json(subscriptions.map(toWebhookSubscriptionDto));
 });
 
 // POST /webhooks
@@ -31,13 +44,22 @@ router.post("/webhooks", requireJwt, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  try {
+    await validateWebhookTargetUrl(parsed.data.url);
+  } catch (error) {
+    if (error instanceof InvalidWebhookTargetUrlError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 
   const [sub] = await db
     .insert(webhookSubscriptionsTable)
     .values({ ...parsed.data, orgId: req.user!.orgId! })
     .returning();
 
-  res.status(201).json(sub);
+  res.status(201).json(toWebhookSubscriptionDto(sub));
 });
 
 // PATCH /webhooks/:webhookId
@@ -57,6 +79,17 @@ router.patch(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
+    if (parsed.data.url) {
+      try {
+        await validateWebhookTargetUrl(parsed.data.url);
+      } catch (error) {
+        if (error instanceof InvalidWebhookTargetUrlError) {
+          res.status(400).json({ error: error.message });
+          return;
+        }
+        throw error;
+      }
+    }
 
     const [sub] = await db
       .update(webhookSubscriptionsTable)
@@ -74,7 +107,7 @@ router.patch(
       return;
     }
 
-    res.json(sub);
+    res.json(toWebhookSubscriptionDto(sub));
   },
 );
 
@@ -117,23 +150,14 @@ router.get(
     let query = db
       .select()
       .from(webhookEventsTable)
-      .where(
-        status
-          ? and(
-              eq(
-                webhookEventsTable.status,
-                status as "PENDING" | "DELIVERED" | "FAILED",
-              ),
-            )
-          : undefined,
-      )
+      .where(and(
+        inArray(webhookEventsTable.subscriptionId, subIds),
+        ...(status ? [eq(webhookEventsTable.status, status as "PENDING" | "DELIVERED" | "FAILED")] : []),
+      ))
       .$dynamic();
 
     const events = await query.orderBy(webhookEventsTable.createdAt).limit(100);
-
-    // Filter to only events from org's subscriptions
-    const filtered = events.filter((e) => subIds.includes(e.subscriptionId));
-    res.json(filtered);
+    res.json(events);
   },
 );
 

@@ -15,7 +15,7 @@
  *      AVAILABILITY_CHECK_DONE, RESPONSE_SUBMITTED).
  *   5. Hub admins receive the full event list (read-only).
  */
-import { db } from "@workspace/db";
+import { agDb, db } from "@workspace/db";
 import { taktRequestAuditEventsTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import type {
@@ -61,7 +61,7 @@ export async function writeAuditEvent(
   params: WriteAuditEventParams,
 ): Promise<void> {
   try {
-    await db.insert(taktRequestAuditEventsTable).values({
+    await agDb.insert(taktRequestAuditEventsTable).values({
       requestId: params.requestId,
       eventType: params.eventType,
       actorOrgId: params.actorOrgId ?? null,

@@ -6,7 +6,7 @@ import {
   listAnProjectInvitations,
 } from "../../services/an-project-invitation-service";
 import { createDataspaceExchange } from "../../services/dataspace/dataspace-exchange-factory";
-import { processIncomingProjectInvitationResponse } from "../../services/dataspace/inbound-domain-service";
+import { deliverLocalProjectInvitationResponse } from "../../services/dataspace/local-dataspace-delivery";
 import { z } from "zod";
 
 const router = Router();
@@ -62,18 +62,9 @@ router.post("/project-invitations/:id/:action", async (req, res) => {
       message: parsed.data.message,
     });
     const exchange = createDataspaceExchange();
-    const delivery = await exchange.publishProjectInvitationResponse(result.payload);
+    const delivery = await deliverLocalProjectInvitationResponse(result.payload, exchange);
     if (delivery.status === "PENDING") {
       await exchange.retryProjectInvitation(result.payload.metadata.messageId);
-    }
-    // LocalHubTransport is our in-process connector in the PoC. Its delivery
-    // must still enter through the normal AG inbound processor, never mutate
-    // AG state from the AN route directly.
-    if (process.env.DATASPACE_TRANSPORT !== "tractusx-edc") {
-      await exchange.receiveProjectInvitationResponse(
-        result.payload,
-        processIncomingProjectInvitationResponse,
-      );
     }
     res.json(result.invitation);
   } catch (error) {

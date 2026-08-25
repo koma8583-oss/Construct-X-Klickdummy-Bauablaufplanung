@@ -11,3 +11,5 @@ export * from "./takt-requests";
 export * from "./takt-request-resource-requirements";
 export * from "./takt-responses";
 export * from "./an-project-invitations";
+export * from "./an-leistungsanfragen";
+export * from "./an-leistungsantworten";

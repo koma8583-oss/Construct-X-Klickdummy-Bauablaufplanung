@@ -1,0 +1,132 @@
+Ergänze nach Abschluss der vorherigen Änderungen eine vollständige Test-Suite für die neue AG-/AN-/Hub-Trennung.
+
+Mindestens folgende Tests sind zwingend:
+
+TEST A – AG Request vor Inbound für AN unsichtbar
+- AG erstellt Leistungsanfrage
+- AG-Datensatz vorhanden
+- AN `an_leistungsanfragen` = 0
+
+TEST B – ServiceRequest-Inbound
+- processIncomingServiceRequest(payload)
+- AG-Datensatz unverändert
+- AN-Projektion genau einmal vorhanden
+
+TEST C – AN lokale Bearbeitung
+- AN setzt DETAILS_RETRIEVED / UNDER_REVIEW
+- AG Requeststatus bleibt unverändert
+
+TEST D – Snapshot-Isolation
+- AG ändert nach Versand seinen Takt
+- AN Availability arbeitet weiter gegen empfangene Request-Version
+
+TEST E – AN Response vor AG-Inbound
+- AN Response vorhanden
+- AG Response nicht vorhanden
+
+TEST F – AG Response erst nach Inbound
+- processIncomingServiceResponse(...)
+- AG Response vorhanden
+- AG Requeststatus aktualisiert
+
+TEST G – ACCEPTED-Zeitfenster bleibt exakt erhalten
+- acceptedTimeWindow durch Mapper + Transport + Inbound schicken
+- Werte müssen exakt identisch bleiben
+
+TEST H – keine privaten AN-Daten im Dataspace-Payload
+Folgende Felder dürfen nicht übertragen werden:
+- resourceId
+- resourceName
+- employeeId
+- employeeName
+- localProjectId
+- otherProjectName
+- customerName
+- internalCost
+- internalPriority
+- internalConflicts
+- internalResultPayload
+
+TEST I – AG verändert keine AN-Buchungen
+- AG-Entscheidung ausführen
+- vor AN-Inbound resource_bookings unverändert
+- erst AN-Inbound darf lokale Buchung ändern
+
+TEST J – Deadline Worker ohne Request Context
+- runDeadlineEvaluationOnce(...) direkt aufrufen
+- kein `No database role is active`
+
+TEST K – Project Invitation
+- AG sendet
+- vor AN-Inbound keine `an_project_invitations`
+- nach Inbound genau eine
+
+TEST L – SSRF
+- private/lokale Netzwerkziele werden abgelehnt
+
+TEST M – Webhook Secret
+- GET/POST/PATCH enthalten kein `secret`
+
+Zusätzlich:
+- Teste Idempotenz bei doppelter Nachricht
+- Teste gleiche Message-ID mit verändertem Payload als Konflikt
+- Teste höhere und niedrigere Request-Versionen
+- Teste ACCEPTED, ALTERNATIVES_PROPOSED und REJECTED
+- Teste AG Decision ACCEPT, REVISION und CANCEL
+
+Datenbankkontexte in Tests explizit behandeln:
+- AG-Tests: agDb bzw. runWithDatabaseRole("ag", ...)
+- AN-Tests: anDb bzw. runWithDatabaseRole("an", ...)
+- Hub-Tests: hubDb bzw. runWithDatabaseRole("hub", ...)
+
+Anschließend gesamten produktiven Code nach unerlaubten Cross-Domain-Imports durchsuchen.
+
+Architekturregel:
+
+AG-owned Services dürfen nicht importieren:
+- resourcesTable
+- resourceBookingsTable
+- availabilityChecksTable
+- anProjectInvitationsTable
+- an_leistungsanfragen
+
+AN-owned Services dürfen nicht als Live-Datenquelle importieren:
+- AG projects
+- AG leistungen
+- AG leistungsanfragen
+- AG takte
+
+Hub-Services dürfen keine fachlichen Projekt-/Takt-/Ressourcenentscheidungen durchführen.
+
+Danach ausführen:
+- pnpm -w run typecheck
+- pnpm -w run build
+- vollständige API-Test-Suite
+
+Keine fehlschlagenden Tests einfach löschen.
+Veraltete Tests auf das neue Ownership-Modell umstellen.
+
+Erst wenn alle funktionalen Tests grün sind, nachgelagerte Refactorings durchführen:
+- sehr große Router/Services aufteilen
+- project-detail.tsx zerlegen
+- takt-requests.ts und leistungen.ts zerlegen
+- `any` / `as any` reduzieren
+- N+1-Abfragen reduzieren
+- Legacy-Aliase entfernen
+
+Definition of Done:
+
+- AN sieht keine AG-Anfrage vor Dataspace-Inbound.
+- AN liest keinen Live-Takt des AG.
+- AN Availability nutzt nur AN-lokale Daten.
+- AN Response verändert AG-Zustand nicht direkt.
+- AG erhält Response ausschließlich über Inbound.
+- AG liest oder verändert keine privaten AN-Ressourcen.
+- AN-Buchungen ändern sich erst nach AN-Inbound einer AG-Entscheidung.
+- Projekteinladungen erzeugen AN-Zustand nur über Inbound.
+- Local Transport verwendet dieselben fachlichen Inbound-Prozessoren wie externer Transport.
+- Deadline Worker funktioniert ohne HTTP-Request-Kontext.
+- Shared-PoC-Schema enthält AG-, AN- und Hub-Tabellen.
+- Webhook SSRF ist geschlossen.
+- Webhook Secrets werden nicht ausgegeben.
+- Typecheck, Build und Tests sind grün.

@@ -1,5 +1,6 @@
 import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import type {
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
@@ -23,6 +24,16 @@ function validateMetadata(payload: { metadata: ExternalServiceRequest["metadata"
   if (!metadata?.messageId || !metadata.correlationId || metadata.schemaVersion !== "1.0") {
     throw new Error("Invalid external exchange metadata");
   }
+}
+
+function payloadHash(payload: unknown): string {
+  return createHash("sha256").update(JSON.stringify(payload, (_, value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.keys(value).sort().reduce<Record<string, unknown>>((sorted, key) => {
+      sorted[key] = value[key];
+      return sorted;
+    }, {});
+  })).digest("hex");
 }
 
 function validatePayload(
@@ -61,6 +72,7 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
     receiverOrgId: payload.metadata.receiverOrgId,
     businessObjectId: payload.requestId,
     businessObjectVersion: payload.requestVersion,
+    payloadHash: payloadHash(payload),
     status: "RECEIVED",
   }).onConflictDoNothing().returning();
 
@@ -77,7 +89,8 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
       existing.senderOrgId !== payload.metadata.senderOrgId ||
       existing.receiverOrgId !== payload.metadata.receiverOrgId ||
       existing.businessObjectId !== payload.requestId ||
-      existing.businessObjectVersion !== payload.requestVersion
+      existing.businessObjectVersion !== payload.requestVersion ||
+      (existing.payloadHash && existing.payloadHash !== payloadHash(payload))
     ) throw new Error("Inbound messageId conflicts with an existing exchange");
     if (existing.status === "PROCESSED" || existing.status === "RECEIVED") {
       return { duplicate: true, status: "DUPLICATE" };

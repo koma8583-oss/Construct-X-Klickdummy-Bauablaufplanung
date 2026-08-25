@@ -20,6 +20,7 @@ export const dataspaceExchangesTable = pgTable("dataspace_exchanges", {
   receiverOrgId: text("receiver_org_id").notNull().references(() => organizationsTable.id),
   businessObjectId: text("business_object_id").notNull(),
   businessObjectVersion: integer("business_object_version").notNull(),
+  payloadHash: text("payload_hash"),
   status: dataspaceExchangeStatusEnum("status").notNull().default("CREATED"),
   externalReference: text("external_reference"),
   errorCode: text("error_code"),

@@ -68,6 +68,10 @@ import {
 import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import {
+  deliverLocalServiceRequest,
+  deliverLocalServiceResponse,
+} from "../services/dataspace/local-dataspace-delivery";
+import {
   toExternalServiceResponseFromEnvelope,
   toExternalServiceRequest,
   toExternalResourceRequirements,
@@ -126,7 +130,10 @@ async function safeSend(
   res: import("express").Response,
 ): Promise<TransportResult | null> {
   try {
-    const reference = await dataspaceExchange.publishServiceResponse(toExternalServiceResponseFromEnvelope(envelope));
+    const reference = await deliverLocalServiceResponse(
+      toExternalServiceResponseFromEnvelope(envelope),
+      dataspaceExchange,
+    );
     return {
       messageId: reference.exchangeId,
       status: reference.status ?? "DELIVERED",
@@ -156,7 +163,7 @@ async function safePublishServiceRequest(
   res: import("express").Response,
 ): Promise<TransportResult | null> {
   try {
-    const reference = await dataspaceExchange.publishServiceRequest(payload);
+    const reference = await deliverLocalServiceRequest(payload, dataspaceExchange);
     return {
       messageId: reference.exchangeId,
       status: reference.status ?? "DELIVERED",

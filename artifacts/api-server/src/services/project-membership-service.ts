@@ -15,6 +15,10 @@ import {
   resolveDataspaceParticipant,
 } from "./dataspace/dataspace-participant-resolver";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
+import {
+  deliverLocalProjectInvitation,
+  deliverLocalProjectInvitationResponse,
+} from "./dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse } from "./dataspace/external-contracts";
 import {
   FIELD_WHITELISTS,
@@ -109,8 +113,8 @@ export async function retryProjectInvitationDelivery(messageId: string, agOrgId:
   // immediately after the transactional outbox commit; retry then drains the
   // persisted envelope without creating another business row.
   const published = outbox.messageType === "PROJECT_INVITATION"
-    ? await exchange.publishProjectInvitation(payload as ExternalProjectInvitation)
-    : await exchange.publishProjectInvitationResponse(payload as ExternalProjectInvitationResponse);
+    ? await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange)
+    : await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
   const result = published.status === "DELIVERED"
     ? published
     : await exchange.retryProjectInvitation(messageId);
@@ -281,7 +285,7 @@ export async function inviteParticipant(input: {
     return [created];
   });
   const exchange = createDataspaceExchange();
-  const delivery = await exchange.publishProjectInvitation(invitationPayload);
+  const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
   if (delivery.status === "PENDING") {
     await exchange.retryProjectInvitation(messageId);
   }
@@ -598,7 +602,7 @@ async function dispatchProjectInvitationPackage(
   if (!rows) return;
   const exchange = createDataspaceExchange();
   for (const row of rows) {
-    const delivery = await exchange.publishProjectInvitation(row.payload);
+    const delivery = await deliverLocalProjectInvitation(row.payload, exchange);
     if (delivery.status === "PENDING" || delivery.status === "FAILED") {
       await exchange.retryProjectInvitation(row.payload.metadata.messageId).catch(() => undefined);
     }
@@ -702,7 +706,7 @@ async function resolveInvitation(
     return [row];
   });
   const exchange = createDataspaceExchange();
-  const delivery = await exchange.publishProjectInvitationResponse(responsePayload);
+  const delivery = await deliverLocalProjectInvitationResponse(responsePayload, exchange);
   if (delivery.status === "PENDING") {
     await exchange.retryProjectInvitation(responseMessageId);
   }

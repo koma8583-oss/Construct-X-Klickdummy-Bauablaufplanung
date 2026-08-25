@@ -13,7 +13,7 @@
  *   - UNDER_REVIEW requests are NOT auto-expired (see docs/deadlines-and-reminders.md §5.4)
  */
 
-import { db } from "@workspace/db";
+import { agDb } from "@workspace/db";
 import {
   taktRequestsTable,
   taktRequestRemindersTable,
@@ -34,7 +34,7 @@ import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import pino from "pino";
 
 // Reuse the transaction type established in reschedule.ts
-type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DbTx = Parameters<Parameters<typeof agDb.transaction>[0]>[0];
 
 const logger = pino({ name: "deadline-evaluation-service" });
 const transport = new LocalHubTransport();
@@ -123,7 +123,7 @@ export async function evaluateTaktRequestDeadlines(
 
   // Load all open requests that are potentially due for action.
   // "Open" = not in a terminal or already-answered status.
-  const openRequests = await db
+  const openRequests = await agDb
     .select({
       id:                  taktRequestsTable.id,
       taktId:              taktRequestsTable.taktId,
@@ -146,7 +146,7 @@ export async function evaluateTaktRequestDeadlines(
   for (const req of openRequests) {
     try {
       // ── Check for parallel response ─────────────────────────────────────────
-      const [existingResponse] = await db
+      const [existingResponse] = await agDb
         .select({ id: taktResponsesTable.id })
         .from(taktResponsesTable)
         .where(eq(taktResponsesTable.taktRequestId, req.id))
@@ -194,7 +194,7 @@ export async function evaluateTaktRequestDeadlines(
 
   // ── Phase 2: GU decision reminders for ACCEPTED / ALTERNATIVES_PROPOSED ────
   // These are requests where the NU has already responded and the GU must decide.
-  const guDecisionRequests = await db
+  const guDecisionRequests = await agDb
     .select({
       id:                  taktRequestsTable.id,
       taktId:              taktRequestsTable.taktId,
@@ -253,7 +253,7 @@ async function expireRequest(
   const msgIdGu = `expired-gu-${req.id}`;
   const msgIdNu = `expired-nu-${req.id}`;
 
-  const committed = await db.transaction(async (tx) => {
+  const committed = await agDb.transaction(async (tx) => {
     // Re-read current status to guard against concurrent updates
     const [fresh] = await tx
       .select({ status: taktRequestsTable.status })
@@ -561,7 +561,7 @@ async function upsertReminder(opts: {
   } = opts;
 
   // Check idempotency — if reminder already exists (any status), skip
-  const [existing] = await db
+  const [existing] = await agDb
     .select({ id: taktRequestRemindersTable.id, status: taktRequestRemindersTable.status })
     .from(taktRequestRemindersTable)
     .where(
@@ -579,7 +579,7 @@ async function upsertReminder(opts: {
   const reminderId = crypto.randomUUID();
   const messageId  = `reminder-${reminderId}`;
 
-  await db.insert(taktRequestRemindersTable).values({
+  await agDb.insert(taktRequestRemindersTable).values({
     id:               reminderId,
     taktRequestId,
     reminderType,
@@ -620,7 +620,7 @@ async function upsertReminder(opts: {
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    await db
+    await agDb
       .update(taktRequestRemindersTable)
       .set({ status: "FAILED", failureReason: reason, attemptCount: 1 })
       .where(eq(taktRequestRemindersTable.id, reminderId));
@@ -632,7 +632,7 @@ async function upsertReminder(opts: {
   if (transportResult.status === "FAILED") {
     // Soft delivery failure: send() returned FAILED without throwing
     const reason = transportResult.error?.message ?? "Transport returned FAILED status";
-    await db
+    await agDb
       .update(taktRequestRemindersTable)
       .set({ status: "FAILED", failureReason: reason, attemptCount: 1 })
       .where(eq(taktRequestRemindersTable.id, reminderId));
@@ -644,13 +644,13 @@ async function upsertReminder(opts: {
   const reminderStatus =
     transportResult.status === "DELIVERED" ? ("DELIVERED" as const) : ("SENT" as const);
 
-  await db
+  await agDb
     .update(taktRequestRemindersTable)
     .set({ status: reminderStatus, sentAt: new Date(), attemptCount: 1 })
     .where(eq(taktRequestRemindersTable.id, reminderId));
 
   // Increment reminderCount only on successful delivery
-  await db
+  await agDb
     .update(taktRequestsTable)
     .set({
       lastReminderAt: new Date(),
@@ -674,7 +674,7 @@ async function upsertReminder(opts: {
 // ── Cancel stale pending reminders ───────────────────────────────────────────
 
 async function cancelPendingReminders(taktRequestId: string): Promise<number> {
-  const result = await db
+  const result = await agDb
     .update(taktRequestRemindersTable)
     .set({ status: "CANCELLED", updatedAt: new Date() })
     .where(

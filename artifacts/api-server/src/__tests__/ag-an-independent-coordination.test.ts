@@ -17,7 +17,6 @@ import {
   takteTable,
   taktRequestsTable,
   taktResponsesTable,
-  taktResponseAlternativesTable,
   taktResponseDecisionsTable,
   taktVersionsTable,
   taktRequestSnapshotsTable,

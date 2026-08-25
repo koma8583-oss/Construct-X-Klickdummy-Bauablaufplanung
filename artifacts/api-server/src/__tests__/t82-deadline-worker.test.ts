@@ -14,7 +14,7 @@
  * Fixture prefix: "t82-"
  */
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
-import { agDb as db, pool } from "@workspace/db";
+import { agDb as db, agPool } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -209,7 +209,7 @@ describe("stopDeadlineWorker() awaits in-progress tick", () => {
 describe("Advisory lock — prevents double-processing", () => {
   it("[6] second runDeadlineEvaluationOnce() with lock held returns { locked: false }", async () => {
     // Hold the advisory lock manually on a raw pg client
-    const client = await pool.connect();
+    const client = await agPool.connect();
     try {
       await client.query("SELECT pg_advisory_lock($1)", [ADVISORY_LOCK_KEY]);
 
