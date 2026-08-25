@@ -39,3 +39,4 @@
 - [Atomic invitation delivery](atomic-invitation-delivery.md) — pre-created transactional outbox rows must allow the first delivery retry from PENDING.
 - [AN API namespace routing](an-api-namespace-routes.md) — AN fetch rewrites `/api/*` to `/api/an/*`; AN-facing handlers need an AN-subrouter mount.
 - [Wouter test router base](wouter-test-router-base.md) — use an empty test Router base for root-relative href assertions; slash bases can produce double-slash links.
+- [Shared test DB schema drift](shared-test-db-schema-drift.md) — project_memberships may lack additive ORM columns until the shared database is migrated.

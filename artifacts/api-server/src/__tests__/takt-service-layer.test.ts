@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, runWithDatabaseRole } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -33,16 +33,16 @@ import {
 } from "@workspace/db";
 import { eq, like } from "drizzle-orm";
 import {
-  createTaktRequestDraft,
-  getTaktRequestById,
-  listTaktRequestsForGu,
-  listTaktRequestsForNu,
-  updateTaktRequestStatus,
+  createTaktRequestDraft as rawCreateTaktRequestDraft,
+  getTaktRequestById as rawGetTaktRequestById,
+  listTaktRequestsForGu as rawListTaktRequestsForGu,
+  listTaktRequestsForNu as rawListTaktRequestsForNu,
+  updateTaktRequestStatus as rawUpdateTaktRequestStatus,
   TaktRequestTransitionError,
 } from "../lib/takt-request-repository";
 import {
-  createTaktResponse,
-  getTaktResponseWithAlternatives,
+  createTaktResponse as rawCreateTaktResponse,
+  getTaktResponseWithAlternatives as rawGetTaktResponseWithAlternatives,
   TaktResponseValidationError,
 } from "../lib/takt-response-repository";
 
@@ -114,9 +114,24 @@ afterAll(async () => {
 
 let counter = 0;
 function nextNum() { return `${P}REQ-${String(++counter).padStart(4, "0")}`; }
+const ag = <T>(operation: () => Promise<T>) => runWithDatabaseRole("ag", operation);
+const createTaktRequestDraft = (...args: Parameters<typeof rawCreateTaktRequestDraft>) =>
+  ag(() => rawCreateTaktRequestDraft(...args));
+const getTaktRequestById = (...args: Parameters<typeof rawGetTaktRequestById>) =>
+  ag(() => rawGetTaktRequestById(...args));
+const listTaktRequestsForGu = (...args: Parameters<typeof rawListTaktRequestsForGu>) =>
+  ag(() => rawListTaktRequestsForGu(...args));
+const listTaktRequestsForNu = (...args: Parameters<typeof rawListTaktRequestsForNu>) =>
+  ag(() => rawListTaktRequestsForNu(...args));
+const updateTaktRequestStatus = (...args: Parameters<typeof rawUpdateTaktRequestStatus>) =>
+  ag(() => rawUpdateTaktRequestStatus(...args));
+const createTaktResponse = (...args: Parameters<typeof rawCreateTaktResponse>) =>
+  ag(() => rawCreateTaktResponse(...args));
+const getTaktResponseWithAlternatives = (...args: Parameters<typeof rawGetTaktResponseWithAlternatives>) =>
+  ag(() => rawGetTaktResponseWithAlternatives(...args));
 
 async function makeRequest(overrides: Partial<Parameters<typeof createTaktRequestDraft>[0]> = {}) {
-  const row = await createTaktRequestDraft({
+  const row = await ag(() => createTaktRequestDraft({
     taktId: FX.taktId,
     taktVersion: 1,
     guOrgId: FX.guOrgId,
@@ -124,7 +139,7 @@ async function makeRequest(overrides: Partial<Parameters<typeof createTaktReques
     requestNumber: nextNum(),
     createdByUserId: FX.userId,
     ...overrides,
-  });
+  }));
   createdRequestIds.push(row.id);
   return row;
 }

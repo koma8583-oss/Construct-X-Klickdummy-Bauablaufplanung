@@ -297,10 +297,14 @@ describe("membership gates and legacy compatibility", () => {
         AND pc.project_id = ${BACKFILL_PROJECT_ID}
       ON CONFLICT (project_id, an_org_id) DO NOTHING
     `);
-    const [membership] = await db.select().from(projectMembershipsTable).where(
-      and(eq(projectMembershipsTable.projectId, BACKFILL_PROJECT_ID), eq(projectMembershipsTable.anOrgId, BACKFILL_AN_ID)),
-    );
+    const result = await db.execute(sql`
+      SELECT status, invitation_id
+      FROM project_memberships
+      WHERE project_id = ${BACKFILL_PROJECT_ID} AND an_org_id = ${BACKFILL_AN_ID}
+      LIMIT 1
+    `);
+    const membership = result.rows[0] as { status: string; invitation_id: string };
     expect(membership.status).toBe("ACTIVE");
-    expect(membership.invitationId).toBe(`legacy-membership-${BACKFILL_PROJECT_ID}-${BACKFILL_AN_ID}`);
+    expect(membership.invitation_id).toBe(`legacy-membership-${BACKFILL_PROJECT_ID}-${BACKFILL_AN_ID}`);
   });
 });

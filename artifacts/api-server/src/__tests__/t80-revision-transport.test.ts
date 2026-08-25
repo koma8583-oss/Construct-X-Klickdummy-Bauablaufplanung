@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, runWithDatabaseRole } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -28,11 +28,16 @@ import {
   messageInboxTable,
   messageOutboxTable,
   projectContractorsTable,
+  projectMembershipsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
 import { createRevision } from "../services/revision-service";
 import type { MessageTransport, MessageEnvelope, TransportResult, InboxMessage, InboxQueryOptions } from "../lib/transport/message-transport";
+
+function createAgRevision(input: Parameters<typeof createRevision>[0]) {
+  return runWithDatabaseRole("ag", () => createRevision(input));
+}
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function sign(p: { userId: string; orgId: string | null; orgType: "AG" | "AN" | null; hubAdmin?: boolean; roles?: string[] }): string {
@@ -174,7 +179,18 @@ beforeAll(async () => {
     status: "ACTIVE" as const, startDate: "2027-01-01", endDate: "2027-12-31",
   }).onConflictDoNothing();
 
-  await db.insert(projectContractorsTable).values({ projectId: PROJECT, anOrgId: NU_ORG }).onConflictDoNothing();
+  await db.insert(projectContractorsTable).values({
+    projectId: PROJECT,
+    anOrgId: NU_ORG,
+    assignmentStatus: "ACTIVE",
+  }).onConflictDoNothing();
+  // The shared test database predates the optional publication columns in the
+  // current Drizzle model, so keep this fixture insert to physical columns.
+  await db.execute(sql`
+    INSERT INTO project_memberships (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status)
+    VALUES ('t80-membership', ${PROJECT}, ${GU_ORG}, ${NU_ORG}, 't80-invitation', 't80-correlation', 'ACTIVE')
+    ON CONFLICT DO NOTHING
+  `);
 
   await db.insert(takteTable).values({
     id: TAKT, projectId: PROJECT,
@@ -203,6 +219,7 @@ afterAll(async () => {
   }
 
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT)).catch(() => {});
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, TAKT)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER)).catch(() => {});
@@ -260,7 +277,7 @@ describe("B — Revision transport: success → newRequest.status = DELIVERED", 
     const { requestId } = await insertRevisionRequiredFixture("b1");
     const mockTransport = new AlwaysDeliveredTransport();
 
-    const result = await createRevision({
+    const result = await createAgRevision({
       oldRequestId:     requestId,
       guOrgId:          GU_ORG,
       userId:           GU_USER,
@@ -287,7 +304,7 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
     const { requestId } = await insertRevisionRequiredFixture("c1");
     const mockTransport = new AlwaysFailedTransport();
 
-    const result = await createRevision({
+    const result = await createAgRevision({
       oldRequestId:      requestId,
       guOrgId:           GU_ORG,
       userId:            GU_USER,
@@ -311,7 +328,7 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
   it("old request (REVISION_REQUIRED) becomes SUPERSEDED even when transport fails", async () => {
     const { requestId } = await insertRevisionRequiredFixture("c2");
 
-    await createRevision({
+    await createAgRevision({
       oldRequestId:      requestId,
       guOrgId:           GU_ORG,
       userId:            GU_USER,
@@ -330,7 +347,7 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
   it("no second revision or snapshot is created on transport failure", async () => {
     const { requestId } = await insertRevisionRequiredFixture("c3");
 
-    const result = await createRevision({
+    const result = await createAgRevision({
       oldRequestId:      requestId,
       guOrgId:           GU_ORG,
       userId:            GU_USER,

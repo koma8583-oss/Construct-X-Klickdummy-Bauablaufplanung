@@ -99,7 +99,7 @@ describe("Suite A — Project subcontractor assignment CRUD", () => {
     expect(res.status).toBe(201);
     expect(res.body.anOrgId).toBe(nuOrg1Id);
     expect(res.body.trade).toBe("Elektro");
-    expect(res.body.assignmentStatus).toBe("ACTIVE");
+    expect(res.body.assignmentStatus).toBe("PLANNED");
     expect(res.body.id).toBeDefined();
     assignmentId = res.body.id;
   });
@@ -148,7 +148,7 @@ describe("Suite A — Project subcontractor assignment CRUD", () => {
     const assignment = res.body.find((a: any) => a.id === assignmentId);
     expect(assignment).toBeDefined();
     expect(assignment.anName).toBeDefined();
-    expect(assignment.assignmentStatus).toBe("ACTIVE");
+    expect(assignment.assignmentStatus).toBe("PLANNED");
   });
 
   it("PATCH /ag/projects/:id/subcontractors/:assignmentId updates trade and status", async () => {
