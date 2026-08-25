@@ -10,11 +10,7 @@
  *   [4]  AN-A resource list only contains own-org resources
  *   [5]  DELETE resource is soft-delete: resource still exists in DB with active=false
  *   [5b] Soft-deleted resource does NOT appear in GET /resources
- *   [5c] POST /resource-assignments with a soft-deleted resource → 422
- *   [6]  GET /resource-assignments scoped to own org (active only)
- *   [6b] Soft-deleted assignment does NOT appear in GET /resource-assignments
- *   [7]  POST /resource-assignments with foreign resource → 403
- *   [8]  POST /resource-assignments with delegation addressed to foreign org → 403
+ *   [6]  Legacy resource-assignment routes are removed from the AN API
  *
  *   Role fail-closed:
  *   [9]  User with no roles → POST /api/takt-requests → 403
@@ -40,7 +36,6 @@ import {
   organizationsTable,
   usersTable,
   resourcesTable,
-  resourceAssignmentsTable,
   delegationsTable,
   projectsTable,
   takteTable,
@@ -126,8 +121,6 @@ afterAll(async () => {
     .where(inArray(taktRequestRemindersTable.taktRequestId, ["t104-req-reminder"]));
   await db.delete(taktRequestsTable)
     .where(eq(taktRequestsTable.id, "t104-req-reminder"));
-  await db.delete(resourceAssignmentsTable)
-    .where(inArray(resourceAssignmentsTable.resourceId, [RES_A, RES_B]));
   await db.delete(delegationsTable).where(eq(delegationsTable.id, DELEG_ID));
   await db.delete(resourcesTable).where(inArray(resourcesTable.id, [RES_A, RES_B]));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT_ID));
@@ -200,31 +193,14 @@ describe("Resource org isolation", () => {
     await db.delete(resourcesTable).where(eq(resourcesTable.id, newId));
   });
 
-  it("[6] GET /resource-assignments only returns own-org assignments", async () => {
-    // Create an assignment for NU_ORG_A
-    const [asgn] = await db.insert(resourceAssignmentsTable).values({
-      resourceId:   RES_A,
-      delegationId: DELEG_ID,
-      fromDate:     "2026-09-01",
-      toDate:       "2026-09-10",
-    }).returning();
-
-    const resA = await request(app)
-      .get("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuAToken}`);
-    expect(resA.status).toBe(200);
-    const idsA = (resA.body as any[]).map((r: any) => r.id);
-    expect(idsA).toContain(asgn.id);
-
-    // NU_ORG_B should not see it
-    const resB = await request(app)
-      .get("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuBToken}`);
-    expect(resB.status).toBe(200);
-    const idsB = (resB.body as any[]).map((r: any) => r.id);
-    expect(idsB).not.toContain(asgn.id);
-
-    await db.delete(resourceAssignmentsTable).where(eq(resourceAssignmentsTable.id, asgn.id));
+  it("[6] legacy resource-assignment routes are removed from the AN API", async () => {
+    const responses = await Promise.all([
+      request(app).get("/api/resource-assignments").set("Authorization", `Bearer ${nuAToken}`),
+      request(app).post("/api/resource-assignments").set("Authorization", `Bearer ${nuAToken}`).send({}),
+      request(app).patch("/api/resource-assignments/does-not-exist").set("Authorization", `Bearer ${nuAToken}`).send({}),
+      request(app).delete("/api/resource-assignments/does-not-exist").set("Authorization", `Bearer ${nuAToken}`),
+    ]);
+    for (const response of responses) expect(response.status).toBe(404);
   });
 
   it("[5b] Soft-deleted resource does NOT appear in GET /resources", async () => {
@@ -252,72 +228,6 @@ describe("Resource org isolation", () => {
     await db.delete(resourcesTable).where(eq(resourcesTable.id, newId));
   });
 
-  it("[5c] POST /resource-assignments with a soft-deleted resource → 422", async () => {
-    // Create then deactivate a resource directly in DB
-    const [sdRes] = await db.insert(resourcesTable).values({
-      id: "t104-res-softdel", anOrgId: NU_ORG_A, name: "T104 SD Resource",
-      type: "OTHER" as const, active: false,
-    }).returning();
-
-    const res = await request(app)
-      .post("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuAToken}`)
-      .send({ resourceId: sdRes.id, delegationId: DELEG_ID, fromDate: "2026-09-01", toDate: "2026-09-05" });
-    expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/deactivated/i);
-
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, "t104-res-softdel"));
-  });
-
-  it("[6b] Soft-deleted assignment does NOT appear in GET /resource-assignments", async () => {
-    // Insert then soft-delete an assignment
-    const [asgn] = await db.insert(resourceAssignmentsTable).values({
-      resourceId:   RES_A,
-      delegationId: DELEG_ID,
-      fromDate:     "2026-09-01",
-      toDate:       "2026-09-10",
-      active:       false,     // already deactivated
-    }).returning();
-
-    const res = await request(app)
-      .get("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuAToken}`);
-    expect(res.status).toBe(200);
-    const ids = (res.body as any[]).map((r: any) => r.id);
-    expect(ids).not.toContain(asgn.id);
-
-    await db.delete(resourceAssignmentsTable).where(eq(resourceAssignmentsTable.id, asgn.id));
-  });
-
-  it("[7] POST /resource-assignments with foreign resource → 403", async () => {
-    // NU_ORG_A tries to assign NU_ORG_B's resource
-    const res = await request(app)
-      .post("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuAToken}`)
-      .send({ resourceId: RES_B, delegationId: DELEG_ID, fromDate: "2026-09-01", toDate: "2026-09-05" });
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/organisation/i);
-  });
-
-  it("[8] POST /resource-assignments with delegation not addressed to caller → 403", async () => {
-    // Create a delegation addressed to NU_ORG_B
-    const [otherDeleg] = await db.insert(delegationsTable).values({
-      id: "t104-deleg-b", taktId: TAKT_ID, projectId: PROJ_ID,
-      agOrgId: GU_ORG, anOrgId: NU_ORG_B,
-      requestedStart: "2026-09-01", requestedEnd: "2026-09-30",
-      status: "PENDING" as const,
-    }).returning();
-
-    // NU_ORG_A (with its own resource) tries to use NU_ORG_B's delegation
-    const res = await request(app)
-      .post("/api/resource-assignments")
-      .set("Authorization", `Bearer ${nuAToken}`)
-      .send({ resourceId: RES_A, delegationId: otherDeleg.id, fromDate: "2026-09-01", toDate: "2026-09-05" });
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/organisation/i);
-
-    await db.delete(delegationsTable).where(eq(delegationsTable.id, "t104-deleg-b"));
-  });
 });
 
 // ── Role fail-closed ──────────────────────────────────────────────────────────

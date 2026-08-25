@@ -29,13 +29,13 @@ const CANONICAL_POLICIES: PolicySeed[] = [
     name: "Project Coordination Subcontractor",
     description:
       "Richtlinie für Nachunternehmen zur sicheren projektbezogenen Koordination von " +
-      "Terminen, Taktplanung und Ressourcen.",
+      "Terminen, Aktivitätsplanung und Ressourcen.",
     purpose:
       "Projektkoordination zwischen Auftraggeber und Nachunternehmen auf Grundlage " +
       "der für das konkrete Projekt freigegebenen Informationen.",
     permissions: [
-      "Projekt- und Taktinformationen lesen",
-      "Angefragte Termine und Takte abstimmen",
+      "Projekt- und Aktivitätsinformationen lesen",
+      "Angefragte Termine und Aktivitäten abstimmen",
       "Interne Termin-, Ressourcen- und Kapazitätsplanung",
       "Mögliche Alternativtermine ermitteln",
     ],
