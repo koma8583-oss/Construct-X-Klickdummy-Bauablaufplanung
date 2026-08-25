@@ -1879,7 +1879,10 @@ export default function ProjectDetail() {
             SUPERSEDED: 'bg-muted text-muted-foreground',
           };
 
-          // unique ANs in assignment order
+           // Show confirmed project partners even before a separate fachliche
+           // assignment exists. Membership and assignment are intentionally
+           // different domain objects: acceptance creates the former, while
+           // "Leistung vergeben" requires an ACTIVE assignment.
           const seenOrgIds = new Set<string>();
           const uniqueAnOrgs: string[] = [];
           for (const a of (assignments ?? [])) {
@@ -1888,6 +1891,11 @@ export default function ProjectDetail() {
               uniqueAnOrgs.push(a.anOrgId);
             }
           }
+           for (const membership of (memberships ?? [])) {
+             if (membership.status !== 'ACTIVE' || seenOrgIds.has(membership.anOrgId)) continue;
+             seenOrgIds.add(membership.anOrgId);
+             uniqueAnOrgs.push(membership.anOrgId);
+           }
 
           return (
             <div className="flex-1 overflow-auto p-4">
@@ -1922,7 +1930,12 @@ export default function ProjectDetail() {
                     const anRequests = (projectRequestsByAnOrg.get(anOrgId) ?? [])
                       .filter(r => r.status !== 'SUPERSEDED')
                       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-                    const anName = anAssignments[0]?.anName ?? anOrgId;
+                     const anName = anAssignments[0]?.anName
+                       ?? allAnOrgs?.find(candidate => candidate.id === anOrgId)?.name
+                       ?? anOrgId;
+                     const membership = memberships?.find(
+                       candidate => candidate.anOrgId === anOrgId && candidate.status === 'ACTIVE',
+                     );
                     const activeCount = anAssignments.filter(a => a.assignmentStatus === 'ACTIVE').length;
 
                     return (
@@ -1938,7 +1951,7 @@ export default function ProjectDetail() {
                               <p className="text-xs text-muted-foreground">
                                 {activeCount > 0
                                   ? `${activeCount} aktive Zuordnung${activeCount !== 1 ? 'en' : ''}`
-                                  : 'Keine aktiven Zuordnungen'}
+                                   : membership ? 'Projektpartner · noch keine Zuordnung' : 'Keine aktiven Zuordnungen'}
                                 {anRequests.length > 0 && ` · ${anRequests.length} Anfrage${anRequests.length !== 1 ? 'n' : ''}`}
                               </p>
                             </div>
@@ -1950,8 +1963,13 @@ export default function ProjectDetail() {
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                             Zuordnungen
                           </p>
-                          <div className="flex flex-col gap-1.5">
-                            {anAssignments.map(a => (
+                           <div className="flex flex-col gap-1.5">
+                             {anAssignments.length === 0 && membership && (
+                               <div className="rounded-md border border-dashed border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">
+                                 Einladung angenommen. Für eine Leistungsanfrage muss noch eine fachliche Zuordnung angelegt werden.
+                               </div>
+                             )}
+                             {anAssignments.map(a => (
                               <div key={a.id} className="flex items-center gap-2 text-sm">
                                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${assignmentStatusClass[a.assignmentStatus] ?? 'bg-muted text-muted-foreground'}`}>
                                   {assignmentStatusLabel[a.assignmentStatus] ?? a.assignmentStatus}

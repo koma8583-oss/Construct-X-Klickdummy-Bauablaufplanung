@@ -37,6 +37,7 @@ import {
   PublicationRecipientError,
   FIELD_WHITELISTS,
 } from "../services/data-publication-service";
+import { listPolicyTemplateRegistry } from "../lib/policy-template-registry";
 
 const router = Router();
 
@@ -149,6 +150,7 @@ router.get(
 );
 
 // ── GET /policy-templates ─────────────────────────────────────────────────────
+// Legacy Dataspace publication templates. Kept unchanged for compatibility.
 router.get(
   "/policy-templates",
   requireJwt,
@@ -159,6 +161,20 @@ router.get(
       .from(policyTemplatesTable)
       .where(eq(policyTemplatesTable.active, true));
     res.json(templates);
+  },
+);
+
+// ── GET /policy-templates/registry ────────────────────────────────────────────
+// Read-only code-owned registry for future policy creation flows.
+router.get(
+  "/policy-templates/registry",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    if (!req.user?.orgId || !["AG", "AN"].includes(req.user.orgType ?? "")) {
+      res.status(403).json({ error: "Authenticated AG or AN organisation required" });
+      return;
+    }
+    res.json(listPolicyTemplateRegistry());
   },
 );
 

@@ -44,3 +44,4 @@
 - [Inbound response attribution](inbound-response-attribution.md) — Dataspace AN responses retain external origin and receipt provenance, never an AG-local creator.
 - [AN OpenAPI codegen boundaries](an-openapi-codegen.md) — AN-local worklists need explicit `/an/...` operations and generated contracts, not reused AG DTOs or handwritten fetch types.
 - [Test data cleanup](test-data-cleanup.md) — database cleanup must run after the complete Vitest process, never in per-worker setup teardown.
+- [Policy template registry](policy-template-registry.md) — keep stable versioned policy templates in code and preserve the existing policy_templates Dataspace compatibility layer.
