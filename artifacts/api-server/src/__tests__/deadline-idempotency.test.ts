@@ -15,7 +15,7 @@
  */
 
 import { describe, it, beforeAll, afterAll, expect, vi } from 'vitest';
-import { db } from '@workspace/db';
+import { agDb as db } from '@workspace/db';
 import {
   organizationsTable,
   usersTable,
