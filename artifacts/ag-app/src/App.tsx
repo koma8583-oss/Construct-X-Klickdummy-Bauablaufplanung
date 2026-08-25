@@ -14,6 +14,7 @@ import Register from '@/pages/register';
 import Dashboard from '@/pages/dashboard';
 import Projects from '@/pages/projects';
 import ProjectDetail from '@/pages/project-detail';
+import TaktDetail from '@/pages/takt-detail';
 import ProjectProposals from '@/pages/project-proposals';
 import Leistungsanfragen from '@/pages/leistungsanfragen';
 import LeistungsanfragenDetail from '@/pages/leistungsanfragen-detail';
@@ -42,6 +43,7 @@ function AuthenticatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/projects" component={Projects} />
+          <Route path="/projects/:projectId/takte/:taktId" component={TaktDetail} />
           <Route path="/projects/:projectId" component={ProjectDetail} />
           <Route path="/projects/:projectId/proposals" component={ProjectProposals} />
           <Route path="/leistungsanfragen" component={Leistungsanfragen} />

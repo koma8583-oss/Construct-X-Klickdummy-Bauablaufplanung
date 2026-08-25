@@ -925,8 +925,7 @@ export default function ProjectDetail() {
       setLocation(`/leistungsanfragen/${requestUuid}`);
       return;
     }
-    setSelectedTaktId(taskId);
-    setIsVergabeOpen(false);
+    setLocation(`/projects/${projectId}/takte/${taskId}`);
   }
 
   function handleOpenEdit() {
