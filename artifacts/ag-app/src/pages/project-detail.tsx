@@ -287,6 +287,7 @@ const GanttListHeader: React.FC<TaskListHeaderProps> = ({ headerHeight, rowWidth
 /** Build a memoisation-safe GanttListTable that closes over takte for lifecycle badges. */
 function makeGanttListTable(
   taktById: Map<string, { lifecycleStatus?: TaktLifecycleStatus | null }>,
+  taktLabelById: Map<string, string>,
   alternativeCountByTaktId: Map<string, number>,
   collapsedAlternativeTaktIds: Set<string>,
   onToggleAlternatives: (taktId: string) => void,
@@ -343,7 +344,7 @@ function makeGanttListTable(
                 <span style={{ fontSize: '10px', opacity: 0.8, flexShrink: 0 }}>↩</span>
               )}
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: '11px' }}>
-                {task.name}
+                {isAlt ? task.name : (taktLabelById.get(task.id) ?? task.name)}
               </div>
               {isAlt ? (
                 <span style={{
@@ -667,6 +668,16 @@ export default function ProjectDetail() {
     return map;
   }, [takte]);
 
+  // The task list keeps the full Leistung designation while the Gantt bar
+  // itself uses only the compact designation.
+  const taktLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of takte ?? []) {
+      map.set(t.id, t.taktBezeichnung);
+    }
+    return map;
+  }, [takte]);
+
   // Stable tooltip component (recreated only when dep data changes)
   const GanttTooltip = useMemo(
     () => makeGanttTooltip(depsBySuccessor, taktNameById),
@@ -725,11 +736,12 @@ export default function ProjectDetail() {
   const GanttListTable = useMemo(
     () => makeGanttListTable(
       taktById,
+      taktLabelById,
       alternativeCountByTaktId,
       collapsedAlternativeTaktIds,
       toggleAlternativeGroup,
     ),
-    [taktById, alternativeCountByTaktId, collapsedAlternativeTaktIds, toggleAlternativeGroup],
+    [taktById, taktLabelById, alternativeCountByTaktId, collapsedAlternativeTaktIds, toggleAlternativeGroup],
   );
 
   const alternativeImpacts = useMemo(() => {
@@ -770,7 +782,7 @@ export default function ProjectDetail() {
         const isAlternativeImpact = impactedTaktIds.has(takt.id);
       return {
         id: takt.id,
-        name: `${takt.taktBezeichnung} · ${takt.gewerk}`,
+         name: takt.kurzbezeichnung || takt.taktBezeichnung,
         start: new Date(takt.plannedStart),
         end: new Date(takt.plannedEnd),
         type: 'task' as const,
