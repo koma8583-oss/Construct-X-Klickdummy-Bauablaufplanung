@@ -5,6 +5,9 @@ vi.mock("node:dns/promises", () => ({
     if (hostname === "private.example.test") {
       return [{ address: "10.20.30.40", family: 4 }];
     }
+    if (hostname === "mapped-private.example.test") {
+      return [{ address: "::ffff:c0a8:0101", family: 6 }];
+    }
     return [{ address: "203.0.113.10", family: 4 }];
   }),
 }));
@@ -15,10 +18,17 @@ import { toWebhookSubscriptionDto } from "../routes/webhooks";
 describe("webhook target SSRF protection", () => {
   it.each([
     "http://127.0.0.1",
+    "http://127.12.34.56",
     "http://localhost",
     "http://10.0.0.1",
+    "http://172.16.0.1",
+    "http://172.31.255.255",
     "http://192.168.1.1",
     "http://169.254.169.254",
+    "http://0.0.0.0",
+    "http://[::ffff:127.0.0.1]",
+    "http://[::ffff:192.168.1.1]",
+    "http://[::ffff:169.254.169.254]",
     "http://[::1]",
   ])("rejects %s", async (url) => {
     await expect(validateWebhookTargetUrl(url)).rejects.toThrow();
@@ -27,6 +37,12 @@ describe("webhook target SSRF protection", () => {
   it("rejects a hostname when any DNS result is private", async () => {
     await expect(
       validateWebhookTargetUrl("http://private.example.test"),
+    ).rejects.toThrow(/blocked address/i);
+  });
+
+  it("rejects a hostname when DNS resolves to a mapped private IPv4 address", async () => {
+    await expect(
+      validateWebhookTargetUrl("http://mapped-private.example.test"),
     ).rejects.toThrow(/blocked address/i);
   });
 

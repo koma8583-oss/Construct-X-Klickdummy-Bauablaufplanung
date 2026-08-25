@@ -299,6 +299,9 @@ function buildExternalResponse(
 export async function applyIncomingServiceResponseOnAg(
   payload: ExternalServiceResponse,
 ): Promise<ProcessNuResponseResult> {
+  // This is intentionally server time rather than the sender's metadata time:
+  // it records when the AG actually received the Dataspace envelope.
+  const receivedAt = new Date();
   const [request] = await agDb.select().from(leistungsanfragenTable)
     .where(eq(leistungsanfragenTable.id, payload.requestId)).limit(1);
   if (!request) throw new Error(`Inbound service response ${payload.requestId} does not exist`);
@@ -403,6 +406,9 @@ export async function applyIncomingServiceResponseOnAg(
     const [response] = await tx.insert(taktResponsesTable).values({
       taktRequestId: request.id,
       messageId: payload.metadata.messageId,
+      origin: "DATASPACE_INBOUND",
+      sourceOrgId: payload.metadata.senderOrgId,
+      receivedAt,
       decision: payload.decision,
       reasonCode: (payload.reasonCode as TaktResponse["reasonCode"]) ?? null,
       comment: payload.comment ?? null,
@@ -410,7 +416,8 @@ export async function applyIncomingServiceResponseOnAg(
       acceptedEnd: acceptedTimeWindow ? new Date(acceptedTimeWindow.end) : null,
       nextAvailableDate: payload.nextAvailableDate ?? null,
       responsePayloadHash: hash,
-      createdByUserId: request.createdByUserId,
+      // There is no AG-local user behind an external AN response.
+      createdByUserId: null,
     }).returning();
     if (!response) throw new Error("Failed to apply incoming service response on AG");
     const alternatives = payload.alternatives?.length ? await tx.insert(taktResponseAlternativesTable).values(
@@ -434,9 +441,13 @@ export async function applyIncomingServiceResponseOnAg(
     actorOrgId: payload.metadata.senderOrgId,
     actorRole: "NU",
     metadata: {
+      origin: "DATASPACE_INBOUND",
+      sourceOrgId: payload.metadata.senderOrgId,
       decision: payload.decision,
       reasonCode: payload.reasonCode ?? null,
       transportMessageId: payload.metadata.messageId,
+      receivedAt: receivedAt.toISOString(),
+      externalMessageCreatedAt: payload.metadata.createdAt,
     },
   });
   await writeAuditEvent({
@@ -444,7 +455,13 @@ export async function applyIncomingServiceResponseOnAg(
     eventType: "RESPONSE_DELIVERED",
     actorOrgId: payload.metadata.senderOrgId,
     actorRole: "NU",
-    metadata: { transportMessageId: payload.metadata.messageId },
+    metadata: {
+      origin: "DATASPACE_INBOUND",
+      sourceOrgId: payload.metadata.senderOrgId,
+      transportMessageId: payload.metadata.messageId,
+      receivedAt: receivedAt.toISOString(),
+      externalMessageCreatedAt: payload.metadata.createdAt,
+    },
   });
   return { ...saved, newStatus: nextStatus, payloadHash: hash, idempotent: false };
 }

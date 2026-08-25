@@ -19,8 +19,19 @@ export class InvalidWebhookTargetUrlError extends Error {
 function isPrivateIpv4(address: string): boolean {
   const octets = address.split(".").map(Number);
   const [a, b] = octets;
-  return a === 127 || a === 10 || a === 0 || a === 169 && b === 254 ||
-    a === 192 && b === 168 || a === 172 && b >= 16 && b <= 31;
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return true;
+  }
+  // RFC 1918, loopback, link-local, unspecified, carrier-grade NAT and
+  // reserved benchmark ranges must never be reachable through a webhook.
+  return a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && (b === 18 || b === 19));
 }
 
 function isPrivateIpv6(address: string): boolean {
@@ -30,8 +41,46 @@ function isPrivateIpv6(address: string): boolean {
   return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
 }
 
+function ipv4FromMappedIpv6(address: string): string | null {
+  let normalized = address.toLowerCase().split("%")[0] ?? "";
+  if (isIP(normalized) !== 6) return null;
+
+  // Replace an embedded dotted-quad with its two hexadecimal IPv6 groups.
+  const lastColon = normalized.lastIndexOf(":");
+  const possibleIpv4 = normalized.slice(lastColon + 1);
+  if (isIP(possibleIpv4) === 4) {
+    const [a, b, c, d] = possibleIpv4.split(".").map(Number);
+    normalized = `${normalized.slice(0, lastColon + 1)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+
+  const compressed = normalized.split("::");
+  if (compressed.length > 2) return null;
+  const left = compressed[0] ? compressed[0].split(":") : [];
+  const right = compressed.length === 2 && compressed[1] ? compressed[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 0) return null;
+  const groups = [...left, ...Array(missing).fill("0"), ...right];
+  if (
+    groups.length !== 8 ||
+    !groups.slice(0, 5).every((group) => parseInt(group || "0", 16) === 0) ||
+    parseInt(groups[5] || "0", 16) !== 0xffff
+  ) {
+    return null;
+  }
+
+  const high = parseInt(groups[6] || "", 16);
+  const low = parseInt(groups[7] || "", 16);
+  if (!Number.isInteger(high) || !Number.isInteger(low) || high < 0 || low < 0) return null;
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
 function isBlockedAddress(address: string): boolean {
-  return isIP(address) === 4 ? isPrivateIpv4(address) : isPrivateIpv6(address);
+  const mappedIpv4 = ipv4FromMappedIpv6(address);
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4);
+  const version = isIP(address);
+  if (version === 4) return isPrivateIpv4(address);
+  if (version === 6) return isPrivateIpv6(address);
+  return true;
 }
 
 /**

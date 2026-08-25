@@ -56,6 +56,7 @@ import {
 import { leistungsanfrageStatusEnum } from "./leistungsanfragen";
 import {
   leistungsantwortDecisionEnum,
+  leistungsantwortOriginEnum,
   leistungsantwortReasonCodeEnum,
 } from "./leistungsantworten";
 import { leistungsantwortEntscheidungTypeEnum } from "./leistungsantwort-entscheidungen";
@@ -227,6 +228,9 @@ export const taktResponsesTable = pgTable(
       .unique()
       .references(() => taktRequestsTable.id, { onDelete: "cascade" }),
     messageId: text("message_id").unique(),
+    origin: leistungsantwortOriginEnum("origin").notNull().default("LOCAL"),
+    sourceOrgId: text("source_org_id").references(() => organizationsTable.id),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
     decision: leistungsantwortDecisionEnum("decision").notNull(),
     reasonCode: leistungsantwortReasonCodeEnum("reason_code"),
     comment: text("comment"),
@@ -235,7 +239,6 @@ export const taktResponsesTable = pgTable(
     nextAvailableDate: date("next_available_date", { mode: "string" }),
     responsePayloadHash: text("response_payload_hash").unique(),
     createdByUserId: text("created_by_user_id")
-      .notNull()
       .references(() => usersTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

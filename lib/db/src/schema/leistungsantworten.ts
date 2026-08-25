@@ -24,6 +24,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { leistungsanfragenTable } from "./leistungsanfragen";
+import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 
 export const leistungsantwortDecisionEnum = pgEnum("leistungsantwort_decision", [
@@ -44,6 +45,16 @@ export const leistungsantwortReasonCodeEnum = pgEnum(
     "OTHER",
   ],
 );
+
+/**
+ * Origin of a response persisted in the AG coordination domain.
+ * Local responses are kept for legacy compatibility; any response received
+ * from an AN through the Dataspace is explicitly attributed as inbound.
+ */
+export const leistungsantwortOriginEnum = pgEnum("leistungsantwort_origin", [
+  "LOCAL",
+  "DATASPACE_INBOUND",
+]);
 
 /** Leistungsantworten — business responses from a NU to a Leistungsanfrage */
 export const leistungsantwortenTable = pgTable(
@@ -68,6 +79,18 @@ export const leistungsantwortenTable = pgTable(
      * UNIQUE when set — enforces deduplication of inbound messages.
      */
     messageId: text("message_id").unique(),
+
+    /** Whether the response was created locally or received through Dataspace. */
+    origin: leistungsantwortOriginEnum("origin").notNull().default("LOCAL"),
+
+    /**
+     * External organisation that sent an inbound Dataspace response.
+     * Local responses have no external source organisation.
+     */
+    sourceOrgId: text("source_org_id").references(() => organizationsTable.id),
+
+    /** Server-side time at which an inbound Dataspace response was received. */
+    receivedAt: timestamp("received_at", { withTimezone: true }),
 
     /** The NU's business decision */
     decision: leistungsantwortDecisionEnum("decision").notNull(),
@@ -99,9 +122,11 @@ export const leistungsantwortenTable = pgTable(
      */
     responsePayloadHash: text("response_payload_hash").unique(),
 
-    /** NU user who submitted this response */
+    /**
+     * Local NU user who submitted this response. Null for externally received
+     * Dataspace messages, which must not be attributed to an AG user.
+     */
     createdByUserId: text("created_by_user_id")
-      .notNull()
       .references(() => usersTable.id),
 
     /** Write-once — no updatedAt. */
@@ -172,3 +197,5 @@ export type InsertLeistungsantwortAlternative =
 export const taktDecisionEnum = leistungsantwortDecisionEnum;
 /** @deprecated Use leistungsantwortReasonCodeEnum */
 export const taktResponseReasonCodeEnum = leistungsantwortReasonCodeEnum;
+/** @deprecated Use leistungsantwortOriginEnum */
+export const taktResponseOriginEnum = leistungsantwortOriginEnum;

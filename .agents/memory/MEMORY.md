@@ -41,3 +41,4 @@
 - [AN-local projections](an-local-projections.md) — AN request details, responses, availability and booking ownership must resolve from local projections, never AG planning tables.
 - [Wouter test router base](wouter-test-router-base.md) — use an empty test Router base for root-relative href assertions; slash bases can produce double-slash links.
 - [Shared test DB schema drift](shared-test-db-schema-drift.md) — project_memberships may lack additive ORM columns until the shared database is migrated.
+- [Inbound response attribution](inbound-response-attribution.md) — Dataspace AN responses retain external origin and receipt provenance, never an AG-local creator.

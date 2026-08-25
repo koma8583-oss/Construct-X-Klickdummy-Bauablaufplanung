@@ -35,6 +35,7 @@ import {
   anLeistungsantwortenTable,
   dataspaceExchangesTable,
   taktResponsesTable,
+  taktRequestAuditEventsTable,
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -422,6 +423,62 @@ describe("POST /an/takt-requests/:id/responses — Dataspace delivery to AG", ()
       ));
     expect(agResponse).toBeDefined();
     expect(exchange?.status).toBe("PROCESSED");
+  });
+
+  it("attributes an AG response to the external Dataspace sender and audits its receipt", async () => {
+    const reqId = await seedRequest("inbound-attribution");
+    await request(app)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
+      .set("Authorization", `Bearer ${nuTokenA}`)
+      .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" })
+      .expect(201);
+
+    const [response] = await db.select({
+      origin: taktResponsesTable.origin,
+      sourceOrgId: taktResponsesTable.sourceOrgId,
+      receivedAt: taktResponsesTable.receivedAt,
+      createdByUserId: taktResponsesTable.createdByUserId,
+      messageId: taktResponsesTable.messageId,
+    }).from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    const auditEvents = await db.select({
+      eventType: taktRequestAuditEventsTable.eventType,
+      actorOrgId: taktRequestAuditEventsTable.actorOrgId,
+      actorUserId: taktRequestAuditEventsTable.actorUserId,
+      metadata: taktRequestAuditEventsTable.metadata,
+    }).from(taktRequestAuditEventsTable)
+      .where(eq(taktRequestAuditEventsTable.requestId, reqId));
+
+    expect(response).toMatchObject({
+      origin: "DATASPACE_INBOUND",
+      sourceOrgId: NU_ORG_A,
+      createdByUserId: null,
+    });
+    expect(response?.receivedAt).toBeInstanceOf(Date);
+    expect(response?.messageId).toBeTruthy();
+    expect(auditEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventType: "RESPONSE_SUBMITTED",
+        actorOrgId: NU_ORG_A,
+        actorUserId: null,
+        metadata: expect.objectContaining({
+          origin: "DATASPACE_INBOUND",
+          sourceOrgId: NU_ORG_A,
+          transportMessageId: response?.messageId,
+          receivedAt: expect.any(String),
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "RESPONSE_DELIVERED",
+        actorOrgId: NU_ORG_A,
+        actorUserId: null,
+        metadata: expect.objectContaining({
+          origin: "DATASPACE_INBOUND",
+          sourceOrgId: NU_ORG_A,
+          transportMessageId: response?.messageId,
+          receivedAt: expect.any(String),
+        }),
+      }),
+    ]));
   });
 });
 
