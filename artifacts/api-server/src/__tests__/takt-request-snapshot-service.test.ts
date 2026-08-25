@@ -49,6 +49,7 @@ const TAKT_FIXTURE: Takt = {
   id: TAKT_ID,
   projectId: PROJECT_ID,
   taktBezeichnung: "T1 – Trockenbau Nord",
+  kurzbezeichnung: "T1",
   zone: "Ebene EG",
   gewerk: "Trockenbau",
   description: "Montage Trockenbauwände laut Plan T-EG-001",

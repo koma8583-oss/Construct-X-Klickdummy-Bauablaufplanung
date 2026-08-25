@@ -125,6 +125,7 @@ export interface CreateRevisionParams {
   /** Additional takt fields to update in the new version */
   taktUpdates?: {
     taktBezeichnung?: string;
+    kurzbezeichnung?: string;
     zone?: string;
     gewerk?: string;
     description?: string;
@@ -290,6 +291,7 @@ export async function createRevision(
   // ── 6. Merged takt values for the new version ─────────────────────────────────
   const mergedTakt = {
     taktBezeichnung:   taktUpdates?.taktBezeichnung   ?? takt.taktBezeichnung,
+    kurzbezeichnung:   taktUpdates?.kurzbezeichnung   ?? takt.kurzbezeichnung,
     zone:              taktUpdates?.zone              ?? takt.zone,
     gewerk:            taktUpdates?.gewerk            ?? takt.gewerk,
     description:       taktUpdates?.description       ?? takt.description,

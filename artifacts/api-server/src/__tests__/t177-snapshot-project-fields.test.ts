@@ -47,6 +47,7 @@ const TAKT_FIXTURE: Takt = {
   id: TAKT_ID,
   projectId: PROJECT_ID,
   taktBezeichnung: "T177 – Trockenbau EG",
+  kurzbezeichnung: "T177",
   zone: "Ebene EG",
   gewerk: "Trockenbau",
   description: "Montage Trockenbauwände",
