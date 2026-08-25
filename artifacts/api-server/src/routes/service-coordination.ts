@@ -28,7 +28,12 @@ router.get("/service-requests/:id/change-impact", requireJwt, async (req, res): 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
     res.status(400).json({ error: "Bitte ein gültiges Zeitfenster angeben" }); return;
   }
-  res.json(await evaluateChangeImpact({ serviceRequestId: request.id, proposedStart: start, proposedEnd: end }));
+  res.json(await evaluateChangeImpact({
+    serviceRequestId: request.id,
+    guOrgId: req.user!.orgId!,
+    proposedStart: start,
+    proposedEnd: end,
+  }));
 });
 
 router.get("/ag/projects/:projectId/coordination-board", requireJwt, async (req, res): Promise<void> => {

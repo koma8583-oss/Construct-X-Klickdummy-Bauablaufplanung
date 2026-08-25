@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useListDelegations, DelegationStatus } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
@@ -21,17 +21,44 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TaktStatusBadge } from "@/components/takt-status-badge";
+
+const STATUS_LABELS: Record<string, string> = {
+  RECEIVED: "Eingegangen",
+  DETAILS_RETRIEVED: "In Prüfung",
+  UNDER_REVIEW: "In Prüfung",
+  RESPONDED: "Antwort gesendet",
+  REVISION_REQUIRED: "Überarbeitung erforderlich",
+  CONFIRMED: "Bestätigt",
+  CANCELLED: "Storniert",
+  SUPERSEDED: "Ersetzt",
+};
+
+type LocalAnRequest = {
+  id: string;
+  status: string;
+  guOrgId: string;
+  plannedStart: string;
+  plannedEnd: string;
+  project?: { id: string; name: string | null };
+  takt?: { gewerk: string | null; zone: string | null; taktBezeichnung: string | null };
+};
 
 export default function Requests() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: delegations, isLoading } = useListDelegations(
-    { status: statusFilter === "ALL" ? undefined : (statusFilter as DelegationStatus) },
-    { query: { refetchInterval: 5_000, refetchIntervalInBackground: false } as any }
-  );
+  const { data: requests, isLoading } = useQuery({
+    queryKey: ["an-local-leistungsanfragen", statusFilter],
+    queryFn: async (): Promise<LocalAnRequest[]> => {
+      const params = statusFilter === "ALL" ? "" : `?status=${encodeURIComponent(statusFilter)}`;
+      const response = await fetch(`/api/leistungsanfragen${params}`);
+      if (!response.ok) throw new Error("Leistungsanfragen konnten nicht geladen werden");
+      return response.json() as Promise<LocalAnRequest[]>;
+    },
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
+  });
 
   if (isLoading) {
     return (
@@ -54,10 +81,12 @@ export default function Requests() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">{t("requests.all")}</SelectItem>
-              <SelectItem value="PENDING">{t("common.status.PENDING")}</SelectItem>
-              <SelectItem value="CONFIRMED">{t("common.status.CONFIRMED")}</SelectItem>
-              <SelectItem value="ALTERNATIVE_PROPOSED">{t("common.status.ALTERNATIVE_PROPOSED")}</SelectItem>
-              <SelectItem value="REJECTED">{t("common.status.REJECTED")}</SelectItem>
+              <SelectItem value="RECEIVED">Eingegangen</SelectItem>
+              <SelectItem value="DETAILS_RETRIEVED">In Prüfung</SelectItem>
+              <SelectItem value="UNDER_REVIEW">In Prüfung</SelectItem>
+              <SelectItem value="RESPONDED">Antwort gesendet</SelectItem>
+              <SelectItem value="REVISION_REQUIRED">Überarbeitung erforderlich</SelectItem>
+              <SelectItem value="CONFIRMED">Bestätigt</SelectItem>
               <SelectItem value="CANCELLED">{t("common.status.CANCELLED")}</SelectItem>
             </SelectContent>
           </Select>
@@ -79,75 +108,54 @@ export default function Requests() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {!delegations || delegations.length === 0 ? (
+              {!requests || requests.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     {t("requests.empty")}
                   </TableCell>
                 </TableRow>
               ) : (
-                delegations.map((del) => (
-                  <TableRow key={del.id} className="border-border hover:bg-sidebar-accent/50 cursor-pointer">
+                requests.map((request) => (
+                  <TableRow key={request.id} className="border-border hover:bg-sidebar-accent/50 cursor-pointer">
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block">
+                      <Link href={`/takt-requests/${request.id}`} className="block">
                         <div className="font-medium text-foreground">
-                          {del.project?.name ?? '-'}
+                          {request.project?.name ?? '-'}
                         </div>
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block">
+                      <Link href={`/takt-requests/${request.id}`} className="block">
                         <div className="font-medium text-foreground">
-                          {del.takt?.gewerk}
+                          {request.takt?.gewerk}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {del.takt?.zone}{del.takt?.taktBezeichnung ? ` · ${del.takt.taktBezeichnung}` : ''}
+                          {request.takt?.zone}{request.takt?.taktBezeichnung ? ` · ${request.takt.taktBezeichnung}` : ''}
                         </div>
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block">
-                        {del.agOrganization?.name}
+                      <Link href={`/takt-requests/${request.id}`} className="block">
+                        {request.guOrgId}
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block text-sm">
-                        {format(new Date(del.requestedStart), 'dd.MM.yyyy')} - {format(new Date(del.requestedEnd), 'dd.MM.yyyy')}
+                      <Link href={`/takt-requests/${request.id}`} className="block text-sm">
+                        {format(new Date(request.plannedStart), 'dd.MM.yyyy')} - {format(new Date(request.plannedEnd), 'dd.MM.yyyy')}
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block text-sm">
-                        {del.earliestStart && del.latestEnd ? (
-                          <>
-                            {format(new Date(del.earliestStart), 'dd.MM.')} - {format(new Date(del.latestEnd), 'dd.MM.')}
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+                      <Link href={`/takt-requests/${request.id}`} className="block text-sm">
+                        <span className="text-muted-foreground">Lokale Projektion</span>
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/requests/${del.id}`} className="block">
+                      <Link href={`/takt-requests/${request.id}`} className="block">
                         <div className="flex flex-col gap-1">
-                          {del.takt?.status && (
-                            <TaktStatusBadge status={del.takt.status} />
-                          )}
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={`
-                              ${del.status === 'PENDING' ? 'border-amber-500/50 text-amber-500' : ''}
-                              ${del.status === 'CONFIRMED' ? 'border-emerald-500/50 text-emerald-500' : ''}
-                              ${del.status === 'ALTERNATIVE_PROPOSED' ? 'border-blue-500/50 text-blue-500' : ''}
-                              ${del.status === 'REJECTED' ? 'border-red-500/50 text-red-500' : ''}
-                              ${del.status === 'CANCELLED' ? 'border-slate-400/50 text-slate-400' : ''}
-                            `}>
-                              {t(`common.status.${del.status}`)}
+                            <Badge variant="outline">
+                              {STATUS_LABELS[request.status] ?? request.status}
                             </Badge>
-                            {del.isWithinBuffer !== null && del.isWithinBuffer !== undefined && (
-                              <div 
-                                className={`w-2 h-2 rounded-full ${del.isWithinBuffer ? 'bg-emerald-500' : 'bg-red-500'}`} 
-                                title={del.isWithinBuffer ? t("requests.withinBuffer") : t("requests.outsideBuffer")}
-                              />
-                            )}
                           </div>
                         </div>
                       </Link>

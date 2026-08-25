@@ -205,6 +205,7 @@ describe("evaluateChangeImpact – uses leistungsabhaengigkeitenTable", () => {
     // Proposing REQUEST_A to end 2026-09-10 → required start of B = 2026-09-11 (+1 lag+1)
     const result = await evaluateChangeImpact({
       serviceRequestId: REQUEST_A,
+      guOrgId: GU_ORG,
       proposedStart: new Date("2026-09-07T06:00:00Z"),
       proposedEnd:   new Date("2026-09-10T18:00:00Z"),
     });
@@ -219,6 +220,7 @@ describe("evaluateChangeImpact – uses leistungsabhaengigkeitenTable", () => {
     // Propose REQUEST_A to end before REQUEST_B's agreedStart
     const result = await evaluateChangeImpact({
       serviceRequestId: REQUEST_A,
+      guOrgId: GU_ORG,
       proposedStart: new Date("2026-09-01T06:00:00Z"),
       proposedEnd:   new Date("2026-09-04T18:00:00Z"),
     });
@@ -230,6 +232,7 @@ describe("evaluateChangeImpact – uses leistungsabhaengigkeitenTable", () => {
   it("returns empty when the source request does not exist", async () => {
     const result = await evaluateChangeImpact({
       serviceRequestId: "non-existent-request-id",
+      guOrgId: GU_ORG,
       proposedStart: new Date("2026-09-01T06:00:00Z"),
       proposedEnd:   new Date("2026-09-10T18:00:00Z"),
     });

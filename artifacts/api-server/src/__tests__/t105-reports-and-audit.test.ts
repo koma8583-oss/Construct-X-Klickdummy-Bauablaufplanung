@@ -28,8 +28,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -62,6 +64,9 @@ const TAKT_B     = "t105-takt-b";    // confirmed takt
 const TR_OPEN    = "t105-tr-open";   // DELIVERED status (open)
 const TR_DONE    = "t105-tr-done";   // ACCEPTED status
 const RESP_ID    = "t105-resp";
+const AN_REQUEST_OPEN = "t105-an-request-open";
+const AN_REQUEST_DONE = "t105-an-request-done";
+const AN_RESPONSE_ID = "t105-an-response";
 
 function makeToken(orgId: string | null, orgType: "AG" | "AN" | null, roles: string[], hubAdmin = false) {
   return jwt.sign({ userId: USER_ID, orgId, orgType, hubAdmin, roles }, JWT_SECRET, { expiresIn: "1h" });
@@ -147,6 +152,54 @@ beforeAll(async () => {
     createdByUserId: USER_ID,
   }).onConflictDoNothing();
 
+  // AN reporting must only use these local inbound projections, never the
+  // AG-side requests above. Their IDs deliberately differ from TR_OPEN/TR_DONE.
+  const responseRequiredBy = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  await anDb.insert(anLeistungsanfragenTable).values([
+    {
+      id: AN_REQUEST_OPEN,
+      externalLeistungsanfrageId: "t105-external-open",
+      externalRequestVersion: 1,
+      sourceMessageId: "t105-an-source-open",
+      payloadHash: "t105-an-hash-open",
+      correlationId: "t105-an-correlation-open",
+      senderAgOrgId: GU_ORG,
+      receiverAnOrgId: NU_ORG_A,
+      projectReference: PROJ_A,
+      leistungReference: TAKT_A,
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-30",
+      payloadSnapshot: { responseRequiredBy },
+      status: "UNDER_REVIEW",
+    },
+    {
+      id: AN_REQUEST_DONE,
+      externalLeistungsanfrageId: "t105-external-done",
+      externalRequestVersion: 1,
+      sourceMessageId: "t105-an-source-done",
+      payloadHash: "t105-an-hash-done",
+      correlationId: "t105-an-correlation-done",
+      senderAgOrgId: GU_ORG,
+      receiverAnOrgId: NU_ORG_A,
+      projectReference: PROJ_A,
+      leistungReference: TAKT_A,
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-30",
+      payloadSnapshot: {},
+      status: "RESPONDED",
+    },
+  ]).onConflictDoNothing();
+  await anDb.insert(anLeistungsantwortenTable).values({
+    id: AN_RESPONSE_ID,
+    anLeistungsanfrageId: AN_REQUEST_DONE,
+    sourceRequestId: "t105-external-done",
+    requestVersion: 1,
+    decision: "ACCEPTED",
+    payloadHash: "t105-an-response-hash",
+    outboundMessageId: "t105-an-outbound-response",
+    createdByUserId: USER_ID,
+  }).onConflictDoNothing();
+
   // One active resource for NU_ORG_A (explicit id, same as t104 pattern)
   await db.insert(resourcesTable).values({
     id: "t105-res-a",
@@ -180,6 +233,9 @@ afterAll(async () => {
   await db.delete(messageInboxTable)
     .where(inArray(messageInboxTable.senderOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
 
+  await anDb.delete(anLeistungsantwortenTable).where(eq(anLeistungsantwortenTable.id, AN_RESPONSE_ID));
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(inArray(anLeistungsanfragenTable.id, [AN_REQUEST_OPEN, AN_REQUEST_DONE]));
   await db.delete(taktResponsesTable).where(eq(taktResponsesTable.id, RESP_ID));
   await db.delete(taktRequestsTable)
     .where(inArray(taktRequestsTable.id, [TR_OPEN, TR_DONE]));
@@ -266,7 +322,8 @@ describe("GET /api/reports/an/summary", () => {
       activeResources: expect.any(Number),
       activeResourceBookings: expect.any(Number),
     });
-    // Our fixture: 1 open (DELIVERED), 1 accepted response, 1 resource, 1 booking
+    // Our local fixture: 1 open projection, 1 accepted local response,
+    // 1 resource, 1 booking.
     expect(res.body.openTaktRequests).toBeGreaterThanOrEqual(1);
     expect(res.body.acceptedResponses).toBeGreaterThanOrEqual(1);
     expect(res.body.activeResources).toBeGreaterThanOrEqual(1);
@@ -296,6 +353,21 @@ describe("GET /api/reports/an/summary", () => {
     expect(res.body.activeResources).toBe(0);
     expect(res.body.activeResourceBookings).toBe(0);
     expect(res.body.openTaktRequests).toBe(0);
+  });
+
+  it("[8b] AN legacy URL is blocked while the local namespace resolves the projection", async () => {
+    const legacy = await request(app)
+      .get("/api/leistungsanfragen")
+      .set("Authorization", `Bearer ${nuAdminToken}`);
+    expect(legacy.status).toBe(403);
+
+    const local = await request(app)
+      .get("/api/an/leistungsanfragen")
+      .set("Authorization", `Bearer ${nuAdminToken}`);
+    expect(local.status).toBe(200);
+    expect(local.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "t105-external-open", localProjectionId: AN_REQUEST_OPEN }),
+    ]));
   });
 });
 

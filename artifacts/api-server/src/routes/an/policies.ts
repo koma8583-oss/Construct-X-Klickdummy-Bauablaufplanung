@@ -1,17 +1,27 @@
 import { Router } from "express";
 import {
-  db,
-  dataPublicationRecipientsTable,
-  dataPublicationsTable,
-  organizationsTable,
-  policyTemplatesTable,
-  projectsTable,
+  anDb,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
 import { buildOdrl } from "../../lib/odrl-builder";
 
 const router = Router();
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
 
 // Informative AN policy library. Only active policies are published here.
 router.get("/policies", requireJwt, async (req, res): Promise<void> => {
@@ -20,54 +30,45 @@ router.get("/policies", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db
-    .select({
-      policy: policyTemplatesTable,
-      projectId: projectsTable.id,
-      projectName: projectsTable.name,
-      agOrgId: projectsTable.agOrgId,
-      agName: organizationsTable.name,
-    })
-    .from(dataPublicationRecipientsTable)
-    .innerJoin(
-      dataPublicationsTable,
-      eq(dataPublicationRecipientsTable.publicationId, dataPublicationsTable.id),
-    )
-    .innerJoin(
-      policyTemplatesTable,
-      eq(dataPublicationsTable.policyTemplateId, policyTemplatesTable.id),
-    )
-    .innerJoin(projectsTable, eq(dataPublicationsTable.projectId, projectsTable.id))
-    .innerJoin(organizationsTable, eq(projectsTable.agOrgId, organizationsTable.id))
-    .where(and(
-      eq(dataPublicationRecipientsTable.anOrgId, req.user.orgId),
-      eq(dataPublicationRecipientsTable.status, "ACCEPTED"),
-      eq(policyTemplatesTable.active, true),
-    ));
+  const invitations = await anDb.select().from(anProjectInvitationsTable).where(and(
+    eq(anProjectInvitationsTable.receiverAnOrgId, req.user.orgId),
+    eq(anProjectInvitationsTable.status, "ACCEPTED"),
+  ));
 
   const byPolicy = new Map<string, {
-    policy: typeof rows[number]["policy"];
+    policy: Record<string, unknown>;
     projects: Array<{ id: string; name: string; agOrgId: string; agName: string }>;
   }>();
-  for (const row of rows) {
-    const current = byPolicy.get(row.policy.id) ?? { policy: row.policy, projects: [] };
-    if (!current.projects.some((project) => project.id === row.projectId)) {
+  for (const invitation of invitations) {
+    const policy = asRecord(invitation.policySnapshot);
+    const policyId = asString(policy.id, invitation.dataPublicationId ?? invitation.id);
+    const current = byPolicy.get(policyId) ?? { policy, projects: [] };
+    if (!current.projects.some((project) => project.id === invitation.projectReference)) {
       current.projects.push({
-        id: row.projectId,
-        name: row.projectName,
-        agOrgId: row.agOrgId,
-        agName: row.agName,
+        id: invitation.projectReference,
+        name: invitation.projectName,
+        agOrgId: invitation.senderAgOrgId,
+        agName: invitation.senderAgOrgId,
       });
     }
-    byPolicy.set(row.policy.id, current);
+    byPolicy.set(policyId, current);
   }
 
   res.json([...byPolicy.values()].map(({ policy, projects }) => ({
-    ...policy,
+    id: asString(policy.id, `policy-${asString(policy.code, "project-invitation").toLowerCase()}`),
+    code: asString(policy.code, "PROJECT_INVITATION"),
+    name: asString(policy.name, "Nutzungsrichtlinie"),
+    description: asString(policy.description) || null,
+    purpose: asString(policy.purpose, asString(policy.usagePurpose)),
+    permissions: asStringList(policy.permissions),
+    prohibitions: asStringList(policy.prohibitions),
+    validityRule: asString(policy.validityRule, "Gemäß vereinbartem Datenangebot"),
+    retentionRule: asString(policy.retentionRule) || null,
+    active: true,
     projects,
     odrl: buildOdrl({
-      publicationId: `policy-${policy.code.toLowerCase()}`,
-      policyCode: policy.code,
+      publicationId: `policy-${asString(policy.code, "project-invitation").toLowerCase()}`,
+      policyCode: asString(policy.code, "PROJECT_INVITATION"),
       agOrgId: "policy-library",
       nuOrgId: req.user!.orgId!,
       validFrom: null,

@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { agDb as db } from "@workspace/db";
 import {
   leistungenTable,
@@ -20,14 +20,19 @@ export type ChangeImpact = {
 
 export async function evaluateChangeImpact(input: {
   serviceRequestId: string;
+  guOrgId: string;
   proposedStart: Date;
   proposedEnd: Date;
 }): Promise<ChangeImpact> {
   // 1. Look up the Leistung associated with the source service request.
   const [sourceRequest] = await db
-    .select({ leistungId: leistungsanfragenTable.leistungId })
+    .select({ leistungId: leistungsanfragenTable.leistungId, projectId: leistungenTable.projectId })
     .from(leistungsanfragenTable)
-    .where(eq(leistungsanfragenTable.id, input.serviceRequestId))
+    .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
+    .where(and(
+      eq(leistungsanfragenTable.id, input.serviceRequestId),
+      eq(leistungsanfragenTable.guOrgId, input.guOrgId),
+    ))
     .limit(1);
 
   if (!sourceRequest) return { affectedServices: [] };
@@ -50,7 +55,11 @@ export async function evaluateChangeImpact(input: {
     })
     .from(leistungsanfragenTable)
     .innerJoin(leistungenTable, eq(leistungsanfragenTable.leistungId, leistungenTable.id))
-    .where(inArray(leistungsanfragenTable.leistungId, successorLeistungIds));
+    .where(and(
+      inArray(leistungsanfragenTable.leistungId, successorLeistungIds),
+      eq(leistungsanfragenTable.guOrgId, input.guOrgId),
+      eq(leistungenTable.projectId, sourceRequest.projectId),
+    ));
 
   const result: ChangeImpact["affectedServices"] = [];
 

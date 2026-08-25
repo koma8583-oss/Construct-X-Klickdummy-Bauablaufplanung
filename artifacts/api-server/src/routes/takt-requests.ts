@@ -100,7 +100,11 @@ import {
   createRevision,
   RevisionError,
 } from "../services/revision-service";
-import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-service";
+import {
+  writeAuditEvent,
+  getAuditTrail,
+  sanitizeAuditMetadataForCoordination,
+} from "../lib/takt-request-audit-service";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
 import { validateResourceTypeForOrg } from "../services/resource-domain-service";
 import {
@@ -251,10 +255,12 @@ function taktResponseMessageId(
 const router = Router();
 
 // AN traffic has a dedicated /api/an router backed by AN-local projections.
-// Keeping it out of this shared router prevents direct URL access to AG-owned
-// request, takt and snapshot tables.
+// Only intercept this router's legacy paths: a router-level middleware mounted
+// without a prefix would otherwise reject unrelated /api routes mounted later.
 router.use(requireJwt, (req, res, next) => {
-  if (req.user?.orgType === "AN") {
+  const legacyPath = req.path.startsWith("/takt-requests") ||
+    /^\/projects\/[^/]+\/takt-requests(?:\/|$)/.test(req.path);
+  if (req.user?.orgType === "AN" && legacyPath) {
     res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
     return;
   }
@@ -1984,9 +1990,9 @@ router.get(
         id: e.id,
         eventType: e.eventType,
         actorOrgId: e.actorOrgId,
-        actorUserId: e.actorUserId,
+        actorUserId: e.actorRole === "NU" ? null : e.actorUserId,
         actorRole: e.actorRole,
-        metadata: e.metadata,
+        metadata: sanitizeAuditMetadataForCoordination(e.metadata),
         occurredAt: e.occurredAt.toISOString(),
       })),
     });

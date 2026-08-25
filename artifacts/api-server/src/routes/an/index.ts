@@ -8,7 +8,6 @@
  */
 import { Router, type IRouter } from "express";
 import dashboardRouter from "./dashboard";
-import delegationsRouter from "../delegations";
 import resourcesRouter from "../resources";
 import organizationsRouter from "../organizations";
 import webhooksRouter from "../webhooks";
@@ -26,8 +25,9 @@ const router: IRouter = Router();
 // Health check reachable at /api/an/health
 router.use(healthRouter);
 
-// Reused route handlers — req.user.orgId is set by requireJwt middleware.
-router.use(delegationsRouter);
+// Reused AN-owned route handlers — req.user.orgId is set by requireJwt middleware.
+// The legacy delegation router is deliberately not mounted: it reads AG planning
+// tables. AN worklists use the local Leistungsanfrage projection instead.
 router.use(resourcesRouter);
 router.use(organizationsRouter);
 router.use(webhooksRouter);

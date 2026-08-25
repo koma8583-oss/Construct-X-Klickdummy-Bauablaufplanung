@@ -95,6 +95,31 @@ export interface AuditTrailEntry {
 
 export type AuditTrailCallerRole = "GU" | "NU" | "HUB_ADMIN";
 
+const PRIVATE_AUDIT_METADATA_KEY = /resource|booking|availability|internal|employee|user|local.?project|assignment/i;
+
+/**
+ * AG coordination may see the event history, but never AN-internal planning
+ * facts accidentally attached to an audit event. Keep public coordination
+ * metadata while stripping private resource/personnel data recursively.
+ */
+export function sanitizeAuditMetadataForCoordination(
+  metadata: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!metadata) return null;
+
+  const sanitize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sanitize);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !PRIVATE_AUDIT_METADATA_KEY.test(key))
+        .map(([key, nested]) => [key, sanitize(nested)]),
+    );
+  };
+
+  return sanitize(metadata) as Record<string, unknown>;
+}
+
 /**
  * Return the audit trail for a TaktRequest, filtered to what the caller may see.
  *

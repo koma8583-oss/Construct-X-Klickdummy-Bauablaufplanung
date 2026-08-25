@@ -17,14 +17,17 @@ import type {
 import { handleIncomingCoordinationDecision } from "./inbound-exchange-service";
 
 /**
- * `rest` (and the unset value) is the local in-process PoC transport.
+ * `rest` (and the unset value) is the local in-process PoC transport in
+ * non-production environments.
  * The Tractus-X adapter represents a real external delivery and must not loop
  * back into this process after publishing.
  */
 export function isLocalDataspaceTransport(): boolean {
-  return !process.env.DATASPACE_TRANSPORT ||
+  return process.env.NODE_ENV !== "production" && (
+    !process.env.DATASPACE_TRANSPORT ||
     process.env.DATASPACE_TRANSPORT === "local" ||
-    process.env.DATASPACE_TRANSPORT === "rest";
+    process.env.DATASPACE_TRANSPORT === "rest"
+  );
 }
 
 function wasTechnicallyDelivered(reference: ExchangeReference): boolean {

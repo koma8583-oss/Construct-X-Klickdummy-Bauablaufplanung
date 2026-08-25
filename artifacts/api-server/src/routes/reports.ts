@@ -9,8 +9,10 @@
  * No full payloads; KPI numbers only.
  */
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { anDb, db } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
   projectsTable,
   projectContractorsTable,
   taktRequestsTable,
@@ -101,26 +103,31 @@ router.get(
   async (req, res): Promise<void> => {
     const nuOrgId = req.user!.orgId!;
 
-    // TaktRequest status aggregates (NU side)
-    const [requestAgg] = await db
+    // AN reporting is based exclusively on the immutable local projection.
+    // The AG-side request/response tables are deliberately not reachable here:
+    // a projected request only exists after its Dataspace inbound delivery.
+    const [requestAgg] = await anDb
       .select({
-        open:     sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW'))`,
-        dueSoon:  sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW') AND ${taktRequestsTable.responseRequiredBy} >= now() AND ${taktRequestsTable.responseRequiredBy} <= now() + interval '24 hours')`,
-        overdue:  sql<number>`COUNT(*) FILTER (WHERE ${taktRequestsTable.status} IN ('SENT','DELIVERED','DETAILS_RETRIEVED','UNDER_REVIEW') AND ${taktRequestsTable.responseRequiredBy} < now())`,
+        open:     sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsanfragenTable.status} IN ('RECEIVED','DETAILS_RETRIEVED','UNDER_REVIEW','REVISION_REQUIRED'))`,
+        dueSoon:  sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsanfragenTable.status} IN ('RECEIVED','DETAILS_RETRIEVED','UNDER_REVIEW','REVISION_REQUIRED') AND (${anLeistungsanfragenTable.payloadSnapshot}->>'responseRequiredBy')::timestamptz >= now() AND (${anLeistungsanfragenTable.payloadSnapshot}->>'responseRequiredBy')::timestamptz <= now() + interval '24 hours')`,
+        overdue:  sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsanfragenTable.status} IN ('RECEIVED','DETAILS_RETRIEVED','UNDER_REVIEW','REVISION_REQUIRED') AND (${anLeistungsanfragenTable.payloadSnapshot}->>'responseRequiredBy')::timestamptz < now())`,
       })
-      .from(taktRequestsTable)
-      .where(eq(taktRequestsTable.nuOrgId, nuOrgId));
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.receiverAnOrgId, nuOrgId));
 
-    // Response decision aggregates (join to get nuOrgId scope)
-    const [responseAgg] = await db
+    // Local response projections are scoped through their local request.
+    const [responseAgg] = await anDb
       .select({
-        accepted:     sql<number>`COUNT(*) FILTER (WHERE ${taktResponsesTable.decision} = 'ACCEPTED')`,
-        alternatives: sql<number>`COUNT(*) FILTER (WHERE ${taktResponsesTable.decision} = 'ALTERNATIVES_PROPOSED')`,
-        rejected:     sql<number>`COUNT(*) FILTER (WHERE ${taktResponsesTable.decision} = 'REJECTED')`,
+        accepted:     sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsantwortenTable.decision} = 'ACCEPTED')`,
+        alternatives: sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsantwortenTable.decision} = 'ALTERNATIVES_PROPOSED')`,
+        rejected:     sql<number>`COUNT(*) FILTER (WHERE ${anLeistungsantwortenTable.decision} = 'REJECTED')`,
       })
-      .from(taktResponsesTable)
-      .innerJoin(taktRequestsTable, eq(taktResponsesTable.taktRequestId, taktRequestsTable.id))
-      .where(eq(taktRequestsTable.nuOrgId, nuOrgId));
+      .from(anLeistungsantwortenTable)
+      .innerJoin(
+        anLeistungsanfragenTable,
+        eq(anLeistungsantwortenTable.anLeistungsanfrageId, anLeistungsanfragenTable.id),
+      )
+      .where(eq(anLeistungsanfragenTable.receiverAnOrgId, nuOrgId));
 
     // Active resources
     const [resourceAgg] = await db

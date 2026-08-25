@@ -90,7 +90,11 @@ import {
   VersionConflictError,
 } from "../services/gu-decision-service";
 import { createRevision, RevisionError } from "../services/revision-service";
-import { writeAuditEvent, getAuditTrail } from "../lib/takt-request-audit-service";
+import {
+  writeAuditEvent,
+  getAuditTrail,
+  sanitizeAuditMetadataForCoordination,
+} from "../lib/takt-request-audit-service";
 import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import {
@@ -405,9 +409,13 @@ async function requireProjectOwner(
 const router = Router();
 
 // Canonical AN endpoints are mounted separately at /api/an and must only use
-// AN-local projections. Do not let an AN bypass that boundary via /api.
+// AN-local projections. Only inspect canonical AG paths so unrelated routes
+// mounted after this router (for example reports) keep their own role policy.
 router.use(requireJwt, (req, res, next) => {
-  if (req.user?.orgType === "AN") {
+  const canonicalAgPath = req.path.startsWith("/leistungsanfragen") ||
+    /^\/projects\/[^/]+\/leistungen(?:\/|$)/.test(req.path) ||
+    /^\/projects\/[^/]+\/leistungsabhaengigkeiten(?:\/|$)/.test(req.path);
+  if (req.user?.orgType === "AN" && canonicalAgPath) {
     res.status(403).json({ error: "AN Leistungsanfragen are available only through /api/an local projections" });
     return;
   }
@@ -2229,9 +2237,9 @@ router.get(
         id:          e.id,
         eventType:   e.eventType,
         actorOrgId:  e.actorOrgId,
-        actorUserId: e.actorUserId,
+        actorUserId: e.actorRole === "NU" ? null : e.actorUserId,
         actorRole:   e.actorRole,
-        metadata:    e.metadata,
+        metadata:    sanitizeAuditMetadataForCoordination(e.metadata),
         occurredAt:  e.occurredAt.toISOString(),
       })),
     });

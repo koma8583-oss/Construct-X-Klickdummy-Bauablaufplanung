@@ -13,6 +13,18 @@ import { requireJwt } from "../../middlewares/requireJwt";
 
 const router = Router();
 
+function toHubEnvelope(message: typeof hubMessagesTable.$inferSelect) {
+  return {
+    id: message.id,
+    type: message.type,
+    senderOrgId: message.senderOrgId,
+    recipientOrgId: message.recipientOrgId,
+    delegationId: message.delegationId,
+    correlationId: message.correlationId,
+    createdAt: message.createdAt,
+  };
+}
+
 // GET /messages
 router.get("/", requireJwt, async (req, res): Promise<void> => {
   const userId = req.user!.userId;
@@ -58,14 +70,7 @@ router.get("/", requireJwt, async (req, res): Promise<void> => {
   void userId;
 
   res.json(rows.map(msg => ({
-    id: msg.id,
-    type: msg.type,
-    senderOrgId: msg.senderOrgId,
-    recipientOrgId: msg.recipientOrgId,
-    delegationId: msg.delegationId,
-    correlationId: msg.correlationId,
-    payload: msg.payload,
-    createdAt: msg.createdAt,
+    ...toHubEnvelope(msg),
     senderOrg: orgMap.get(msg.senderOrgId),
     recipientOrg: orgMap.get(msg.recipientOrgId),
   })));
@@ -102,7 +107,7 @@ router.get("/timeline/:delegationId", requireJwt, async (req, res): Promise<void
   // The Hub is a relay, not a project-data owner. Do not enrich the timeline
   // with AG schedule/project rows or return a full domain object here.
   res.json({
-    timeline: messages,
+    timeline: messages.map(toHubEnvelope),
   });
 });
 
