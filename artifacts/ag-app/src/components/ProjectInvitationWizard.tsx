@@ -22,7 +22,7 @@ import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, ChevronRight, Eye, Lock, Send, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Lock, Search, Send, ShieldCheck, Users } from "lucide-react";
 
 type Participant = {
   id: string;
@@ -82,6 +82,7 @@ export function ProjectInvitationWizard({
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
+  const [participantSearch, setParticipantSearch] = useState("");
   const [policyTemplateId, setPolicyTemplateId] = useState("");
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
   const [title, setTitle] = useState("");
@@ -95,6 +96,14 @@ export function ProjectInvitationWizard({
   const createPackage = useCreateProjectInvitationPackage();
 
   const selectableParticipants = participants.filter((participant) => participant.selectable);
+  const filteredParticipants = useMemo(() => {
+    const normalizedSearch = participantSearch.trim().toLocaleLowerCase();
+    if (!normalizedSearch) return selectableParticipants;
+    return selectableParticipants.filter((participant) =>
+      [participant.name, participant.participantId]
+        .some((value) => value.toLocaleLowerCase().includes(normalizedSearch)),
+    );
+  }, [participantSearch, selectableParticipants]);
   const invitationPolicies = useMemo(
     () => (policies ?? []).filter((policy) => policy.code === "SCHEDULE_COORDINATION"),
     [policies],
@@ -114,6 +123,7 @@ export function ProjectInvitationWizard({
     if (!nextOpen) {
       setStep(0);
       setSelectedParticipants(new Set());
+       setParticipantSearch("");
       setPolicyTemplateId("");
       setSelectedFields(new Set(ALL_FIELDS));
       setTitle("");
@@ -218,24 +228,42 @@ export function ProjectInvitationWizard({
                   Keine verifizierten, noch nicht eingeladenen Teilnehmer verfügbar.
                 </div>
               ) : (
-                <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                  {selectableParticipants.map((participant) => (
-                    <button
-                      type="button"
-                      key={participant.participantId}
-                      onClick={() => toggleParticipant(participant.participantId)}
-                      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ${
-                        selectedParticipants.has(participant.participantId) ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-                      }`}
-                    >
-                      <Checkbox checked={selectedParticipants.has(participant.participantId)} onCheckedChange={() => toggleParticipant(participant.participantId)} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{participant.name}</span>
-                        <span className="text-xs text-muted-foreground">Verifizierter Dataspace-Teilnehmer</span>
-                      </span>
-                      <Badge variant="secondary" className="text-[10px]">Verifiziert</Badge>
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={participantSearch}
+                      onChange={(event) => setParticipantSearch(event.target.value)}
+                      placeholder="Teilnehmer suchen …"
+                      aria-label="Teilnehmer suchen"
+                      className="pl-9"
+                    />
+                  </div>
+                  {filteredParticipants.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      Keine Teilnehmer für „{participantSearch}“ gefunden.
+                    </div>
+                  ) : (
+                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {filteredParticipants.map((participant) => (
+                        <button
+                          type="button"
+                          key={participant.participantId}
+                          onClick={() => toggleParticipant(participant.participantId)}
+                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ${
+                            selectedParticipants.has(participant.participantId) ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                          }`}
+                        >
+                          <Checkbox checked={selectedParticipants.has(participant.participantId)} onCheckedChange={() => toggleParticipant(participant.participantId)} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">{participant.name}</span>
+                            <span className="text-xs text-muted-foreground">Verifizierter Dataspace-Teilnehmer</span>
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">Verifiziert</Badge>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
