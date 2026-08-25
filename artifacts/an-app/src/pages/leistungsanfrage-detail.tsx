@@ -220,11 +220,10 @@ function StepSection({
 interface PolicyGateProps {
   pubId?: string;
   offerRef?: string;
-  setLocation: (to: string) => void;
   onBack: () => void;
 }
 
-function PolicyGateView({ pubId, offerRef, setLocation, onBack }: PolicyGateProps) {
+function PolicyGateView({ pubId, offerRef, onBack }: PolicyGateProps) {
   return (
     <div className="space-y-6">
       {/* Step 1 — needs action */}
@@ -242,14 +241,9 @@ function PolicyGateView({ pubId, offerRef, setLocation, onBack }: PolicyGateProp
           </div>
         </div>
         {pubId && offerRef ? (
-          <Button
-            size="sm"
-            onClick={() => setLocation('/data-offers')}
-            className="gap-1.5"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Zum Datenraum → Policy akzeptieren
-          </Button>
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Die erforderliche Policy-Annahme ist im technischen Datenraum-Bereich verfügbar.
+          </p>
         ) : (
           <p className="text-xs text-amber-700 dark:text-amber-400">
             Wenden Sie sich an den Auftraggeber – für diese Leistungsanfrage wurden noch keine
@@ -340,7 +334,6 @@ export default function LeistungsanfrageDetailPage() {
           <PolicyGateView
             pubId={pubId}
             offerRef={offerRef}
-            setLocation={setLocation}
             onBack={() => setLocation('/leistungsanfragen')}
           />
         </div>

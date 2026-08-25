@@ -76,9 +76,11 @@ describe("AN-Navigation", () => {
     );
 
     expect(screen.getByRole("link", { name: "Ressourcen" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Ressourcen" })).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Ressourcenbelegungen" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Datenraum" }),
     ).not.toBeInTheDocument();
   });
 

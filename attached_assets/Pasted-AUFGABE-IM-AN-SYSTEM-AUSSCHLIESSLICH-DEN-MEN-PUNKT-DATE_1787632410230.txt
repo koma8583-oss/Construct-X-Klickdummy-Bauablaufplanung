@@ -1,0 +1,427 @@
+AUFGABE – IM AN-SYSTEM AUSSCHLIESSLICH DEN MENÜPUNKT „DATENRAUM“ ENTFERNEN
+
+ZIEL
+
+Im AN-System soll ausschließlich der eigenständige Menüpunkt:
+
+„Datenraum“
+
+aus der normalen Hauptnavigation entfernt werden.
+
+Alle anderen vorhandenen bzw. vorgesehenen Hauptmenüpunkte bleiben unverändert.
+
+WICHTIG
+
+Diese Aufgabe darf KEINE weiteren Änderungen an der Navigation auslösen.
+
+Insbesondere:
+
+- keine anderen Menüpunkte umbenennen
+- keine anderen Menüpunkte entfernen
+- keine anderen Menüpunkte hinzufügen
+- keine Reihenfolge anderer Menüpunkte verändern
+- keine Funktionen zwischen anderen Menüpunkten verschieben
+- keine neue Navigationsstruktur entwickeln
+
+Die Aufgabe betrifft ausschließlich:
+
+„Datenraum“ entfernen.
+
+
+======================================================================
+1. MENÜPUNKT „DATENRAUM“ ENTFERNEN
+======================================================================
+
+Den Menüpunkt:
+
+„Datenraum“
+
+vollständig aus der normalen AN-Hauptnavigation entfernen.
+
+Alle anderen Navigationseinträge exakt so belassen, wie sie im aktuellen Stand vorhanden sind.
+
+
+======================================================================
+2. KEINE ERSATZSEITE ODER ERSATZNAVIGATION ANLEGEN
+======================================================================
+
+Für den entfernten Menüpunkt keine neue Hauptnavigation anlegen.
+
+Insbesondere keinen neuen technischen Arbeitsbereich schaffen wie:
+
+„Dataspace“
+„Nachrichten“
+„Datenaustausch“
+„Transfers“
+„Connector“
+„Datenraumteilnehmer“
+
+Die Datenraumfunktionalität soll im Hintergrund weiterarbeiten.
+
+
+======================================================================
+3. ANDERE MENÜPUNKTE NICHT BEARBEITEN
+======================================================================
+
+Andere Hauptmenüpunkte sind nicht Bestandteil dieser Aufgabe.
+
+Deren:
+
+- Bezeichnung
+- Reihenfolge
+- Route
+- Icon
+- Inhalt
+- Funktion
+- Berechtigungen
+
+nicht verändern.
+
+Auch dann nicht, wenn bei der Codeanalyse eine andere Struktur möglicherweise sinnvoller erscheinen würde.
+
+
+======================================================================
+4. DASHBOARD UND ANDERE SEITEN NICHT UMBAUEN
+======================================================================
+
+Keine Funktionen aus der Datenraumseite automatisch auf andere Seiten verschieben.
+
+Insbesondere keine:
+
+- technische Nachrichtenliste
+- Outbox
+- Inbound Messages
+- Connectorinformationen
+- Policies
+- Participant-Übersichten
+- Transporthistorien
+
+auf andere reguläre Fachseiten übertragen.
+
+Nur bereits vorhandene fachliche Funktionen unverändert erhalten.
+
+
+======================================================================
+5. DATENRAUM-FUNKTIONALITÄT TECHNISCH VOLLSTÄNDIG ERHALTEN
+======================================================================
+
+WICHTIG:
+
+Nur den sichtbaren Menüpunkt bzw. gegebenenfalls die normale Frontendseite entfernen.
+
+NICHT entfernen oder funktional verändern:
+
+- DataspaceExchange
+- ParticipantDirectory
+- Inbound Processing
+- Outbox
+- Message Delivery
+- Retry-Mechanismen
+- Identity Validation
+- Policy Validation
+- PROJECT_INVITATION
+- PROJECT_INVITATION_RESPONSE
+- SERVICE_REQUEST
+- SERVICE_RESPONSE
+- CHANGE_PROPOSAL
+- CLARIFICATION
+- CONSTRAINT
+- READINESS
+
+Ebenfalls beibehalten:
+
+AG_DATABASE_URL
+AN_DATABASE_URL
+HUB_DATABASE_URL
+
+agDb
+anDb
+hubDb
+
+
+======================================================================
+6. BESTEHENDE DATENRAUM-PAGE PRÜFEN
+======================================================================
+
+Die bisher über den Menüpunkt „Datenraum“ erreichbare AN-Page identifizieren.
+
+Wenn diese Page ausschließlich eine technische Übersicht für den normalen Fachanwender darstellt:
+
+aus der regulären Navigation entfernen.
+
+Wenn die Page technisch für:
+
+- Entwicklung
+- Demonstration
+- Debugging
+- Administration
+
+weiterhin benötigt wird:
+
+Komponente bzw. Route darf intern bestehen bleiben.
+
+Sie darf jedoch nicht mehr über die normale AN-Hauptnavigation erreichbar sein.
+
+
+======================================================================
+7. ROUTING
+======================================================================
+
+Prüfen, ob die bisherige Frontendroute der Datenraumseite noch benötigt wird.
+
+Wenn nicht:
+
+Route entfernen.
+
+Wenn sie technisch weiterhin benötigt wird:
+
+Route darf bestehen bleiben, aber ohne normalen Navigationseintrag.
+
+
+Keine neue Ersatzroute oder neue Fachseite im Rahmen dieser Aufgabe erstellen.
+
+
+======================================================================
+8. DIREKTE UI-LINKS ENTFERNEN
+======================================================================
+
+Im AN-Frontend nach Verweisen auf die bisherige Datenraumseite suchen.
+
+Insbesondere prüfen:
+
+- Hauptnavigation
+- Sidebar
+- mobile Navigation
+- Dashboard-Kacheln
+- Quick Actions
+- Breadcrumbs
+- sonstige direkte Links
+
+
+Nur Verweise entfernen, die die bisherige eigenständige Datenraumseite öffnen.
+
+
+Technische API-Pfade wie:
+
+/api/dataspace/...
+
+nicht verändern.
+
+
+======================================================================
+9. KEINE BACKEND-ROUTEN ENTFERNEN
+======================================================================
+
+Backend-Dataspace-Routen bleiben erhalten.
+
+Insbesondere:
+
+- Participant APIs
+- Inbound APIs
+- Outbound-/Exchange-Funktionen
+- Delivery APIs
+- Retry APIs
+- Identity-/Policy-Funktionen
+
+
+Die Änderung ist primär eine UI-/Navigationsbereinigung.
+
+
+======================================================================
+10. TRANSPORTFEHLER UND RETRY
+======================================================================
+
+Bestehende Retry- und Transportmechanismen dürfen durch das Entfernen der Seite nicht verloren gehen.
+
+Falls fachliche Vorgänge bereits eigene Retry-Aktionen besitzen:
+
+diese unverändert lassen.
+
+Falls technische Retry-Funktionen ausschließlich auf der Datenraumseite existieren:
+
+prüfen, ob sie intern weiterhin benötigt werden.
+
+Nicht im Rahmen dieser Aufgabe andere Fachseiten neu gestalten.
+
+
+======================================================================
+11. KEINE FACHTLICHE LOGIK ÄNDERN
+======================================================================
+
+Das Entfernen des Menüpunktes darf keine Änderungen am fachlichen Datenraumworkflow verursachen.
+
+Folgende Abläufe müssen unverändert funktionieren:
+
+Project Invitation
+
+Project Invitation Response
+
+Service Request
+
+Service Response
+
+Change Proposal
+
+Clarification
+
+Constraint
+
+Readiness
+
+Inbound Processing
+
+Outbox Processing
+
+Retry
+
+
+======================================================================
+12. TEST – NAVIGATION
+======================================================================
+
+Bestehenden Navigationstest anpassen bzw. ergänzen.
+
+Prüfen:
+
+„Datenraum“ ist nicht mehr in der normalen AN-Hauptnavigation vorhanden.
+
+WICHTIG:
+
+Im Test keine feste vollständige Liste aller anderen Menüpunkte hinterlegen, sofern dies nicht bereits Teil eines bestehenden Tests ist.
+
+Der Test soll ausschließlich sicherstellen:
+
+„Datenraum“ fehlt.
+
+Damit verhindert der Test nicht zukünftige unabhängige Änderungen an anderen Menüpunkten.
+
+
+======================================================================
+13. TEST – ANDERE NAVIGATION UNVERÄNDERT
+======================================================================
+
+Prüfen, dass durch die Änderung keine unbeabsichtigten Modifikationen anderer Navigationseinträge entstanden sind.
+
+Keine neuen Snapshots oder Assertions einführen, die im Rahmen dieser Aufgabe die gesamte Menüstruktur neu definieren.
+
+
+======================================================================
+14. TEST – DATENRAUMFUNKTIONALITÄT
+======================================================================
+
+Nach Entfernen des Menüpunktes weiterhin prüfen:
+
+- DataspaceExchange funktioniert
+- Inbound Processing funktioniert
+- Outbox funktioniert
+- Retry funktioniert
+- Project Invitations funktionieren
+- Service Requests funktionieren
+- Change Proposals funktionieren
+
+
+======================================================================
+15. GLOBALER CLEANUP
+======================================================================
+
+Nach:
+
+„Datenraum“
+
+und den Routen der ehemaligen Frontendseite suchen.
+
+Nur UI-/Navigationsreferenzen auf die eigenständige AN-Datenraumseite entfernen.
+
+Nicht pauschal technische Dataspace-Begriffe oder Backend-Code löschen.
+
+
+======================================================================
+DEFINITION OF DONE
+======================================================================
+
+1. „Datenraum“ ist nicht mehr Teil der normalen AN-Hauptnavigation.
+
+2. Alle anderen vorhandenen bzw. vorgesehenen Hauptmenüpunkte wurden durch diese Aufgabe nicht verändert.
+
+3. Kein Ersatz-Hauptmenüpunkt wurde eingeführt.
+
+4. Keine andere Navigation wurde umbenannt.
+
+5. Keine andere Navigation wurde verschoben.
+
+6. Keine andere Navigation wurde entfernt.
+
+7. Keine andere Fachseite wurde im Rahmen dieser Aufgabe umgebaut.
+
+8. DataspaceExchange bleibt erhalten.
+
+9. Inbound Processing bleibt erhalten.
+
+10. Outbox bleibt erhalten.
+
+11. Retry bleibt erhalten.
+
+12. Identity-/Policy-Funktionen bleiben erhalten.
+
+13. Backend-Dataspace-APIs bleiben erhalten.
+
+14. Keine verwaisten UI-Links auf die bisherige Datenraumseite.
+
+15. Navigationstest bestätigt ausschließlich, dass „Datenraum“ entfernt wurde.
+
+16. Typecheck PASS.
+
+17. Tests PASS.
+
+18. Build PASS.
+
+
+ABSCHLUSSBERICHT
+
+Am Ende berichten:
+
+1. Menüpunkt „Datenraum“
+   ENTFERNT / NOCH VORHANDEN
+
+2. andere Navigationspunkte verändert
+   NEIN / JA
+
+3. Ersatz-Menüpunkt angelegt
+   NEIN / JA
+
+4. Datenraum-Frontendpage
+   ENTFERNT / INTERN ERHALTEN / NOCH NORMAL ERREICHBAR
+
+5. DataspaceExchange
+   ERHALTEN / BESCHÄDIGT
+
+6. Inbound
+   ERHALTEN / BESCHÄDIGT
+
+7. Outbox
+   ERHALTEN / BESCHÄDIGT
+
+8. Retry
+   ERHALTEN / BESCHÄDIGT
+
+9. Navigationstest
+   PASS / FAIL
+
+10. AN Typecheck
+    PASS / FAIL
+
+11. Tests
+    PASS / FAIL
+
+12. Build
+    PASS / FAIL
+
+13. verbleibende Probleme
+
+Für jedes offene Problem:
+
+Datei:
+Funktion:
+Problem:
+Auswirkung:
+Warum noch offen:
