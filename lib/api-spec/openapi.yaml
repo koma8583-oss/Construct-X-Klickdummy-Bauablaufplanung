@@ -3813,10 +3813,11 @@ components:
 
     AnLeistungsanfrageTakt:
       type: object
-      required: [id, taktBezeichnung, gewerk, zone, plannedStart, plannedEnd]
+      required: [id, taktBezeichnung, kurzbezeichnung, gewerk, zone, plannedStart, plannedEnd]
       properties:
         id: { type: string }
         taktBezeichnung: { type: string }
+        kurzbezeichnung: { type: ["string", "null"] }
         gewerk: { type: ["string", "null"] }
         zone: { type: ["string", "null"] }
         plannedStart: { type: string }

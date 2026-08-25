@@ -2910,6 +2910,12 @@ export default function ProjectDetail() {
                     <Input name="taktBezeichnung" required placeholder="z.B. T1, Rohbau-A" />
                   </div>
                   <div className="space-y-2">
+                    <Label>Kurzbezeichnung</Label>
+                    <Input name="kurzbezeichnung" required placeholder="z.B. R1" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
                     <Label>Zone <span className="text-muted-foreground font-normal">(optional)</span></Label>
                     <Input name="zone" placeholder="z.B. OG 1, Abschnitt A" />
                   </div>

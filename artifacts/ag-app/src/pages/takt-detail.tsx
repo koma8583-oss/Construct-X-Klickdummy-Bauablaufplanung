@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Calendar, Clock, MapPin, Pencil, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link, useParams } from 'wouter';
@@ -57,6 +57,26 @@ export default function TaktDetail() {
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [editPlannedStart, setEditPlannedStart] = useState('');
   const [editPlannedEnd, setEditPlannedEnd] = useState('');
+  const [editDurationDays, setEditDurationDays] = useState('');
+  const [editEarliestStart, setEditEarliestStart] = useState('');
+  const [editLatestEnd, setEditLatestEnd] = useState('');
+  const [editInternalNote, setEditInternalNote] = useState('');
+  const [editCostEstimate, setEditCostEstimate] = useState('');
+  const [editProcurementPriority, setEditProcurementPriority] = useState('');
+  const [editRiskClassification, setEditRiskClassification] = useState('');
+
+  useEffect(() => {
+    if (!editOpen || !takt) return;
+    setEditPlannedStart(takt.plannedStart);
+    setEditPlannedEnd(takt.plannedEnd);
+    setEditDurationDays(String((takt as { durationDays?: string | number | null }).durationDays ?? ''));
+    setEditEarliestStart(takt.earliestStart ?? '');
+    setEditLatestEnd(takt.latestEnd ?? '');
+    setEditInternalNote((takt as { internalNote?: string | null }).internalNote ?? '');
+    setEditCostEstimate((takt as { costEstimate?: string | null }).costEstimate ?? '');
+    setEditProcurementPriority((takt as { procurementPriority?: string | null }).procurementPriority ?? '');
+    setEditRiskClassification((takt as { riskClassification?: string | null }).riskClassification ?? '');
+  }, [editOpen, takt]);
 
   if (isLoading) {
     return (
@@ -110,7 +130,14 @@ export default function TaktDetail() {
           gewerk: String(data.get('gewerk') ?? ''),
           description: String(data.get('description') ?? '') || undefined,
           plannedStart: String(data.get('plannedStart') ?? ''),
-          plannedEnd: String(data.get('plannedEnd') ?? ''),
+          plannedEnd: editDurationDays ? undefined : String(data.get('plannedEnd') ?? ''),
+          durationDays: editDurationDays ? Number(editDurationDays) : undefined,
+          earliestStart: String(data.get('earliestStart') ?? '') || undefined,
+          latestEnd: String(data.get('latestEnd') ?? '') || undefined,
+          internalNote: String(data.get('internalNote') ?? '') || null,
+          costEstimate: String(data.get('costEstimate') ?? '') || null,
+          procurementPriority: editProcurementPriority || null,
+          riskClassification: editRiskClassification || null,
         } as any,
       });
       refreshTaktData();
@@ -265,7 +292,68 @@ export default function TaktDetail() {
             <div className="space-y-2"><Label>Beschreibung</Label><Textarea name="description" defaultValue={takt.description ?? ''} /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Plan-Start</Label><DatePicker name="plannedStart" required value={editPlannedStart || takt.plannedStart} onChange={setEditPlannedStart} /></div>
-              <div className="space-y-2"><Label>Plan-Ende</Label><DatePicker name="plannedEnd" required value={editPlannedEnd || takt.plannedEnd} onChange={setEditPlannedEnd} /></div>
+              <div className="space-y-2">
+                <Label>Dauer (Arbeitstage)</Label>
+                <Input
+                  name="durationDays"
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={editDurationDays}
+                  placeholder="z.B. 5"
+                  onChange={(event) => setEditDurationDays(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Plan-Ende</Label>
+              <DatePicker
+                name="plannedEnd"
+                required={!editDurationDays}
+                value={editPlannedEnd || takt.plannedEnd}
+                onChange={(value) => {
+                  setEditPlannedEnd(value);
+                  setEditDurationDays('');
+                }}
+                placeholder={editDurationDays ? 'Wird aus der Dauer berechnet…' : ''}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
+              <div className="space-y-2"><Label>Frühester Start <span className="text-muted-foreground font-normal">(Puffer)</span></Label><DatePicker name="earliestStart" value={editEarliestStart} onChange={setEditEarliestStart} /></div>
+              <div className="space-y-2"><Label>Spätestes Ende <span className="text-muted-foreground font-normal">(Puffer)</span></Label><DatePicker name="latestEnd" value={editLatestEnd} onChange={setEditLatestEnd} /></div>
+            </div>
+            <div className="pt-3 border-t border-border/50 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🔒</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interne Informationen</span>
+                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Nicht an AN übermittelt</span>
+              </div>
+              <div className="space-y-2"><Label>Interne Notiz</Label><Textarea name="internalNote" value={editInternalNote} onChange={(event) => setEditInternalNote(event.target.value)} placeholder="Interne Hinweise für das GU-Team…" /></div>
+              <div className="space-y-2"><Label>Kostenschätzung</Label><Input name="costEstimate" value={editCostEstimate} onChange={(event) => setEditCostEstimate(event.target.value)} placeholder="z.B. 45.000 €" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Vergabepriorität</Label>
+                  <Select value={editProcurementPriority} onValueChange={setEditProcurementPriority}>
+                    <SelectTrigger><SelectValue placeholder="Keine" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="HIGH">Hoch</SelectItem>
+                      <SelectItem value="MEDIUM">Mittel</SelectItem>
+                      <SelectItem value="LOW">Niedrig</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Risikoklasse</Label>
+                  <Select value={editRiskClassification} onValueChange={setEditRiskClassification}>
+                    <SelectTrigger><SelectValue placeholder="Keine" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">A — Hoch</SelectItem>
+                      <SelectItem value="B">B — Mittel</SelectItem>
+                      <SelectItem value="C">C — Niedrig</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           </form>
           <DialogFooter>

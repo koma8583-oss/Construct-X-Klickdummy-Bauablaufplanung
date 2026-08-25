@@ -218,6 +218,8 @@ export interface AnLeistungsanfrageTakt {
   id: string;
   taktBezeichnung: string;
   /** @nullable */
+  kurzbezeichnung: string | null;
+  /** @nullable */
   gewerk: string | null;
   /** @nullable */
   zone: string | null;

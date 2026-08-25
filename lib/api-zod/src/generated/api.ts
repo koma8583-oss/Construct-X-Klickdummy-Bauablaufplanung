@@ -791,6 +791,7 @@ export const ListAnLeistungsanfragenResponseItem = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "taktBezeichnung": zod.string(),
+  "kurzbezeichnung": zod.string().nullable(),
   "gewerk": zod.string().nullable(),
   "zone": zod.string().nullable(),
   "plannedStart": zod.string(),
@@ -843,6 +844,7 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
   "takt": zod.object({
   "id": zod.string(),
   "taktBezeichnung": zod.string(),
+  "kurzbezeichnung": zod.string().nullable(),
   "gewerk": zod.string().nullable(),
   "zone": zod.string().nullable(),
   "plannedStart": zod.string(),

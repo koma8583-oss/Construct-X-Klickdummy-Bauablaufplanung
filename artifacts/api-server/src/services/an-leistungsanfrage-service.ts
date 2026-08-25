@@ -56,6 +56,8 @@ function toRequestView(projection: Projection, requirementCount = 0) {
       id: projection.leistungReference,
       taktBezeichnung: typeof snapshotValue(snapshot, "taktBezeichnung") === "string"
         ? snapshotValue(snapshot, "taktBezeichnung") : projection.leistungReference,
+      kurzbezeichnung: typeof snapshotValue(snapshot, "kurzbezeichnung") === "string"
+        ? snapshotValue(snapshot, "kurzbezeichnung") : null,
       gewerk: typeof snapshotValue(snapshot, "gewerk") === "string" ? snapshotValue(snapshot, "gewerk") : null,
       zone: typeof snapshotValue(snapshot, "zone") === "string" ? snapshotValue(snapshot, "zone") : null,
       plannedStart: typeof plannedTimeWindow?.start === "string" ? plannedTimeWindow.start : projection.plannedStart,
