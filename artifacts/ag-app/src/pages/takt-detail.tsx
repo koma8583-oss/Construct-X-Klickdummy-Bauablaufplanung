@@ -6,6 +6,7 @@ import {
   useGetProject, useListTakte, getGetProjectQueryKey, getListTakteQueryKey,
   useUpdateTakt, useListProjectSubcontractors, getListProjectSubcontractorsQueryKey,
   useGetProjectDataPublications, useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
+  useListTaktRequests, useDeleteTakt,
   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,9 @@ export default function TaktDetail() {
   const { toast } = useToast();
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) } });
   const { data: takte, isLoading } = useListTakte(projectId, { query: { enabled: !!projectId, queryKey: getListTakteQueryKey(projectId) } });
+  const { data: taktRequests } = useListTaktRequests(undefined, {
+    query: { enabled: !!projectId, queryKey: getListTaktRequestsQueryKey() },
+  });
   const { data: assignments } = useListProjectSubcontractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
@@ -42,7 +46,9 @@ export default function TaktDetail() {
   const updateTakt = useUpdateTakt();
   const createRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendRequest = useSendTaktRequest();
+  const deleteTakt = useDeleteTakt();
   const takt = takte?.find((item) => item.id === taktId);
+  const activeRequest = taktRequests?.find((request) => request.taktId === taktId && !['CLOSED', 'REJECTED'].includes(request.status));
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
@@ -144,6 +150,17 @@ export default function TaktDetail() {
       setSavingAssignment(false);
     }
   };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Soll diese Leistung wirklich gelöscht werden?')) return;
+    try {
+      await deleteTakt.mutateAsync({ projectId, taktId });
+      toast({ title: 'Leistung gelöscht' });
+      window.location.href = `/projects/${projectId}`;
+    } catch (error) {
+      toast({ title: 'Fehler beim Löschen', description: (error as Error).message, variant: 'destructive' });
+    }
+  };
   const start = new Date(takt.plannedStart);
   const end = new Date(takt.plannedEnd);
 
@@ -218,6 +235,22 @@ export default function TaktDetail() {
         </CardContent>
       </Card>
 
+      {activeRequest && (
+        <Card>
+          <CardContent className="p-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="font-semibold">Aktuelle Vergabe</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Anfrage {activeRequest.requestNumber} · {STATUS_LABEL[activeRequest.status] ?? activeRequest.status}
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link href={`/leistungsanfragen/${activeRequest.id}`}>Anfrage öffnen</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Leistung bearbeiten</DialogTitle></DialogHeader>
@@ -234,6 +267,9 @@ export default function TaktDetail() {
             </div>
           </form>
           <DialogFooter>
+            <Button type="button" variant="destructive" className="mr-auto" onClick={handleDelete} disabled={deleteTakt.isPending}>
+              {deleteTakt.isPending ? 'Löscht…' : 'Leistung löschen'}
+            </Button>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Abbrechen</Button>
             <Button type="submit" form="takt-edit-form" disabled={updateTakt.isPending}>{updateTakt.isPending ? 'Speichert…' : 'Speichern'}</Button>
           </DialogFooter>
