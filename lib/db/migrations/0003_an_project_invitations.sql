@@ -29,9 +29,3 @@ CREATE INDEX IF NOT EXISTS an_project_invitation_receiver_status_idx
   ON an_project_invitations(receiver_an_org_id, status);
 CREATE INDEX IF NOT EXISTS an_project_invitation_correlation_idx
   ON an_project_invitations(correlation_id);
-
-ALTER TABLE data_publication_recipients
-  ADD COLUMN IF NOT EXISTS project_membership_id text
-  REFERENCES project_memberships(id) ON DELETE CASCADE;
-CREATE INDEX IF NOT EXISTS data_pub_recipient_membership_idx
-  ON data_publication_recipients(project_membership_id);

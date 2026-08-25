@@ -9,6 +9,11 @@ const roleEnv =
   role === "shared" ? undefined : undefined;
 const url = roleEnv ? (process.env[roleEnv] ?? process.env.DATABASE_URL) : undefined;
 const sharedUrl = role === "shared" ? process.env.DATABASE_URL ?? process.env.AG_DATABASE_URL : undefined;
+const schemaFile =
+  role === "ag" ? "./src/schema/ag.ts" :
+  role === "an" ? "./src/schema/an.ts" :
+  role === "hub" ? "./src/schema/hub-database.ts" :
+  "./src/schema/shared.ts";
 
 if (!["ag", "an", "hub", "shared"].includes(role ?? "") || (!url && !sharedUrl)) {
   throw new Error(
@@ -19,9 +24,7 @@ if (!["ag", "an", "hub", "shared"].includes(role ?? "") || (!url && !sharedUrl))
 export default defineConfig({
   schema: path.join(
     __dirname,
-    role === "ag" ? "./src/schema/ag.ts" :
-    role === "an" ? "./src/schema/an.ts" : "./src/schema/hub-database.ts",
-    role === "shared" ? "./src/schema/shared.ts" : "",
+    schemaFile,
   ),
   dialect: "postgresql",
   dbCredentials: {

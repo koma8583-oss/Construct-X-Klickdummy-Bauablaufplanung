@@ -9,6 +9,12 @@ apply_ag_migrations() {
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0002_project_memberships.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0004_project_membership_data_publication_link.sql
+}
+
+apply_an_migrations() {
+  local database_url="$1"
+  psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0003_an_project_invitations.sql
 }
 
@@ -44,11 +50,13 @@ if [[ -n "${AG_DATABASE_URL:-}" && -n "${AN_DATABASE_URL:-}" && -n "${HUB_DATABA
   if [[ "$AG_DATABASE_URL" == "$AN_DATABASE_URL" && "$AG_DATABASE_URL" == "$HUB_DATABASE_URL" ]]; then
     echo "Applying the complete shared PoC schema once for AG, AN and Hub"
     apply_ag_migrations "$AG_DATABASE_URL"
+    apply_an_migrations "$AG_DATABASE_URL"
     DB_ROLE=shared DATABASE_URL="$AG_DATABASE_URL" pnpm --filter @workspace/db run push-force
     apply_shared_post_migration "$AG_DATABASE_URL"
   else
     echo "Applying role-specific schemas to separate AG, AN and Hub databases"
     apply_ag_migrations "$AG_DATABASE_URL"
+    apply_an_migrations "$AN_DATABASE_URL"
     DB_ROLE=ag pnpm --filter @workspace/db run push-force
     DB_ROLE=an pnpm --filter @workspace/db run push-force
     DB_ROLE=hub pnpm --filter @workspace/db run push-force
