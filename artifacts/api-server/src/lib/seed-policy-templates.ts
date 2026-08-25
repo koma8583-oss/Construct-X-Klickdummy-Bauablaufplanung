@@ -74,28 +74,31 @@ const CANONICAL_POLICIES: PolicySeed[] = [
   // ── Aktive Richtlinie ──────────────────────────────────────────────────────
   {
     code: "SCHEDULE_COORDINATION",
-    name: "Abstimmung von Rahmenterminen",
+    name: "Project Coordination Subcontractor",
     description:
-      "Die interne Ressourcenplanung des NU verbleibt beim NU. " +
-      "An den GU werden nur die für die Terminabstimmung notwendigen Ergebnisse übermittelt.",
+      "Richtlinie für Nachunternehmen zur sicheren projektbezogenen Koordination von " +
+      "Terminen, Taktplanung und Ressourcen.",
     purpose:
-      "Nutzung zur Abstimmung der angefragten Rahmentermine zwischen Auftraggeber und Nachunternehmen.",
+      "Projektkoordination zwischen Auftraggeber und Nachunternehmen auf Grundlage " +
+      "der für das konkrete Projekt freigegebenen Informationen.",
     permissions: [
-      "Nutzung zur Abstimmung der angefragten Rahmentermine",
+      "Projekt- und Taktinformationen lesen",
+      "Angefragte Termine und Takte abstimmen",
       "Interne Termin-, Ressourcen- und Kapazitätsplanung",
-      "Ermittlung möglicher Alternativtermine",
+      "Mögliche Alternativtermine ermitteln",
     ],
     prohibitions: [
-      "Weitergabe an Dritte",
-      "Nutzung für andere Projekte",
-      "Marketing oder Benchmarking",
-      "KI- oder ML-Training",
+      "Weitergabe an Dritte oder andere Projekte",
+      "Kommerzielle Nutzung außerhalb der Projektkoordination",
+      "Veränderung oder Verfälschung der Originaldaten",
+      "Marketing, Benchmarking oder KI-/ML-Training",
     ],
     validityRule:
-      "Nur für das konkrete Projekt und die angefragten Leistungen. " +
-      "Ausschließlich interne Nutzung beim NU. Vertrauliche Behandlung. " +
-      "Nur erforderliche Daten speichern; nicht mehr benötigte Daten löschen.",
-    retentionRule: "Nicht mehr benötigte Daten umgehend löschen.",
+      "Gilt ausschließlich für das konkrete Projekt und die angefragten Leistungen. " +
+      "Nutzung nur intern beim Nachunternehmen und nur durch berechtigte Mitarbeitende.",
+    retentionRule:
+      "Nur so lange speichern, wie die Daten für die Projektkoordination erforderlich sind; " +
+      "nicht mehr benötigte Daten und Kopien unverzüglich löschen.",
     active: true,
   },
 ];

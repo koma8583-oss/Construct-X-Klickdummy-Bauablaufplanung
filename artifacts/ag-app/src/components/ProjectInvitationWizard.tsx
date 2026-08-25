@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   useCreateProjectInvitationPackage,
   useGetPolicyTemplates,
@@ -18,11 +18,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, ChevronRight, Lock, Send, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Lock, Send, ShieldCheck, Users } from "lucide-react";
 
 type Participant = {
   id: string;
@@ -46,6 +46,34 @@ const PRODUCT_TYPE = "TAKT_INFORMATION_PACKAGE";
 const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
 const STEP_LABELS = ["Teilnehmer", "Policy", "Datenfelder", "Übersicht"];
 
+function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
+  return {
+    "@context": "http://www.w3.org/ns/odrl.jsonld",
+    "@type": "Set",
+    uid: "urn:odrl:data-publication:project-invitation-preview",
+    permission: [{
+      target: "data-publication:project-invitation-preview",
+      assigner: "organization:<ag-org-id>",
+      assignee: "organization:<nu-org-id>",
+      action: "use",
+      constraint: [
+        { leftOperand: "purpose", operator: "eq", rightOperand: policyCode === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : policyCode },
+        { leftOperand: "taktkoord:scope", operator: "eq", rightOperand: "taktkoord:projectSpecific" },
+        { leftOperand: "taktkoord:internalUse", operator: "eq", rightOperand: "taktkoord:restrictedToRecipient" },
+      ],
+      duty: [{
+        action: "delete",
+        constraint: [{ leftOperand: "taktkoord:trigger", operator: "eq", rightOperand: "taktkoord:noLongerNeeded" }],
+      }],
+    }],
+    prohibition: [
+      { target: "data-publication:project-invitation-preview", action: "distribute" },
+      { target: "data-publication:project-invitation-preview", action: "derive" },
+      { target: "data-publication:project-invitation-preview", action: "modify" },
+    ],
+  };
+}
+
 export function ProjectInvitationWizard({
   open,
   onOpenChange,
@@ -63,12 +91,22 @@ export function ProjectInvitationWizard({
   const [invitationMessage, setInvitationMessage] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
+  const [policyViewOpen, setPolicyViewOpen] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const { data: policies } = useGetPolicyTemplates();
   const createPackage = useCreateProjectInvitationPackage();
 
   const selectableParticipants = participants.filter((participant) => participant.selectable);
-  const selectedPolicy = policies?.find((policy) => policy.id === policyTemplateId);
+  const invitationPolicies = useMemo(
+    () => (policies ?? []).filter((policy) => policy.code === "SCHEDULE_COORDINATION"),
+    [policies],
+  );
+  const selectedPolicy = invitationPolicies[0];
+  useEffect(() => {
+    if (selectedPolicy && policyTemplateId !== selectedPolicy.id) {
+      setPolicyTemplateId(selectedPolicy.id);
+    }
+  }, [selectedPolicy, policyTemplateId]);
   const autoTitle = useMemo(
     () => `Projekteinladung & Informationspaket – ${projectName}`,
     [projectName],
