@@ -17,6 +17,8 @@ apply_an_migrations() {
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0003_an_project_invitations.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0016_an_project_invitation_offer_snapshot.sql
+  psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0005_an_leistungsanfragen.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0007_an_leistungsantworten.sql
