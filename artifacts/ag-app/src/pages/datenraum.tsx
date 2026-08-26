@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { deduplicateDataPublications } from "@/lib/vergabe";
 
 // ── Label maps ────────────────────────────────────────────────────────────────
 
@@ -367,7 +368,10 @@ export default function DatenraumPage() {
   // Delete confirmation dialog state
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
 
-  const pubs = publications ?? [];
+  const pubs = useMemo(
+    () => deduplicateDataPublications(publications ?? []),
+    [publications],
+  );
 
   // Unique projects for filter
   const projects = useMemo(() => {

@@ -121,6 +121,11 @@ import { ProjectInvitationWizard } from '@/components/ProjectInvitationWizard';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
 import { CoordinationBoard } from '@/components/coordination-board';
 import { findAlternativeImpacts, type AlternativeImpact } from '@/lib/alternative-impact';
+import {
+  buildAssignablePartners,
+  deduplicateDataPublications,
+  getEligibleVergabePublications,
+} from '@/lib/vergabe';
 
 // ── Working-days client utility ────────────────────────────────────────────────
 
@@ -574,6 +579,10 @@ export default function ProjectDetail() {
   const { data: dataPublications } = useGetProjectDataPublications(projectId);
   const suspendPublication = useSuspendDataPublication();
   const withdrawPublication = useWithdrawDataPublication();
+  const visibleDataPublications = useMemo(
+    () => deduplicateDataPublications(dataPublications ?? []),
+    [dataPublications],
+  );
 
   // Mutations
   const createTakt = useCreateTakt();
@@ -903,25 +912,10 @@ export default function ProjectDetail() {
 
   // A confirmed project membership is eligible for a Takt request even when
   // no separate fachliche assignment has been created yet.
-  const assignablePartners: Array<{ anOrgId: string; label: string }> = [];
-  const assignableIds = new Set<string>();
-  for (const assignment of (assignments ?? [])) {
-    if (assignment.assignmentStatus !== 'ACTIVE' || assignableIds.has(assignment.anOrgId)) continue;
-    assignableIds.add(assignment.anOrgId);
-    assignablePartners.push({
-      anOrgId: assignment.anOrgId,
-      label: `${assignment.anName} – ${assignment.trade || 'Alle Gewerke'}`,
-    });
-  }
-  for (const membership of (memberships ?? [])) {
-    if (membership.status !== 'ACTIVE' || assignableIds.has(membership.anOrgId)) continue;
-    assignableIds.add(membership.anOrgId);
-    const participant = allAnOrgs?.find(p => p.id === membership.anOrgId);
-    assignablePartners.push({
-      anOrgId: membership.anOrgId,
-      label: participant?.name ?? membership.anOrgId,
-    });
-  }
+  const assignablePartners = useMemo(
+    () => buildAssignablePartners(assignments, memberships, allAnOrgs),
+    [assignments, memberships, allAnOrgs],
+  );
 
   // Predecessors for the info panel (read-only display)
   const selectedTaktPredecessors = useMemo(
@@ -946,16 +940,10 @@ export default function ProjectDetail() {
 
   /** Publications eligible for the current Vergabe form (TAKT_INFORMATION_PACKAGE, PUBLISHED,
    *  contains the selected takt, and the selected AN is a recipient). */
-  const vergabePubs = useMemo(() => {
-    if (!selectedTakt || vergabeAnOrgIds.length === 0) return [];
-    return (dataPublications ?? []).filter(
-      p =>
-        p.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
-        p.status === 'PUBLISHED' &&
-        (p.selectedTaktIds == null || p.selectedTaktIds.includes(selectedTakt.id)) &&
-        (!p.recipients?.length || vergabeAnOrgIds.every(anOrgId => (p.recipients ?? []).some(r => r.anOrgId === anOrgId))),
-    );
-  }, [dataPublications, selectedTakt, vergabeAnOrgIds]);
+  const vergabePubs = useMemo(
+    () => getEligibleVergabePublications(dataPublications, selectedTakt?.id, vergabeAnOrgIds),
+    [dataPublications, selectedTakt, vergabeAnOrgIds],
+  );
 
   function handleGanttClick(taskId: string) {
     if (taskId.startsWith('alt-')) {
@@ -1533,15 +1521,15 @@ export default function ProjectDetail() {
       </details>
 
       {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
-      {dataPublications && dataPublications.length > 0 && (
+      {visibleDataPublications.length > 0 && (
         <details className="rounded-xl border border-border bg-card overflow-hidden">
           <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
-            <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />Datenraum <span className="text-xs text-muted-foreground">({dataPublications.length})</span></span>
+            <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />Datenraum <span className="text-xs text-muted-foreground">({visibleDataPublications.length})</span></span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </summary>
         <div className="border-t border-border/60">
           <div className="divide-y divide-border/50">
-            {dataPublications.map((pub: DataPublication) => {
+            {visibleDataPublications.map((pub: DataPublication) => {
               const statusColors: Record<string, string> = {
                 PUBLISHED: 'text-emerald-600 dark:text-emerald-400',
                 DRAFT: 'text-muted-foreground',
