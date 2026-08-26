@@ -38,6 +38,8 @@ export const anProjectInvitationsTable = pgTable(
     dataPublicationId: text("data_publication_id"),
     dataPublicationTitle: text("data_publication_title"),
     selectedFields: jsonb("selected_fields").$type<string[]>(),
+    /** Immutable Dataspace data-offer payload, including its own policy snapshot. */
+    dataOfferSnapshot: jsonb("data_offer_snapshot").$type<Record<string, unknown> | null>(),
     policySnapshot: jsonb("policy_snapshot").$type<Record<string, unknown>>().notNull(),
     status: anProjectInvitationStatusEnum("status").notNull().default("PENDING"),
     policyAcceptedAt: timestamp("policy_accepted_at", { withTimezone: true }),

@@ -55,27 +55,46 @@ function asStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function asPositiveInteger(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function asIsoDate(value: unknown, fallback: Date | null): string | null {
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+    return new Date(value).toISOString();
+  }
+  return fallback?.toISOString() ?? null;
+}
+
 function recipientStatus(status: "PENDING" | "ACCEPTED" | "REJECTED"): "OFFERED" | "ACCEPTED" | "REJECTED" {
   return status === "PENDING" ? "OFFERED" : status;
 }
 
 function toOffer(invitation: typeof anProjectInvitationsTable.$inferSelect) {
-  const policy = asRecord(invitation.policySnapshot);
+  const dataOffer = asRecord(invitation.dataOfferSnapshot);
+  const policy = asRecord(dataOffer.policy ?? invitation.policySnapshot);
+  const publicationId = asString(
+    dataOffer.publicationId,
+    invitation.dataPublicationId ?? invitation.id,
+  )!;
+  const validUntil = asIsoDate(dataOffer.validUntil, invitation.invitationExpiresAt);
   return {
-    publicationId: invitation.dataPublicationId ?? invitation.id,
-    title: invitation.dataPublicationTitle ?? invitation.projectName,
+    publicationId,
+    title: asString(dataOffer.title, invitation.dataPublicationTitle ?? invitation.projectName),
     agName: invitation.senderAgOrgId,
     projectReference: invitation.projectReference,
-    dataProductType: "PROJECT_OVERVIEW",
-    version: 1,
-    publicationStatus: invitation.invitationExpiresAt && invitation.invitationExpiresAt < new Date()
-      ? "EXPIRED"
-      : "PUBLISHED",
+    dataProductType: asString(dataOffer.dataProductType, "PROJECT_OVERVIEW"),
+    version: asPositiveInteger(dataOffer.publicationVersion ?? dataOffer.version, 1),
+    publicationStatus: dataOffer.status === "SUSPENDED" || dataOffer.status === "WITHDRAWN"
+      ? dataOffer.status
+      : validUntil && new Date(validUntil) < new Date()
+        ? "EXPIRED"
+        : "PUBLISHED",
     recipientStatus: recipientStatus(invitation.status),
     policyCode: asString(policy.code, "PROJECT_INVITATION"),
     policyName: asString(policy.name, "Nutzungsrichtlinie"),
-    validFrom: invitation.createdAt.toISOString(),
-    validUntil: invitation.invitationExpiresAt?.toISOString() ?? null,
+    validFrom: asIsoDate(dataOffer.validFrom, invitation.createdAt),
+    validUntil,
     notifiedAt: invitation.createdAt.toISOString(),
     policyAcceptedAt: invitation.policyAcceptedAt?.toISOString() ?? null,
     policyRejectedAt: invitation.rejectedAt?.toISOString() ?? null,
@@ -157,7 +176,8 @@ router.get(
       res.status(404).json({ error: "Data offer not found" });
       return;
     }
-    const policy = asRecord(invitation.policySnapshot);
+    const dataOffer = asRecord(invitation.dataOfferSnapshot);
+    const policy = asRecord(dataOffer.policy ?? invitation.policySnapshot);
 
     res.json({
       ...toOffer(invitation),
@@ -282,28 +302,36 @@ router.get(
       });
       return;
     }
-    if (invitation.invitationExpiresAt && new Date() > invitation.invitationExpiresAt) {
-      res.status(403).json({ error: "Publication has expired", validUntil: invitation.invitationExpiresAt.toISOString() });
+    const offer = toOffer(invitation);
+    if (offer.publicationStatus !== "PUBLISHED") {
+      res.status(403).json({
+        error: `Publication is ${offer.publicationStatus.toLowerCase()}`,
+        publicationStatus: offer.publicationStatus,
+      });
+      return;
+    }
+    if (offer.validUntil && new Date() > new Date(offer.validUntil)) {
+      res.status(403).json({ error: "Publication has expired", validUntil: offer.validUntil });
       return;
     }
 
     res.json({
       publicationId,
-      title: invitation.dataPublicationTitle ?? invitation.projectName,
-      dataProductType: "PROJECT_OVERVIEW",
-      version: 1,
+      title: offer.title,
+      dataProductType: offer.dataProductType,
+      version: offer.version,
       schemaVersion: "1.0",
-      contentHash: null,
-      validFrom: invitation.createdAt.toISOString(),
-      validUntil: invitation.invitationExpiresAt?.toISOString() ?? null,
+      contentHash: asString(asRecord(invitation.dataOfferSnapshot).contentHash, null),
+      validFrom: offer.validFrom,
+      validUntil: offer.validUntil,
       publishedAt: invitation.createdAt.toISOString(),
-      content: {
+      content: asRecord(invitation.dataOfferSnapshot).contentSnapshot ?? {
         projectReference: invitation.projectReference,
         projectName: invitation.projectName,
         description: invitation.projectDescription,
         location: invitation.projectLocation,
-        selectedFields: invitation.selectedFields ?? [],
-        policy: invitation.policySnapshot,
+        selectedFields: asRecord(invitation.dataOfferSnapshot).selectedFields ?? invitation.selectedFields ?? [],
+        policy: asRecord(asRecord(invitation.dataOfferSnapshot).policy ?? invitation.policySnapshot),
       },
     });
   },

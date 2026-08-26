@@ -4,6 +4,7 @@ import {
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
   dataPublicationRecipientsTable,
+  dataPublicationsTable,
   projectMembershipsTable,
   resourceTypesTable,
   resourceBookingsTable,
@@ -262,6 +263,41 @@ export async function processIncomingProjectInvitation(payload: ExternalProjectI
 }
 
 export async function processIncomingProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<void> {
+  if (payload.dataPublicationId) {
+    const [recipient] = await agDb.select().from(dataPublicationRecipientsTable)
+      .where(and(
+        eq(dataPublicationRecipientsTable.publicationId, payload.dataPublicationId),
+        eq(dataPublicationRecipientsTable.anOrgId, payload.metadata.senderOrgId),
+      )).limit(1);
+    const [publication] = await agDb.select().from(dataPublicationsTable)
+      .where(and(
+        eq(dataPublicationsTable.id, payload.dataPublicationId),
+        eq(dataPublicationsTable.agOrgId, payload.metadata.receiverOrgId),
+      )).limit(1);
+    if (
+      !recipient ||
+      !publication ||
+      publication.projectId !== payload.projectReference
+    ) {
+      throw new Error("Inbound data-offer response references an unknown publication recipient");
+    }
+    const nextStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" : "REJECTED";
+    if (recipient.status === nextStatus) return;
+    if (recipient.status !== "OFFERED") {
+      throw new Error("Inbound data-offer response conflicts with the current recipient status");
+    }
+    const respondedAt = new Date(payload.respondedAt);
+    await agDb.update(dataPublicationRecipientsTable).set(
+      nextStatus === "ACCEPTED"
+        ? { status: "ACCEPTED", policyAcceptedAt: respondedAt, updatedAt: new Date() }
+        : { status: "REJECTED", policyRejectedAt: respondedAt, updatedAt: new Date() },
+    ).where(and(
+      eq(dataPublicationRecipientsTable.id, recipient.id),
+      eq(dataPublicationRecipientsTable.status, "OFFERED"),
+    ));
+    return;
+  }
+
   const [membership] = await agDb.select().from(projectMembershipsTable)
     .where(and(
       eq(projectMembershipsTable.invitationId, payload.invitationId),

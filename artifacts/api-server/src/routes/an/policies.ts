@@ -40,7 +40,9 @@ router.get("/policies", requireJwt, async (req, res): Promise<void> => {
     projects: Array<{ id: string; name: string; agOrgId: string; agName: string }>;
   }>();
   for (const invitation of invitations) {
-    const policy = asRecord(invitation.policySnapshot);
+    if (!invitation.dataPublicationId) continue;
+    const dataOffer = asRecord(invitation.dataOfferSnapshot);
+    const policy = asRecord(dataOffer.policy ?? invitation.policySnapshot);
     const policyId = asString(policy.id, invitation.dataPublicationId ?? invitation.id);
     const current = byPolicy.get(policyId) ?? { policy, projects: [] };
     if (!current.projects.some((project) => project.id === invitation.projectReference)) {

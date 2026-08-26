@@ -36,6 +36,7 @@ import {
   PublicationStatusError,
   PublicationRecipientError,
   FIELD_WHITELISTS,
+  syncDataPublicationProjection,
 } from "../services/data-publication-service";
 import { listPolicyTemplateRegistry, getLatestPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 
@@ -490,6 +491,7 @@ router.post(
       .update(dataPublicationsTable)
       .set({ status: "SUSPENDED" })
       .where(eq(dataPublicationsTable.id, publicationId));
+    await syncDataPublicationProjection(publicationId, caller.orgId!, "SUSPENDED");
 
     res.json({ ok: true, status: "SUSPENDED" });
   },
@@ -598,6 +600,7 @@ router.post(
       .update(dataPublicationsTable)
       .set({ status: "WITHDRAWN", withdrawnAt: new Date() })
       .where(eq(dataPublicationsTable.id, publicationId));
+    await syncDataPublicationProjection(publicationId, caller.orgId!, "WITHDRAWN");
 
     res.json({ ok: true, status: "WITHDRAWN" });
   },

@@ -32,6 +32,18 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     ) {
       throw new AnProjectInvitationError("INVITATION_CONFLICT", "Die eingegangene Einladung stimmt nicht mit der vorhandenen Einladung überein.");
     }
+    if (payload.dataOffer) {
+      const [updated] = await anDb.update(anProjectInvitationsTable).set({
+        dataPublicationTitle: payload.dataOffer.title,
+        selectedFields: payload.dataOffer.selectedFields,
+        dataOfferSnapshot: payload.dataOffer as unknown as Record<string, unknown>,
+        invitationExpiresAt: payload.dataOffer.validUntil
+          ? new Date(payload.dataOffer.validUntil)
+          : invitation.invitationExpiresAt,
+        updatedAt: new Date(),
+      }).where(eq(anProjectInvitationsTable.id, invitation.id)).returning();
+      return updated ?? invitation;
+    }
     return invitation;
   }
 
@@ -49,6 +61,9 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     dataPublicationId: payload.dataOffer?.publicationId ?? null,
     dataPublicationTitle: payload.dataOffer?.title ?? null,
     selectedFields: payload.dataOffer?.selectedFields ?? null,
+    dataOfferSnapshot: payload.dataOffer
+      ? payload.dataOffer as unknown as Record<string, unknown>
+      : null,
     policySnapshot: payload.policySnapshot ?? payload.dataOffer?.policy ?? {
       usagePurpose: payload.policy.usagePurpose,
       allowedConsumerParticipantId: payload.policy.allowedConsumerParticipantId,
@@ -106,6 +121,7 @@ export async function decideAnProjectInvitation(input: {
     },
     invitationId: invitation.invitationId,
     projectReference: invitation.projectReference,
+    ...(invitation.dataPublicationId ? { dataPublicationId: invitation.dataPublicationId } : {}),
     decision,
     policyAccepted: input.action === "accept",
     ...(input.message ? { message: input.message } : {}),

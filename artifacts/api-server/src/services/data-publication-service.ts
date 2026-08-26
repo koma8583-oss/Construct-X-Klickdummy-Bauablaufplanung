@@ -21,12 +21,19 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
   projectsTable,
+  projectMembershipsTable,
   takteTable,
   taktDependenciesTable,
   organizationsTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
+import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
+import {
+  deliverLocalProjectInvitation,
+  isLocalDataspaceTransport,
+} from "./dataspace/local-dataspace-delivery";
+import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 
 export class PublicationNotFoundError extends Error {
   constructor(id: string) {
@@ -442,8 +449,229 @@ export async function publishDataPublication(
         .update(dataPublicationRecipientsTable)
         .set({ notifiedAt: now })
         .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+
+      // The AN offer view is backed exclusively by Dataspace-delivered local
+      // projections. Standalone publications do not have the combined
+      // invitation dispatcher, so the local transport needs the same inbound
+      // package to create the AN-side offer and policy snapshot.
+      if (isLocalDataspaceTransport()) {
+        const [project] = await db.select({
+          id: projectsTable.id,
+          name: projectsTable.name,
+          description: projectsTable.description,
+          location: projectsTable.location,
+        }).from(projectsTable).where(eq(projectsTable.id, pub.projectId)).limit(1);
+        const [membership] = await db.select({
+          invitationId: projectMembershipsTable.invitationId,
+          correlationId: projectMembershipsTable.correlationId,
+          anParticipantId: projectMembershipsTable.anParticipantId,
+        }).from(projectMembershipsTable).where(and(
+          eq(projectMembershipsTable.projectId, pub.projectId),
+          eq(projectMembershipsTable.agOrgId, agOrgId),
+          eq(projectMembershipsTable.anOrgId, recipient.anOrgId),
+          eq(projectMembershipsTable.status, "ACTIVE"),
+        )).limit(1);
+        if (project) {
+          const policySnapshot = {
+            policyId: `publication-policy:${publicationId}`,
+            templateId: policy.id,
+            templateVersion: 1,
+            code: policy.code,
+            name: policy.name,
+            description: policy.description ?? policy.purpose,
+            permissions: policy.permissions,
+            prohibitions: policy.prohibitions,
+            provider: { organizationId: agOrgId, userId: null },
+            recipientOrganizationId: recipient.anOrgId,
+            purpose: policy.purpose,
+            projectReference: pub.projectId,
+            workPackageReference: null,
+            validFrom: (pub.validFrom ?? now).toISOString(),
+            validUntil: pub.validUntil?.toISOString() ?? null,
+            createdAt: now.toISOString(),
+          };
+          const invitationPayload: ExternalProjectInvitation = {
+            metadata: {
+              messageId: `data-offer-invitation-${publicationId}-${recipient.anOrgId}`,
+              correlationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
+              schemaVersion: "1.0",
+              senderOrgId: agOrgId,
+              receiverOrgId: recipient.anOrgId,
+              createdAt: now.toISOString(),
+            },
+            invitationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
+            project: {
+              projectReference: project.id,
+              projectName: project.name,
+              ...(project.description ? { description: project.description } : {}),
+              ...(project.location ? { location: project.location } : {}),
+            },
+            requestedRole: "CONTRACTOR",
+            purpose: "PROJECT_COLLABORATION",
+            policy: {
+              usagePurpose: "PROJECT_MEMBERSHIP",
+              allowedConsumerParticipantId: membership?.anParticipantId ?? `local:${recipient.anOrgId}`,
+            },
+            policySnapshot,
+            dataOffer: {
+              publicationId,
+              title: pub.title,
+              dataProductType: pub.dataProductType,
+              publicationVersion: pub.version,
+              status: "PUBLISHED",
+              contentHash,
+              contentSnapshot: snapshot,
+              selectedFields: (pub.selectedFields as string[]) ?? [],
+              validFrom: (pub.validFrom ?? now).toISOString(),
+              ...(pub.validUntil ? { validUntil: pub.validUntil.toISOString() } : {}),
+              policy: {
+                id: policy.id,
+                templateId: policy.id,
+                templateVersion: 1,
+                code: policy.code,
+                name: policy.name,
+                purpose: policy.purpose,
+                permissions: policy.permissions,
+                prohibitions: policy.prohibitions,
+                validityRule: policy.validityRule,
+                retentionRule: policy.retentionRule,
+              },
+            },
+          };
+          const exchange = createDataspaceExchange();
+          const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
+          if (delivery.status === "PENDING" || delivery.status === "FAILED") {
+            const retry = await exchange.retryProjectInvitation(invitationPayload.metadata.messageId);
+            if (retry.status === "DELIVERED") {
+              await deliverLocalProjectInvitation(invitationPayload, exchange);
+            }
+          }
+        }
+      }
     } catch {
       // Best-effort — delivery failure must not abort the publish
+    }
+  }
+}
+
+/**
+ * Propagate a publication lifecycle change through the same Dataspace inbound
+ * path that created the AN-local offer. The AN route therefore never needs to
+ * consult AG publication tables to learn that an offer was suspended or
+ * withdrawn.
+ */
+export async function syncDataPublicationProjection(
+  publicationId: string,
+  agOrgId: string,
+  status: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN",
+): Promise<void> {
+  if (!isLocalDataspaceTransport()) return;
+
+  const [pub] = await db.select().from(dataPublicationsTable).where(and(
+    eq(dataPublicationsTable.id, publicationId),
+    eq(dataPublicationsTable.agOrgId, agOrgId),
+  )).limit(1);
+  if (!pub) return;
+  const [policy] = await db.select().from(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.id, pub.policyTemplateId)).limit(1);
+  const [project] = await db.select({
+    id: projectsTable.id,
+    name: projectsTable.name,
+    description: projectsTable.description,
+    location: projectsTable.location,
+  }).from(projectsTable).where(eq(projectsTable.id, pub.projectId)).limit(1);
+  if (!policy || !project) return;
+
+  const recipients = await db.select().from(dataPublicationRecipientsTable)
+    .where(eq(dataPublicationRecipientsTable.publicationId, publicationId));
+  for (const recipient of recipients) {
+    const [membership] = await db.select({
+      anParticipantId: projectMembershipsTable.anParticipantId,
+    }).from(projectMembershipsTable).where(and(
+      eq(projectMembershipsTable.projectId, pub.projectId),
+      eq(projectMembershipsTable.agOrgId, agOrgId),
+      eq(projectMembershipsTable.anOrgId, recipient.anOrgId),
+      eq(projectMembershipsTable.status, "ACTIVE"),
+    )).limit(1);
+    const now = new Date();
+    const policySnapshot = {
+      policyId: `publication-policy:${publicationId}`,
+      templateId: policy.id,
+      templateVersion: 1,
+      code: policy.code,
+      name: policy.name,
+      description: policy.description ?? policy.purpose,
+      permissions: policy.permissions,
+      prohibitions: policy.prohibitions,
+      provider: { organizationId: agOrgId, userId: null },
+      recipientOrganizationId: recipient.anOrgId,
+      purpose: policy.purpose,
+      projectReference: pub.projectId,
+      workPackageReference: null,
+      validFrom: (pub.validFrom ?? now).toISOString(),
+      validUntil: pub.validUntil?.toISOString() ?? null,
+      createdAt: now.toISOString(),
+    };
+    const payload: ExternalProjectInvitation = {
+      metadata: {
+        messageId: `data-offer-status-${publicationId}-${recipient.anOrgId}-${status}`,
+        correlationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
+        schemaVersion: "1.0",
+        senderOrgId: agOrgId,
+        receiverOrgId: recipient.anOrgId,
+        createdAt: now.toISOString(),
+      },
+      invitationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
+      project: {
+        projectReference: project.id,
+        projectName: project.name,
+        ...(project.description ? { description: project.description } : {}),
+        ...(project.location ? { location: project.location } : {}),
+      },
+      requestedRole: "CONTRACTOR",
+      purpose: "PROJECT_COLLABORATION",
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP",
+        allowedConsumerParticipantId: membership?.anParticipantId ?? `local:${recipient.anOrgId}`,
+      },
+      policySnapshot,
+      dataOffer: {
+        publicationId,
+        title: pub.title,
+        dataProductType: pub.dataProductType,
+        publicationVersion: pub.version,
+        status,
+        contentHash: pub.contentHash ?? undefined,
+        contentSnapshot: pub.contentSnapshot ?? undefined,
+        selectedFields: (pub.selectedFields as string[]) ?? [],
+        validFrom: (pub.validFrom ?? now).toISOString(),
+        ...(pub.validUntil ? { validUntil: pub.validUntil.toISOString() } : {}),
+        policy: {
+          id: policy.id,
+          templateId: policy.id,
+          templateVersion: 1,
+          code: policy.code,
+          name: policy.name,
+          purpose: policy.purpose,
+          permissions: policy.permissions,
+          prohibitions: policy.prohibitions,
+          validityRule: policy.validityRule,
+          retentionRule: policy.retentionRule,
+        },
+      },
+    };
+    try {
+      const exchange = createDataspaceExchange();
+      const delivery = await deliverLocalProjectInvitation(payload, exchange);
+      if (delivery.status === "PENDING" || delivery.status === "FAILED") {
+        const retry = await exchange.retryProjectInvitation(payload.metadata.messageId);
+        if (retry.status === "DELIVERED") {
+          await deliverLocalProjectInvitation(payload, exchange);
+        }
+      }
+    } catch {
+      // The publication state is already committed; a later delivery retry can
+      // reconcile the AN projection without rolling back the AG transition.
     }
   }
 }

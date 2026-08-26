@@ -127,7 +127,15 @@ export const externalProjectInvitationSchema = z.object({
     title: nonEmpty(500),
     // These fields keep the earlier onboarding transport compatible while the
     // invitation-package transport uses the policy embedded in `policy`.
-    dataProductType: z.literal("TAKT_INFORMATION_PACKAGE").optional(),
+    dataProductType: z.enum([
+      "PROJECT_OVERVIEW",
+      "PROJECT_COORDINATION_PACKAGE",
+      "TAKT_INFORMATION_PACKAGE",
+    ]).optional(),
+    publicationVersion: z.number().int().positive().optional(),
+    status: z.enum(["PUBLISHED", "SUSPENDED", "WITHDRAWN"]).optional(),
+    contentHash: nonEmpty(200).optional(),
+    contentSnapshot: z.record(z.string(), z.unknown()).optional(),
     selectedFields: z.array(nonEmpty(200)).min(1).max(100),
     policy: dataOfferPolicySnapshotSchema.optional(),
     validFrom: externalDate.optional(),
@@ -143,6 +151,7 @@ export const externalProjectInvitationResponseSchema = z.object({
   metadata: metadataSchema,
   invitationId: nonEmpty(200),
   projectReference: nonEmpty(200),
+  dataPublicationId: nonEmpty(200).optional(),
   decision: z.enum(["ACCEPTED", "REJECTED"]),
   policyAccepted: z.boolean().optional(),
   message: z.string().trim().max(4000).optional(),
@@ -333,7 +342,11 @@ export type ExternalProjectInvitation = {
   dataOffer?: {
     publicationId: string;
     title: string;
-    dataProductType?: "TAKT_INFORMATION_PACKAGE";
+    dataProductType?: "PROJECT_OVERVIEW" | "PROJECT_COORDINATION_PACKAGE" | "TAKT_INFORMATION_PACKAGE";
+    publicationVersion?: number;
+    status?: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
+    contentHash?: string;
+    contentSnapshot?: Record<string, unknown>;
     selectedFields: string[];
     policy?: {
       id: string;
@@ -356,6 +369,7 @@ export type ExternalProjectInvitationResponse = {
   metadata: ExchangeMetadata;
   invitationId: string;
   projectReference: string;
+  dataPublicationId?: string;
   decision: "ACCEPTED" | "REJECTED";
   policyAccepted?: boolean;
   message?: string;

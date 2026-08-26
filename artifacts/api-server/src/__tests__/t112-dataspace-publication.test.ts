@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -24,8 +24,10 @@ import {
   policyTemplatesTable,
   messageOutboxTable,
   messageInboxTable,
+  dataspaceExchangesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
@@ -160,6 +162,15 @@ afterAll(async () => {
 
   // Clean up messages that reference any of the test orgs (FK constraint)
   const testOrgIds = [agOrgId, anOrgId, anotherAnOrgId, anotherAgOrgId].filter(Boolean);
+  await anDb
+    .delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.receiverAnOrgId, anOrgId));
+  await db
+    .delete(dataspaceExchangesTable)
+    .where(or(
+      inArray(dataspaceExchangesTable.senderOrgId, testOrgIds as [string, ...string[]]),
+      inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds as [string, ...string[]]),
+    ));
   await db
     .delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.recipientOrgId, testOrgIds as [string, ...string[]]));
@@ -590,6 +601,15 @@ describe("Suspended publication", () => {
     await db
       .delete(messageInboxTable)
       .where(eq(messageInboxTable.senderOrgId, freshAnOrgId));
+    await anDb
+      .delete(anProjectInvitationsTable)
+      .where(eq(anProjectInvitationsTable.receiverAnOrgId, freshAnOrgId));
+    await db
+      .delete(dataspaceExchangesTable)
+      .where(or(
+        eq(dataspaceExchangesTable.senderOrgId, freshAnOrgId),
+        eq(dataspaceExchangesTable.receiverOrgId, freshAnOrgId),
+      ));
     await db.delete(usersTable).where(eq(usersTable.id, freshAnUserId));
     await db.delete(organizationsTable).where(eq(organizationsTable.id, freshAnOrgId));
   });

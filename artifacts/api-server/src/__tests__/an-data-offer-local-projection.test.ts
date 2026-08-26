@@ -7,11 +7,14 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
+import { processIncomingProjectInvitation } from "../services/dataspace/inbound-domain-service";
+import type { ExternalProjectInvitation } from "../services/dataspace/external-contracts";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const AN_ORG = "an-local-offer-test";
 const INVITATION_ID = "an-local-offer-invitation";
 const PUBLICATION_ID = "an-local-publication";
+const INBOUND_INVITATION_ID = "an-local-inbound-invitation";
 
 const anToken = jwt.sign({
   userId: "an-local-offer-user",
@@ -24,6 +27,8 @@ const anToken = jwt.sign({
 afterEach(async () => {
   await anDb.delete(anProjectInvitationsTable)
     .where(eq(anProjectInvitationsTable.id, INVITATION_ID));
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, INBOUND_INVITATION_ID));
 });
 
 describe("AN data offers use local invitation projections", () => {
@@ -115,6 +120,100 @@ describe("AN data offers use local invitation projections", () => {
           name: "Lokales Projektabbild",
           agOrgId: "ag-local-offer-test",
         })],
+      }),
+    ]));
+  });
+
+  it("projects the data-offer policy separately from the invitation policy", async () => {
+    const inbound: ExternalProjectInvitation = {
+      metadata: {
+        messageId: "an-local-inbound-message",
+        correlationId: "an-local-inbound-correlation",
+        schemaVersion: "1.0",
+        senderOrgId: "ag-local-inbound-test",
+        receiverOrgId: AN_ORG,
+        createdAt: "2026-08-26T10:00:00.000Z",
+      },
+      invitationId: INBOUND_INVITATION_ID,
+      project: {
+        projectReference: "ag-inbound-project",
+        projectName: "Inbound-Snapshot-Projekt",
+        description: "Nur aus dem Dataspace",
+        location: "Baufeld B",
+      },
+      requestedRole: "CONTRACTOR",
+      purpose: "PROJECT_COLLABORATION",
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP",
+        allowedConsumerParticipantId: AN_ORG,
+      },
+      policySnapshot: {
+        policyId: "membership-policy",
+        templateId: "membership-template",
+        templateVersion: 1,
+        code: "MEMBERSHIP_POLICY",
+        name: "Mitgliedschafts-Policy",
+        description: "Policy für die Einladung",
+        permissions: ["read:membership"],
+        prohibitions: ["share-membership"],
+        provider: { organizationId: "ag-local-inbound-test", userId: null },
+        recipientOrganizationId: AN_ORG,
+        purpose: "PROJECT_COLLABORATION",
+        projectReference: "ag-inbound-project",
+        workPackageReference: null,
+        validFrom: null,
+        validUntil: null,
+        createdAt: "2026-08-26T10:00:00.000Z",
+      },
+      dataOffer: {
+        publicationId: "ag-inbound-publication",
+        title: "Inbound-Datenangebot",
+        dataProductType: "TAKT_INFORMATION_PACKAGE",
+        selectedFields: ["projectName", "location"],
+        validFrom: "2026-08-26T10:00:00.000Z",
+        validUntil: "2026-09-26T10:00:00.000Z",
+        policy: {
+          id: "offer-policy",
+          templateId: "offer-template",
+          templateVersion: 2,
+          code: "OFFER_POLICY",
+          name: "Datenangebots-Policy",
+          purpose: "TAKT_COORDINATION",
+          permissions: ["read:project"],
+          prohibitions: ["redistribute"],
+          validityRule: "Bis Projektende",
+          retentionRule: "30 Tage",
+        },
+      },
+    };
+
+    await processIncomingProjectInvitation(inbound);
+    await anDb.update(anProjectInvitationsTable).set({ status: "ACCEPTED" })
+      .where(eq(anProjectInvitationsTable.invitationId, INBOUND_INVITATION_ID));
+
+    const offer = await request(app)
+      .get("/api/an/data-offers/ag-inbound-publication")
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(offer.status).toBe(200);
+    expect(offer.body).toMatchObject({
+      title: "Inbound-Datenangebot",
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      version: 1,
+      policy: {
+        id: "offer-policy",
+        code: "OFFER_POLICY",
+        permissions: ["read:project"],
+      },
+    });
+
+    const policies = await request(app)
+      .get("/api/an/policies")
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(policies.status).toBe(200);
+    expect(policies.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "offer-policy",
+        code: "OFFER_POLICY",
       }),
     ]));
   });
