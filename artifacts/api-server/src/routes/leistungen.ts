@@ -393,9 +393,13 @@ const router = Router();
 // AN-local projections. Only inspect canonical AG paths so unrelated routes
 // mounted after this router (for example reports) keep their own role policy.
 router.use(requireJwt, (req, res, next) => {
-  const canonicalAgPath = req.path.startsWith("/leistungsanfragen") ||
+  const resourceRequirementsPath =
+    /^\/leistungsanfragen\/[^/]+\/resource-requirements(?:\/|$)/.test(req.path);
+  const canonicalAgPath = (
+    req.path.startsWith("/leistungsanfragen") ||
     /^\/projects\/[^/]+\/leistungen(?:\/|$)/.test(req.path) ||
-    /^\/projects\/[^/]+\/leistungsabhaengigkeiten(?:\/|$)/.test(req.path);
+    /^\/projects\/[^/]+\/leistungsabhaengigkeiten(?:\/|$)/.test(req.path)
+  ) && !resourceRequirementsPath;
   if (req.user?.orgType === "AN" && canonicalAgPath) {
     res.status(403).json({ error: "AN Leistungsanfragen are available only through /api/an local projections" });
     return;

@@ -253,8 +253,12 @@ const router = Router();
 // Only intercept this router's legacy paths: a router-level middleware mounted
 // without a prefix would otherwise reject unrelated /api routes mounted later.
 router.use(requireJwt, (req, res, next) => {
-  const legacyPath = req.path.startsWith("/takt-requests") ||
-    /^\/projects\/[^/]+\/takt-requests(?:\/|$)/.test(req.path);
+  const resourceRequirementsPath =
+    /^\/takt-requests\/[^/]+\/resource-requirements(?:\/|$)/.test(req.path);
+  const legacyPath = (
+    req.path.startsWith("/takt-requests") ||
+    /^\/projects\/[^/]+\/takt-requests(?:\/|$)/.test(req.path)
+  ) && !resourceRequirementsPath;
   if (req.user?.orgType === "AN" && legacyPath) {
     res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
     return;
