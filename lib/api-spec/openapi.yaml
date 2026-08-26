@@ -542,6 +542,55 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ProjectMembership"
+
+  /projects/{projectId}/invitation-deliveries/failed:
+    get:
+      operationId: listFailedProjectInvitationDeliveries
+      tags: [projects]
+      summary: List pending and failed project invitation deliveries
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pending and failed invitation deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectInvitationDelivery"
+
+  /project-invitation-deliveries/{messageId}/retry:
+    post:
+      operationId: retryProjectInvitationDelivery
+      tags: [projects]
+      summary: Retry a failed project invitation delivery
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delivery attempt result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectInvitationDeliveryRetryResult"
+        "404":
+          description: Invitation delivery not found
+        "409":
+          description: Delivery is not retryable or retry limit was exhausted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /projects/{projectId}/invitations:
     post:
       operationId: inviteProjectParticipant
@@ -3651,6 +3700,51 @@ components:
         revokedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        invitationDelivery:
+          allOf:
+            - $ref: "#/components/schemas/ProjectInvitationDelivery"
+          nullable: true
+          description: Technical delivery state of the project invitation message.
+        responseDelivery:
+          allOf:
+            - $ref: "#/components/schemas/ProjectInvitationDelivery"
+          nullable: true
+          description: Technical delivery state of the AN's invitation response.
+
+    ProjectInvitationDelivery:
+      type: object
+      description: Technical delivery state for a project invitation envelope.
+      required: [messageId, messageType, status, attemptCount, createdAt]
+      properties:
+        messageId: { type: string }
+        messageType:
+          type: string
+          enum: [PROJECT_INVITATION, PROJECT_INVITATION_RESPONSE]
+        status:
+          $ref: "#/components/schemas/MessageOutboxStatus"
+        attemptCount: { type: integer }
+        lastAttemptAt: { type: string, format: date-time, nullable: true }
+        failureReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ProjectInvitationDeliveryRetryResult:
+      type: object
+      description: Result of one project invitation delivery attempt.
+      required: [exchangeId, status]
+      properties:
+        exchangeId: { type: string }
+        status:
+          $ref: "#/components/schemas/MessageOutboxStatus"
+        attemptCount: { type: integer }
+        sentAt: { type: string, format: date-time, nullable: true }
+        deliveredAt: { type: string, format: date-time, nullable: true }
+        error:
+          type: object
+          nullable: true
+          properties:
+            code: { type: string }
+            message: { type: string }
+          required: [code, message]
 
     InviteProjectParticipantRequest:
       type: object

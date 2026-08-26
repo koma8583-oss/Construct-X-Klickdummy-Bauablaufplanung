@@ -26,13 +26,14 @@ import {
   getListProjectContractorsQueryKey,
   useListProjectMemberships,
   useRevokeProjectMembership,
+  useRetryProjectInvitationDelivery,
   getListProjectMembershipsQueryKey,
   getListTaktDependenciesQueryKey,
   TaktStatus,
   TaktLifecycleStatus,
   TaktDependencyType,
 } from '@workspace/api-client-react';
-import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult, ProjectMembership } from '@workspace/api-client-react';
+import type { TaktDependency, TaktUpdateResult, RescheduledTakt, TaktRequestListItem, TaktRequestDetail, ProjectSubcontractorAssignment, TaktDependencyCreateResult, ProjectMembership, ProjectInvitationDelivery } from '@workspace/api-client-react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { Gantt, Task, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
@@ -59,6 +60,7 @@ import {
   AlignLeft, Info, Send, CheckCircle, Clock, Pencil, XCircle,
   Link2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Users, X, Search, Network,
   AlertCircle, Building2, Globe, ArrowRightLeft, Settings2, ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -581,6 +583,7 @@ export default function ProjectDetail() {
   const sendTaktRequest = useSendTaktRequest();
   const closeRequest = useCreateGuDecision();
   const revokeMembership = useRevokeProjectMembership();
+  const retryInvitationDelivery = useRetryProjectInvitationDelivery();
   const createDep = useCreateTaktDependency();
   const createDepSkip = useCreateTaktDependencySkipReschedule();
   const deleteDep = useDeleteTaktDependency();
@@ -1238,6 +1241,35 @@ export default function ProjectDetail() {
       onError: (err) => {
         toast({ title: t('common.error'), description: err.message, variant: 'destructive' });
         setConfirmRevokeMembership(null);
+      },
+    });
+  };
+
+  const handleRetryInvitationDelivery = (delivery: ProjectInvitationDelivery) => {
+    retryInvitationDelivery.mutate({ messageId: delivery.messageId }, {
+      onSuccess: (result) => {
+        if (result.status === 'FAILED') {
+          toast({
+            title: 'Zustellung fehlgeschlagen',
+            description: result.error?.message ?? 'Die Einladung konnte nicht zugestellt werden.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        toast({ title: 'Zustellung erneut angestoßen' });
+      },
+      onError: (err) => {
+        // ApiError preserves the backend's business message, including the
+        // retry-exhausted explanation, so it must not be replaced by a
+        // generic success notification.
+        toast({
+          title: 'Zustellung konnte nicht wiederholt werden',
+          description: (err as Error).message,
+          variant: 'destructive',
+        });
+      },
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: getListProjectMembershipsQueryKey(projectId) });
       },
     });
   };
@@ -3214,24 +3246,61 @@ export default function ProjectDetail() {
                     REVOKED: { label: 'Widerrufen', className: 'text-red-600 bg-red-500/10 border-red-500/20' },
                     REJECTED: { label: 'Abgelehnt', className: 'text-muted-foreground bg-muted' },
                   } as Record<string, { label: string; className: string }>)[membership.status] ?? { label: membership.status, className: 'text-muted-foreground bg-muted' };
+                  const deliveries = [
+                    { label: 'Einladung', delivery: membership.invitationDelivery },
+                    { label: 'Antwort', delivery: membership.responseDelivery },
+                  ].filter((item): item is { label: string; delivery: ProjectInvitationDelivery } =>
+                    item.delivery != null && ['PENDING', 'FAILED'].includes(item.delivery.status),
+                  );
                   return (
-                  <div key={membership.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                        {(org?.name ?? membership.anOrgId).charAt(0).toUpperCase()}
+                  <div key={membership.id} className="px-3 py-2 rounded-lg border border-border bg-card">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                          {(org?.name ?? membership.anOrgId).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{org?.name ?? membership.anOrgId}</div>
+                          <span className={`inline-flex mt-0.5 text-[10px] px-1.5 py-0.5 rounded border ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{org?.name ?? membership.anOrgId}</div>
-                        <span className={`inline-flex mt-0.5 text-[10px] px-1.5 py-0.5 rounded border ${status.className}`}>
-                          {status.label}
-                        </span>
+                      <div className="flex items-center gap-2 ml-3 shrink-0">
+                        {(['INVITED', 'ACTIVE'].includes(membership.status)) && (
+                          <Button size="sm" variant="ghost" onClick={() => handleRevokeMembership(membership)}
+                            disabled={revokeMembership.isPending} className="text-xs text-red-600 hover:text-red-700">
+                            Widerrufen
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    {(['INVITED', 'ACTIVE'].includes(membership.status)) && (
-                      <Button size="sm" variant="ghost" onClick={() => handleRevokeMembership(membership)}
-                        disabled={revokeMembership.isPending} className="ml-3 text-xs text-red-600 hover:text-red-700 shrink-0">
-                        Widerrufen
-                      </Button>
+                    {deliveries.length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                        {deliveries.map(({ label, delivery }) => {
+                          const failed = delivery.status === 'FAILED';
+                          return (
+                            <div key={delivery.messageId} className="flex items-center justify-between gap-2 text-xs">
+                              <span className={failed ? 'text-red-600' : 'text-amber-600'}>
+                                {label}: {failed ? 'Zustellung fehlgeschlagen' : 'Zustellung ausstehend'}
+                                <span className="ml-1 text-muted-foreground">
+                                  (Versuch {delivery.attemptCount}/5)
+                                </span>
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleRetryInvitationDelivery(delivery)}
+                                disabled={retryInvitationDelivery.isPending}
+                              >
+                                <RefreshCw className="mr-1 h-3 w-3" />
+                                Erneut senden
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                   );

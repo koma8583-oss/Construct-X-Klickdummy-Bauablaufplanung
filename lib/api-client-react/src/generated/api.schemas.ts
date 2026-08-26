@@ -31,6 +31,41 @@ export const ProjectMembershipStatus = {
   REVOKED: 'REVOKED',
 } as const;
 
+export type ProjectInvitationDeliveryMessageType = typeof ProjectInvitationDeliveryMessageType[keyof typeof ProjectInvitationDeliveryMessageType];
+
+
+export const ProjectInvitationDeliveryMessageType = {
+  PROJECT_INVITATION: 'PROJECT_INVITATION',
+  PROJECT_INVITATION_RESPONSE: 'PROJECT_INVITATION_RESPONSE',
+} as const;
+
+/**
+ * Technical delivery status of a dataspace message
+ */
+export type MessageOutboxStatus = typeof MessageOutboxStatus[keyof typeof MessageOutboxStatus];
+
+
+export const MessageOutboxStatus = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  READ: 'READ',
+  FAILED: 'FAILED',
+} as const;
+
+/**
+ * Technical delivery state for a project invitation envelope.
+ */
+export interface ProjectInvitationDelivery {
+  messageId: string;
+  messageType: ProjectInvitationDeliveryMessageType;
+  status: MessageOutboxStatus;
+  attemptCount: number;
+  lastAttemptAt?: string | null;
+  failureReason?: string | null;
+  createdAt: string;
+}
+
 /**
  * Bilateral project relationship and invitation lifecycle state
  */
@@ -53,6 +88,27 @@ export interface ProjectMembership {
   revokedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Technical delivery state of the project invitation message. */
+  invitationDelivery?: ProjectInvitationDelivery | null;
+  /** Technical delivery state of the AN's invitation response. */
+  responseDelivery?: ProjectInvitationDelivery | null;
+}
+
+export type ProjectInvitationDeliveryRetryResultError = {
+  code: string;
+  message: string;
+} | null;
+
+/**
+ * Result of one project invitation delivery attempt.
+ */
+export interface ProjectInvitationDeliveryRetryResult {
+  exchangeId: string;
+  status: MessageOutboxStatus;
+  attemptCount?: number;
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  error?: ProjectInvitationDeliveryRetryResultError;
 }
 
 export interface InviteProjectParticipantRequest {
@@ -1638,20 +1694,6 @@ export const TaktDecision = {
   ACCEPTED: 'ACCEPTED',
   ALTERNATIVES_PROPOSED: 'ALTERNATIVES_PROPOSED',
   REJECTED: 'REJECTED',
-} as const;
-
-/**
- * Technical delivery status of a dataspace message
- */
-export type MessageOutboxStatus = typeof MessageOutboxStatus[keyof typeof MessageOutboxStatus];
-
-
-export const MessageOutboxStatus = {
-  PENDING: 'PENDING',
-  SENT: 'SENT',
-  DELIVERED: 'DELIVERED',
-  READ: 'READ',
-  FAILED: 'FAILED',
 } as const;
 
 export type TaktRequestListItemCurrentAgreement = {

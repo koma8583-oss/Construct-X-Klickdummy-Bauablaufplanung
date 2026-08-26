@@ -560,9 +560,66 @@ export const ListProjectMembershipsResponseItem = zod.object({
   "rejectedAt": zod.coerce.date().nullish(),
   "revokedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "invitationDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the project invitation message.'),
+  "responseDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the AN\'s invitation response.')
 }).describe('Bilateral project relationship and invitation lifecycle state')
 export const ListProjectMembershipsResponse = zod.array(ListProjectMembershipsResponseItem)
+
+
+/**
+ * @summary List pending and failed project invitation deliveries
+ */
+export const ListFailedProjectInvitationDeliveriesParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const ListFailedProjectInvitationDeliveriesResponseItem = zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.')
+export const ListFailedProjectInvitationDeliveriesResponse = zod.array(ListFailedProjectInvitationDeliveriesResponseItem)
+
+
+/**
+ * @summary Retry a failed project invitation delivery
+ */
+export const RetryProjectInvitationDeliveryParams = zod.object({
+  "messageId": zod.coerce.string()
+})
+
+export const RetryProjectInvitationDeliveryResponse = zod.object({
+  "exchangeId": zod.string(),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number().optional(),
+  "sentAt": zod.coerce.date().nullish(),
+  "deliveredAt": zod.coerce.date().nullish(),
+  "error": zod.object({
+  "code": zod.string(),
+  "message": zod.string()
+}).nullish()
+}).describe('Result of one project invitation delivery attempt.')
 
 
 /**
@@ -600,7 +657,25 @@ export const InviteProjectParticipantResponse = zod.object({
   "rejectedAt": zod.coerce.date().nullish(),
   "revokedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "invitationDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the project invitation message.'),
+  "responseDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the AN\'s invitation response.')
 }).describe('Bilateral project relationship and invitation lifecycle state')
 
 
@@ -659,7 +734,25 @@ export const CreateProjectInvitationPackageResponse = zod.object({
   "rejectedAt": zod.coerce.date().nullish(),
   "revokedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "invitationDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the project invitation message.'),
+  "responseDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the AN\'s invitation response.')
 }).describe('Bilateral project relationship and invitation lifecycle state')),
   "idempotent": zod.boolean()
 })
@@ -723,7 +816,25 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "rejectedAt": zod.coerce.date().nullish(),
   "revokedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "invitationDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the project invitation message.'),
+  "responseDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the AN\'s invitation response.')
 }).describe('Bilateral project relationship and invitation lifecycle state'))
 })
 
@@ -985,7 +1096,25 @@ export const RevokeProjectMembershipResponse = zod.object({
   "rejectedAt": zod.coerce.date().nullish(),
   "revokedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "invitationDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the project invitation message.'),
+  "responseDelivery": zod.object({
+  "messageId": zod.string(),
+  "messageType": zod.enum(['PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']),
+  "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).describe('Technical delivery status of a dataspace message'),
+  "attemptCount": zod.number(),
+  "lastAttemptAt": zod.coerce.date().nullish(),
+  "failureReason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('Technical delivery state for a project invitation envelope.').nullish().describe('Technical delivery state of the AN\'s invitation response.')
 }).describe('Bilateral project relationship and invitation lifecycle state')
 
 

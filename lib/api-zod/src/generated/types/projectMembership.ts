@@ -5,6 +5,7 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { ProjectInvitationDelivery } from './projectInvitationDelivery';
 import type { ProjectMembershipStatus } from './projectMembershipStatus';
 
 /**
@@ -29,4 +30,8 @@ export interface ProjectMembership {
   revokedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Technical delivery state of the project invitation message. */
+  invitationDelivery?: ProjectInvitationDelivery | null;
+  /** Technical delivery state of the AN's invitation response. */
+  responseDelivery?: ProjectInvitationDelivery | null;
 }

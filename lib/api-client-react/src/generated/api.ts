@@ -92,6 +92,8 @@ import type {
   Project,
   ProjectInvitation,
   ProjectInvitationDecisionInput,
+  ProjectInvitationDelivery,
+  ProjectInvitationDeliveryRetryResult,
   ProjectInvitationPackage,
   ProjectInvitationResponse,
   ProjectMembership,
@@ -1943,6 +1945,154 @@ export function useListProjectMemberships<TData = Awaited<ReturnType<typeof list
 
 
 
+
+export const getListFailedProjectInvitationDeliveriesUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/invitation-deliveries/failed`
+}
+
+/**
+ * @summary List pending and failed project invitation deliveries
+ */
+export const listFailedProjectInvitationDeliveries = async (projectId: string, options?: RequestInit): Promise<ProjectInvitationDelivery[]> => {
+
+  return customFetch<ProjectInvitationDelivery[]>(getListFailedProjectInvitationDeliveriesUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFailedProjectInvitationDeliveriesQueryKey = (projectId: string,) => {
+    return [
+    `/api/projects/${projectId}/invitation-deliveries/failed`
+    ] as const;
+    }
+
+
+export const getListFailedProjectInvitationDeliveriesQueryOptions = <TData = Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>, TError = ErrorType<unknown>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFailedProjectInvitationDeliveriesQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>> = ({ signal }) => listFailedProjectInvitationDeliveries(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFailedProjectInvitationDeliveriesQueryResult = NonNullable<Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>>
+export type ListFailedProjectInvitationDeliveriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pending and failed project invitation deliveries
+ */
+
+export function useListFailedProjectInvitationDeliveries<TData = Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>, TError = ErrorType<unknown>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFailedProjectInvitationDeliveries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFailedProjectInvitationDeliveriesQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRetryProjectInvitationDeliveryUrl = (messageId: string,) => {
+
+
+
+
+  return `/api/project-invitation-deliveries/${messageId}/retry`
+}
+
+/**
+ * @summary Retry a failed project invitation delivery
+ */
+export const retryProjectInvitationDelivery = async (messageId: string, options?: RequestInit): Promise<ProjectInvitationDeliveryRetryResult> => {
+
+  return customFetch<ProjectInvitationDeliveryRetryResult>(getRetryProjectInvitationDeliveryUrl(messageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryProjectInvitationDeliveryMutationOptions = <TError = ErrorType<void | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryProjectInvitationDelivery>>, TError,{messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryProjectInvitationDelivery>>, TError,{messageId: string}, TContext> => {
+
+const mutationKey = ['retryProjectInvitationDelivery'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryProjectInvitationDelivery>>, {messageId: string}> = (props) => {
+          const {messageId} = props ?? {};
+
+          return  retryProjectInvitationDelivery(messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryProjectInvitationDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof retryProjectInvitationDelivery>>>
+
+    export type RetryProjectInvitationDeliveryMutationError = ErrorType<void | ErrorResponse>
+
+    /**
+ * @summary Retry a failed project invitation delivery
+ */
+export const useRetryProjectInvitationDelivery = <TError = ErrorType<void | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryProjectInvitationDelivery>>, TError,{messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryProjectInvitationDelivery>>,
+        TError,
+        {messageId: string},
+        TContext
+      > => {
+      return useMutation(getRetryProjectInvitationDeliveryMutationOptions(options));
+    }
 
 export const getInviteProjectParticipantUrl = (projectId: string,) => {
 

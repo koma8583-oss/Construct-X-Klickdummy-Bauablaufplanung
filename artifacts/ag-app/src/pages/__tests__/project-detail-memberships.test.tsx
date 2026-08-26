@@ -4,15 +4,63 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const membershipFixtures = [
-  { id: "membership-invited", anOrgId: "an-invited", status: "INVITED" },
-  { id: "membership-active", anOrgId: "an-active", status: "ACTIVE" },
+type MembershipFixture = {
+  id: string;
+  anOrgId: string;
+  status: string;
+  invitationDelivery?: {
+    messageId: string;
+    messageType: string;
+    status: string;
+    attemptCount: number;
+    failureReason?: string;
+    createdAt: string;
+  };
+  responseDelivery?: {
+    messageId: string;
+    messageType: string;
+    status: string;
+    attemptCount: number;
+    failureReason?: string;
+    createdAt: string;
+  };
+};
+
+const membershipFixtures: MembershipFixture[] = [
+  {
+    id: "membership-invited",
+    anOrgId: "an-invited",
+    status: "INVITED",
+    invitationDelivery: {
+      messageId: "project-invitation-invited",
+      messageType: "PROJECT_INVITATION",
+      status: "FAILED",
+      attemptCount: 2,
+      failureReason: "Connector nicht erreichbar",
+      createdAt: "2026-08-26T08:00:00.000Z",
+    },
+  },
+  {
+    id: "membership-active",
+    anOrgId: "an-active",
+    status: "ACTIVE",
+    responseDelivery: {
+      messageId: "project-invitation-response-active-ACTIVE",
+      messageType: "PROJECT_INVITATION_RESPONSE",
+      status: "PENDING",
+      attemptCount: 1,
+      createdAt: "2026-08-26T08:00:00.000Z",
+    },
+  },
   { id: "membership-revoked", anOrgId: "an-revoked", status: "REVOKED" },
   { id: "membership-rejected", anOrgId: "an-rejected", status: "REJECTED" },
 ];
 
 let memberships = [...membershipFixtures];
-let updateMemberships: React.Dispatch<React.SetStateAction<typeof membershipFixtures>> | undefined;
+let updateMemberships: React.Dispatch<React.SetStateAction<MembershipFixture[]>> | undefined;
+let retryDelivery: ReturnType<typeof vi.fn>;
+let retryShouldFail = false;
+let toastMock: ReturnType<typeof vi.fn>;
 
 vi.mock("wouter", () => ({
   Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -25,7 +73,7 @@ vi.mock("@/contexts/auth-context", () => ({
 }));
 
 vi.mock("@/hooks/use-toast", () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: toastMock }),
 }));
 
 vi.mock("@/components/DataPublicationWizard", () => ({
@@ -71,6 +119,10 @@ vi.mock("@workspace/api-client-react", async () => {
       updateMemberships = setCurrent;
       return queryResult(current);
     },
+    useRetryProjectInvitationDelivery: () => ({
+      isPending: false,
+      mutate: retryDelivery,
+    }),
     useListOrganizations: () => queryResult([
       { id: "an-invited", name: "Eingeladener Betrieb", contactEmail: "invited@example.com" },
       { id: "an-active", name: "Aktiver Betrieb", contactEmail: "active@example.com" },
@@ -129,6 +181,7 @@ vi.mock("@workspace/api-client-react", async () => {
   };
 });
 
+
 import ProjectDetail from "../project-detail";
 
 function renderPage() {
@@ -146,6 +199,36 @@ describe("project participant directory membership lifecycle", () => {
   beforeEach(() => {
     memberships = [...membershipFixtures];
     updateMemberships = undefined;
+    retryShouldFail = false;
+    toastMock = vi.fn();
+    retryDelivery = vi.fn(({ messageId }: { messageId: string }, options?: {
+      onSuccess?: (result: { status: string }) => void;
+      onError?: (error: Error) => void;
+      onSettled?: () => void;
+    }) => {
+      if (retryShouldFail) {
+        options?.onError?.(new Error("Die Zustellung wurde nach fünf Versuchen aufgegeben."));
+      } else {
+        memberships = memberships.map((membership) => {
+          if (membership.invitationDelivery?.messageId === messageId) {
+            return {
+              ...membership,
+              invitationDelivery: { ...membership.invitationDelivery, status: "DELIVERED" },
+            };
+          }
+          if (membership.responseDelivery?.messageId === messageId) {
+            return {
+              ...membership,
+              responseDelivery: { ...membership.responseDelivery, status: "DELIVERED" },
+            };
+          }
+          return membership;
+        });
+        updateMemberships?.(memberships);
+        options?.onSuccess?.({ status: "DELIVERED" });
+      }
+      options?.onSettled?.();
+    });
     vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(JSON.stringify([
          { localOrgId: "an-invited", organizationName: "Eingeladener Betrieb", participantId: "local:an-invited", identityStatus: "VERIFIED", connectorStatus: "UNKNOWN", selectable: true },
@@ -202,5 +285,44 @@ describe("project participant directory membership lifecycle", () => {
     await waitFor(() => {
       expect(within(activeRow as HTMLElement).getByText("Widerrufen")).toBeInTheDocument();
     });
+  });
+
+  it("shows failed and pending deliveries and retries the selected delivery", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
+
+    expect(screen.getByText(/Einladung: Zustellung fehlgeschlagen/)).toBeInTheDocument();
+    expect(screen.getByText(/Antwort: Zustellung ausstehend/)).toBeInTheDocument();
+
+    const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
+    await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Erneut senden" }));
+
+    expect(retryDelivery).toHaveBeenCalledWith(
+      { messageId: "project-invitation-invited" },
+      expect.any(Object),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText(/Einladung: Zustellung fehlgeschlagen/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("surfaces the backend retry error instead of reporting success", async () => {
+    retryShouldFail = true;
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
+
+    const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
+    await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Erneut senden" }));
+
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Zustellung konnte nicht wiederholt werden",
+      description: "Die Zustellung wurde nach fünf Versuchen aufgegeben.",
+      variant: "destructive",
+    }));
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      title: "Zustellung erneut angestoßen",
+    }));
   });
 });
