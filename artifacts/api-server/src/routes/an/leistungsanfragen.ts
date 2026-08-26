@@ -13,7 +13,13 @@ import {
   getAnLeistungsanfrageDetail,
   listAnLeistungsanfragen,
   runAnAvailabilityCheck,
+  updateAnResourceRequirement,
 } from "../../services/an-leistungsanfrage-service";
+import {
+  InvalidRequirementPeriodError,
+  ResourceRequirementNotFoundError,
+  requirementUpdateSchema,
+} from "../../services/resource-requirements-service";
 import { requireJwt } from "../../middlewares/requireJwt";
 
 const router = Router();
@@ -61,6 +67,40 @@ async function details(req: any, res: any) {
     return;
   }
   res.json(result);
+}
+
+async function updateRequirement(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const parsed = requirementUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  try {
+    const result = await updateAnResourceRequirement(
+      req.params.id as string,
+      req.params.reqId as string,
+      anOrgId,
+      parsed.data,
+    );
+    if (!result) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.json(result);
+  } catch (error) {
+    if (error instanceof ResourceRequirementNotFoundError) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof InvalidRequirementPeriodError) {
+      res.status(422).json({ error: error.code });
+      return;
+    }
+    throw error;
+  }
 }
 
 async function respond(req: any, res: any) {
@@ -150,6 +190,8 @@ router.get("/leistungsanfragen", requireJwt, list);
 router.get("/takt-requests/:id/snapshot", requireJwt, details);
 router.get("/takt-requests/:id/details", requireJwt, details);
 router.get("/leistungsanfragen/:id/details", requireJwt, details);
+router.patch("/takt-requests/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
+router.patch("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.post("/takt-requests/:id/responses", requireJwt, respond);
 router.post("/leistungsanfragen/:id/responses", requireJwt, respond);
 router.post("/takt-requests/:id/availability-checks", requireJwt, runAvailability);

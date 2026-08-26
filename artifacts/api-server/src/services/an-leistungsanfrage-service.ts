@@ -8,6 +8,12 @@ import {
   resourcesTable,
 } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
+import {
+  InvalidRequirementPeriodError,
+  ResourceRequirementNotFoundError,
+  requirementUpdateSchema,
+} from "./resource-requirements-service";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
@@ -138,6 +144,103 @@ export async function getAnLeistungsanfrageDetail(
       notes: requirement.notes,
     })),
   };
+}
+
+/**
+ * Update an AN-owned requirement in the local Leistungsanfrage projection.
+ *
+ * AN coordination views must never reach through to the AG requirement table:
+ * the projection is the AN domain's writable copy for local planning details.
+ * The requirement and its parent projection timestamp are updated together so
+ * a successful response can always be followed by a read of the same values.
+ */
+export async function updateAnResourceRequirement(
+  externalLeistungsanfrageId: string,
+  requirementId: string,
+  anOrgId: string,
+  patch: z.infer<typeof requirementUpdateSchema>,
+) {
+  return anDb.transaction(async (tx) => {
+    const [projection] = await tx.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(and(
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+        eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+      ))
+      .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion))
+      .limit(1);
+    if (!projection) return null;
+
+    const [existing] = await tx.select()
+      .from(anLeistungsanfrageResourceRequirementsTable)
+      .where(and(
+        eq(anLeistungsanfrageResourceRequirementsTable.id, requirementId),
+        eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id),
+      ))
+      .limit(1);
+    if (!existing) throw new ResourceRequirementNotFoundError();
+
+    const periodStart = patch.periodStart !== undefined
+      ? patch.periodStart
+      : existing.periodStart;
+    const periodEnd = patch.periodEnd !== undefined
+      ? patch.periodEnd
+      : existing.periodEnd;
+    if (!periodStart || !periodEnd || periodStart > periodEnd) {
+      throw new InvalidRequirementPeriodError();
+    }
+
+    const now = new Date();
+    const [updated] = await tx.update(anLeistungsanfrageResourceRequirementsTable)
+      .set({
+        ...(patch.requiredCapacity !== undefined
+          ? { requiredCapacity: patch.requiredCapacity.toString() }
+          : {}),
+        ...(patch.utilizationPercent !== undefined
+          ? { utilizationPercent: patch.utilizationPercent }
+          : {}),
+        ...(patch.requiredQualification !== undefined
+          ? { requiredQualification: patch.requiredQualification }
+          : {}),
+        periodStart,
+        periodEnd,
+        ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+        updatedAt: now,
+      })
+      .where(and(
+        eq(anLeistungsanfrageResourceRequirementsTable.id, requirementId),
+        eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id),
+      ))
+      .returning();
+    if (!updated) throw new ResourceRequirementNotFoundError();
+
+    const [updatedProjection] = await tx.update(anLeistungsanfragenTable)
+      .set({ updatedAt: now })
+      .where(eq(anLeistungsanfragenTable.id, projection.id))
+      .returning({ id: anLeistungsanfragenTable.id });
+    if (!updatedProjection) {
+      throw new Error("AN Leistungsanfrage projection could not be updated");
+    }
+
+    return {
+      id: updated.id,
+      leistungsanfrageId: externalLeistungsanfrageId,
+      taktRequestId: externalLeistungsanfrageId,
+      localProjectionId: projection.id,
+      resourceTypeId: updated.localResourceTypeId,
+      resourceTypeCode: updated.externalResourceTypeCode,
+      resourceTypeName: updated.externalResourceTypeName,
+      requiredCapacity: updated.requiredCapacity,
+      capacityUnit: updated.capacityUnit,
+      utilizationPercent: updated.utilizationPercent,
+      periodStart: updated.periodStart,
+      periodEnd: updated.periodEnd,
+      requiredQualification: updated.requiredQualification,
+      notes: updated.notes,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
+  });
 }
 
 export async function getAnDashboard(anOrgId: string) {
