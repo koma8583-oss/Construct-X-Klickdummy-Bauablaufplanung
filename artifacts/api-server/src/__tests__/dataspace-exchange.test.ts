@@ -11,11 +11,16 @@ import { TractusXEdcExchange } from "../services/dataspace/tractusx-edc-exchange
 import {
   externalProjectInvitationSchema,
   externalServiceRequestSchema,
+  serializeExternalProjectInvitation,
 } from "../services/dataspace/external-contracts";
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
 
 const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
 const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
+const PROJECT_INVITATION_MESSAGE_IDS = [
+  "project-invitation-message-1",
+  "project-invitation-serialization-mutation",
+];
 
 beforeAll(async () => {
   await db.insert(organizationsTable).values([
@@ -26,7 +31,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await db.delete(messageOutboxTable)
-    .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
+    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
     .catch(() => {});
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
@@ -35,7 +40,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await db.delete(messageOutboxTable)
-    .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
+    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
     .catch(() => {});
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
@@ -309,6 +314,40 @@ describe("dataspace exchange boundary", () => {
       const validatedPayload = externalProjectInvitationSchema.parse(outbound.payload);
       expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
       expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
+
+      const mutatedSnapshotPayload = {
+        ...payload,
+        metadata: {
+          ...payload.metadata,
+          messageId: "project-invitation-serialization-mutation",
+        },
+        policySnapshot: { ...policySnapshot },
+      };
+      Object.defineProperty(mutatedSnapshotPayload.policySnapshot, "toJSON", {
+        enumerable: false,
+        value: () => ({ ...policySnapshot, description: "Policy changed during serialization" }),
+      });
+
+      await expect(new TractusXEdcExchange().publishProjectInvitation(mutatedSnapshotPayload))
+        .rejects.toThrow(
+          "Project invitation policySnapshot changed during JSON serialization at policySnapshot.description",
+        );
+      expect(connectorFetch).toHaveBeenCalledOnce();
+      const [failedMutation] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, "project-invitation-serialization-mutation"));
+      expect(failedMutation.status).toBe("FAILED");
+      expect(failedMutation.failureReason).toContain("policySnapshot.description");
+
+      const invalidSnapshotPayload = {
+        ...payload,
+        policySnapshot: {
+          ...policySnapshot,
+          unexpectedField: true,
+        },
+      };
+      expect(() => serializeExternalProjectInvitation(
+        invalidSnapshotPayload as typeof payload,
+      )).toThrow(/Project invitation contract validation failed.*unexpectedField/);
     } finally {
       vi.unstubAllGlobals();
       if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;

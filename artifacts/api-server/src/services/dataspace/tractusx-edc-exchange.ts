@@ -1,7 +1,14 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import { hubDb as db, messageOutboxTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import type { ExternalCoordinationDecision, ExternalProjectInvitation, ExternalProjectInvitationResponse, ExternalServiceRequest, ExternalServiceResponse } from "./external-contracts";
+import {
+  serializeExternalProjectInvitation,
+  type ExternalCoordinationDecision,
+  type ExternalProjectInvitation,
+  type ExternalProjectInvitationResponse,
+  type ExternalServiceRequest,
+  type ExternalServiceResponse,
+} from "./external-contracts";
 import {
   handleIncomingServiceRequest,
   handleIncomingServiceResponse,
@@ -62,6 +69,9 @@ export class TractusXEdcExchange implements DataspaceExchange {
     if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
     const now = new Date();
     try {
+      const outboundPayload = messageType === "PROJECT_INVITATION"
+        ? serializeExternalProjectInvitation(payload as unknown as ExternalProjectInvitation)
+        : payload;
       const response = await fetch(`${endpoint.replace(/\/$/, "")}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json", ...(process.env.DATASPACE_CONNECTOR_TOKEN ? { authorization: `Bearer ${process.env.DATASPACE_CONNECTOR_TOKEN}` } : {}) },
@@ -103,10 +113,13 @@ export class TractusXEdcExchange implements DataspaceExchange {
     try {
       const endpoint = process.env.DATASPACE_CONNECTOR_URL;
       if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
+      const outboundPayload = row.messageType === "PROJECT_INVITATION"
+        ? serializeExternalProjectInvitation(row.payload as unknown as ExternalProjectInvitation)
+        : row.payload;
       const response = await fetch(`${endpoint.replace(/\/$/, "")}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json", ...(process.env.DATASPACE_CONNECTOR_TOKEN ? { authorization: `Bearer ${process.env.DATASPACE_CONNECTOR_TOKEN}` } : {}) },
-        body: JSON.stringify({ messageType: row.messageType, payload: row.payload }),
+        body: JSON.stringify({ messageType: row.messageType, payload: outboundPayload }),
       });
       if (!response.ok) throw new Error(`Dataspace connector returned HTTP ${response.status}`);
       const body = await response.json().catch(() => ({})) as { externalReference?: string };

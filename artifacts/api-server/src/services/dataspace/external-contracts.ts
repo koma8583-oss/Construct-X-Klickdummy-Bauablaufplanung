@@ -365,6 +365,126 @@ export type ExternalProjectInvitation = {
   };
 };
 
+type JsonRecord = Record<string, unknown>;
+
+function formatContractIssues(
+  prefix: string,
+  issues: Array<{ path: PropertyKey[]; message: string }>,
+): Error {
+  const details = issues
+    .map((issue) => {
+      const path = issue.path.length > 0
+        ? issue.path.map(String).join(".")
+        : "payload";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+  return new Error(`${prefix}: ${details}`);
+}
+
+function firstJsonDifference(
+  left: unknown,
+  right: unknown,
+  path: string,
+): string | null {
+  if (Object.is(left, right)) return null;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return path;
+    if (left.length !== right.length) return path;
+    for (let index = 0; index < left.length; index += 1) {
+      const difference = firstJsonDifference(left[index], right[index], `${path}[${index}]`);
+      if (difference) return difference;
+    }
+    return null;
+  }
+
+  if (
+    left !== null &&
+    right !== null &&
+    typeof left === "object" &&
+    typeof right === "object"
+  ) {
+    const leftRecord = left as JsonRecord;
+    const rightRecord = right as JsonRecord;
+    const keys = new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)]);
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(leftRecord, key) ||
+          !Object.prototype.hasOwnProperty.call(rightRecord, key)) {
+        return `${path}.${key}`;
+      }
+      const difference = firstJsonDifference(leftRecord[key], rightRecord[key], `${path}.${key}`);
+      if (difference) return difference;
+    }
+    return null;
+  }
+
+  return path;
+}
+
+/**
+ * Validate and prepare the invitation payload used by the Tractus-X transport.
+ *
+ * The contract is checked both before and after JSON serialization. The second
+ * check is intentional: JSON serialization can omit or transform values (or
+ * invoke a custom toJSON implementation) even when the in-memory object
+ * initially passes the schema. The policy snapshot must be byte-equivalent in
+ * meaning, while object key ordering remains free to change.
+ */
+export function serializeExternalProjectInvitation(
+  payload: ExternalProjectInvitation,
+): JsonRecord {
+  const inputResult = externalProjectInvitationSchema.safeParse(payload);
+  if (!inputResult.success) {
+    throw formatContractIssues(
+      "Project invitation contract validation failed",
+      inputResult.error.issues,
+    );
+  }
+
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(payload);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Project invitation JSON serialization failed: ${reason}`);
+  }
+  if (serialized === undefined) {
+    throw new Error("Project invitation JSON serialization failed: payload is not serializable");
+  }
+
+  let serializedPayload: unknown;
+  try {
+    serializedPayload = JSON.parse(serialized);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Project invitation JSON serialization produced invalid JSON: ${reason}`);
+  }
+
+  const serializedResult = externalProjectInvitationSchema.safeParse(serializedPayload);
+  if (!serializedResult.success) {
+    throw formatContractIssues(
+      "Project invitation contract validation failed after JSON serialization",
+      serializedResult.error.issues,
+    );
+  }
+
+  if (payload.policySnapshot) {
+    const snapshotDifference = firstJsonDifference(
+      payload.policySnapshot,
+      (serializedPayload as JsonRecord).policySnapshot,
+      "policySnapshot",
+    );
+    if (snapshotDifference) {
+      throw new Error(
+        `Project invitation policySnapshot changed during JSON serialization at ${snapshotDifference}`,
+      );
+    }
+  }
+
+  return serializedPayload as JsonRecord;
+}
+
 export type ExternalProjectInvitationResponse = {
   metadata: ExchangeMetadata;
   invitationId: string;
