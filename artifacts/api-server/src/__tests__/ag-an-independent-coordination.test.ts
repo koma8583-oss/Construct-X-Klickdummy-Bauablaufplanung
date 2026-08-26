@@ -164,6 +164,13 @@ describe("independent AG–AN coordination flow", () => {
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(afterInbound).toHaveLength(1);
+    const [outboundEnvelope] = await db.select({ payload: messageOutboxTable.payload })
+      .from(messageOutboxTable)
+      .where(eq(messageOutboxTable.correlationId, requestId));
+    const outboundPayload = outboundEnvelope.payload as {
+      policySnapshot?: { policyId: string; templateId: string; templateVersion: number; code: string };
+    };
+    expect(outboundPayload.policySnapshot).toBeDefined();
     const inbound = await db.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
@@ -173,6 +180,10 @@ describe("independent AG–AN coordination flow", () => {
       ));
     expect(inbound).toHaveLength(1);
     expect(inbound[0].status).toBe("PROCESSED");
+    const [anProjection] = await db.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
+    expect(anProjection.policySnapshot).toEqual(outboundPayload.policySnapshot);
   });
 
   it("AN sees the request, but AG cannot use the AN response endpoint", async () => {

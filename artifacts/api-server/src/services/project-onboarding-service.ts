@@ -15,6 +15,7 @@ import { deliverLocalProjectInvitation } from "./dataspace/local-dataspace-deliv
 import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 import { ProjectMembershipError } from "./project-membership-service";
 import { createPolicySnapshot } from "./policy-snapshot-service";
+import { toDataOfferPolicy, toInvitationPolicy } from "./policy-contract-adapters";
 
 type CombinedInvitationInput = {
   projectId: string;
@@ -23,6 +24,7 @@ type CombinedInvitationInput = {
   invitationMessage?: string;
   validUntil?: Date;
   policyTemplateId: string;
+  policyTemplateVersion?: number;
   title: string;
   description?: string;
   selectedFields: string[];
@@ -109,7 +111,8 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
       const policySnapshot = createPolicySnapshot({
-        templateId: "PROJECT_COORDINATION",
+        templateId: policy.code,
+        templateVersion: input.policyTemplateVersion,
         providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
         overrides: {
           recipientOrganizationId: anOrgId,
@@ -158,8 +161,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
         ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
         ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
         policy: {
-          usagePurpose: "PROJECT_MEMBERSHIP",
-          allowedConsumerParticipantId: participant.participantId,
+          ...toInvitationPolicy(policySnapshot, participant.participantId),
         },
         policySnapshot,
         dataOffer: {
@@ -168,14 +170,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
           dataProductType: "TAKT_INFORMATION_PACKAGE",
           selectedFields: input.selectedFields,
           policy: {
-            id: policy.id,
-            code: policy.code,
-            name: policy.name,
-            purpose: policy.purpose,
-            permissions: policy.permissions,
-            prohibitions: policy.prohibitions,
-            validityRule: policy.validityRule,
-            retentionRule: policy.retentionRule ?? null,
+            ...toDataOfferPolicy(policySnapshot, policy),
           },
         },
       };

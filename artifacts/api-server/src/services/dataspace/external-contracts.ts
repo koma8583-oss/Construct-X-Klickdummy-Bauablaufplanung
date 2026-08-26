@@ -46,6 +46,7 @@ const invitationPolicySchema = z.object({
   usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
   allowedConsumerParticipantId: nonEmpty(200),
   templateId: nonEmpty(200).optional(),
+  templateVersion: z.number().int().positive().optional(),
   templateCode: nonEmpty(200).optional(),
   templateName: nonEmpty(500).optional(),
   purpose: nonEmpty(2000).optional(),
@@ -55,6 +56,8 @@ const invitationPolicySchema = z.object({
 
 const dataOfferPolicySnapshotSchema = z.object({
   id: nonEmpty(200),
+  templateId: nonEmpty(200).optional(),
+  templateVersion: z.number().int().positive().optional(),
   code: nonEmpty(200),
   name: nonEmpty(500),
   purpose: nonEmpty(2000),
@@ -277,6 +280,7 @@ export type ExternalProjectInvitation = {
     usagePurpose: "PROJECT_MEMBERSHIP";
     allowedConsumerParticipantId: string;
     templateId?: string;
+    templateVersion?: number;
     templateCode?: string;
     templateName?: string;
     purpose?: string;
@@ -291,6 +295,8 @@ export type ExternalProjectInvitation = {
     selectedFields: string[];
     policy?: {
       id: string;
+      templateId?: string;
+      templateVersion?: number;
       code: string;
       name: string;
       purpose: string;

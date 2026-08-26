@@ -201,6 +201,7 @@ export function DataPublicationWizard({
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [policyTemplateId, setPolicyTemplateId] = useState('');
+  const [policyTemplateVersion, setPolicyTemplateVersion] = useState<number | undefined>();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [invitationMessage, setInvitationMessage] = useState('');
@@ -225,6 +226,7 @@ export function DataPublicationWizard({
       setSelectedFields(new Set(ALL_FIELDS));
       setSelectedRecipients(new Set());
       setPolicyTemplateId('');
+      setPolicyTemplateVersion(undefined);
       setTitle('');
       setDescription('');
       setInvitationMessage('');
@@ -261,6 +263,7 @@ export function DataPublicationWizard({
         title: title.trim() || autoTitle,
         description: description.trim() || undefined,
         policyTemplateId,
+        ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
         selectedFields: Array.from(selectedFields),
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
@@ -435,7 +438,13 @@ export function DataPublicationWizard({
               <div className="space-y-2">
                 <Label>Nutzungsrichtlinie</Label>
                 <div className="flex gap-2">
-                  <Select value={policyTemplateId} onValueChange={setPolicyTemplateId}>
+                  <Select
+                    value={policyTemplateId}
+                    onValueChange={(value) => {
+                      setPolicyTemplateId(value);
+                      setPolicyTemplateVersion(policyTemplates?.find((policy) => policy.id === value)?.templateVersion);
+                    }}
+                  >
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Richtlinie wählen…" />
                     </SelectTrigger>
@@ -445,6 +454,21 @@ export function DataPublicationWizard({
                       ))}
                     </SelectContent>
                   </Select>
+                  {(selectedPolicy?.availableTemplateVersions?.length ?? 0) > 1 && (
+                    <Select
+                      value={String(policyTemplateVersion ?? selectedPolicy?.templateVersion ?? "")}
+                      onValueChange={(value) => setPolicyTemplateVersion(Number(value))}
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedPolicy?.availableTemplateVersions?.map((version) => (
+                          <SelectItem key={version} value={String(version)}>v{version}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {selectedPolicy && (
                     <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
                       <Eye className="h-3.5 w-3.5" /> Policy anzeigen
@@ -477,7 +501,7 @@ export function DataPublicationWizard({
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                   <div>
                     <div className="text-muted-foreground text-xs uppercase tracking-wider">Policy</div>
-                    <div className="font-medium">{selectedPolicy?.name ?? '—'}</div>
+                    <div className="font-medium">{selectedPolicy?.name ?? '—'}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ''}</div>
                   </div>
                   {(validFrom || validUntil) && (
                     <div>

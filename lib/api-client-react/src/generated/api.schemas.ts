@@ -66,6 +66,8 @@ export interface CreateProjectInvitationPackageRequest {
   /** @minItems 1 */
   participantIds: string[];
   policyTemplateId: string;
+  /** @minimum 1 */
+  policyTemplateVersion?: number;
   /** @minItems 1 */
   selectedFields: string[];
   /** @maxLength 255 */
@@ -102,6 +104,8 @@ export interface ProjectOnboardingInput {
   invitationMessage?: string;
   validUntil?: string;
   policyTemplateId: string;
+  /** @minimum 1 */
+  policyTemplateVersion?: number;
   /**
      * @minLength 1
      * @maxLength 255

@@ -302,6 +302,7 @@ describe("membership gates and legacy compatibility", () => {
       .send({
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
+        policyTemplateVersion: 1,
         selectedFields: ["projectName"],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
@@ -326,6 +327,52 @@ describe("membership gates and legacy compatibility", () => {
     expect(outbound.status).toBe("PUBLISHED");
     expect(inbound.status).toBe("PROCESSED");
     expect(anInvitation.status).toBe("PENDING");
+
+    const [outboundEnvelope] = await db.select({ payload: messageOutboxTable.payload })
+      .from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId));
+    const outboundPayload = outboundEnvelope.payload as {
+      policySnapshot: { templateId: string; templateVersion: number; code: string };
+      policy: { templateId?: string; templateVersion?: number; templateCode?: string };
+      dataOffer: {
+        policy?: { templateId?: string; templateVersion?: number; code?: string };
+      };
+    };
+    expect(outboundPayload.policySnapshot.templateVersion).toBe(1);
+    expect(outboundPayload.policy.templateId).toBe(outboundPayload.policySnapshot.templateId);
+    expect(outboundPayload.policy.templateVersion).toBe(outboundPayload.policySnapshot.templateVersion);
+    expect(outboundPayload.policy.templateCode).toBe(outboundPayload.policySnapshot.code);
+    expect(outboundPayload.dataOffer.policy?.templateId).toBe(outboundPayload.policySnapshot.templateId);
+    expect(outboundPayload.dataOffer.policy?.templateVersion).toBe(outboundPayload.policySnapshot.templateVersion);
+    expect(outboundPayload.dataOffer.policy?.code).toBe(outboundPayload.policySnapshot.code);
+
+    const idempotent = await request(app)
+      .post(`/api/projects/${REINVITE_PROJECT_ID}/invitation-packages`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: policy.id,
+        policyTemplateVersion: 1,
+        selectedFields: ["projectName"],
+        title: "Task 239 re-invitation",
+        idempotencyKey: `${PREFIX}-reinvite-package`,
+      });
+    expect(idempotent.status).toBe(200);
+    expect(idempotent.body.idempotent).toBe(true);
+
+    const conflictingVersion = await request(app)
+      .post(`/api/projects/${REINVITE_PROJECT_ID}/invitation-packages`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: policy.id,
+        policyTemplateVersion: 2,
+        selectedFields: ["projectName"],
+        title: "Task 239 re-invitation",
+        idempotencyKey: `${PREFIX}-reinvite-package`,
+      });
+    expect(conflictingVersion.status).toBe(409);
+    expect(conflictingVersion.body.code).toBe("PROJECT_INVITATION_IDEMPOTENCY_CONFLICT");
   });
 
   it("blocks request creation for an invited AN and for an ACTIVE legacy contractor without membership", async () => {

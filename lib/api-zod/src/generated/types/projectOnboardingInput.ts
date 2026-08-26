@@ -13,6 +13,8 @@ export interface ProjectOnboardingInput {
   invitationMessage?: string;
   validUntil?: Date;
   policyTemplateId: string;
+  /** @minimum 1 */
+  policyTemplateVersion?: number;
   /**
      * @minLength 1
      * @maxLength 255

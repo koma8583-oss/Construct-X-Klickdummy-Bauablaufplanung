@@ -9,6 +9,7 @@
 import { db } from "@workspace/db";
 import { policyTemplatesTable } from "@workspace/db";
 import { logger } from "./logger";
+import { listPolicyTemplateRegistry } from "./policy-template-registry";
 
 interface PolicySeed {
   code: string;
@@ -22,38 +23,19 @@ interface PolicySeed {
   active: boolean;
 }
 
-const CANONICAL_POLICIES: PolicySeed[] = [
-  // ── Einzige aktuell angebotene Richtlinie ──────────────────────────────────
-  {
-    code: "SCHEDULE_COORDINATION",
-    name: "Project Coordination Subcontractor",
-    description:
-      "Richtlinie für Nachunternehmen zur sicheren projektbezogenen Koordination von " +
-      "Terminen, Aktivitätsplanung und Ressourcen.",
-    purpose:
-      "Projektkoordination zwischen Auftraggeber und Nachunternehmen auf Grundlage " +
-      "der für das konkrete Projekt freigegebenen Informationen.",
-    permissions: [
-      "Projekt- und Aktivitätsinformationen lesen",
-      "Angefragte Termine und Aktivitäten abstimmen",
-      "Interne Termin-, Ressourcen- und Kapazitätsplanung",
-      "Mögliche Alternativtermine ermitteln",
-    ],
-    prohibitions: [
-      "Weitergabe an Dritte oder andere Projekte",
-      "Kommerzielle Nutzung außerhalb der Projektkoordination",
-      "Veränderung oder Verfälschung der Originaldaten",
-      "Marketing, Benchmarking oder KI-/ML-Training",
-    ],
-    validityRule:
-      "Gilt ausschließlich für das konkrete Projekt und die angefragten Leistungen. " +
-      "Nutzung nur intern beim Nachunternehmen und nur durch berechtigte Mitarbeitende.",
-    retentionRule:
-      "Nur so lange speichern, wie die Daten für die Projektkoordination erforderlich sind; " +
-      "nicht mehr benötigte Daten und Kopien unverzüglich löschen.",
+const CANONICAL_POLICIES: PolicySeed[] = listPolicyTemplateRegistry({ latestOnly: true })
+  .filter((template) => template.code === "SCHEDULE_COORDINATION")
+  .map((template) => ({
+    code: template.code,
+    name: template.name,
+    description: template.description,
+    purpose: template.purpose,
+    permissions: [...template.permissions],
+    prohibitions: [...template.prohibitions],
+    validityRule: template.validityRule,
+    retentionRule: template.retentionRule,
     active: true,
-  },
-];
+  }));
 
 /**
  * Upserts all canonical policy templates on every startup.

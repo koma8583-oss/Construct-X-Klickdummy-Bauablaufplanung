@@ -613,6 +613,7 @@ export const CreateProjectInvitationPackageParams = zod.object({
 
 
 
+
 export const createProjectInvitationPackageBodyTitleMax = 255;
 
 export const createProjectInvitationPackageBodyDescriptionMax = 2000;
@@ -626,6 +627,7 @@ export const createProjectInvitationPackageBodyIdempotencyKeyMax = 200;
 export const CreateProjectInvitationPackageBody = zod.object({
   "participantIds": zod.array(zod.string()).min(1),
   "policyTemplateId": zod.string(),
+  "policyTemplateVersion": zod.number().min(1).optional(),
   "selectedFields": zod.array(zod.string()).min(1),
   "title": zod.string().max(createProjectInvitationPackageBodyTitleMax),
   "description": zod.string().max(createProjectInvitationPackageBodyDescriptionMax).optional(),
@@ -673,6 +675,7 @@ export const InviteProjectParticipantsWithDataParams = zod.object({
 
 export const inviteProjectParticipantsWithDataBodyInvitationMessageMax = 4000;
 
+
 export const inviteProjectParticipantsWithDataBodyTitleMax = 255;
 
 export const inviteProjectParticipantsWithDataBodyDescriptionMax = 2000;
@@ -685,6 +688,7 @@ export const InviteProjectParticipantsWithDataBody = zod.object({
   "invitationMessage": zod.string().max(inviteProjectParticipantsWithDataBodyInvitationMessageMax).optional(),
   "validUntil": zod.coerce.date().optional(),
   "policyTemplateId": zod.string(),
+  "policyTemplateVersion": zod.number().min(1).optional(),
   "title": zod.string().min(1).max(inviteProjectParticipantsWithDataBodyTitleMax),
   "description": zod.string().max(inviteProjectParticipantsWithDataBodyDescriptionMax).optional(),
   "selectedFields": zod.array(zod.string()).min(1),

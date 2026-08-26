@@ -7,4 +7,4 @@ Test database cleanup belongs in a post-run process, not a Vitest `afterAll` in 
 
 **Why:** Vitest setup teardown runs once per worker; parallel workers can delete another worker's fixtures while its tests are still running.
 
-**How to apply:** Keep fixtures on the canonical seeded policy and run the narrowly allowlisted cleanup script after Vitest exits, preserving the original test exit status.
+**How to apply:** Keep fixtures on the canonical seeded policy and run the narrowly allowlisted cleanup script after Vitest exits, preserving the original test exit status. For reliable whole-suite runs, also avoid concurrent files sharing mutable fixture identities; targeted policy tests are the trustworthy regression signal until that isolation is improved.

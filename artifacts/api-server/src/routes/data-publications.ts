@@ -37,7 +37,7 @@ import {
   PublicationRecipientError,
   FIELD_WHITELISTS,
 } from "../services/data-publication-service";
-import { listPolicyTemplateRegistry } from "../lib/policy-template-registry";
+import { listPolicyTemplateRegistry, getLatestPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 
 const router = Router();
 
@@ -160,7 +160,19 @@ router.get(
       .select()
       .from(policyTemplatesTable)
       .where(eq(policyTemplatesTable.active, true));
-    res.json(templates);
+    res.json(templates.map((template) => {
+      const latest = getLatestPolicyTemplateRegistryEntry(template.code);
+      const versions = listPolicyTemplateRegistry()
+        .filter((entry) => entry.code === template.code)
+        .map((entry) => entry.version)
+        .sort((a, b) => a - b);
+      return {
+        ...template,
+        templateVersion: latest?.version ?? 1,
+        availableTemplateVersions: versions,
+        registryTemplateId: latest?.templateId ?? null,
+      };
+    }));
   },
 );
 

@@ -42,6 +42,9 @@ export interface PolicyTemplate {
   validityRule: string;
   retentionRule: string | null;
   active: boolean;
+  templateVersion?: number;
+  availableTemplateVersions?: number[];
+  registryTemplateId?: string | null;
 }
 
 export interface PublicationRecipientSummary {
@@ -101,6 +104,7 @@ export interface InviteParticipantsWithDataDto {
   invitationMessage?: string;
   validUntil?: string;
   policyTemplateId: string;
+  policyTemplateVersion?: number;
   title: string;
   description?: string;
   selectedFields: string[];

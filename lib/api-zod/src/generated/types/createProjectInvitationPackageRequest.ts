@@ -10,6 +10,8 @@ export interface CreateProjectInvitationPackageRequest {
   /** @minItems 1 */
   participantIds: string[];
   policyTemplateId: string;
+  /** @minimum 1 */
+  policyTemplateVersion?: number;
   /** @minItems 1 */
   selectedFields: string[];
   /** @maxLength 255 */

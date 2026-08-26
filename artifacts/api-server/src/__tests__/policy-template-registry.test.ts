@@ -15,12 +15,16 @@ const providerContext = {
 };
 
 describe("policy template registry", () => {
-  it("looks up the three fixed templates by id and code", () => {
+  it("looks up stable templates by id/code and exposes parallel versions", () => {
     const templates = listPolicyTemplateRegistry();
-    expect(templates).toHaveLength(3);
-    expect(templates.map((template) => template.version)).toEqual([1, 1, 1]);
+    expect(templates).toHaveLength(6);
+    expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 1)?.version).toBe(1);
+    expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 2)?.version).toBe(2);
+    expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION", 1)?.templateId)
+      .toBe("tk-policy-schedule-coordination");
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION")?.templateId)
       .toBe("tk-policy-project-coordination");
+    expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION")?.version).toBe(2);
     expect(getPolicyTemplateRegistryEntry("tk-policy-performance-coordination")?.code)
       .toBe("PERFORMANCE_COORDINATION");
     expect(getPolicyTemplateRegistryEntry("missing-template")).toBeNull();
@@ -38,6 +42,7 @@ describe("policy snapshot builder", () => {
   it("creates a versioned immutable snapshot with allowed overrides", () => {
     const snapshot = createPolicySnapshot({
       templateId: "PROJECT_COORDINATION",
+      templateVersion: 1,
       providerContext,
       overrides: {
         recipientOrganizationId: "an-recipient-1",
@@ -61,6 +66,21 @@ describe("policy snapshot builder", () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.provider)).toBe(true);
     expect(() => Object.defineProperty(snapshot, "purpose", { value: "spoofed" })).toThrow();
+  });
+
+  it("keeps an explicitly selected older version usable", () => {
+    const snapshot = createPolicySnapshot({
+      templateId: "SCHEDULE_COORDINATION",
+      templateVersion: 1,
+      providerContext,
+      overrides: {
+        recipientOrganizationId: "an-recipient-1",
+        purpose: "PROJECT_COLLABORATION",
+        projectReference: "project-1",
+      },
+    });
+    expect(snapshot.code).toBe("SCHEDULE_COORDINATION");
+    expect(snapshot.templateVersion).toBe(1);
   });
 
   it("rejects unknown templates and missing required parameters", () => {

@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -86,6 +87,7 @@ export function ProjectInvitationWizard({
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
   const [participantSearch, setParticipantSearch] = useState("");
   const [policyTemplateId, setPolicyTemplateId] = useState("");
+  const [policyTemplateVersion, setPolicyTemplateVersion] = useState<number | undefined>();
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -115,7 +117,10 @@ export function ProjectInvitationWizard({
     if (selectedPolicy && policyTemplateId !== selectedPolicy.id) {
       setPolicyTemplateId(selectedPolicy.id);
     }
-  }, [selectedPolicy, policyTemplateId]);
+    if (selectedPolicy && policyTemplateVersion === undefined) {
+      setPolicyTemplateVersion(selectedPolicy.templateVersion);
+    }
+  }, [selectedPolicy, policyTemplateId, policyTemplateVersion]);
   const autoTitle = useMemo(
     () => `Projekteinladung & Informationspaket – ${projectName}`,
     [projectName],
@@ -127,6 +132,7 @@ export function ProjectInvitationWizard({
       setSelectedParticipants(new Set());
        setParticipantSearch("");
       setPolicyTemplateId("");
+      setPolicyTemplateVersion(undefined);
       setSelectedFields(new Set(ALL_FIELDS));
       setTitle("");
       setDescription("");
@@ -166,6 +172,7 @@ export function ProjectInvitationWizard({
         data: {
           participantIds: Array.from(selectedParticipants),
           policyTemplateId,
+          ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
           selectedFields: Array.from(selectedFields),
           title: title.trim() || autoTitle,
           description: description.trim() || undefined,
@@ -285,6 +292,24 @@ export function ProjectInvitationWizard({
                     </Button>
                   )}
                 </div>
+                {(selectedPolicy?.availableTemplateVersions?.length ?? 0) > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="invitation-policy-version" className="text-xs text-muted-foreground">Template-Version</Label>
+                    <Select
+                      value={String(policyTemplateVersion ?? selectedPolicy?.templateVersion ?? "")}
+                      onValueChange={(value) => setPolicyTemplateVersion(Number(value))}
+                    >
+                      <SelectTrigger id="invitation-policy-version" className="h-8 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedPolicy?.availableTemplateVersions?.map((version) => (
+                          <SelectItem key={version} value={String(version)}>v{version}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Titel des Informationspakets</Label>
@@ -333,7 +358,7 @@ export function ProjectInvitationWizard({
               <div className="rounded-xl border bg-card p-4 space-y-3">
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Projekt</div><div className="font-semibold">{projectName}</div></div>
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="flex flex-wrap gap-1 mt-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
-                <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}</div></div>
+                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Freigegebene Datenfelder ({selectedFields.size})</div><div className="flex flex-wrap gap-1 mt-1">{Array.from(selectedFields).map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{FIELD_LABELS[field] ?? field}</Badge>)}</div></div>
                 <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Mit dem Versand wird die Einladung gemeinsam mit der Policy und dem Informationspaket vorbereitet. Zugriff entsteht erst, wenn der AN die Einladung und Policy ausdrücklich bestätigt.</p>
               </div>

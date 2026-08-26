@@ -25,7 +25,7 @@ function sendDomainError(res: Response, error: unknown) {
   const status = error.code.endsWith("NOT_FOUND") ? 404
     : error.code.includes("NOT_ACTIVE") || error.code.includes("FORBIDDEN") ? 403
     : error.code.includes("VERIFIED") || error.code.includes("REACHABLE") ? 422
-    : error.code.includes("ALREADY") ? 409
+    : error.code.includes("ALREADY") || error.code.includes("CONFLICT") ? 409
     : error.code.includes("NOT_RETRYABLE") || error.code.includes("EXHAUSTED") ? 409
     : 400;
   res.status(status).json({ error: error.message, code: error.code });
@@ -112,6 +112,7 @@ const combinedInvitationSchema = z.object({
   invitationMessage: z.string().trim().max(4000).optional(),
   validUntil: z.string().datetime({ offset: true }).optional(),
   policyTemplateId: z.string().min(1),
+  policyTemplateVersion: z.number().int().positive().optional(),
   title: z.string().trim().min(1).max(255),
   description: z.string().trim().max(2000).optional(),
   selectedFields: z.array(z.string().min(1)).min(1).max(100),
@@ -121,6 +122,7 @@ const combinedInvitationSchema = z.object({
 const invitationPackageSchema = z.object({
   participantIds: z.array(z.string().min(1)).min(1).max(100),
   policyTemplateId: z.string().min(1),
+  policyTemplateVersion: z.number().int().positive().optional(),
   selectedFields: z.array(z.string().min(1)).min(1).max(100),
   title: z.string().trim().min(1).max(255),
   description: z.string().trim().max(2000).optional(),
@@ -148,6 +150,7 @@ router.post("/projects/:projectId/invitation-packages", requireRole("AG_ADMIN", 
       agOrgId: req.user.orgId,
       participantIds: parsed.data.participantIds,
       policyTemplateId: parsed.data.policyTemplateId,
+      policyTemplateVersion: parsed.data.policyTemplateVersion,
       selectedFields: parsed.data.selectedFields,
       title: parsed.data.title,
       description: parsed.data.description,
@@ -180,6 +183,7 @@ router.post("/projects/:projectId/invitations-with-data", requireRole("AG_ADMIN"
       invitationMessage: parsed.data.invitationMessage,
       validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
       policyTemplateId: parsed.data.policyTemplateId,
+      policyTemplateVersion: parsed.data.policyTemplateVersion,
       title: parsed.data.title,
       description: parsed.data.description,
       selectedFields: parsed.data.selectedFields,

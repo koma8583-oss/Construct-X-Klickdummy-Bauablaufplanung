@@ -26,6 +26,8 @@ import {
   computeContentHash,
 } from "./data-publication-service";
 import { createPolicySnapshot } from "./policy-snapshot-service";
+import { toDataOfferPolicy, toInvitationPolicy } from "./policy-contract-adapters";
+import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 
 export class ProjectMembershipError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -243,7 +245,7 @@ export async function inviteParticipant(input: {
   const messageId = `project-invitation-${invitationId}`;
   const now = new Date();
   const policySnapshot = createPolicySnapshot({
-    templateId: "PROJECT_COORDINATION",
+    templateId: "SCHEDULE_COORDINATION",
     providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
     overrides: {
       recipientOrganizationId: anOrgId,
@@ -273,8 +275,7 @@ export async function inviteParticipant(input: {
     ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
     ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
     policy: {
-      usagePurpose: "PROJECT_MEMBERSHIP",
-      allowedConsumerParticipantId: participant.participantId,
+      ...toInvitationPolicy(policySnapshot, participant.participantId),
     },
     policySnapshot,
   };
@@ -319,6 +320,7 @@ export type CreateProjectInvitationPackageInput = {
   agOrgId: string;
   participantIds: string[];
   policyTemplateId: string;
+  policyTemplateVersion?: number;
   selectedFields: string[];
   title: string;
   description?: string;
@@ -394,12 +396,28 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     const existingMemberships = await db.select().from(projectMembershipsTable).where(
       eq(projectMembershipsTable.dataPublicationId, existingPublication[0].id),
     );
+    const existingInvitationMessages = existingMemberships.length > 0
+      ? await db.select({ payload: messageOutboxTable.payload }).from(messageOutboxTable).where(
+          inArray(
+            messageOutboxTable.messageId,
+            existingMemberships.map((membership) => `project-invitation-${membership.invitationId}`),
+          ),
+        )
+      : [];
+    const existingPolicyVersion = (existingInvitationMessages[0]?.payload as {
+      policySnapshot?: { templateVersion?: number };
+    } | undefined)?.policySnapshot?.templateVersion;
+    const requestedPolicyVersion = getPolicyTemplateRegistryEntry(
+      policy.code,
+      input.policyTemplateVersion,
+    )?.version;
     const sameParticipants = existingMemberships.length === anOrgIds.length &&
       existingMemberships.every((membership) => anOrgIds.includes(membership.anOrgId));
     const sameFields = JSON.stringify([...existingPublication[0].selectedFields].sort()) ===
       JSON.stringify([...input.selectedFields].sort());
     if (!sameParticipants || !sameFields ||
         existingPublication[0].policyTemplateId !== input.policyTemplateId ||
+        existingPolicyVersion !== requestedPolicyVersion ||
         existingPublication[0].title !== input.title) {
       throw new ProjectMembershipError(
         "PROJECT_INVITATION_IDEMPOTENCY_CONFLICT",
@@ -480,7 +498,8 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
       const policySnapshot = createPolicySnapshot({
-        templateId: "PROJECT_COORDINATION",
+        templateId: policy.code,
+        templateVersion: input.policyTemplateVersion,
         providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
         overrides: {
           recipientOrganizationId: anOrgId,
@@ -548,7 +567,9 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           projectReference: publication.projectId,
           dataProductType: publication.dataProductType,
           publicationVersion: publication.version,
-          policyCode: policy.code,
+          policyCode: policySnapshot.code,
+          policyTemplateId: policySnapshot.templateId,
+          policyTemplateVersion: policySnapshot.templateVersion,
           validUntil: publication.validUntil?.toISOString() ?? null,
           detailsRef: `/api/an/data-offers/${publication.id}`,
           title: publication.title,
@@ -577,14 +598,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
         ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
         policy: {
-          usagePurpose: "PROJECT_MEMBERSHIP",
-          allowedConsumerParticipantId: participant.participantId,
-          templateId: policy.id,
-          templateCode: policy.code,
-          templateName: policy.name,
-          purpose: policy.purpose,
-          permissions: policy.permissions,
-          prohibitions: policy.prohibitions,
+          ...toInvitationPolicy(policySnapshot, participant.participantId),
         },
         policySnapshot,
         dataOffer: {
@@ -593,6 +607,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           selectedFields: input.selectedFields,
           validFrom: (input.validFrom ?? now).toISOString(),
           ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
+          policy: toDataOfferPolicy(policySnapshot, policy),
         },
       };
       await tx.insert(messageOutboxTable).values({

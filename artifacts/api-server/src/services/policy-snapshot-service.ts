@@ -12,6 +12,8 @@ export interface AuthenticatedProviderContext {
 
 export interface CreatePolicySnapshotInput {
   readonly templateId: string;
+  /** Omit to resolve the newest registered version. */
+  readonly templateVersion?: number;
   readonly providerContext: AuthenticatedProviderContext;
   readonly overrides?: Partial<Record<PolicyTemplateParameter, string | null>>;
   readonly providerOrganizationId?: string;
@@ -59,9 +61,14 @@ function deepFreeze<T>(value: T): T {
 }
 
 export function createPolicySnapshot(input: CreatePolicySnapshotInput): PolicySnapshot {
-  const template = getPolicyTemplateRegistryEntry(input.templateId);
+  const template = getPolicyTemplateRegistryEntry(input.templateId, input.templateVersion);
   if (!template) {
-    throw new PolicySnapshotError("TEMPLATE_NOT_FOUND", `Policy template not found: ${input.templateId}`);
+    throw new PolicySnapshotError(
+      "TEMPLATE_NOT_FOUND",
+      input.templateVersion === undefined
+        ? `Policy template not found: ${input.templateId}`
+        : `Policy template not found: ${input.templateId} version ${input.templateVersion}`,
+    );
   }
   if (!input.providerContext.organizationId || input.providerOrganizationId !== undefined) {
     throw new PolicySnapshotError(
@@ -79,8 +86,17 @@ export function createPolicySnapshot(input: CreatePolicySnapshotInput): PolicySn
   }
   const values = overrides as Record<string, string | null | undefined>;
   for (const required of template.requiredParameters) {
-    if (!values[required]) {
+    if (typeof values[required] !== "string" || values[required].trim().length === 0) {
       throw new PolicySnapshotError("REQUIRED_PARAMETER_MISSING", `Required policy parameter is missing: ${required}`);
+    }
+  }
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new PolicySnapshotError("OVERRIDE_NOT_ALLOWED", `Policy parameter must be a non-empty string: ${key}`);
+    }
+    if ((key === "validFrom" || key === "validUntil") && Number.isNaN(Date.parse(value))) {
+      throw new PolicySnapshotError("OVERRIDE_NOT_ALLOWED", `Policy date is invalid: ${key}`);
     }
   }
 

@@ -3669,6 +3669,7 @@ components:
           minItems: 1
           items: { type: string }
         policyTemplateId: { type: string }
+        policyTemplateVersion: { type: integer, minimum: 1 }
         selectedFields:
           type: array
           minItems: 1
@@ -3703,6 +3704,7 @@ components:
         invitationMessage: { type: string, maxLength: 4000 }
         validUntil: { type: string, format: date-time }
         policyTemplateId: { type: string }
+        policyTemplateVersion: { type: integer, minimum: 1 }
         title: { type: string, minLength: 1, maxLength: 255 }
         description: { type: string, maxLength: 2000 }
         selectedFields:
