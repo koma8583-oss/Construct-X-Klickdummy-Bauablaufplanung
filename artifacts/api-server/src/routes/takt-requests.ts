@@ -25,8 +25,6 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
-  taktRequestResourceRequirementsTable,
-  resourceTypesTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -77,7 +75,7 @@ import {
 import {
   toExternalServiceResponseFromEnvelope,
   toExternalServiceRequest,
-  toExternalResourceRequirements,
+  toExternalResourceRequirementsFromSnapshot,
 } from "../services/dataspace/external-mappers";
 import { IdempotencyConflictError } from "../lib/transport/transport-errors";
 import {
@@ -836,20 +834,7 @@ router.post(
       res.status(422).json({ error: "Cannot publish service request without plannedStart and plannedEnd." });
       return;
     }
-    const requirementRows = await db
-      .select({
-        resourceTypeCode: resourceTypesTable.code,
-        resourceTypeName: resourceTypesTable.name,
-        requiredCapacity: taktRequestResourceRequirementsTable.requiredCapacity,
-        capacityUnit: resourceTypesTable.capacityUnit,
-        utilizationPercent: taktRequestResourceRequirementsTable.utilizationPercent,
-        periodStart: taktRequestResourceRequirementsTable.periodStart,
-        periodEnd: taktRequestResourceRequirementsTable.periodEnd,
-        requiredQualification: taktRequestResourceRequirementsTable.requiredQualification,
-      })
-      .from(taktRequestResourceRequirementsTable)
-      .leftJoin(resourceTypesTable, eq(resourceTypesTable.id, taktRequestResourceRequirementsTable.resourceTypeId))
-      .where(eq(taktRequestResourceRequirementsTable.taktRequestId, id));
+    const snapshotPayload = (currentSnap?.snapshotPayload as Record<string, unknown> | null) ?? {};
     let externalRequest;
     try {
       externalRequest = toExternalServiceRequest({
@@ -863,7 +848,10 @@ router.post(
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
         messageId: notificationMessageId(id),
-        resourceRequirements: toExternalResourceRequirements(requirementRows),
+        resourceRequirements: toExternalResourceRequirementsFromSnapshot(
+          snapshotPayload.resourceRequirements,
+          { start: plannedTimeWindow.start, end: plannedTimeWindow.end },
+        ),
         policySnapshot: (snapPayload.policySnapshot as Parameters<typeof toExternalServiceRequest>[0]["policySnapshot"]),
       });
     } catch (error) {

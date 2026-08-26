@@ -3,6 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { hubDb as db, messageOutboxTable, organizationsTable } from "@workspace/db";
 import {
   toExternalResourceRequirements,
+  toExternalResourceRequirementsFromSnapshot,
   toExternalServiceRequest,
   toExternalServiceResponse,
 } from "../services/dataspace/external-mappers";
@@ -116,6 +117,24 @@ describe("dataspace exchange boundary", () => {
       ],
     });
     expect(JSON.stringify(payload)).not.toMatch(/resourceId|resourceBookings|concreteResources|employeeName|equipmentId|localProjectId|availableCapacity|internalNotes|costs/);
+  });
+
+  it("builds complete external requirements from public snapshot fields", () => {
+    const requirements = toExternalResourceRequirementsFromSnapshot(
+      [{ resourceType: "CREW", notes: "Montageteam" }],
+      { start: "2026-09-01", end: "2026-09-10" },
+    );
+
+    expect(requirements).toEqual([{
+      resourceTypeCode: "CREW",
+      resourceTypeName: "Crew",
+      requiredCapacity: 1,
+      capacityUnit: "PERSONS",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+    }]);
   });
 
   it("maps only external response decision data", () => {

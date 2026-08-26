@@ -11,6 +11,11 @@ import type { MessageEnvelope } from "../../lib/transport/message-transport";
 const SCHEMA_VERSION = "1.0";
 export const CONSTRUCTION_SERVICE_COORDINATION_PURPOSE = "construction-service-coordination";
 const newMessageId = () => crypto.randomUUID();
+const SNAPSHOT_RESOURCE_TYPE_METADATA = {
+  CREW: { code: "CREW", name: "Crew", capacityUnit: "PERSONS" },
+  EQUIPMENT: { code: "EQUIPMENT", name: "Equipment", capacityUnit: "UNITS" },
+  OTHER: { code: "OTHER", name: "Other", capacityUnit: "UNITS" },
+} as const;
 
 export function toExternalResourceRequirements(rows: Array<{
   resourceTypeCode: string | null;
@@ -36,6 +41,50 @@ export function toExternalResourceRequirements(rows: Array<{
       periodStart: row.periodStart,
       periodEnd: row.periodEnd,
       requiredQualification: row.requiredQualification,
+    };
+  });
+}
+
+/**
+ * Convert the public snapshot resource requirements into the complete
+ * SERVICE_REQUEST contract without resolving AN-local catalog data.
+ *
+ * The snapshot intentionally stores only a public type and free-text note.
+ * The external contract still requires capacity, unit, and deployment dates,
+ * so type-based requirements use one requested unit across the snapshot
+ * window.  Detailed AN-owned requirements are never read on the AG side.
+ */
+export function toExternalResourceRequirementsFromSnapshot(
+  rows: unknown,
+  plannedTimeWindow: { start: string; end: string },
+): ExternalResourceRequirement[] {
+  if (!Array.isArray(rows)) return [];
+
+  return rows.map((row) => {
+    if (
+      !row ||
+      typeof row !== "object" ||
+      typeof (row as Record<string, unknown>).resourceType !== "string" ||
+      typeof (row as Record<string, unknown>).notes !== "string"
+    ) {
+      throw new Error("Snapshot resource requirement is incomplete");
+    }
+
+    const resourceType = (row as Record<string, string>).resourceType.trim().toUpperCase();
+    const metadata = SNAPSHOT_RESOURCE_TYPE_METADATA[
+      resourceType as keyof typeof SNAPSHOT_RESOURCE_TYPE_METADATA
+    ];
+    if (!metadata) throw new Error("Snapshot resource requirement has an unsupported type");
+
+    return {
+      resourceTypeCode: metadata.code,
+      resourceTypeName: metadata.name,
+      requiredCapacity: 1,
+      capacityUnit: metadata.capacityUnit,
+      utilizationPercent: 100,
+      periodStart: plannedTimeWindow.start,
+      periodEnd: plannedTimeWindow.end,
+      requiredQualification: null,
     };
   });
 }

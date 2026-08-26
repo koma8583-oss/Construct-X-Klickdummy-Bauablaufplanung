@@ -4,9 +4,8 @@ import {
   leistungsanfragenTable,
   leistungsantwortenTable,
   leistungsantwortEntscheidungenTable,
-  leistungsanfrageResourceRequirementsTable,
+  leistungsanfrageSnapshotsTable,
   leistungenTable,
-  resourceTypesTable,
   serviceChangeProposalsTable,
   serviceClarificationsTable,
   serviceConstraintsTable,
@@ -16,8 +15,10 @@ import {
 import { applyAcceptedScheduleChange } from "./schedule-change-service";
 import { deriveServiceCoordinationState } from "./service-coordination-state";
 import { compareCalendarDates, differenceInCalendarDays } from "../lib/calendar-date-utils";
-import { shiftRequirementsToWindow } from "./resource-availability-service";
-import { toExternalResourceRequirements, toExternalServiceRequest } from "./dataspace/external-mappers";
+import {
+  toExternalResourceRequirementsFromSnapshot,
+  toExternalServiceRequest,
+} from "./dataspace/external-mappers";
 import { deliverLocalServiceRequest } from "./dataspace/local-dataspace-delivery";
 import type { ExternalServiceResponse } from "./dataspace/external-contracts";
 
@@ -160,19 +161,21 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
     }
     const [service] = await tx.select().from(leistungenTable).where(eq(leistungenTable.id, request.leistungId)).limit(1);
     if (!service || !request.agreedStart || !request.agreedEnd) throw Object.assign(new Error("Leistungsanfrage unvollständig"), { statusCode: 422 });
-    const rows = await tx.select({
-      resourceTypeCode: resourceTypesTable.code, resourceTypeName: resourceTypesTable.name,
-      requiredCapacity: leistungsanfrageResourceRequirementsTable.requiredCapacity, capacityUnit: resourceTypesTable.capacityUnit,
-      utilizationPercent: leistungsanfrageResourceRequirementsTable.utilizationPercent, periodStart: leistungsanfrageResourceRequirementsTable.periodStart,
-      periodEnd: leistungsanfrageResourceRequirementsTable.periodEnd, requiredQualification: leistungsanfrageResourceRequirementsTable.requiredQualification,
-    }).from(leistungsanfrageResourceRequirementsTable).leftJoin(resourceTypesTable, eq(resourceTypesTable.id, leistungsanfrageResourceRequirementsTable.resourceTypeId)).where(eq(leistungsanfrageResourceRequirementsTable.leistungsanfrageId, request.id));
-    const requirements = shiftRequirementsToWindow(rows, request.agreedStart, proposal.start).map((row) => ({ ...row, periodStart: row.periodStart ?? dateOnly(proposal.start), periodEnd: row.periodEnd ?? dateOnly(proposal.end) }));
+    const [snapshot] = await tx.select({ snapshotPayload: leistungsanfrageSnapshotsTable.snapshotPayload })
+      .from(leistungsanfrageSnapshotsTable)
+      .where(eq(leistungsanfrageSnapshotsTable.leistungsanfrageId, request.id))
+      .limit(1);
+    const snapshotPayload = snapshot?.snapshotPayload as Record<string, unknown> | undefined;
+    const requirements = toExternalResourceRequirementsFromSnapshot(
+      snapshotPayload?.resourceRequirements,
+      { start: dateOnly(proposal.start), end: dateOnly(proposal.end) },
+    );
     const payload = toExternalServiceRequest({
       requestId: proposal.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: request.id, changeProposalId: proposal.id,
       baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
       projectReference: service.projectId, taktReference: service.id, plannedStart: proposal.start.toISOString(), plannedEnd: proposal.end.toISOString(),
       senderOrgId: request.guOrgId, receiverOrgId: request.nuOrgId, correlationId: proposal.id, messageId: `schedule-change:${proposal.id}`,
-      resourceRequirements: toExternalResourceRequirements(requirements),
+      resourceRequirements: requirements,
     });
     return { proposal, payload };
   });

@@ -383,6 +383,9 @@ export async function createRevision(
       plannedStart:      newStart,
       plannedEnd:        newEnd,
       plannedTimeWindow: { start: newStart, end: newEnd },
+      resourceRequirements: mergedTakt.requiredResources
+        ? [{ resourceType: "CREW", notes: mergedTakt.requiredResources }]
+        : [],
       projectReference:  project?.id ?? takt.projectId,
       ...(subject != null || message != null
         ? { coordinationContext: { subject: subject ?? null, message: message ?? null } }
