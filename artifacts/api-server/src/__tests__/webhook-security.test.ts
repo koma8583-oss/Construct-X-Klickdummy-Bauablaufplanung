@@ -8,7 +8,16 @@ vi.mock("node:dns/promises", () => ({
     if (hostname === "mapped-private.example.test") {
       return [{ address: "::ffff:c0a8:0101", family: 6 }];
     }
-    return [{ address: "203.0.113.10", family: 4 }];
+    if (hostname === "documentation.example.test") {
+      return [{ address: "198.51.100.10", family: 4 }];
+    }
+    if (hostname === "multicast.example.test") {
+      return [{ address: "239.255.255.250", family: 4 }];
+    }
+    if (hostname === "reserved.example.test") {
+      return [{ address: "240.0.0.1", family: 4 }];
+    }
+    return [{ address: "93.184.216.34", family: 4 }];
   }),
 }));
 
@@ -30,6 +39,18 @@ describe("webhook target SSRF protection", () => {
     "http://[::ffff:192.168.1.1]",
     "http://[::ffff:169.254.169.254]",
     "http://[::1]",
+    "http://192.0.0.1",
+    "http://192.0.2.1",
+    "http://192.31.196.1",
+    "http://192.52.193.1",
+    "http://192.88.99.1",
+    "http://198.51.100.1",
+    "http://192.175.48.1",
+    "http://203.0.113.1",
+    "http://224.0.0.1",
+    "http://239.255.255.250",
+    "http://240.0.0.1",
+    "http://255.255.255.255",
   ])("rejects %s", async (url) => {
     await expect(validateWebhookTargetUrl(url)).rejects.toThrow();
   });
@@ -46,11 +67,35 @@ describe("webhook target SSRF protection", () => {
     ).rejects.toThrow(/blocked address/i);
   });
 
+  it("rejects documentation, multicast, and reserved DNS results", async () => {
+    await expect(
+      validateWebhookTargetUrl("http://documentation.example.test"),
+    ).rejects.toThrow(/blocked address/i);
+    await expect(
+      validateWebhookTargetUrl("http://multicast.example.test"),
+    ).rejects.toThrow(/blocked address/i);
+    await expect(
+      validateWebhookTargetUrl("http://reserved.example.test"),
+    ).rejects.toThrow(/blocked address/i);
+  });
+
+  it("allows a publicly routable IPv4 target", async () => {
+    await expect(
+      validateWebhookTargetUrl("http://93.184.216.34"),
+    ).resolves.toEqual(new URL("http://93.184.216.34"));
+  });
+
+  it("allows a hostname with only publicly routable DNS results", async () => {
+    await expect(
+      validateWebhookTargetUrl("http://public.example.test"),
+    ).resolves.toEqual(new URL("http://public.example.test"));
+  });
+
   it("requires HTTPS in production", async () => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     try {
-      await expect(validateWebhookTargetUrl("http://203.0.113.10")).rejects.toThrow(/HTTPS/);
+      await expect(validateWebhookTargetUrl("http://93.184.216.34")).rejects.toThrow(/HTTPS/);
     } finally {
       process.env.NODE_ENV = previous;
     }

@@ -16,22 +16,32 @@ export class InvalidWebhookTargetUrlError extends Error {
   }
 }
 
-function isPrivateIpv4(address: string): boolean {
+function isBlockedIpv4(address: string): boolean {
   const octets = address.split(".").map(Number);
-  const [a, b] = octets;
+  const [a, b, c] = octets;
   if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
     return true;
   }
-  // RFC 1918, loopback, link-local, unspecified, carrier-grade NAT and
-  // reserved benchmark ranges must never be reachable through a webhook.
+  // Block IPv4 special-purpose ranges that are not publicly routable. Keep
+  // the ranges precise so an address outside an assigned special range is not
+  // rejected just because it shares its first two octets.
   return a === 0 ||
     a === 10 ||
     a === 127 ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && (b === 0 || b === 168)) ||
-    (a === 198 && (b === 18 || b === 19));
+    (a === 192 && (
+      (b === 0 && (c === 0 || c === 2)) ||
+      (b === 31 && c === 196) ||
+      (b === 52 && c === 193) ||
+      (b === 88 && c === 99) ||
+      b === 168 ||
+      (b === 175 && c === 48)
+    )) ||
+    (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224;
 }
 
 function isPrivateIpv6(address: string): boolean {
@@ -76,9 +86,9 @@ function ipv4FromMappedIpv6(address: string): string | null {
 
 function isBlockedAddress(address: string): boolean {
   const mappedIpv4 = ipv4FromMappedIpv6(address);
-  if (mappedIpv4) return isPrivateIpv4(mappedIpv4);
+  if (mappedIpv4) return isBlockedIpv4(mappedIpv4);
   const version = isIP(address);
-  if (version === 4) return isPrivateIpv4(address);
+  if (version === 4) return isBlockedIpv4(address);
   if (version === 6) return isPrivateIpv6(address);
   return true;
 }
