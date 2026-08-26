@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq, inArray } from "drizzle-orm";
+import { hubDb as db, messageOutboxTable, organizationsTable } from "@workspace/db";
 import {
   toExternalResourceRequirements,
   toExternalServiceRequest,
@@ -6,8 +8,35 @@ import {
 } from "../services/dataspace/external-mappers";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import { TractusXEdcExchange } from "../services/dataspace/tractusx-edc-exchange";
-import { externalServiceRequestSchema } from "../services/dataspace/external-contracts";
+import {
+  externalProjectInvitationSchema,
+  externalServiceRequestSchema,
+} from "../services/dataspace/external-contracts";
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
+
+const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
+
+beforeAll(async () => {
+  await db.insert(organizationsTable).values([
+    { id: TRACTUSX_TEST_ORG_IDS[0], name: "Tractus-X adapter test AG", type: "AG" },
+    { id: TRACTUSX_TEST_ORG_IDS[1], name: "Tractus-X adapter test AN", type: "AN" },
+  ]).onConflictDoNothing();
+});
+
+afterEach(async () => {
+  await db.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
+    .catch(() => {});
+});
+
+afterAll(async () => {
+  await db.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
+    .catch(() => {});
+  await db.delete(organizationsTable)
+    .where(inArray(organizationsTable.id, TRACTUSX_TEST_ORG_IDS))
+    .catch(() => {});
+});
 
 describe("dataspace exchange boundary", () => {
   it("maps only external request fields and does not expose internal resource data", () => {
@@ -176,6 +205,101 @@ describe("dataspace exchange boundary", () => {
       expect(outbound.messageType).toBe("SERVICE_REQUEST");
 
       const validatedPayload = externalServiceRequestSchema.parse(outbound.payload);
+      expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
+      expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
+  });
+
+  it("preserves a project invitation policy snapshot through the serialized Tractus-X payload", async () => {
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const connectorFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ messageId: "connector-invitation-message-1", externalReference: "connector-invitation-reference-1" }),
+    });
+    const policySnapshot = {
+      policyId: "policy-project-ß/2026",
+      templateId: "PROJECT_COORDINATION",
+      templateVersion: 7,
+      code: "PROJECT_COORDINATION",
+      name: "Projektkoordination – Einladung",
+      description: "Unveränderlicher Snapshot mit Unicode, Nullwerten und einer bewusst geordneten Rechte-Liste.",
+      permissions: ["read:project", "read:takt-ä", "coordinate:施工", "read:project"],
+      prohibitions: ["share-outside-project", "derive-personal-profile", "export:秘密"],
+      provider: { organizationId: "ag-42", userId: null },
+      recipientOrganizationId: "an-17",
+      purpose: "Zusammenarbeit für Projekt Ω / Bauabschnitt 🏗️",
+      projectReference: null,
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: "2026-09-30T18:00:00.000Z",
+      createdAt: "2026-08-26T07:59:59.123Z",
+    };
+    const payload = {
+      metadata: {
+        messageId: "project-invitation-message-1",
+        correlationId: "project-invitation-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: "tractusx-test-ag",
+        receiverOrgId: "tractusx-test-an",
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      invitationId: "invitation-2026-ß",
+      project: {
+        projectReference: "project-2026-ß",
+        projectName: "Projekt Ω 🏗️",
+        description: "Einladungsprojekt mit unverändertem Inhalt.",
+        location: "München – Abschnitt 施工",
+      },
+      requestedRole: "CONTRACTOR" as const,
+      purpose: "PROJECT_COLLABORATION" as const,
+      invitationMessage: "Willkommen – bitte prüft die Randbedingungen.",
+      validUntil: "2026-09-30T18:00:00.000Z",
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP" as const,
+        allowedConsumerParticipantId: "participant-an-17",
+        templateId: "PROJECT_COORDINATION",
+        templateCode: "PROJECT_COORDINATION",
+        templateName: "Projektkoordination",
+        purpose: "Projektzusammenarbeit",
+        permissions: ["read:project"],
+        prohibitions: ["share-outside-project"],
+      },
+      policySnapshot,
+      dataOffer: {
+        publicationId: "publication-2026-ß",
+        title: "Takt-Informationen",
+        dataProductType: "TAKT_INFORMATION_PACKAGE" as const,
+        selectedFields: ["projectReference", "taktName", "zone-ä"],
+        validFrom: "2026-08-26T08:00:00.000Z",
+        validUntil: "2026-09-30T18:00:00.000Z",
+      },
+    };
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test/";
+    try {
+      const result = await new TractusXEdcExchange().publishProjectInvitation(payload);
+      expect(result).toMatchObject({
+        exchangeId: "connector-invitation-message-1",
+        externalReference: "connector-invitation-reference-1",
+        status: "DELIVERED",
+      });
+
+      expect(connectorFetch).toHaveBeenCalledOnce();
+      const [url, requestInit] = connectorFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("https://connector.example.test/messages");
+      expect(requestInit.method).toBe("POST");
+      const outbound = JSON.parse(String(requestInit.body)) as {
+        messageType: string;
+        payload: unknown;
+      };
+      expect(outbound.messageType).toBe("PROJECT_INVITATION");
+
+      const validatedPayload = externalProjectInvitationSchema.parse(outbound.payload);
       expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
       expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
     } finally {
