@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "export NODE_ENV=development; if [ -n \"${DATABASE_URL:-}\" ] && [ -z \"${AG_DATABASE_URL:-}\" ] && [ -z \"${AN_DATABASE_URL:-}\" ] && [ -z \"${HUB_DATABASE_URL:-}\" ]; then export TAKTKOORD_SHARED_DATABASE_POC=true; fi; pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",

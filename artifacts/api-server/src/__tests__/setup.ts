@@ -11,6 +11,12 @@ if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "test";
 }
 
+// Tests use the intentional single-database PoC setup. Production startup
+// never inherits this flag because it is rejected by the database guard.
+if (!process.env.TAKTKOORD_SHARED_DATABASE_POC) {
+  process.env.TAKTKOORD_SHARED_DATABASE_POC = "true";
+}
+
 // Internal job token used by t79 tests.
 // The actual production value is set as a Replit Secret (INTERNAL_JOB_TOKEN).
 // This fallback lets tests run in CI without a real secret.

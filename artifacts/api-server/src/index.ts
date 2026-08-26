@@ -10,8 +10,19 @@ import {
 } from "@workspace/db";
 
 // Refuse to boot before any pool is opened if the three physical stores are
-// missing or accidentally configured to the same PostgreSQL database.
-assertDatabaseConfiguration();
+// missing or accidentally configured to the same PostgreSQL database. The
+// identity probe also verifies that role credentials are not shared.
+try {
+  await assertDatabaseConfiguration();
+} catch (error) {
+  // assertDatabaseConfiguration deliberately sanitizes driver errors. Log
+  // only its safe message, never a connection URL or credential.
+  logger.error(
+    { message: error instanceof Error ? error.message : "Unknown database configuration error" },
+    "Database configuration is invalid; refusing to start",
+  );
+  process.exit(1);
+}
 
 // Fail fast if the JWT secret is missing or is the known insecure dev fallback in production.
 // In development the fallback is allowed so that `pnpm dev` works without pre-configuring secrets.

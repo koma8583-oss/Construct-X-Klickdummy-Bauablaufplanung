@@ -9,11 +9,18 @@ Für eine produktive Installation ist die bevorzugte Konfiguration:
 | Hub | `HUB_DATABASE_URL` | Identität, Nachrichten- und Dataspace-Transport-Metadaten |
 
 Für die lokale Replit-Entwicklung kann ausdrücklich eine vorhandene einzelne
-Datenbank über `DATABASE_URL` verwendet werden. In diesem Modus werden AG, AN
+Datenbank über `DATABASE_URL` verwendet werden, wenn zusätzlich
+`TAKTKOORD_SHARED_DATABASE_POC=true` gesetzt ist. In diesem Modus werden AG, AN
 und Hub logisch über getrennte Rollen-Zugriffspfade (`agDb`, `anDb`, `hubDb`)
 und die Route-/Organisationstrennung isoliert. Das ist keine physische
 PostgreSQL-Datenbank- oder Benutzertrennung und darf nicht als solche
 ausgegeben werden.
+
+Dieser Modus wird ausschließlich außerhalb von `production` akzeptiert und
+erfordert genau `DATABASE_URL` ohne role-spezifische URLs. Eine produktive
+Instanz muss alle drei role-spezifischen URLs setzen; beim Start prüft die API
+über PostgreSQL sowohl die Datenbank- als auch die Verbindungsbenutzer-
+Identität. Bei einer Kollision oder einem Verbindungsfehler startet sie nicht.
 
 ## Migration und lokale Entwicklung
 
@@ -30,7 +37,8 @@ DB_ROLE=hub pnpm --filter @workspace/db run push-force
 drei getrennten Schema-Synchronisationen aus. In produktiven Umgebungen sollen
 die drei URLs von getrennten PostgreSQL-Rollen mit minimalen Rechten stammen.
 
-Bei Verwendung von `DATABASE_URL` führt das Nachsetup die gemeinsamen
+Bei Verwendung von `DATABASE_URL` und
+`TAKTKOORD_SHARED_DATABASE_POC=true` führt das Nachsetup die gemeinsamen
 Entwicklungsmigrationen einmal aus. Die Anwendung bleibt bei jedem Request an
 einen logischen Datenbankrollenpfad gebunden.
 
