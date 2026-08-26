@@ -11,9 +11,16 @@ if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "test";
 }
 
-// Tests use the intentional single-database PoC setup. Production startup
-// never inherits this flag because it is rejected by the database guard.
-if (!process.env.TAKTKOORD_SHARED_DATABASE_POC) {
+// Most tests use the intentional single-database PoC setup. Keep that
+// convenience only when no physical role targets were supplied: the
+// boundary suite must be able to opt into three databases without this
+// bootstrap masking them as a shared configuration.
+const hasSeparateDatabaseTargets = [
+  process.env.AG_DATABASE_URL,
+  process.env.AN_DATABASE_URL,
+  process.env.HUB_DATABASE_URL,
+].some(Boolean);
+if (!process.env.TAKTKOORD_SHARED_DATABASE_POC && !hasSeparateDatabaseTargets) {
   process.env.TAKTKOORD_SHARED_DATABASE_POC = "true";
 }
 
