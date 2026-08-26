@@ -36,6 +36,18 @@ export class ProjectMembershipError extends Error {
   }
 }
 
+function toProjectInvitationDelivery(row: typeof messageOutboxTable.$inferSelect) {
+  return {
+    messageId: row.messageId,
+    messageType: row.messageType as "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
+    status: row.status,
+    attemptCount: row.attemptCount,
+    lastAttemptAt: row.lastAttemptAt,
+    failureReason: row.failureReason,
+    createdAt: row.createdAt,
+  };
+}
+
 export async function listProjectParticipants(projectId: string, agOrgId: string) {
   const [project] = await db.select({ id: projectsTable.id })
     .from(projectsTable)
@@ -74,11 +86,15 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
   const byMessageId = new Map(deliveries.map((row) => [row.messageId, row]));
   return memberships.map((membership) => ({
     ...membership,
-    invitationDelivery: byMessageId.get(`project-invitation-${membership.invitationId}`) ?? null,
+    invitationDelivery: byMessageId.has(`project-invitation-${membership.invitationId}`)
+      ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-${membership.invitationId}`)!)
+      : null,
     responseDelivery: (
-      byMessageId.get(`project-invitation-response-${membership.invitationId}-ACTIVE`) ??
-      byMessageId.get(`project-invitation-response-${membership.invitationId}-REJECTED`) ??
-      null
+      byMessageId.has(`project-invitation-response-${membership.invitationId}-ACTIVE`)
+        ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-response-${membership.invitationId}-ACTIVE`)!)
+        : byMessageId.has(`project-invitation-response-${membership.invitationId}-REJECTED`)
+          ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-response-${membership.invitationId}-REJECTED`)!)
+          : null
     ),
   }));
 }

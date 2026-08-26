@@ -14,6 +14,7 @@ type MembershipFixture = {
     status: string;
     attemptCount: number;
     failureReason?: string;
+    lastAttemptAt?: string;
     createdAt: string;
   };
   responseDelivery?: {
@@ -22,6 +23,7 @@ type MembershipFixture = {
     status: string;
     attemptCount: number;
     failureReason?: string;
+    lastAttemptAt?: string;
     createdAt: string;
   };
 };
@@ -37,6 +39,7 @@ const membershipFixtures: MembershipFixture[] = [
       status: "FAILED",
       attemptCount: 2,
       failureReason: "Connector nicht erreichbar",
+      lastAttemptAt: "2026-08-26T09:15:00.000Z",
       createdAt: "2026-08-26T08:00:00.000Z",
     },
   },
@@ -60,6 +63,7 @@ let memberships = [...membershipFixtures];
 let updateMemberships: React.Dispatch<React.SetStateAction<MembershipFixture[]>> | undefined;
 let retryDelivery: ReturnType<typeof vi.fn>;
 let retryShouldFail = false;
+let retryTransientShouldFail = false;
 let toastMock: ReturnType<typeof vi.fn>;
 
 vi.mock("wouter", () => ({
@@ -200,14 +204,20 @@ describe("project participant directory membership lifecycle", () => {
     memberships = [...membershipFixtures];
     updateMemberships = undefined;
     retryShouldFail = false;
+    retryTransientShouldFail = false;
     toastMock = vi.fn();
     retryDelivery = vi.fn(({ messageId }: { messageId: string }, options?: {
-      onSuccess?: (result: { status: string }) => void;
+      onSuccess?: (result: { status: string; error?: { code: string; message: string } }) => void;
       onError?: (error: Error) => void;
       onSettled?: () => void;
     }) => {
       if (retryShouldFail) {
         options?.onError?.(new Error("Die Zustellung wurde nach fünf Versuchen aufgegeben."));
+      } else if (retryTransientShouldFail) {
+        options?.onSuccess?.({
+          status: "FAILED",
+          error: { code: "TRANSPORT_FAILURE", message: "Connector nicht erreichbar" },
+        });
       } else {
         memberships = memberships.map((membership) => {
           if (membership.invitationDelivery?.messageId === messageId) {
@@ -294,6 +304,8 @@ describe("project participant directory membership lifecycle", () => {
 
     expect(screen.getByText(/Einladung: Zustellung fehlgeschlagen/)).toBeInTheDocument();
     expect(screen.getByText(/Antwort: Zustellung ausstehend/)).toBeInTheDocument();
+    expect(screen.getByText("Fehlergrund: Connector nicht erreichbar")).toBeInTheDocument();
+    expect(screen.getByText("Letzter Versuch: 26.08.2026 09:15")).toBeInTheDocument();
 
     const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
     await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Erneut senden" }));
@@ -317,12 +329,31 @@ describe("project participant directory membership lifecycle", () => {
     await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Erneut senden" }));
 
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Zustellung konnte nicht wiederholt werden",
+      title: "Keine weiteren Wiederholungen möglich",
       description: "Die Zustellung wurde nach fünf Versuchen aufgegeben.",
       variant: "destructive",
     }));
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({
       title: "Zustellung erneut angestoßen",
+    }));
+  });
+
+  it("labels a retryable connector failure separately from exhausted retries", async () => {
+    retryTransientShouldFail = true;
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
+
+    const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
+    await user.click(within(invitedRow as HTMLElement).getByRole("button", { name: "Erneut senden" }));
+
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Connector-Zustellung fehlgeschlagen",
+      description: "Connector nicht erreichbar Bitte beheben Sie das externe Problem und versuchen Sie es erneut.",
+      variant: "destructive",
+    }));
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      title: "Keine weiteren Wiederholungen möglich",
     }));
   });
 });

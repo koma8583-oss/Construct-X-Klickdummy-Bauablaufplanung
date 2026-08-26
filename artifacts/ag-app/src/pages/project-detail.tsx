@@ -154,6 +154,24 @@ function clientComputePlannedEnd(
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
+function formatDeliveryAttempt(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : format(date, 'dd.MM.yyyy HH:mm');
+}
+
+function isRetryExhaustedError(error: unknown) {
+  if (typeof error !== 'object' || error === null) {
+    return error instanceof Error && error.message.includes('fünf Versuchen');
+  }
+  const data = (error as { data?: unknown }).data;
+  const code = typeof data === 'object' && data !== null
+    ? (data as { code?: unknown }).code
+    : undefined;
+  return code === 'PROJECT_INVITATION_RETRY_EXHAUSTED' ||
+    (error instanceof Error && error.message.includes('fünf Versuchen'));
+}
+
 const EDITABLE_STATUSES: TaktStatus[] = ['GEPLANT', 'ABGELEHNT', 'STORNIERT'];
 
 function isTaktEditable(status?: TaktStatus): boolean {
@@ -1238,8 +1256,8 @@ export default function ProjectDetail() {
       onSuccess: (result) => {
         if (result.status === 'FAILED') {
           toast({
-            title: 'Zustellung fehlgeschlagen',
-            description: result.error?.message ?? 'Die Einladung konnte nicht zugestellt werden.',
+            title: 'Connector-Zustellung fehlgeschlagen',
+            description: `${result.error?.message ?? 'Die Einladung konnte nicht zugestellt werden.'} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
             variant: 'destructive',
           });
           return;
@@ -1247,12 +1265,14 @@ export default function ProjectDetail() {
         toast({ title: 'Zustellung erneut angestoßen' });
       },
       onError: (err) => {
-        // ApiError preserves the backend's business message, including the
-        // retry-exhausted explanation, so it must not be replaced by a
-        // generic success notification.
+        const exhausted = isRetryExhaustedError(err);
         toast({
-          title: 'Zustellung konnte nicht wiederholt werden',
-          description: (err as Error).message,
+          title: exhausted
+            ? 'Keine weiteren Wiederholungen möglich'
+            : 'Connector-Zustellung fehlgeschlagen',
+          description: exhausted
+            ? (err as Error).message
+            : `${(err as Error).message} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
           variant: 'destructive',
         });
       },
@@ -3241,8 +3261,8 @@ export default function ProjectDetail() {
                     item.delivery != null && ['PENDING', 'FAILED'].includes(item.delivery.status),
                   );
                   return (
-                  <div key={membership.id} className="px-3 py-2 rounded-lg border border-border bg-card">
-                    <div className="flex items-center justify-between gap-2">
+                  <div key={membership.id} className="min-w-0 overflow-hidden px-3 py-2 rounded-lg border border-border bg-card">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center text-primary font-bold text-xs shrink-0">
                           {(org?.name ?? membership.anOrgId).charAt(0).toUpperCase()}
@@ -3254,10 +3274,10 @@ export default function ProjectDetail() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-3 shrink-0">
+                      <div className="flex items-center gap-2 ml-0 sm:ml-3 shrink-0 self-stretch sm:self-auto">
                         {(['INVITED', 'ACTIVE'].includes(membership.status)) && (
                           <Button size="sm" variant="ghost" onClick={() => handleRevokeMembership(membership)}
-                            disabled={revokeMembership.isPending} className="text-xs text-red-600 hover:text-red-700">
+                            disabled={revokeMembership.isPending} className="w-full sm:w-auto text-xs text-red-600 hover:text-red-700">
                             Widerrufen
                           </Button>
                         )}
@@ -3267,18 +3287,35 @@ export default function ProjectDetail() {
                       <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
                         {deliveries.map(({ label, delivery }) => {
                           const failed = delivery.status === 'FAILED';
+                          const lastAttempt = formatDeliveryAttempt(delivery.lastAttemptAt);
                           return (
-                            <div key={delivery.messageId} className="flex items-center justify-between gap-2 text-xs">
-                              <span className={failed ? 'text-red-600' : 'text-amber-600'}>
-                                {label}: {failed ? 'Zustellung fehlgeschlagen' : 'Zustellung ausstehend'}
-                                <span className="ml-1 text-muted-foreground">
-                                  (Versuch {delivery.attemptCount}/5)
+                            <div key={delivery.messageId} className="flex flex-col gap-2 text-xs sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0 break-words">
+                                <span className={failed ? 'text-red-600' : 'text-amber-600'}>
+                                  {label}: {failed ? 'Zustellung fehlgeschlagen' : 'Zustellung ausstehend'}
+                                  <span className="ml-1 text-muted-foreground">
+                                    (Versuch {delivery.attemptCount}/5)
+                                  </span>
                                 </span>
-                              </span>
+                                {(delivery.failureReason || lastAttempt) && (
+                                  <div className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                                    {delivery.failureReason && (
+                                      <div className="break-words">
+                                        {`Fehlergrund: ${delivery.failureReason}`}
+                                      </div>
+                                    )}
+                                    {lastAttempt && (
+                                      <div>
+                                        {`Letzter Versuch: ${lastAttempt}`}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 w-full shrink-0 px-2 text-xs sm:w-auto"
                                 onClick={() => handleRetryInvitationDelivery(delivery)}
                                 disabled={retryInvitationDelivery.isPending}
                               >
