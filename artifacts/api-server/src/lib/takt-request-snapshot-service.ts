@@ -28,72 +28,14 @@ import { createPolicySnapshot } from "../services/policy-snapshot-service";
 import { eq, and } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
+import type { TaktRequestSnapshotPayload } from "@workspace/api-zod";
 import { withCanonicalTakt } from "./legacy-takt-mappers";
 import { assertActiveProjectMembership } from "../services/project-membership-service";
 
 // ── Snapshot payload type ─────────────────────────────────────────────────────
 
-/** The JSON shape stored in takt_request_snapshots.snapshot_payload. Schema version "1.0". */
-export interface TaktRequestSnapshotPayload {
-  schemaVersion: "1.0";
-  /** Project identifier — the project this Takt belongs to */
-  projectReference: string;
-  /** Physical location of the project site (from projects.location) — nullable */
-  projectLocation: string | null;
-  /** Human-readable description of the project (from projects.description) — nullable */
-  projectDescription: string | null;
-  /** Takt identifier */
-  taktReference: string;
-  /** Takt version at the time of snapshot creation */
-  taktVersion: number;
-  /** Trade / Gewerk (e.g. "Rohbau", "Trockenbau") */
-  trade: string;
-  /** Work package name */
-  workPackage: string;
-  kurzbezeichnung: string;
-  /** Physical location of the Takt */
-  location: {
-    building: string | null;
-    storey: string | null;
-    zone: string | null;
-  };
-  /** Planned execution time window */
-  plannedTimeWindow: {
-    start: string; // ISO 8601 date string (date-only: YYYY-MM-DD)
-    end: string;
-  };
-  /** Optional buffer window (earliest/latest dates) */
-  bufferTimeWindow: {
-    earliestStart: string | null;
-    latestEnd: string | null;
-  } | null;
-  /** Free-text description of required output / work scope — nullable */
-  requiredOutput: string | null;
-  /** GU-stated resource requirements (not NU-internal resource assignments) */
-  resourceRequirements: Array<{
-    resourceType: "CREW" | "EQUIPMENT" | "OTHER";
-    notes: string;
-  }>;
-  /** Work constraints derived from the Takt description — may be empty */
-  constraints: string[];
-  /** Direct predecessors (finish-to-start / other dependency types) */
-  predecessors: Array<{
-    taktId: string;
-    dependencyType: string;
-    lagDays: number;
-  }>;
-  /** Direct successors */
-  successors: Array<{
-    taktId: string;
-    dependencyType: string;
-    lagDays: number;
-  }>;
-  /** Document references attached to the Takt */
-  documentReferences: {
-    lvReference: string | null;
-    bimReference: string | null;
-  };
-}
+// Re-export the shared public contract for existing service consumers.
+export type { TaktRequestSnapshotPayload } from "@workspace/api-zod";
 
 // ── Domain errors ─────────────────────────────────────────────────────────────
 

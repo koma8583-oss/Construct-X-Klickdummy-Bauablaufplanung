@@ -8,6 +8,7 @@
  *   B. DB integration tests for createTaktRequestWithSnapshot().
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TAKT_REQUEST_SNAPSHOT_PUBLIC_FIELDS } from "@workspace/api-zod";
 import { agDb as db } from "@workspace/db";
 import {
   organizationsTable,
@@ -153,6 +154,7 @@ describe("buildTaktRequestSnapshot() — pure function", () => {
     expect(payload.taktVersion).toBe(1);
     expect(payload.trade).toBe("Trockenbau");
     expect(payload.workPackage).toBe("T1 – Trockenbau Nord");
+    expect(payload.kurzbezeichnung).toBe("T1");
     expect(payload.location.zone).toBe("Ebene EG");
     expect(payload.plannedTimeWindow.start).toBe("2026-09-14");
     expect(payload.plannedTimeWindow.end).toBe("2026-09-28");
@@ -197,19 +199,15 @@ describe("buildTaktRequestSnapshot() — pure function", () => {
       predecessors: [],
       successors: [],
     });
-    const payloadKeys = Object.keys(payload);
-
-    // These are the ONLY top-level keys allowed in the snapshot
-    const allowedKeys = [
-      "schemaVersion", "projectReference", "projectLocation", "projectDescription",
-      "taktReference", "taktVersion",
-      "trade", "workPackage", "location", "plannedTimeWindow", "bufferTimeWindow",
-      "requiredOutput", "resourceRequirements", "constraints",
-      "predecessors", "successors", "documentReferences",
-    ];
-    for (const key of payloadKeys) {
-      expect(allowedKeys).toContain(key);
-    }
+    // The public contract is exact: no internal or undocumented field may be
+    // added, and every required identifier/label must be present.
+    expect(Object.keys(payload).sort()).toEqual(
+      [...TAKT_REQUEST_SNAPSHOT_PUBLIC_FIELDS].sort(),
+    );
+    expect(payload.taktReference).toBe(TAKT_ID);
+    expect(payload.projectReference).toBe(PROJECT_ID);
+    expect(payload.workPackage).toBe("T1 – Trockenbau Nord");
+    expect(payload.kurzbezeichnung).toBe("T1");
   });
 
   it("snapshot taktVersion matches the Takt's current version", () => {
