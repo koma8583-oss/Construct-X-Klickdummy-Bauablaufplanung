@@ -12,6 +12,8 @@ import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
 import { agDb as db, anDb } from "@workspace/db";
+import { deliverLocalProjectInvitation } from "../services/dataspace/local-dataspace-delivery";
+import type { ExternalProjectInvitation } from "../services/dataspace/external-contracts";
 import {
   organizationsTable,
   usersTable,
@@ -27,6 +29,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   messageOutboxTable,
+  messageInboxTable,
 } from "@workspace/db";
 
 const PREFIX = "t239";
@@ -46,6 +49,11 @@ const BACKFILL_AN_ID = `${PREFIX}-backfill-an`;
 const REINVITE_PROJECT_ID = `${PREFIX}-reinvite-project`;
 const REINVITE_MEMBERSHIP_ID = `${PREFIX}-reinvite-membership`;
 const REINVITE_INVITATION_ID = `${PREFIX}-reinvite-old-invitation`;
+const RETRY_PROJECT_ID = `${PREFIX}-retry-project`;
+const RETRY_MEMBERSHIP_ID = `${PREFIX}-retry-membership`;
+const RETRY_INVITATION_ID = `${PREFIX}-retry-invitation`;
+const RETRY_MESSAGE_ID = `project-invitation-${RETRY_INVITATION_ID}`;
+const RETRY_CORRELATION_ID = `${PREFIX}-retry-correlation`;
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function token(userId: string, orgId: string, orgType: "AG" | "AN", roles?: string[]) {
@@ -79,8 +87,17 @@ beforeAll(async () => {
   await anDb.delete(anProjectInvitationsTable).where(
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
+  await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(projectMembershipsTable).where(
-    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
+    inArray(projectMembershipsTable.projectId, [
+      PROJECT_ID,
+      OTHER_PROJECT_ID,
+      BACKFILL_PROJECT_ID,
+      REINVITE_PROJECT_ID,
+      RETRY_PROJECT_ID,
+    ]),
   ).catch(() => {});
   await db.delete(dataPublicationRecipientsTable).where(
     eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
@@ -93,7 +110,13 @@ beforeAll(async () => {
     inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
   ).catch(() => {});
   await db.delete(projectsTable).where(
-    inArray(projectsTable.id, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
+    inArray(projectsTable.id, [
+      PROJECT_ID,
+      OTHER_PROJECT_ID,
+      BACKFILL_PROJECT_ID,
+      REINVITE_PROJECT_ID,
+      RETRY_PROJECT_ID,
+    ]),
   ).catch(() => {});
   await db.delete(usersTable).where(
     inArray(usersTable.id, [AG_USER_ID, OTHER_AG_USER_ID, AN_USER_ID, OTHER_AN_USER_ID]),
@@ -120,6 +143,7 @@ beforeAll(async () => {
     { id: OTHER_PROJECT_ID, agOrgId: OTHER_AG_ID, name: "Task 239 Other Project" },
     { id: BACKFILL_PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Backfill Project" },
     { id: REINVITE_PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Reinvite Project" },
+    { id: RETRY_PROJECT_ID, agOrgId: AG_ID, name: "Task 239 Retry Project" },
   ]);
   await db.insert(takteTable).values({
     id: TAKT_ID,
@@ -141,12 +165,25 @@ beforeAll(async () => {
     invitationId: REINVITE_INVITATION_ID,
     correlationId: `${PREFIX}-reinvite-old-correlation`,
   });
+  await db.insert(projectMembershipsTable).values({
+    id: RETRY_MEMBERSHIP_ID,
+    projectId: RETRY_PROJECT_ID,
+    agOrgId: AG_ID,
+    anOrgId: AN_ID,
+    anParticipantId: `local:${AN_ID}`,
+    status: "INVITED",
+    invitationId: RETRY_INVITATION_ID,
+    correlationId: RETRY_CORRELATION_ID,
+  });
 });
 
 afterAll(async () => {
   await anDb.delete(anProjectInvitationsTable).where(
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
+  await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await removeRequestData(PROJECT_ID);
   await db.delete(dataPublicationRecipientsTable).where(
     eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
@@ -155,7 +192,13 @@ afterAll(async () => {
     eq(dataPublicationsTable.projectId, REINVITE_PROJECT_ID),
   ).catch(() => {});
   await db.delete(projectMembershipsTable).where(
-    inArray(projectMembershipsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID, REINVITE_PROJECT_ID]),
+    inArray(projectMembershipsTable.projectId, [
+      PROJECT_ID,
+      OTHER_PROJECT_ID,
+      BACKFILL_PROJECT_ID,
+      REINVITE_PROJECT_ID,
+      RETRY_PROJECT_ID,
+    ]),
   ).catch(() => {});
   await db.delete(projectContractorsTable).where(
     inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
@@ -170,7 +213,13 @@ afterAll(async () => {
     sql`${dataspaceExchangesTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
   ).catch(() => {});
   await db.delete(projectsTable).where(
-    inArray(projectsTable.id, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
+    inArray(projectsTable.id, [
+      PROJECT_ID,
+      OTHER_PROJECT_ID,
+      BACKFILL_PROJECT_ID,
+      REINVITE_PROJECT_ID,
+      RETRY_PROJECT_ID,
+    ]),
   ).catch(() => {});
   await db.delete(usersTable).where(
     inArray(usersTable.id, [AG_USER_ID, OTHER_AG_USER_ID, AN_USER_ID, OTHER_AN_USER_ID]),
@@ -286,6 +335,124 @@ describe("invitation decisions", () => {
     const accepted = await request(app).post(`/api/an/project-invitations/${invitationId}/accept`)
       .set("Authorization", `Bearer ${anToken}`).send({ policyAccepted: true });
     expect(accepted.status).toBe(409);
+  });
+});
+
+describe("project invitation delivery retries", () => {
+  it("redelivers a failed invitation and keeps AG, inbound, and AN state consistent", async () => {
+    const payload: ExternalProjectInvitation = {
+      metadata: {
+        messageId: RETRY_MESSAGE_ID,
+        correlationId: RETRY_CORRELATION_ID,
+        schemaVersion: "1.0",
+        senderOrgId: AG_ID,
+        receiverOrgId: AN_ID,
+        createdAt: new Date().toISOString(),
+      },
+      invitationId: RETRY_INVITATION_ID,
+      project: {
+        projectReference: RETRY_PROJECT_ID,
+        projectName: "Task 239 Retry Project",
+      },
+      requestedRole: "CONTRACTOR",
+      purpose: "PROJECT_COLLABORATION",
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP",
+        allowedConsumerParticipantId: `local:${AN_ID}`,
+      },
+      dataOffer: {
+        publicationId: `${PREFIX}-retry-publication`,
+        title: "Task 239 Retry Offer",
+        selectedFields: ["projectName"],
+      },
+    };
+
+    // A conflicting inbox row makes the real local transport transaction fail
+    // and leaves the persisted outbound envelope in FAILED status.
+    await db.insert(messageInboxTable).values({
+      messageId: RETRY_MESSAGE_ID,
+      messageType: "PROJECT_INVITATION",
+      senderOrgId: AG_ID,
+      recipientOrgId: AN_ID,
+      correlationId: RETRY_CORRELATION_ID,
+      payload: { blocked: true },
+      status: "DELIVERED",
+    });
+    const failedDelivery = await deliverLocalProjectInvitation(payload);
+    expect(failedDelivery.status).toBe("FAILED");
+
+    const [failedOutbox] = await db.select().from(messageOutboxTable).where(
+      eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID),
+    );
+    expect(failedOutbox.status).toBe("FAILED");
+    expect(failedOutbox.attemptCount).toBe(1);
+    const [failedOutbound] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
+    ));
+    expect(failedOutbound.status).toBe("FAILED");
+
+    // Remove only the transient delivery conflict; retry must reuse the same
+    // outbox message and then run the local inbound projection exactly once.
+    await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID));
+    const retry = await request(app)
+      .post(`/api/project-invitation-deliveries/${RETRY_MESSAGE_ID}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(retry.status).toBe(200);
+    expect(retry.body.status).toBe("DELIVERED");
+    expect(retry.body.exchangeId).toBe(RETRY_MESSAGE_ID);
+    expect(retry.body.attemptCount).toBe(2);
+
+    const [outbox] = await db.select().from(messageOutboxTable).where(
+      eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID),
+    );
+    expect(outbox.status).toBe("DELIVERED");
+    expect(outbox.attemptCount).toBe(2);
+    const [inbox] = await db.select().from(messageInboxTable).where(
+      eq(messageInboxTable.messageId, RETRY_MESSAGE_ID),
+    );
+    expect(inbox.status).toBe("DELIVERED");
+
+    const [outbound] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
+    ));
+    const [inbound] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "INBOUND"),
+      eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
+    ));
+    expect(outbound.status).toBe("PUBLISHED");
+    expect(inbound.status).toBe("PROCESSED");
+
+    const memberships = await request(app)
+      .get(`/api/projects/${RETRY_PROJECT_ID}/memberships`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(memberships.status).toBe(200);
+    expect(memberships.body).toHaveLength(1);
+    expect(memberships.body[0].invitationDelivery.status).toBe("DELIVERED");
+
+    const anInvitations = await request(app)
+      .get("/api/an/project-invitations")
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(anInvitations.status).toBe(200);
+    const anInvitation = anInvitations.body.find(
+      (row: { invitationId: string }) => row.invitationId === RETRY_INVITATION_ID,
+    );
+    expect(anInvitation).toMatchObject({
+      invitationId: RETRY_INVITATION_ID,
+      projectReference: RETRY_PROJECT_ID,
+      status: "PENDING",
+    });
+
+    await db.update(messageOutboxTable).set({
+      status: "FAILED",
+      attemptCount: 5,
+    }).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID));
+    const exhausted = await request(app)
+      .post(`/api/project-invitation-deliveries/${RETRY_MESSAGE_ID}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(exhausted.status).toBe(409);
+    expect(exhausted.body.code).toBe("PROJECT_INVITATION_RETRY_EXHAUSTED");
   });
 });
 
