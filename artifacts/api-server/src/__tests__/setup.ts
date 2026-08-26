@@ -1,9 +1,15 @@
 /**
- * Global Vitest setup — runs in every test worker before any test file.
+ * Global Vitest setup — runs before the test files.
  *
  * Sets environment variables required by tests so they are available
  * via process.env regardless of how the test runner boots.
  */
+
+// The API tests import the app directly instead of starting index.ts. Pin the
+// same non-production behavior that the test suite expects on every runner.
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = "test";
+}
 
 // Internal job token used by t79 tests.
 // The actual production value is set as a Replit Secret (INTERNAL_JOB_TOKEN).

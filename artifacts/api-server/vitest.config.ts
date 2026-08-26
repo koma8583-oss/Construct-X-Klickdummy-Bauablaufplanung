@@ -5,7 +5,11 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/*.test.ts"],
-    // Runs in every worker before any test file — sets env vars that tests need.
+    // All API tests share one logical PostgreSQL database. Run files in one
+    // worker so a file-level teardown cannot race another file's fixtures.
+    fileParallelism: false,
+    // Runs before the test files in the single worker — sets env vars that
+    // tests need.
     setupFiles: ["./src/__tests__/setup.ts"],
   },
 });

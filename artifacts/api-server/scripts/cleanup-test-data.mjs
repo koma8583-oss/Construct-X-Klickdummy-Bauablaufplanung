@@ -4,6 +4,23 @@ const connectionString = process.env.AG_DATABASE_URL ?? process.env.DATABASE_URL
 if (!connectionString) {
   throw new Error("AG_DATABASE_URL or DATABASE_URL is required for test cleanup");
 }
+
+// Cleanup is intentionally allowlisted. The test suite uses one shared
+// logical database, so a broad "T<number>" match could remove a real
+// development organization's data. Keep this list in sync with the fixture
+// prefixes used by the API tests and preserve all canonical/shared rows.
+const testFixtureNumbers = [
+  "4", "24", "26", "32", "34", "35", "36", "37", "38", "42", "43",
+  "44", "45", "47", "48", "49", "52", "54", "62", "63", "64", "65",
+  "66", "68", "69", "72", "73", "76", "77", "78", "79", "80", "81",
+  "82", "83", "84", "85", "90", "92", "104", "105", "112", "116",
+  "120", "135", "177", "185", "212", "239", "240",
+].join("|");
+const testFixtureNamePattern =
+  `^(?:T(?:${testFixtureNumbers})(?:$|[- ])|ODRL-SC|Task 239)`;
+const testFixtureIdOrEmailPattern =
+  `^(?:t(?:${testFixtureNumbers})(?:$|[-_@])|odrl-sc|task[-_]?239)`;
+
 const pool = new pg.Pool({ connectionString });
 const client = await pool.connect();
 
@@ -13,17 +30,17 @@ try {
   await client.query(`
     INSERT INTO cleanup_ids (id)
     SELECT id::text FROM organizations
-    WHERE name ~* '^(T[0-9]+|ODRL-SC|Task 239)'
+    WHERE name ~* '${testFixtureNamePattern}'
+       OR id::text ~* '${testFixtureIdOrEmailPattern}'
     UNION
     SELECT id::text FROM projects
-    WHERE name ~* '^(T[0-9]+|ODRL-SC|Task 239)'
+    WHERE name ~* '${testFixtureNamePattern}'
+       OR id::text ~* '${testFixtureIdOrEmailPattern}'
     UNION
     SELECT id::text FROM users
-    WHERE name ~* '^(T[0-9]+|ODRL-SC|Task 239)'
-       OR email ~* '(t[0-9]+|odrl-sc|task239).*(@test\\.|@test$)'
-    UNION
-    SELECT id::text FROM policy_templates
-    WHERE code <> 'SCHEDULE_COORDINATION'
+    WHERE name ~* '${testFixtureNamePattern}'
+       OR id::text ~* '${testFixtureIdOrEmailPattern}'
+       OR email ~* '${testFixtureIdOrEmailPattern}'
   `);
 
   const { rows: foreignKeys } = await client.query(`
