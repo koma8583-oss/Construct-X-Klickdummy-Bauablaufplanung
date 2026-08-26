@@ -16,6 +16,27 @@ const messageIds: string[] = [];
 const AG = "ag-local-projection-test";
 const AN = "an-local-projection-test";
 
+function policySnapshot(providerOrganizationId = AG, recipientOrganizationId = AN) {
+  return {
+    policyId: "policy-projection-test",
+    templateId: "SERVICE_COORDINATION",
+    templateVersion: 1,
+    code: "SERVICE_COORDINATION",
+    name: "Service coordination",
+    description: "Projection test policy",
+    permissions: ["read:takt"],
+    prohibitions: ["share-outside-project"],
+    provider: { organizationId: providerOrganizationId, userId: null },
+    recipientOrganizationId,
+    purpose: "Coordinate the service request",
+    projectReference: "project-1",
+    workPackageReference: null,
+    validFrom: null,
+    validUntil: null,
+    createdAt: "2026-08-26T08:00:00.000Z",
+  };
+}
+
 function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServiceRequest {
   const messageId = overrides.metadata?.messageId ?? crypto.randomUUID();
   messageIds.push(messageId);
@@ -49,6 +70,7 @@ function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServi
       allowedConsumerOrgId: AN,
       usagePurpose: "PROJECT_COORDINATION",
     },
+    policySnapshot: policySnapshot(),
     ...overrides,
   };
 }
@@ -101,6 +123,38 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
     expect(projection.payloadSnapshot).toEqual(request);
     expect(requirements).toHaveLength(1);
     expect(requirements[0].externalResourceTypeCode).toBe("CREW");
+  });
+
+  it("akzeptiert einen Policy-Snapshot mit passenden Teilnehmern", async () => {
+    const request = payload();
+
+    await expect(receive(request)).resolves.toEqual({ duplicate: false, status: "PROCESSED" });
+  });
+
+  it("weist einen Policy-Snapshot mit abweichendem Provider zurück", async () => {
+    const request = payload({
+      policySnapshot: policySnapshot("other-provider", AN),
+    });
+
+    await expect(receive(request)).rejects.toThrow("Invalid external exchange payload");
+
+    const projections = await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
+    expect(projections).toHaveLength(0);
+  });
+
+  it("weist einen Policy-Snapshot mit abweichendem Recipient zurück", async () => {
+    const request = payload({
+      policySnapshot: policySnapshot(AG, "other-recipient"),
+    });
+
+    await expect(receive(request)).rejects.toThrow("Invalid external exchange payload");
+
+    const projections = await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
+    expect(projections).toHaveLength(0);
   });
 
   it("behandelt gleiche Message-ID und gleichen Inhalt als No-op", async () => {

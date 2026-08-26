@@ -42,6 +42,18 @@ const policySnapshotSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
 }).strict();
 
+type PolicySnapshotParticipantInput = {
+  metadata: {
+    senderOrgId: string;
+    receiverOrgId: string;
+  };
+  policySnapshot?: {
+    provider: {
+      organizationId: string;
+    };
+    recipientOrganizationId: string;
+  };
+};
 const invitationPolicySchema = z.object({
   usagePurpose: z.literal("PROJECT_MEMBERSHIP"),
   allowedConsumerParticipantId: nonEmpty(200),
@@ -121,7 +133,11 @@ export const externalProjectInvitationSchema = z.object({
     validFrom: externalDate.optional(),
     validUntil: externalDate.optional(),
   }).strict().optional(),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  for (const issue of policySnapshotParticipantIssues(value)) {
+    ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+  }
+});
 
 export const externalProjectInvitationResponseSchema = z.object({
   metadata: metadataSchema,
@@ -157,15 +173,20 @@ export const externalServiceRequestSchema = z.object({
   resourceRequirements: z.array(resourceRequirementSchema).max(100),
   policy: policySchema.optional(),
   policySnapshot: policySnapshotSchema.optional(),
-}).strict().refine((value) => Date.parse(value.plannedEnd) >= Date.parse(value.plannedStart), {
-  message: "plannedEnd must not be before plannedStart",
-}).superRefine((value, ctx) => {
-  if (value.requestKind === "SCHEDULE_CHANGE") {
-    if (!value.sourceRequestId) ctx.addIssue({ code: "custom", path: ["sourceRequestId"], message: "sourceRequestId is required for schedule changes" });
-    if (!value.changeProposalId) ctx.addIssue({ code: "custom", path: ["changeProposalId"], message: "changeProposalId is required for schedule changes" });
-    if (!value.baseTimeWindow) ctx.addIssue({ code: "custom", path: ["baseTimeWindow"], message: "baseTimeWindow is required for schedule changes" });
-  }
-});
+}).strict()
+  .refine((value) => Date.parse(value.plannedEnd) >= Date.parse(value.plannedStart), {
+    message: "plannedEnd must not be before plannedStart",
+  })
+  .superRefine((value, ctx) => {
+    for (const issue of policySnapshotParticipantIssues(value)) {
+      ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+    }
+    if (value.requestKind === "SCHEDULE_CHANGE") {
+      if (!value.sourceRequestId) ctx.addIssue({ code: "custom", path: ["sourceRequestId"], message: "sourceRequestId is required for schedule changes" });
+      if (!value.changeProposalId) ctx.addIssue({ code: "custom", path: ["changeProposalId"], message: "changeProposalId is required for schedule changes" });
+      if (!value.baseTimeWindow) ctx.addIssue({ code: "custom", path: ["baseTimeWindow"], message: "baseTimeWindow is required for schedule changes" });
+    }
+  });
 
 export const externalServiceResponseSchema = z.object({
   metadata: metadataSchema,
@@ -269,6 +290,10 @@ export type ExternalPolicySnapshot = {
   createdAt: string;
 };
 
+export function assertPolicySnapshotParticipants(payload: PolicySnapshotParticipantInput): void {
+  const issue = policySnapshotParticipantIssues(payload)[0];
+  if (issue) throw new Error(issue.message);
+}
 export type DataspaceParticipant = {
   localOrgId?: string;
   participantId: string;
@@ -401,3 +426,25 @@ export type ExternalCoordinationDecision = {
   comment?: string | null;
   closedAt?: string;
 };
+
+function policySnapshotParticipantIssues(value: PolicySnapshotParticipantInput): Array<{
+  path: string[];
+  message: string;
+}> {
+  if (!value.policySnapshot) return [];
+
+  const issues: Array<{ path: string[]; message: string }> = [];
+  if (value.policySnapshot.provider.organizationId !== value.metadata.senderOrgId) {
+    issues.push({
+      path: ["policySnapshot", "provider", "organizationId"],
+      message: "Policy snapshot provider must match metadata.senderOrgId",
+    });
+  }
+  if (value.policySnapshot.recipientOrganizationId !== value.metadata.receiverOrgId) {
+    issues.push({
+      path: ["policySnapshot", "recipientOrganizationId"],
+      message: "Policy snapshot recipient must match metadata.receiverOrgId",
+    });
+  }
+  return issues;
+}

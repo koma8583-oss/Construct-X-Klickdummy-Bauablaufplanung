@@ -18,6 +18,7 @@ import type {
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "./external-contracts";
+import { assertPolicySnapshotParticipants } from "./external-contracts";
 import { applyIncomingServiceResponseOnAg } from "../nu-response-service";
 import { storeIncomingProjectInvitation } from "../an-project-invitation-service";
 import { createAnServiceResponse } from "../nu-response-service";
@@ -33,6 +34,7 @@ export async function processIncomingServiceRequest(
   dispatchResponse?: (payload: ExternalServiceResponse) => Promise<unknown>,
 ): Promise<void> {
   const { metadata } = payload;
+  assertPolicySnapshotParticipants(payload);
   if (!metadata.senderOrgId || !metadata.receiverOrgId || metadata.senderOrgId === metadata.receiverOrgId) {
     throw new Error("Inbound service request organisations conflict");
   }
@@ -255,6 +257,7 @@ export async function processIncomingCoordinationDecision(
 }
 
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {
+  assertPolicySnapshotParticipants(payload);
   await storeIncomingProjectInvitation(payload);
 }
 
