@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   toExternalResourceRequirements,
   toExternalServiceRequest,
   toExternalServiceResponse,
 } from "../services/dataspace/external-mappers";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
+import { TractusXEdcExchange } from "../services/dataspace/tractusx-edc-exchange";
+import { externalServiceRequestSchema } from "../services/dataspace/external-contracts";
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
 
 describe("dataspace exchange boundary", () => {
@@ -108,6 +110,79 @@ describe("dataspace exchange boundary", () => {
     }))).rejects.toThrow("Tractus-X EDC adapter not configured");
     if (previous === undefined) delete process.env.DATASPACE_TRANSPORT;
     else process.env.DATASPACE_TRANSPORT = previous;
+  });
+
+  it("preserves a policy snapshot through the Tractus-X outbound payload and validation", async () => {
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const connectorFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ messageId: "connector-message-1", externalReference: "connector-reference-1" }),
+    });
+    const policySnapshot = {
+      policyId: "policy-ß/2026",
+      templateId: "SCHEDULE_COORDINATION",
+      templateVersion: 3,
+      code: "SCHEDULE_COORDINATION",
+      name: "Terminabstimmung",
+      description: "Immutable policy snapshot with provider-owned wording.",
+      permissions: ["read:takt", "read:resource-requirements", "coordinate"],
+      prohibitions: ["share-outside-project", "derive-personal-profile"],
+      provider: { organizationId: "ag-42", userId: null },
+      recipientOrganizationId: "an-17",
+      purpose: "Koordination des Bauablaufs / Abschnitt A",
+      projectReference: "project-2026-ß",
+      workPackageReference: "WP-07",
+      validFrom: "2026-08-26T08:00:00.000Z",
+      validUntil: "2026-09-30T18:00:00.000Z",
+      createdAt: "2026-08-26T07:59:59.123Z",
+    };
+    const payload = {
+      metadata: {
+        messageId: "service-request-message-1",
+        correlationId: "service-request-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: "ag-42",
+        receiverOrgId: "an-17",
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      requestId: "request-2026-ß",
+      requestVersion: 4,
+      projectReference: "project-2026-ß",
+      taktReference: "takt-A3",
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-03",
+      resourceRequirements: [],
+      policySnapshot,
+    };
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test/";
+    try {
+      const result = await new TractusXEdcExchange().publishServiceRequest(payload);
+      expect(result).toMatchObject({
+        exchangeId: "connector-message-1",
+        externalReference: "connector-reference-1",
+        status: "DELIVERED",
+      });
+
+      expect(connectorFetch).toHaveBeenCalledOnce();
+      const [url, requestInit] = connectorFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("https://connector.example.test/messages");
+      expect(requestInit.method).toBe("POST");
+      const outbound = JSON.parse(String(requestInit.body)) as {
+        messageType: string;
+        payload: unknown;
+      };
+      expect(outbound.messageType).toBe("SERVICE_REQUEST");
+
+      const validatedPayload = externalServiceRequestSchema.parse(outbound.payload);
+      expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
+      expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
   });
 
   it("creates distinct message IDs but keeps a workflow correlation ID", () => {
