@@ -33,6 +33,7 @@ export interface DataspaceExchange {
   publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference>;
   publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference>;
   publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference>;
+  retryCoordinationDecision(messageId: string): Promise<ExchangeReference>;
   receiveServiceRequest(
     payload: ExternalServiceRequest,
     process?: (payload: ExternalServiceRequest) => Promise<void>,

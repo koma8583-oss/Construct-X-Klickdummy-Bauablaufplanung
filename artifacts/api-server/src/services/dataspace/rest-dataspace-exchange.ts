@@ -351,4 +351,36 @@ export class RestDataspaceExchange implements DataspaceExchange {
       throw error;
     }
   }
+
+  async retryCoordinationDecision(messageId: string): Promise<ExchangeReference> {
+    const [exchange] = await db.select().from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, messageId),
+    )).limit(1);
+    if (!exchange || ![
+      "TAKT_RESPONSE_ACCEPTED",
+      "TAKT_RESPONSE_REVISION_REQUESTED",
+      "TAKT_REQUEST_CANCELLED",
+    ].includes(exchange.messageType)) {
+      throw new Error(`Coordination decision delivery not found: ${messageId}`);
+    }
+    if (exchange.status !== "FAILED") {
+      throw new Error(`Message ${messageId} cannot be retried — current status is ${exchange.status}`);
+    }
+    const result = await this.transport.retry(messageId);
+    await db.update(dataspaceExchangesTable).set({
+      status: result.status === "DELIVERED" ? "PUBLISHED" : "FAILED",
+      externalReference: result.messageId,
+      errorCode: result.error?.code ?? null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, messageId),
+    ));
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      ...result,
+    };
+  }
 }

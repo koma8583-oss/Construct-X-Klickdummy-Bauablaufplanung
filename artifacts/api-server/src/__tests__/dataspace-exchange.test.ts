@@ -15,6 +15,7 @@ import {
 import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exchange";
 
 const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
+const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
 
 beforeAll(async () => {
   await db.insert(organizationsTable).values([
@@ -27,11 +28,17 @@ afterEach(async () => {
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
     .catch(() => {});
+  await db.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
+    .catch(() => {});
 });
 
 afterAll(async () => {
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, "project-invitation-message-1"))
+    .catch(() => {});
+  await db.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
     .catch(() => {});
   await db.delete(organizationsTable)
     .where(inArray(organizationsTable.id, TRACTUSX_TEST_ORG_IDS))
@@ -302,6 +309,74 @@ describe("dataspace exchange boundary", () => {
       const validatedPayload = externalProjectInvitationSchema.parse(outbound.payload);
       expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
       expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
+  });
+
+  it("persists a failed coordination decision and retries the same public message", async () => {
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const decisionPayload = {
+      metadata: {
+        messageId: COORDINATION_DECISION_MESSAGE_ID,
+        correlationId: "coordination-decision-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: TRACTUSX_TEST_ORG_IDS[0],
+        receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      requestId: "coordination-decision-request-1",
+      requestVersion: 3,
+      taktVersion: 4,
+      decisionType: "CONFIRM_ACCEPTED" as const,
+      confirmedTimeWindow: {
+        start: "2026-09-01T08:00:00.000Z",
+        end: "2026-09-03T17:00:00.000Z",
+      },
+      comment: "Unveränderter öffentlicher Entscheidungsinhalt.",
+    };
+    const firstFailure = new Error("connector temporarily unavailable");
+    const connectorFetch = vi.fn()
+      .mockRejectedValueOnce(firstFailure)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ externalReference: "connector-decision-reference-1" }),
+      });
+    const exchange = new TractusXEdcExchange();
+    const receiveSpy = vi.spyOn(exchange, "receiveCoordinationDecision");
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test";
+    try {
+      await expect(exchange.publishCoordinationDecision(decisionPayload)).rejects.toThrow(
+        "connector temporarily unavailable",
+      );
+
+      const [failed] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID));
+      expect(failed.status).toBe("FAILED");
+      expect(failed.payload).toEqual(decisionPayload);
+
+      const retry = await exchange.retryCoordinationDecision(COORDINATION_DECISION_MESSAGE_ID);
+      expect(retry).toMatchObject({
+        exchangeId: COORDINATION_DECISION_MESSAGE_ID,
+        externalReference: "connector-decision-reference-1",
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+      expect(receiveSpy).not.toHaveBeenCalled();
+
+      const firstRequest = JSON.parse(String(
+        (connectorFetch.mock.calls[0] as [string, RequestInit])[1].body,
+      ));
+      const retryRequest = JSON.parse(String(
+        (connectorFetch.mock.calls[1] as [string, RequestInit])[1].body,
+      ));
+      expect(retryRequest).toEqual(firstRequest);
+      expect(retryRequest.payload.metadata.messageId).toBe(COORDINATION_DECISION_MESSAGE_ID);
+      expect(retryRequest.messageType).toBe("TAKT_RESPONSE_ACCEPTED");
     } finally {
       vi.unstubAllGlobals();
       if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;

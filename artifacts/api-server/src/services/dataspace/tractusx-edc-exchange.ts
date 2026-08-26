@@ -10,6 +10,11 @@ import {
   handleIncomingCoordinationDecision,
 } from "./inbound-exchange-service";
 
+type CoordinationDecisionMessageType =
+  | "TAKT_RESPONSE_ACCEPTED"
+  | "TAKT_RESPONSE_REVISION_REQUESTED"
+  | "TAKT_REQUEST_CANCELLED";
+
 export class TractusXEdcExchange implements DataspaceExchange {
   private async publish(payload: ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalServiceRequest | ExternalServiceResponse | ExternalCoordinationDecision, messageType: string): Promise<ExchangeReference> {
     const endpoint = process.env.DATASPACE_CONNECTOR_URL;
@@ -127,13 +132,173 @@ export class TractusXEdcExchange implements DataspaceExchange {
   async publishServiceResponse(payload: ExternalServiceResponse): Promise<ExchangeReference> {
     return this.publish(payload, "SERVICE_RESPONSE");
   }
-  async publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference> {
-    const messageType = payload.decisionType === "CLOSE_WITHOUT_AGREEMENT"
+
+  private coordinationDecisionMessageType(
+    payload: ExternalCoordinationDecision,
+  ): CoordinationDecisionMessageType {
+    return payload.decisionType === "CLOSE_WITHOUT_AGREEMENT"
       ? "TAKT_REQUEST_CANCELLED"
       : payload.decisionType === "REQUEST_REVISION"
         ? "TAKT_RESPONSE_REVISION_REQUESTED"
         : "TAKT_RESPONSE_ACCEPTED";
-    return this.publish(payload, messageType);
+  }
+
+  private async sendPersistedCoordinationDecision(
+    row: typeof messageOutboxTable.$inferSelect,
+    throwOnFailure: boolean,
+  ): Promise<ExchangeReference> {
+    const now = new Date();
+    const attemptCount = row.attemptCount + 1;
+    await db.update(messageOutboxTable).set({
+      status: "SENT",
+      attemptCount,
+      sentAt: now,
+      lastAttemptAt: now,
+      failureReason: null,
+    }).where(eq(messageOutboxTable.id, row.id));
+
+    try {
+      const endpoint = process.env.DATASPACE_CONNECTOR_URL;
+      if (!endpoint) {
+        throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
+      }
+      const response = await fetch(`${endpoint.replace(/\/$/, "")}/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(process.env.DATASPACE_CONNECTOR_TOKEN
+            ? { authorization: `Bearer ${process.env.DATASPACE_CONNECTOR_TOKEN}` }
+            : {}),
+        },
+        // Always use the persisted public payload. A retry must not rebuild it
+        // from current domain state or change its messageId.
+        body: JSON.stringify({
+          messageType: row.messageType,
+          payload: row.payload,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Dataspace connector returned HTTP ${response.status}`);
+      }
+      const body = await response.json().catch(() => ({})) as {
+        externalReference?: string;
+      };
+      const deliveredAt = new Date();
+      const [updated] = await db.update(messageOutboxTable).set({
+        status: "DELIVERED",
+        deliveredAt,
+        failureReason: null,
+      }).where(eq(messageOutboxTable.id, row.id)).returning();
+      const result: ExchangeReference = {
+        exchangeId: row.messageId,
+        externalReference: body.externalReference ?? row.messageId,
+        status: "DELIVERED",
+        sentAt: updated?.sentAt ?? now,
+        deliveredAt: updated?.deliveredAt ?? deliveredAt,
+        attemptCount: updated?.attemptCount ?? attemptCount,
+      };
+      return result;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const [updated] = await db.update(messageOutboxTable).set({
+        status: "FAILED",
+        failureReason: reason,
+      }).where(eq(messageOutboxTable.id, row.id)).returning();
+      const result: ExchangeReference = {
+        exchangeId: row.messageId,
+        status: "FAILED",
+        sentAt: updated?.sentAt ?? now,
+        deliveredAt: updated?.deliveredAt ?? null,
+        attemptCount: updated?.attemptCount ?? attemptCount,
+        error: { code: "TRANSPORT_FAILURE", message: reason },
+      };
+      if (throwOnFailure) {
+        throw error;
+      }
+      return result;
+    }
+  }
+
+  async publishCoordinationDecision(payload: ExternalCoordinationDecision): Promise<ExchangeReference> {
+    const messageType = this.coordinationDecisionMessageType(payload);
+    const messageId = payload.metadata.messageId;
+    let [row] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId))
+      .limit(1);
+
+    if (row) {
+      if (row.messageType !== messageType) {
+        throw new Error(`Message ${messageId} conflicts with an existing message type`);
+      }
+      if (row.status === "DELIVERED") {
+        return {
+          exchangeId: row.messageId,
+          externalReference: row.messageId,
+          status: "DELIVERED",
+          sentAt: row.sentAt,
+          deliveredAt: row.deliveredAt,
+          attemptCount: row.attemptCount,
+        };
+      }
+      if (row.status === "FAILED") {
+        return this.sendPersistedCoordinationDecision(row, false);
+      }
+      if (row.status === "SENT") {
+        return {
+          exchangeId: row.messageId,
+          status: row.status,
+          sentAt: row.sentAt,
+          deliveredAt: row.deliveredAt,
+          attemptCount: row.attemptCount,
+        };
+      }
+    } else {
+      [row] = await db.insert(messageOutboxTable).values({
+        messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType,
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        causationId: null,
+        payload: payload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      }).onConflictDoNothing().returning();
+
+      // Another publisher may have inserted the same message between the
+      // select and insert. Use its persisted payload rather than this call's
+      // potentially reconstructed payload.
+      if (!row) {
+        [row] = await db.select().from(messageOutboxTable)
+          .where(eq(messageOutboxTable.messageId, messageId))
+          .limit(1);
+      }
+    }
+
+    if (!row) {
+      throw new Error(`Could not persist coordination decision message: ${messageId}`);
+    }
+    if (row.messageType !== messageType) {
+      throw new Error(`Message ${messageId} conflicts with an existing message type`);
+    }
+    return this.sendPersistedCoordinationDecision(row, true);
+  }
+
+  async retryCoordinationDecision(messageId: string): Promise<ExchangeReference> {
+    const [row] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId))
+      .limit(1);
+    if (!row || ![
+      "TAKT_RESPONSE_ACCEPTED",
+      "TAKT_RESPONSE_REVISION_REQUESTED",
+      "TAKT_REQUEST_CANCELLED",
+    ].includes(row.messageType)) {
+      throw new Error(`Coordination decision delivery not found: ${messageId}`);
+    }
+    if (row.status !== "FAILED") {
+      throw new Error(`Message ${messageId} cannot be retried — current status is ${row.status}`);
+    }
+    return this.sendPersistedCoordinationDecision(row, false);
   }
 
   receiveProjectInvitation(payload: ExternalProjectInvitation, process?: (payload: ExternalProjectInvitation) => Promise<void>) {
