@@ -237,7 +237,8 @@ export function formatAnAvailabilityCheck(check: typeof anAvailabilityChecksTabl
 export async function runAnAvailabilityCheck(
   externalLeistungsanfrageId: string,
   anOrgId: string,
-  userId: string,
+  userId: string | null,
+  options: { excludeSourceReferenceIds?: string[] } = {},
 ) {
   const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
     eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
@@ -265,6 +266,10 @@ export async function runAnAvailabilityCheck(
       .orderBy(desc(anAvailabilityChecksTable.runNumber))
       .limit(1),
   ]);
+  const excludedSources = new Set(options.excludeSourceReferenceIds ?? []);
+  const relevantBookings = bookings.filter((booking) =>
+    !booking.sourceReferenceId || !excludedSources.has(booking.sourceReferenceId),
+  );
 
   const conflicts: Array<Record<string, unknown>> = [];
   const availableResources: Array<Record<string, unknown>> = [];
@@ -299,7 +304,7 @@ export async function runAnAvailabilityCheck(
 
     const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
     const availableCapacity = candidates.reduce((total, resource) => {
-      const matchingBookings = bookings.filter((booking) =>
+      const matchingBookings = relevantBookings.filter((booking) =>
         (booking.resourceId === resource.id || booking.resourceTypeId === requirement.localResourceTypeId)
         && timeOverlaps(start, end, booking.startAt, booking.endAt),
       );

@@ -34,7 +34,8 @@ export const anLeistungsantwortenTable = pgTable(
     nextAvailableDate: date("next_available_date", { mode: "string" }),
     payloadHash: text("payload_hash").notNull(),
     outboundMessageId: text("outbound_message_id").notNull().unique(),
-    createdByUserId: text("created_by_user_id").notNull(),
+    // Automated availability responses may be produced without a human user.
+    createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

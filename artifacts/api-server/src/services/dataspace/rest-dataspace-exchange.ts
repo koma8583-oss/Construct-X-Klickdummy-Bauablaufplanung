@@ -152,10 +152,16 @@ export class RestDataspaceExchange implements DataspaceExchange {
       // call the same identifier projectReference. Keep both public aliases.
       taktReference: payload.taktReference ?? payload.projectReference,
       projectReference: payload.projectReference,
+      ...(payload.leistungReference ? { leistungReference: payload.leistungReference } : {}),
       taktVersion: payload.requestVersion,
+      ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+      ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+      ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
+      ...(payload.baseTimeWindow ? { baseTimeWindow: payload.baseTimeWindow } : {}),
       responseRequiredBy: null,
       plannedStart: payload.plannedStart,
       plannedEnd: payload.plannedEnd,
+      resourceRequirements: payload.resourceRequirements,
       policy: payload.policy ?? null,
       ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
     };
@@ -166,8 +172,15 @@ export class RestDataspaceExchange implements DataspaceExchange {
       taktRequestId: payload.requestId,
       leistungsanfrageId: payload.requestId,
       taktVersion: payload.requestVersion,
+      ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+      ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+      ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
       decision: payload.decision,
+      ...(payload.acceptedTimeWindow ? { acceptedTimeWindow: payload.acceptedTimeWindow } : {}),
+      ...(payload.reasonCode ? { reasonCode: payload.reasonCode } : {}),
+      ...(payload.comment ? { comment: payload.comment } : {}),
       alternatives: payload.alternatives ?? null,
+      ...(payload.nextAvailableDate ? { nextAvailableDate: payload.nextAvailableDate } : {}),
     };
   }
 

@@ -32,6 +32,7 @@ import type { ExternalServiceResponse } from "./dataspace/external-contracts";
 import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "../lib/takt-response-repository";
 import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
+import { applyIncomingScheduleChangeResponseOnAg } from "./service-change-proposal-service";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export interface NuResponseAlternativeInput {
 export interface ProcessNuResponseInput {
   taktRequestId:     string;
   nuOrgId:           string;
-  userId:            string;
+  userId:            string | null;
   decision:          TaktDecision;
   acceptedTimeWindow?: { start: string; end: string };
   reasonCode?:       string;
@@ -99,7 +100,7 @@ export class ResponseStatusError extends Error {
 export interface CreateAnServiceResponseInput {
   anLeistungsanfrageId: string;
   anOrgId: string;
-  userId: string;
+  userId: string | null;
   decision: TaktDecision;
   acceptedTimeWindow?: { start: string; end: string };
   reasonCode?: string;
@@ -272,6 +273,9 @@ function buildExternalResponse(
     },
     requestId: response.sourceRequestId,
     requestVersion: response.requestVersion,
+    requestKind: (request.payloadSnapshot as { requestKind?: "INITIAL" | "SCHEDULE_CHANGE" } | null)?.requestKind,
+    sourceRequestId: (request.payloadSnapshot as { sourceRequestId?: string } | null)?.sourceRequestId,
+    changeProposalId: (request.payloadSnapshot as { changeProposalId?: string } | null)?.changeProposalId,
     decision: response.decision,
     acceptedTimeWindow: response.acceptedStart && response.acceptedEnd
       ? { start: response.acceptedStart.toISOString(), end: response.acceptedEnd.toISOString() }
@@ -299,6 +303,16 @@ function buildExternalResponse(
 export async function applyIncomingServiceResponseOnAg(
   payload: ExternalServiceResponse,
 ): Promise<ProcessNuResponseResult> {
+  if (payload.requestKind === "SCHEDULE_CHANGE") {
+    const result = await applyIncomingScheduleChangeResponseOnAg(payload);
+    return {
+      response: null as unknown as TaktResponse,
+      alternatives: [],
+      payloadHash: result.payloadHash,
+      idempotent: result.idempotent,
+      newStatus: result.newStatus as TaktRequestStatus,
+    };
+  }
   // This is intentionally server time rather than the sender's metadata time:
   // it records when the AG actually received the Dataspace envelope.
   const receivedAt = new Date();

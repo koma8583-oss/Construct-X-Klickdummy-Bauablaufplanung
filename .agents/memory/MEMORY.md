@@ -45,3 +45,4 @@
 - [AN OpenAPI codegen boundaries](an-openapi-codegen.md) — AN-local worklists need explicit `/an/...` operations and generated contracts, not reused AG DTOs or handwritten fetch types.
 - [Test data cleanup](test-data-cleanup.md) — database cleanup must run after the complete Vitest process, never in per-worker setup teardown.
 - [Policy template registry](policy-template-registry.md) — keep stable versioned policy templates in code and preserve the existing policy_templates Dataspace compatibility layer.
+- [Dataspace schedule changes](dataspace-schedule-changes.md) — AG commits bilateral schedule changes only after an AN Dataspace response; AN validates local projections and bookings.

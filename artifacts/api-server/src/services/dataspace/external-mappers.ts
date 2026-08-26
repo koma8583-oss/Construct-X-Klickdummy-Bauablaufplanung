@@ -43,7 +43,12 @@ export function toExternalResourceRequirements(rows: Array<{
 export function toExternalServiceRequest(input: {
   requestId: string;
   requestVersion: number;
+  requestKind?: ExternalServiceRequest["requestKind"];
+  sourceRequestId?: string;
+  changeProposalId?: string;
+  baseTimeWindow?: { start: string; end: string };
   projectReference: string;
+  leistungReference?: string;
   taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
@@ -69,7 +74,12 @@ export function toExternalServiceRequest(input: {
     metadata,
     requestId: input.requestId,
     requestVersion: input.requestVersion,
+    requestKind: input.requestKind,
+    sourceRequestId: input.sourceRequestId,
+    changeProposalId: input.changeProposalId,
+    baseTimeWindow: input.baseTimeWindow,
     projectReference: input.projectReference,
+    leistungReference: input.leistungReference,
     taktReference: input.taktReference,
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
@@ -82,6 +92,9 @@ export function toExternalServiceRequest(input: {
 export function toExternalServiceResponse(input: {
   requestId: string;
   requestVersion: number;
+  requestKind?: ExternalServiceResponse["requestKind"];
+  sourceRequestId?: string;
+  changeProposalId?: string;
   decision: ExternalServiceResponse["decision"];
   senderOrgId: string;
   receiverOrgId: string;
@@ -104,6 +117,9 @@ export function toExternalServiceResponse(input: {
     },
     requestId: input.requestId,
     requestVersion: input.requestVersion,
+    requestKind: input.requestKind,
+    sourceRequestId: input.sourceRequestId,
+    changeProposalId: input.changeProposalId,
     decision: input.decision,
     acceptedTimeWindow: input.acceptedTimeWindow,
     reasonCode: input.reasonCode,
@@ -122,13 +138,21 @@ export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope):
   return toExternalServiceRequest({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
+    requestKind: payload.requestKind === "SCHEDULE_CHANGE" ? "SCHEDULE_CHANGE" : "INITIAL",
+    sourceRequestId: typeof payload.sourceRequestId === "string" ? payload.sourceRequestId : undefined,
+    changeProposalId: typeof payload.changeProposalId === "string" ? payload.changeProposalId : undefined,
+    baseTimeWindow: payload.baseTimeWindow as { start: string; end: string } | undefined,
     projectReference: String(payload.projectReference ?? payload.taktReference ?? ""),
+    leistungReference: typeof payload.leistungReference === "string" ? payload.leistungReference : undefined,
     plannedStart: payload.plannedStart,
     plannedEnd: payload.plannedEnd,
     senderOrgId: envelope.senderOrgId,
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,
     messageId: envelope.messageId,
+    resourceRequirements: Array.isArray(payload.resourceRequirements)
+      ? payload.resourceRequirements as ExternalResourceRequirement[]
+      : undefined,
   });
 }
 
@@ -138,6 +162,9 @@ export function toExternalServiceResponseFromEnvelope(envelope: MessageEnvelope)
   return toExternalServiceResponse({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
     requestVersion: Number(payload.taktVersion ?? payload.leistungVersion ?? payload.requestVersion ?? 1),
+    requestKind: payload.requestKind === "SCHEDULE_CHANGE" ? "SCHEDULE_CHANGE" : "INITIAL",
+    sourceRequestId: typeof payload.sourceRequestId === "string" ? payload.sourceRequestId : undefined,
+    changeProposalId: typeof payload.changeProposalId === "string" ? payload.changeProposalId : undefined,
     decision: payload.decision === "REJECTED" ? "REJECTED" :
       payload.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
       payload.decision === "ACCEPTED" ? "ACCEPTED" :

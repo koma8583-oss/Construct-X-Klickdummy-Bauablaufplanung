@@ -145,6 +145,10 @@ export const externalServiceRequestSchema = z.object({
   metadata: metadataSchema,
   requestId: nonEmpty(200),
   requestVersion: z.number().int().min(1),
+  requestKind: z.enum(["INITIAL", "SCHEDULE_CHANGE"]).optional(),
+  sourceRequestId: nonEmpty(200).optional(),
+  changeProposalId: nonEmpty(200).optional(),
+  baseTimeWindow: timeWindowSchema.optional(),
   projectReference: nonEmpty(200),
   leistungReference: nonEmpty(200).optional(),
   taktReference: nonEmpty(200).optional(),
@@ -155,12 +159,21 @@ export const externalServiceRequestSchema = z.object({
   policySnapshot: policySnapshotSchema.optional(),
 }).strict().refine((value) => Date.parse(value.plannedEnd) >= Date.parse(value.plannedStart), {
   message: "plannedEnd must not be before plannedStart",
+}).superRefine((value, ctx) => {
+  if (value.requestKind === "SCHEDULE_CHANGE") {
+    if (!value.sourceRequestId) ctx.addIssue({ code: "custom", path: ["sourceRequestId"], message: "sourceRequestId is required for schedule changes" });
+    if (!value.changeProposalId) ctx.addIssue({ code: "custom", path: ["changeProposalId"], message: "changeProposalId is required for schedule changes" });
+    if (!value.baseTimeWindow) ctx.addIssue({ code: "custom", path: ["baseTimeWindow"], message: "baseTimeWindow is required for schedule changes" });
+  }
 });
 
 export const externalServiceResponseSchema = z.object({
   metadata: metadataSchema,
   requestId: nonEmpty(200),
   requestVersion: z.number().int().min(1),
+  requestKind: z.enum(["INITIAL", "SCHEDULE_CHANGE"]).optional(),
+  sourceRequestId: nonEmpty(200).optional(),
+  changeProposalId: nonEmpty(200).optional(),
   decision: z.enum(["ACCEPTED", "REJECTED", "ALTERNATIVES_PROPOSED"]),
   acceptedTimeWindow: timeWindowSchema.optional(),
   reasonCode: nonEmpty(200).optional(),
@@ -168,6 +181,10 @@ export const externalServiceResponseSchema = z.object({
   alternatives: z.array(alternativeSchema).max(3).optional(),
   nextAvailableDate: externalDate.optional(),
 }).strict().superRefine((value, ctx) => {
+  if (value.requestKind === "SCHEDULE_CHANGE") {
+    if (!value.sourceRequestId) ctx.addIssue({ code: "custom", path: ["sourceRequestId"], message: "sourceRequestId is required for schedule change responses" });
+    if (!value.changeProposalId) ctx.addIssue({ code: "custom", path: ["changeProposalId"], message: "changeProposalId is required for schedule change responses" });
+  }
   if (value.decision === "ACCEPTED" && !value.acceptedTimeWindow) {
     ctx.addIssue({ code: "custom", path: ["acceptedTimeWindow"], message: "acceptedTimeWindow is required for ACCEPTED" });
   }
@@ -343,6 +360,10 @@ export type ExternalServiceRequest = {
   metadata: ExchangeMetadata;
   requestId: string;
   requestVersion: number;
+  requestKind?: "INITIAL" | "SCHEDULE_CHANGE";
+  sourceRequestId?: string;
+  changeProposalId?: string;
+  baseTimeWindow?: { start: string; end: string };
   projectReference: string;
   leistungReference?: string;
   taktReference?: string;
@@ -357,6 +378,9 @@ export type ExternalServiceResponse = {
   metadata: ExchangeMetadata;
   requestId: string;
   requestVersion: number;
+  requestKind?: "INITIAL" | "SCHEDULE_CHANGE";
+  sourceRequestId?: string;
+  changeProposalId?: string;
   decision: "ACCEPTED" | "REJECTED" | "ALTERNATIVES_PROPOSED";
   acceptedTimeWindow?: { start: string; end: string };
   reasonCode?: string;

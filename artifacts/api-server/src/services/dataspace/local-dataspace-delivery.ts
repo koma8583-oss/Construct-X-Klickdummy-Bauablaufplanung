@@ -40,7 +40,13 @@ export async function deliverLocalServiceRequest(
 ): Promise<ExchangeReference> {
   const delivery = await exchange.publishServiceRequest(payload);
   if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
-    await exchange.receiveServiceRequest(payload, processIncomingServiceRequest);
+    await exchange.receiveServiceRequest(
+      payload,
+      (incoming) => processIncomingServiceRequest(
+        incoming,
+        (response) => deliverLocalServiceResponse(response, exchange),
+      ),
+    );
   }
   return delivery;
 }

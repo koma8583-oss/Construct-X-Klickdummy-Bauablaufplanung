@@ -5,10 +5,11 @@ import {
   anLeistungsanfragenTable,
   dataPublicationRecipientsTable,
   projectMembershipsTable,
+  resourceTypesTable,
   resourceBookingsTable,
   taktRequestsTable,
 } from "@workspace/db";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import type {
   ExternalCoordinationDecision,
@@ -19,12 +20,18 @@ import type {
 } from "./external-contracts";
 import { applyIncomingServiceResponseOnAg } from "../nu-response-service";
 import { storeIncomingProjectInvitation } from "../an-project-invitation-service";
+import { createAnServiceResponse } from "../nu-response-service";
+import { runAnAvailabilityCheck } from "../an-leistungsanfrage-service";
+import { createDataspaceExchange } from "./dataspace-exchange-factory";
 
 /**
  * Domain boundary for Dataspace deliveries. Transport code only validates the
  * envelope; this module applies the existing coordination persistence paths.
  */
-export async function processIncomingServiceRequest(payload: ExternalServiceRequest): Promise<void> {
+export async function processIncomingServiceRequest(
+  payload: ExternalServiceRequest,
+  dispatchResponse?: (payload: ExternalServiceResponse) => Promise<unknown>,
+): Promise<void> {
   const { metadata } = payload;
   if (!metadata.senderOrgId || !metadata.receiverOrgId || metadata.senderOrgId === metadata.receiverOrgId) {
     throw new Error("Inbound service request organisations conflict");
@@ -69,6 +76,7 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
     throw new Error("Inbound service request version is older than the current AN projection");
   }
 
+  let projectionId: string | undefined;
   await anDb.transaction(async (tx) => {
     if (latest && payload.requestVersion > latest.externalRequestVersion) {
       await tx.update(anLeistungsanfragenTable).set({
@@ -98,7 +106,17 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
       receivedAt: new Date(metadata.createdAt),
     }).returning({ id: anLeistungsanfragenTable.id });
     if (!projection) throw new Error("Inbound service request projection could not be created");
+    projectionId = projection.id;
     if (payload.resourceRequirements.length) {
+      const externalCodes = payload.resourceRequirements.map((resource) => resource.resourceTypeCode);
+      const localTypes = await tx.select({
+        id: resourceTypesTable.id,
+        code: resourceTypesTable.code,
+      }).from(resourceTypesTable).where(and(
+        eq(resourceTypesTable.anOrgId, metadata.receiverOrgId),
+        inArray(resourceTypesTable.code, externalCodes),
+      ));
+      const localTypeByCode = new Map(localTypes.map((type) => [type.code, type.id]));
       await tx.insert(anLeistungsanfrageResourceRequirementsTable).values(
         payload.resourceRequirements.map((resource) => ({
           anLeistungsanfrageId: projection.id,
@@ -110,12 +128,48 @@ export async function processIncomingServiceRequest(payload: ExternalServiceRequ
           periodStart: resource.periodStart,
           periodEnd: resource.periodEnd,
           requiredQualification: resource.requiredQualification ?? null,
-          localResourceTypeId: null,
+          localResourceTypeId: localTypeByCode.get(resource.resourceTypeCode) ?? null,
           notes: null,
         })),
       );
     }
   });
+  if (payload.requestKind !== "SCHEDULE_CHANGE" || !projectionId) return;
+
+  const [previousProjection] = payload.sourceRequestId
+    ? await anDb.select({ id: anLeistungsanfragenTable.id }).from(anLeistungsanfragenTable).where(and(
+      eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.sourceRequestId),
+    )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1)
+    : [];
+  const availability = await runAnAvailabilityCheck(
+    payload.requestId,
+    metadata.receiverOrgId,
+    null,
+    { excludeSourceReferenceIds: previousProjection ? [previousProjection.id] : [] },
+  );
+  if (!availability) throw new Error("Schedule-change AN projection could not be evaluated");
+  const decision = availability.publicResultPayload?.recommendedDecision === "ACCEPTED"
+    ? "ACCEPTED"
+    : "REJECTED";
+  const response = await createAnServiceResponse({
+    anLeistungsanfrageId: projectionId,
+    anOrgId: metadata.receiverOrgId,
+    userId: null,
+    decision,
+    acceptedTimeWindow: decision === "ACCEPTED"
+      ? { start: payload.plannedStart, end: payload.plannedEnd }
+      : undefined,
+    reasonCode: decision === "REJECTED" ? "RESOURCE_CONFLICT" : undefined,
+    comment: decision === "REJECTED" ? "Der Zielzeitraum ist aus AN-Sicht nicht verfügbar." : undefined,
+    outboundMessageId: `schedule-change-response:${payload.changeProposalId ?? payload.requestId}`,
+  });
+  if (dispatchResponse) {
+    await dispatchResponse(response.payload);
+  } else {
+    const exchange = createDataspaceExchange();
+    await exchange.publishServiceResponse(response.payload);
+  }
 }
 
 export async function processIncomingServiceResponse(payload: ExternalServiceResponse): Promise<void> {

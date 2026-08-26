@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { agDb as db, runWithDatabaseRole } from "@workspace/db";
 import {
   leistungsanfragenTable,
@@ -24,6 +24,7 @@ import {
   buildCoordinationTimeline,
   calculateScheduleDelta,
   createChangeProposal,
+  resolveChangeProposal,
 } from "../services/service-change-proposal-service";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
@@ -166,6 +167,41 @@ describe("bilateral change proposals", () => {
     expect(coordination.status).toBe(200);
     expect(coordination.body.currentAgreement.start).toContain("2026-09-01");
     expect(coordination.body.openProposal.start).toContain("2026-09-04");
+  });
+
+  it("accepts a proposal only through the local Dataspace roundtrip", async () => {
+    const requestId = REQUEST_IDS[1];
+    const [openProposal] = await db.select().from(serviceChangeProposalsTable)
+      .where(and(
+        eq(serviceChangeProposalsTable.leistungsanfrageId, requestId),
+        eq(serviceChangeProposalsTable.status, "OPEN"),
+      ));
+    const proposal = openProposal ?? await createAgChangeProposal({
+      requestId,
+      orgId: GU_ORG,
+      userId: GU_USER,
+      start: new Date("2026-09-03T08:00:00Z"),
+      end: new Date("2026-09-07T17:00:00Z"),
+    });
+
+    const beforeBookings = await db.execute(
+      sql`SELECT count(*)::int AS count FROM resource_bookings WHERE source_reference_id = ${requestId}`,
+    );
+    const result = await runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId,
+      proposalId: proposal.id,
+      orgId: NU_ORG,
+      userId: NU_USER,
+      status: "ACCEPTED",
+    }));
+
+    expect(result.status).toBe("ACCEPTED");
+    expect(result).toMatchObject({ transportStatus: "DELIVERED" });
+    expect(new Date(result.start).toISOString()).toContain("2026-09-03");
+    const afterBookings = await db.execute(
+      sql`SELECT count(*)::int AS count FROM resource_bookings WHERE source_reference_id = ${requestId}`,
+    );
+    expect(afterBookings.rows[0]?.count).toBe(beforeBookings.rows[0]?.count);
   });
 
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {
