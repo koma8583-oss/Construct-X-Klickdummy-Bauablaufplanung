@@ -28,6 +28,72 @@ export interface PolicyTemplateRegistryEntry {
   readonly retentionRule: string | null;
 }
 
+/**
+ * Policy choices supported by the AG data-publication wizard.
+ *
+ * These are intentionally separate from the broader registry above. The
+ * registry also contains templates used by other Dataspace flows, while this
+ * catalog is the public contract for creating data publications.
+ */
+const PUBLICATION_ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
+  {
+    templateId: "tk-policy-project-coordination-read-only",
+    version: 1,
+    code: "PROJECT_COORDINATION_READ_ONLY",
+    name: "Projektkoordination – Nur Lesen",
+    description: "Lesender Zugriff auf die für die Projektkoordination freigegebenen Daten.",
+    purpose: "projectCoordination",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    permissions: ["READ", "DOWNLOAD", "USE_FOR_PROJECT_COORDINATION"],
+    prohibitions: ["REDISTRIBUTE", "USE_IN_OTHER_PROJECTS", "COMMERCIAL_REUSE", "AI_TRAINING"],
+    validityRule: "bis Projektende",
+    retentionRule: "Löschung spätestens 30 Tage nach Projektende",
+  },
+  {
+    templateId: "tk-policy-takt-execution-use",
+    version: 1,
+    code: "TAKT_EXECUTION_USE",
+    name: "Taktbezogene Ausführung",
+    description: "Nutzung der freigegebenen Daten für die Ausführung des zugeordneten Takts.",
+    purpose: "taktExecution",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference", "workPackageReference"],
+    allowedOverrides: [
+      "recipientOrganizationId", "purpose", "projectReference",
+      "workPackageReference", "validFrom", "validUntil",
+    ],
+    permissions: [
+      "READ",
+      "DOWNLOAD",
+      "USE_FOR_ASSIGNED_WORK_PACKAGE",
+      "USE_FOR_INTERNAL_RESOURCE_PLANNING",
+    ],
+    prohibitions: ["SHARE_OUTSIDE_PROJECT_TEAM", "USE_IN_OTHER_PROJECTS", "COMMERCIAL_REUSE", "AI_TRAINING"],
+    validityRule: "bis 30 Tage nach Ende des betreffenden Takts",
+    retentionRule: "Löschung spätestens 30 Tage nach Ende des betreffenden Takts",
+  },
+  {
+    templateId: "tk-policy-extended-project-collaboration",
+    version: 1,
+    code: "EXTENDED_PROJECT_COLLABORATION",
+    name: "Erweiterte Projektzusammenarbeit",
+    description: "Erweiterte projektbezogene Nutzung einschließlich abgeleiteter Ergebnisse.",
+    purpose: "projectExecution",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    permissions: [
+      "READ",
+      "DOWNLOAD",
+      "USE_FOR_PROJECT_EXECUTION",
+      "CREATE_DERIVED_RESULTS",
+      "SHARE_DERIVED_RESULTS_WITH_AG",
+    ],
+    prohibitions: ["EXTERNAL_REDISTRIBUTION", "COMMERCIAL_REUSE_OUTSIDE_PROJECT"],
+    validityRule: "bis 180 Tage nach Projektende",
+    retentionRule: "Löschung spätestens 180 Tage nach Projektende",
+  },
+];
+
 const ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
   {
     templateId: "tk-policy-standard-data-exchange",
@@ -126,6 +192,17 @@ function cloneEntry(entry: PolicyTemplateRegistryEntry): PolicyTemplateRegistryE
     permissions: Object.freeze([...entry.permissions]),
     prohibitions: Object.freeze([...entry.prohibitions]),
   });
+}
+
+export function listPublicationPolicyTemplates(): PolicyTemplateRegistryEntry[] {
+  return PUBLICATION_ENTRIES.map(cloneEntry);
+}
+
+export function getPublicationPolicyTemplate(ref: string): PolicyTemplateRegistryEntry | null {
+  const entry = PUBLICATION_ENTRIES.find(
+    (candidate) => candidate.templateId === ref || candidate.code === ref,
+  );
+  return entry ? cloneEntry(entry) : null;
 }
 
 export function listPolicyTemplateRegistry(options?: {

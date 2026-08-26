@@ -52,6 +52,7 @@ let anotherAgOrgId: string;
 let anotherAgUserId: string;
 let projectId: string;
 let policyTemplateId: string;
+let compatibilityPolicyTemplateId: string;
 
 let agToken: string;
 let anToken: string;
@@ -135,9 +136,15 @@ beforeAll(async () => {
   const [pt] = await db
     .select({ id: policyTemplatesTable.id })
     .from(policyTemplatesTable)
-    .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+    .where(eq(policyTemplatesTable.code, "PROJECT_COORDINATION_READ_ONLY"))
     .limit(1);
   policyTemplateId = pt.id;
+  const [compatibilityPolicy] = await db
+    .select({ id: policyTemplatesTable.id })
+    .from(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+    .limit(1);
+  compatibilityPolicyTemplateId = compatibilityPolicy.id;
 
   // Tokens
   agToken = makeToken(agUserId, agOrgId, "AG", ["AG_ADMIN"]);
@@ -213,18 +220,22 @@ async function createDraftPublication(extraBody: Record<string, unknown> = {}) {
 // ── 1. Policy templates ────────────────────────────────────────────────────────
 
 describe("GET /api/policy-templates", () => {
-  it("returns the seeded policy templates for AG", async () => {
+  it("returns the supported publication policy catalog for AG", async () => {
     const res = await request(app)
       .get("/api/policy-templates")
       .set("Authorization", `Bearer ${agToken}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(1);
-    expect(res.body[0].code).toBe("SCHEDULE_COORDINATION");
+    expect(res.body.length).toBe(3);
     const codes = res.body.map((p: { code: string }) => p.code);
     expect(codes).toContain("PROJECT_COORDINATION_READ_ONLY");
     expect(codes).toContain("TAKT_EXECUTION_USE");
     expect(codes).toContain("EXTENDED_PROJECT_COLLABORATION");
+    for (const policy of res.body) {
+      expect(policy.registryTemplateId).toMatch(/^tk-policy-/);
+      expect(policy.templateVersion).toBe(1);
+      expect(policy.availableTemplateVersions).toEqual([1]);
+    }
   });
 
   it("rejects AN token (wrong role)", async () => {
@@ -246,6 +257,14 @@ describe("POST /api/projects/:projectId/data-publications", () => {
     expect(res.body.recipientCount).toBe(1);
   });
 
+  it("accepts the stable registry reference returned by the catalog", async () => {
+    const res = await createDraftPublication({
+      policyTemplateId: "tk-policy-project-coordination-read-only",
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("DRAFT");
+  });
+
   it("rejects unknown field names for the chosen data product type", async () => {
     const res = await createDraftPublication({ selectedFields: ["internalNote"] });
     expect(res.status).toBe(400);
@@ -262,6 +281,14 @@ describe("POST /api/projects/:projectId/data-publications", () => {
   it("rejects empty recipient list", async () => {
     const res = await createDraftPublication({ recipientAnOrgIds: [] });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects an active policy outside the publication catalog", async () => {
+    const res = await createDraftPublication({
+      policyTemplateId: compatibilityPolicyTemplateId,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/unavailable|not found/i);
   });
 
   it("rejects wrong AG (project owned by another org)", async () => {

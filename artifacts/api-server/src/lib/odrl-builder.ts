@@ -55,6 +55,21 @@ type PolicyDefinition = {
 };
 
 const POLICY_DEFINITIONS: Record<string, PolicyDefinition> = {
+  PROJECT_COORDINATION_READ_ONLY: {
+    purposeValue: "projectCoordination",
+    prohibitionActions: ["distribute", "derive", "commercialize"],
+  },
+
+  TAKT_EXECUTION_USE: {
+    purposeValue: "taktExecution",
+    prohibitionActions: ["distribute", "commercialize"],
+  },
+
+  EXTENDED_PROJECT_COLLABORATION: {
+    purposeValue: "projectExecution",
+    prohibitionActions: ["distribute", "commercialize"],
+  },
+
   SCHEDULE_COORDINATION: {
     purposeValue: "scheduleCoordination",
     extraConstraints: [

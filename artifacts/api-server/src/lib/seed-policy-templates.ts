@@ -9,9 +9,13 @@
 import { db } from "@workspace/db";
 import { policyTemplatesTable } from "@workspace/db";
 import { logger } from "./logger";
-import { listPolicyTemplateRegistry } from "./policy-template-registry";
+import {
+  listPolicyTemplateRegistry,
+  listPublicationPolicyTemplates,
+} from "./policy-template-registry";
 
 interface PolicySeed {
+  id?: string;
   code: string;
   name: string;
   description: string;
@@ -23,9 +27,12 @@ interface PolicySeed {
   active: boolean;
 }
 
-const CANONICAL_POLICIES: PolicySeed[] = listPolicyTemplateRegistry({ latestOnly: true })
-  .filter((template) => template.code === "SCHEDULE_COORDINATION")
-  .map((template) => ({
+const CANONICAL_POLICIES: PolicySeed[] = [
+  ...listPublicationPolicyTemplates(),
+  ...listPolicyTemplateRegistry({ latestOnly: true })
+    .filter((template) => template.code === "SCHEDULE_COORDINATION"),
+].map((template) => ({
+    id: template.templateId,
     code: template.code,
     name: template.name,
     description: template.description,

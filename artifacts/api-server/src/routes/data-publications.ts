@@ -38,7 +38,12 @@ import {
   FIELD_WHITELISTS,
   syncDataPublicationProjection,
 } from "../services/data-publication-service";
-import { listPolicyTemplateRegistry, getLatestPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
+import {
+  getLatestPolicyTemplateRegistryEntry,
+  getPublicationPolicyTemplate,
+  listPolicyTemplateRegistry,
+  listPublicationPolicyTemplates,
+} from "../lib/policy-template-registry";
 
 const router = Router();
 
@@ -151,28 +156,29 @@ router.get(
 );
 
 // ── GET /policy-templates ─────────────────────────────────────────────────────
-// Legacy Dataspace publication templates. Kept unchanged for compatibility.
+// The selectable publication catalog. Other policy templates may support
+// different Dataspace flows and are intentionally not exposed here.
 router.get(
   "/policy-templates",
   requireJwt,
   requireRole("AG_ADMIN", "GENERAL_PLANNER"),
   async (_req, res): Promise<void> => {
+    const publicationCatalog = listPublicationPolicyTemplates();
     const templates = await db
       .select()
       .from(policyTemplatesTable)
       .where(eq(policyTemplatesTable.active, true));
-    res.json(templates.map((template) => {
-      const latest = getLatestPolicyTemplateRegistryEntry(template.code);
-      const versions = listPolicyTemplateRegistry()
-        .filter((entry) => entry.code === template.code)
-        .map((entry) => entry.version)
-        .sort((a, b) => a - b);
-      return {
+    const byCode = new Map(templates.map((template) => [template.code, template]));
+
+    res.json(publicationCatalog.flatMap((entry) => {
+      const template = byCode.get(entry.code);
+      if (!template) return [];
+      return [{
         ...template,
-        templateVersion: latest?.version ?? 1,
-        availableTemplateVersions: versions,
-        registryTemplateId: latest?.templateId ?? null,
-      };
+        templateVersion: entry.version,
+        availableTemplateVersions: [entry.version],
+        registryTemplateId: entry.templateId,
+      }];
     }));
   },
 );
@@ -290,20 +296,22 @@ router.post(
       return;
     }
 
-    // Validate policy template exists
-    const [policy] = await db
-      .select({ id: policyTemplatesTable.id })
+    // Only policies in the publication catalog may be selected. Resolve the
+    // catalog reference to the persisted row used by the publication FK.
+    const requestedCatalogPolicy = getPublicationPolicyTemplate(policyTemplateId);
+    const activePolicies = await db
+      .select({ id: policyTemplatesTable.id, code: policyTemplatesTable.code })
       .from(policyTemplatesTable)
-      .where(
-        and(
-          eq(policyTemplatesTable.id, policyTemplateId),
-          eq(policyTemplatesTable.active, true),
-        ),
-      )
-      .limit(1);
+      .where(eq(policyTemplatesTable.active, true));
+    const policy = activePolicies.find((candidate) => {
+      const catalogPolicy = getPublicationPolicyTemplate(candidate.code);
+      return catalogPolicy !== null &&
+        (candidate.id === policyTemplateId ||
+          catalogPolicy.code === requestedCatalogPolicy?.code);
+    });
 
     if (!policy) {
-      res.status(400).json({ error: "Policy template not found or inactive" });
+      res.status(400).json({ error: "Policy template not found, unavailable, or inactive" });
       return;
     }
 
