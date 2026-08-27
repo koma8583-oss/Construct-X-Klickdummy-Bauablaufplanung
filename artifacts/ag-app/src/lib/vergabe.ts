@@ -9,6 +9,16 @@ type Participant = {
   name?: string | null;
 };
 
+function isOrganizationIdentifier(value: string | null | undefined, organizationId: string): boolean {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) return false;
+
+  return normalizedValue === organizationId
+    || normalizedValue === `local:${organizationId}`
+    || /^local:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedValue)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedValue);
+}
+
 export type VergabePartner = {
   anOrgId: string;
   label: string;
@@ -58,8 +68,8 @@ export function buildAssignablePartners(
   const seenOrgIds = new Set<string>();
   const participantNameByOrgId = new Map(
     (participants ?? [])
-      .filter((participant) => participant.name?.trim())
-      .map((participant) => [participant.id, participant.name!.trim()]),
+      .filter((participant) => participant.name?.trim() && !isOrganizationIdentifier(participant.name, participant.id))
+      .map((participant) => [participant.id.replace(/^local:/, ''), participant.name!.trim()]),
   );
 
   const addPartner = (
@@ -69,7 +79,8 @@ export function buildAssignablePartners(
   ) => {
     if (seenOrgIds.has(anOrgId)) return;
     seenOrgIds.add(anOrgId);
-    const displayName = name?.trim() || participantNameByOrgId.get(anOrgId) || anOrgId;
+    const embeddedName = isOrganizationIdentifier(name, anOrgId) ? undefined : name?.trim();
+    const displayName = embeddedName || participantNameByOrgId.get(anOrgId) || 'Nachunternehmen';
     partners.push({
       anOrgId,
       label: `${displayName} – ${trade?.trim() || 'Alle Gewerke'}`,

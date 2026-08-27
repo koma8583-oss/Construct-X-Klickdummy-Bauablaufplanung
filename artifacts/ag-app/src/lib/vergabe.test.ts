@@ -25,6 +25,26 @@ describe('Leistung vergeben helpers', () => {
     }]);
   });
 
+  it('does not treat an organization UUID returned as anName as a display name', () => {
+    const partners = buildAssignablePartners(
+      [{
+        id: 'assignment-1',
+        projectId: 'project-1',
+        anOrgId: '28c95bdc-4738-423f-b84a-bdd24eda55d2',
+        anName: '28c95bdc-4738-423f-b84a-bdd24eda55d2',
+        trade: 'Rohbau',
+        assignmentStatus: 'ACTIVE',
+      }],
+      [],
+      [{ id: '28c95bdc-4738-423f-b84a-bdd24eda55d2', name: 'IIB Rohbau' }],
+    );
+
+    expect(partners).toEqual([{
+      anOrgId: '28c95bdc-4738-423f-b84a-bdd24eda55d2',
+      label: 'IIB Rohbau – Rohbau',
+    }]);
+  });
+
   it('does not offer a published package without recipients', () => {
     const publications = [
       {
