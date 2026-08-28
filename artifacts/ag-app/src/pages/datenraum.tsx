@@ -21,13 +21,16 @@ import {
   Users,
   ShieldCheck,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import {
   useGetAllAgDataPublications,
   useDeleteDataPublication,
+  useRetryDataPublicationDelivery,
   type AgDataPublication,
   type PublicationStatus,
   type PublicationRecipientStatus,
+  type DataPublicationDeliveryStatus,
 } from "@workspace/api-client-react";
 import {
   AlertDialog,
@@ -75,6 +78,14 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   PROJECT_OVERVIEW: "Projektübersicht",
   PROJECT_COORDINATION_PACKAGE: "Koordinationspaket",
   TAKT_INFORMATION_PACKAGE: "Leistungsinformationspaket",
+};
+
+const DELIVERY_STATUS_LABELS: Record<DataPublicationDeliveryStatus, string> = {
+  PENDING: "ausstehend",
+  SENT: "gesendet",
+  DELIVERED: "zugestellt",
+  READ: "gelesen",
+  FAILED: "Zustellung fehlgeschlagen",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -148,9 +159,13 @@ function SummaryCard({
 function PublicationRow({
   pub,
   onDelete,
+  onRetry,
+  retryPending,
 }: {
   pub: AgDataPublication;
   onDelete: (id: string, title: string) => void;
+  onRetry: (publicationId: string, anOrgId: string) => void;
+  retryPending: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const recipients = pub.recipients ?? [];
@@ -317,12 +332,45 @@ function PublicationRow({
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {recipients.map((r) => (
-                    <div key={r.anOrgId} className="bg-card border border-border rounded-lg px-3 py-2 flex flex-col gap-0.5 min-w-[200px]">
+                    <div
+                      key={r.anOrgId}
+                      className="bg-card border border-border rounded-lg px-3 py-2 flex flex-col gap-0.5 min-w-[200px]"
+                      data-testid={`datenraum-recipient-${pub.id}-${r.anOrgId}`}
+                    >
                       <div className="text-sm font-medium">{r.anName}</div>
                       <RecipientStatusIcon status={r.status} />
-                       {r.projectMembershipId && r.status === "OFFERED" && (
-                         <div className="text-xs text-amber-600">Wartet auf Einladung &amp; Policy</div>
-                       )}
+                      {r.delivery && (
+                        <div
+                          className={`text-xs ${r.delivery.status === "FAILED" ? "text-red-600" : r.delivery.status === "DELIVERED" ? "text-emerald-600" : "text-muted-foreground"}`}
+                          data-testid={`datenraum-delivery-status-${pub.id}-${r.anOrgId}`}
+                        >
+                          Datenangebot: {DELIVERY_STATUS_LABELS[r.delivery.status] ?? r.delivery.status}
+                          {" "}({r.delivery.attemptCount}/5 Versuche)
+                        </div>
+                      )}
+                      {r.delivery?.failureReason && (
+                        <div className="text-xs text-red-600 break-words">
+                          Fehlergrund: {r.delivery.failureReason}
+                        </div>
+                      )}
+                      {r.delivery?.status === "FAILED" && r.delivery.attemptCount < 5 && (
+                        <button
+                          type="button"
+                          className="mt-2 inline-flex h-7 items-center self-start rounded-md border border-border px-2 text-xs font-medium hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+                          data-testid={`datenraum-retry-${pub.id}-${r.anOrgId}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onRetry(pub.id, r.anOrgId);
+                          }}
+                          disabled={retryPending}
+                        >
+                          <RefreshCw className={`mr-1 h-3 w-3 ${retryPending ? "animate-spin" : ""}`} />
+                          Erneut zustellen
+                        </button>
+                      )}
+                      {r.projectMembershipId && r.status === "OFFERED" && (
+                        <div className="text-xs text-amber-600">Wartet auf Einladung &amp; Policy</div>
+                      )}
                       {r.policyAcceptedAt && <div className="text-xs text-muted-foreground">Akzeptiert: {fmtDate(r.policyAcceptedAt)}</div>}
                       {r.firstAccessedAt && <div className="text-xs text-muted-foreground">Erster Zugriff: {fmtDate(r.firstAccessedAt)}</div>}
                       {r.policyRejectedAt && <div className="text-xs text-red-500">Abgelehnt: {fmtDate(r.policyRejectedAt)}</div>}
@@ -359,6 +407,7 @@ const STATUS_FILTER_LABELS: Record<PublicationStatus | "ALL", string> = {
 export default function DatenraumPage() {
   const { data: publications, isLoading, isError } = useGetAllAgDataPublications();
   const deletePublication = useDeleteDataPublication();
+  const retryDataPublicationDelivery = useRetryDataPublicationDelivery();
   const { toast } = useToast();
 
   const [search, setSearch] = useState("");
@@ -427,6 +476,29 @@ export default function DatenraumPage() {
     } finally {
       setDeleteTarget(null);
     }
+  };
+
+  const handleRetryDataPublicationDelivery = (publicationId: string, anOrgId: string) => {
+    retryDataPublicationDelivery.mutate({ publicationId, anOrgId }, {
+      onSuccess: (result) => {
+        if (result.status === "FAILED") {
+          toast({
+            title: "Datenangebot konnte nicht zugestellt werden",
+            description: `${result.error?.message ?? "Die Zustellung ist fehlgeschlagen."} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        toast({ title: "Datenangebot erneut zugestellt" });
+      },
+      onError: (err) => {
+        toast({
+          title: "Datenangebot konnte nicht erneut zugestellt werden",
+          description: err.message,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (
@@ -591,6 +663,8 @@ export default function DatenraumPage() {
                     key={pub.id}
                     pub={pub}
                     onDelete={(id, title) => setDeleteTarget({ id, title })}
+                    onRetry={handleRetryDataPublicationDelivery}
+                    retryPending={retryDataPublicationDelivery.isPending}
                   />
                 ))}
               </tbody>

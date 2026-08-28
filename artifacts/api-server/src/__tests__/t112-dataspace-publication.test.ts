@@ -704,6 +704,18 @@ describe("Publication delivery recovery", () => {
     });
     expect(publication.recipients[0].notifiedAt).toBeTruthy();
 
+    const overview = await request(app)
+      .get("/api/ag/data-publications")
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(overview.status).toBe(200);
+    expect(overview.body.find((row: { id: string }) => row.id === publicationId)
+      .recipients[0].delivery).toMatchObject({
+        messageId,
+        status: "FAILED",
+        attemptCount: 1,
+        failureReason: "Connector nicht erreichbar",
+      });
+
     const retried = await request(app)
       .post(`/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`)
       .set("Authorization", `Bearer ${agToken}`);

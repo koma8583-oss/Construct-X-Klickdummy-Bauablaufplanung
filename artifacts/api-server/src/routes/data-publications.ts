@@ -114,6 +114,7 @@ router.get(
       publications.map(async (pub) => {
         const recipients = await db
           .select({
+            id: dataPublicationRecipientsTable.id,
             anOrgId: dataPublicationRecipientsTable.anOrgId,
             status: dataPublicationRecipientsTable.status,
             anName: organizationsTable.name,
@@ -121,6 +122,8 @@ router.get(
             policyAcceptedAt: dataPublicationRecipientsTable.policyAcceptedAt,
             policyRejectedAt: dataPublicationRecipientsTable.policyRejectedAt,
             firstAccessedAt: dataPublicationRecipientsTable.firstAccessedAt,
+            lastAccessedAt: dataPublicationRecipientsTable.lastAccessedAt,
+            revokedAt: dataPublicationRecipientsTable.revokedAt,
             projectMembershipId: dataPublicationRecipientsTable.projectMembershipId,
           })
           .from(dataPublicationRecipientsTable)
@@ -129,6 +132,10 @@ router.get(
             eq(dataPublicationRecipientsTable.anOrgId, organizationsTable.id),
           )
           .where(eq(dataPublicationRecipientsTable.publicationId, pub.id));
+        const deliveries = await getDataPublicationDeliveries(
+          pub.id,
+          recipients.map((recipient) => recipient.anOrgId),
+        );
 
         const [policy] = await db
           .select({ code: policyTemplatesTable.code, name: policyTemplatesTable.name })
@@ -139,7 +146,10 @@ router.get(
         return {
           ...pub,
           projectName: projectMap[pub.projectId] ?? null,
-          recipients,
+          recipients: recipients.map((recipient) => ({
+            ...recipient,
+            delivery: deliveries.get(recipient.anOrgId) ?? null,
+          })),
           policyCode: policy?.code ?? null,
           policyName: policy?.name ?? null,
         };

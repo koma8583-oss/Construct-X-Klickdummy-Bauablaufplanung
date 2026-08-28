@@ -470,6 +470,7 @@ export function useRetryDataPublicationDelivery(
       ),
     onSettled: (_data, _error, variables) => {
       void qc.invalidateQueries({ queryKey: ["data-publications", variables.publicationId] });
+      void qc.invalidateQueries({ queryKey: ["ag-data-publications"] });
       if (projectId) {
         void qc.invalidateQueries({ queryKey: ["data-publications", projectId] });
       }
