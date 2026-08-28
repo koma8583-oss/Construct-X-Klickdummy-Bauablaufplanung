@@ -1463,7 +1463,7 @@ export default function ProjectDetail() {
           {canManageContractors && (
           <Button onClick={() => setIsInvitationPackageOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
-            Einladung & Freigabe
+            Einladung
           </Button>
           )}
           {canManageContractors && (
@@ -1476,12 +1476,6 @@ export default function ProjectDetail() {
               </span>
             )}
           </Button>
-          )}
-          {canManageTaktRequests && (
-            <Button variant="outline" onClick={() => setIsDataspaceOpen(true)}>
-              <Globe className="w-4 h-4 mr-2" />
-              Weitere Datenfreigabe
-            </Button>
           )}
         </div>
       </div>
