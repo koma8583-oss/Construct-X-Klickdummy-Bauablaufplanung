@@ -16,6 +16,12 @@ type MembershipFixture = {
     failureReason?: string;
     lastAttemptAt?: string;
     createdAt: string;
+    attemptHistory?: Array<{
+      attemptNumber: number;
+      status: string;
+      attemptedAt: string;
+      failureReason?: string | null;
+    }>;
   };
   responseDelivery?: {
     messageId: string;
@@ -25,6 +31,12 @@ type MembershipFixture = {
     failureReason?: string;
     lastAttemptAt?: string;
     createdAt: string;
+    attemptHistory?: Array<{
+      attemptNumber: number;
+      status: string;
+      attemptedAt: string;
+      failureReason?: string | null;
+    }>;
   };
 };
 
@@ -41,6 +53,20 @@ const membershipFixtures: MembershipFixture[] = [
       failureReason: "Connector nicht erreichbar",
       lastAttemptAt: "2026-08-26T09:15:00.000Z",
       createdAt: "2026-08-26T08:00:00.000Z",
+      attemptHistory: [
+        {
+          attemptNumber: 1,
+          status: "FAILED",
+          attemptedAt: "2026-08-26T08:30:00.000Z",
+          failureReason: "Connector nicht erreichbar",
+        },
+        {
+          attemptNumber: 2,
+          status: "DELIVERED",
+          attemptedAt: "2026-08-26T09:15:00.000Z",
+          failureReason: null,
+        },
+      ],
     },
   },
   {
@@ -53,6 +79,14 @@ const membershipFixtures: MembershipFixture[] = [
       status: "PENDING",
       attemptCount: 1,
       createdAt: "2026-08-26T08:00:00.000Z",
+      attemptHistory: [
+        {
+          attemptNumber: 1,
+          status: "PENDING",
+          attemptedAt: "2026-08-26T08:00:00.000Z",
+          failureReason: null,
+        },
+      ],
     },
   },
   { id: "membership-revoked", anOrgId: "an-revoked", status: "REVOKED" },
@@ -317,6 +351,21 @@ describe("project participant directory membership lifecycle", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Einladung: Zustellung fehlgeschlagen/)).not.toBeInTheDocument();
     });
+  });
+
+  it("reveals ordered attempt history for invitations and responses", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Projektpartner/ }));
+
+    const invitedRow = (await screen.findByText("Eingeladener Betrieb")).closest("div.rounded-lg");
+    expect(within(invitedRow as HTMLElement).getByText("Versuch 1: fehlgeschlagen")).toBeInTheDocument();
+    expect(within(invitedRow as HTMLElement).getByText("Versuch 2: zugestellt")).toBeInTheDocument();
+
+    const activeRow = (await screen.findByText("Aktiver Betrieb")).closest("div.rounded-lg");
+    const responseHistory = within(activeRow as HTMLElement).getByText("Zustellverlauf anzeigen (1)");
+    await user.click(responseHistory);
+    expect(within(activeRow as HTMLElement).getByText("Versuch 1: pending")).toBeInTheDocument();
   });
 
   it("surfaces the backend retry error instead of reporting success", async () => {

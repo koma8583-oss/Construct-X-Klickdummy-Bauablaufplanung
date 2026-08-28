@@ -175,6 +175,49 @@ export const messageOutboxTable = pgTable(
   ],
 );
 
+/**
+ * Immutable delivery-attempt history for outbox messages.
+ *
+ * `message_outbox` intentionally stores only the current delivery state. This
+ * table keeps one row per transport attempt so a later successful retry does
+ * not erase the connector failure that preceded it.
+ */
+export const messageDeliveryAttemptsTable = pgTable(
+  "message_delivery_attempts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    /** References the outbox messageId without coupling the transport stores. */
+    messageId: text("message_id").notNull(),
+
+    /** Monotonically increasing attempt number for this message. */
+    attemptNumber: integer("attempt_number").notNull(),
+
+    /** Final technical result of this attempt. */
+    status: dataspaceMessageStatusEnum("status").notNull(),
+
+    /** When this transport attempt was made. */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    /** Connector-provided reason when the attempt failed. */
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("uq_message_delivery_attempt_message_number").on(t.messageId, t.attemptNumber),
+    index("msg_delivery_attempts_message_idx").on(t.messageId),
+    index("msg_delivery_attempts_message_attempt_idx").on(t.messageId, t.attemptNumber),
+    index("msg_delivery_attempts_attempted_at_idx").on(t.attemptedAt),
+  ],
+);
+
 // ── message_inbox ─────────────────────────────────────────────────────────────
 
 /**
@@ -269,5 +312,7 @@ export type DataspaceMessageStatus =
 
 export type MessageOutbox = typeof messageOutboxTable.$inferSelect;
 export type InsertMessageOutbox = typeof messageOutboxTable.$inferInsert;
+export type MessageDeliveryAttempt = typeof messageDeliveryAttemptsTable.$inferSelect;
+export type InsertMessageDeliveryAttempt = typeof messageDeliveryAttemptsTable.$inferInsert;
 export type MessageInbox = typeof messageInboxTable.$inferSelect;
 export type InsertMessageInbox = typeof messageInboxTable.$inferInsert;

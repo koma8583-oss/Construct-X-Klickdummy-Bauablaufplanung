@@ -162,6 +162,7 @@ export * from './projectInvitationDataOfferDataProductType';
 export * from './projectInvitationDataOfferPolicy';
 export * from './projectInvitationDecisionInput';
 export * from './projectInvitationDelivery';
+export * from './projectInvitationDeliveryAttempt';
 export * from './projectInvitationDeliveryMessageType';
 export * from './projectInvitationDeliveryRetryResult';
 export * from './projectInvitationDeliveryRetryResultError';

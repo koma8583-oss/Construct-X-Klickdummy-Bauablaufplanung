@@ -29,6 +29,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   messageOutboxTable,
+  messageDeliveryAttemptsTable,
   messageInboxTable,
 } from "@workspace/db";
 
@@ -88,6 +89,7 @@ beforeAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(projectMembershipsTable).where(
@@ -182,6 +184,7 @@ afterAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await removeRequestData(PROJECT_ID);
@@ -430,6 +433,14 @@ describe("project invitation delivery retries", () => {
     expect(memberships.status).toBe(200);
     expect(memberships.body).toHaveLength(1);
     expect(memberships.body[0].invitationDelivery.status).toBe("DELIVERED");
+    expect(memberships.body[0].invitationDelivery.attemptHistory).toHaveLength(2);
+    expect(memberships.body[0].invitationDelivery.attemptHistory.map(
+      (attempt: { attemptNumber: number; status: string; failureReason?: string | null }) =>
+        [attempt.attemptNumber, attempt.status, attempt.failureReason],
+    )).toEqual([
+      [1, "FAILED", expect.any(String)],
+      [2, "DELIVERED", null],
+    ]);
 
     const anInvitations = await request(app)
       .get("/api/an/project-invitations")

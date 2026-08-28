@@ -3714,7 +3714,7 @@ components:
     ProjectInvitationDelivery:
       type: object
       description: Technical delivery state for a project invitation envelope.
-      required: [messageId, messageType, status, attemptCount, createdAt]
+      required: [messageId, messageType, status, attemptCount, createdAt, attemptHistory]
       properties:
         messageId: { type: string }
         messageType:
@@ -3726,6 +3726,22 @@ components:
         lastAttemptAt: { type: string, format: date-time, nullable: true }
         failureReason: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
+        attemptHistory:
+          type: array
+          description: Ordered immutable record of every recorded delivery attempt.
+          items:
+            $ref: "#/components/schemas/ProjectInvitationDeliveryAttempt"
+
+    ProjectInvitationDeliveryAttempt:
+      type: object
+      description: One immutable technical delivery attempt for a project invitation message.
+      required: [attemptNumber, status, attemptedAt]
+      properties:
+        attemptNumber: { type: integer }
+        status:
+          $ref: "#/components/schemas/MessageOutboxStatus"
+        attemptedAt: { type: string, format: date-time }
+        failureReason: { type: string, nullable: true }
 
     ProjectInvitationDeliveryRetryResult:
       type: object

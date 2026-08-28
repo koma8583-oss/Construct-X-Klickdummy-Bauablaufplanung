@@ -3258,7 +3258,10 @@ export default function ProjectDetail() {
                     { label: 'Einladung', delivery: membership.invitationDelivery },
                     { label: 'Antwort', delivery: membership.responseDelivery },
                   ].filter((item): item is { label: string; delivery: ProjectInvitationDelivery } =>
-                    item.delivery != null && ['PENDING', 'FAILED'].includes(item.delivery.status),
+                    item.delivery != null && (
+                      ['PENDING', 'FAILED'].includes(item.delivery.status) ||
+                      (item.delivery.attemptHistory?.length ?? 0) > 0
+                    ),
                   );
                   return (
                   <div key={membership.id} className="min-w-0 overflow-hidden px-3 py-2 rounded-lg border border-border bg-card">
@@ -3287,19 +3290,21 @@ export default function ProjectDetail() {
                       <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
                         {deliveries.map(({ label, delivery }) => {
                           const failed = delivery.status === 'FAILED';
+                          const delivered = delivery.status === 'DELIVERED';
                           const lastAttempt = formatDeliveryAttempt(delivery.lastAttemptAt);
+                          const attemptHistory = delivery.attemptHistory ?? [];
                           return (
                             <div key={delivery.messageId} className="flex flex-col gap-2 text-xs sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0 break-words">
-                                <span className={failed ? 'text-red-600' : 'text-amber-600'}>
-                                  {label}: {failed ? 'Zustellung fehlgeschlagen' : 'Zustellung ausstehend'}
+                                <span className={failed ? 'text-red-600' : delivered ? 'text-emerald-600' : 'text-amber-600'}>
+                                  {label}: {failed ? 'Zustellung fehlgeschlagen' : delivered ? 'Zustellung abgeschlossen' : 'Zustellung ausstehend'}
                                   <span className="ml-1 text-muted-foreground">
                                     (Versuch {delivery.attemptCount}/5)
                                   </span>
                                 </span>
                                 {(delivery.failureReason || lastAttempt) && (
                                   <div className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                                    {delivery.failureReason && (
+                                    {delivery.failureReason && attemptHistory.length === 0 && (
                                       <div className="break-words">
                                         {`Fehlergrund: ${delivery.failureReason}`}
                                       </div>
@@ -3310,6 +3315,37 @@ export default function ProjectDetail() {
                                       </div>
                                     )}
                                   </div>
+                                )}
+                                {attemptHistory.length > 0 && (
+                                  <details className="mt-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5" open={failed}>
+                                    <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                                      Zustellverlauf anzeigen ({attemptHistory.length})
+                                    </summary>
+                                    <div className="mt-2 space-y-1.5 border-t border-border/50 pt-1.5">
+                                      {attemptHistory.map((attempt) => {
+                                        const attemptTime = formatDeliveryAttempt(attempt.attemptedAt);
+                                        const attemptFailed = attempt.status === 'FAILED';
+                                        return (
+                                          <div
+                                            key={`${delivery.messageId}-${attempt.attemptNumber}`}
+                                            className="flex flex-col gap-0.5 border-l-2 border-border pl-2 text-[11px] leading-relaxed sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+                                          >
+                                            <span className={attemptFailed ? 'text-red-600' : attempt.status === 'DELIVERED' ? 'text-emerald-600' : 'text-muted-foreground'}>
+                                              Versuch {attempt.attemptNumber}: {attemptFailed ? 'fehlgeschlagen' : attempt.status === 'DELIVERED' ? 'zugestellt' : attempt.status.toLowerCase()}
+                                            </span>
+                                            <span className="shrink-0 text-muted-foreground">
+                                              {attemptTime ?? 'Zeitpunkt unbekannt'}
+                                            </span>
+                                            {attempt.failureReason && (
+                                              <span className="break-words text-muted-foreground sm:max-w-[55%] sm:text-right">
+                                                {`Fehlergrund: ${attempt.failureReason}`}
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </details>
                                 )}
                               </div>
                               <Button

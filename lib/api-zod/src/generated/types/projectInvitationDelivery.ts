@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MessageOutboxStatus } from './messageOutboxStatus';
+import type { ProjectInvitationDeliveryAttempt } from './projectInvitationDeliveryAttempt';
 import type { ProjectInvitationDeliveryMessageType } from './projectInvitationDeliveryMessageType';
 
 /**
@@ -19,4 +20,6 @@ export interface ProjectInvitationDelivery {
   lastAttemptAt?: Date | null;
   failureReason?: string | null;
   createdAt: Date;
+  /** Ordered immutable record of every recorded delivery attempt. */
+  attemptHistory: ProjectInvitationDeliveryAttempt[];
 }

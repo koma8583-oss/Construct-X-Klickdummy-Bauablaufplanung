@@ -54,6 +54,16 @@ export const MessageOutboxStatus = {
 } as const;
 
 /**
+ * One immutable technical delivery attempt for a project invitation message.
+ */
+export interface ProjectInvitationDeliveryAttempt {
+  attemptNumber: number;
+  status: MessageOutboxStatus;
+  attemptedAt: string;
+  failureReason?: string | null;
+}
+
+/**
  * Technical delivery state for a project invitation envelope.
  */
 export interface ProjectInvitationDelivery {
@@ -64,6 +74,8 @@ export interface ProjectInvitationDelivery {
   lastAttemptAt?: string | null;
   failureReason?: string | null;
   createdAt: string;
+  /** Ordered immutable record of every recorded delivery attempt. */
+  attemptHistory: ProjectInvitationDeliveryAttempt[];
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   agDb as db,
   organizationsTable,
   messageOutboxTable,
+  messageDeliveryAttemptsTable,
   projectsTable,
   takteTable,
   projectMembershipsTable,
@@ -9,7 +10,7 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
 } from "@workspace/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
@@ -36,7 +37,10 @@ export class ProjectMembershipError extends Error {
   }
 }
 
-function toProjectInvitationDelivery(row: typeof messageOutboxTable.$inferSelect) {
+function toProjectInvitationDelivery(
+  row: typeof messageOutboxTable.$inferSelect,
+  attemptHistory: Array<typeof messageDeliveryAttemptsTable.$inferSelect>,
+) {
   return {
     messageId: row.messageId,
     messageType: row.messageType as "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
@@ -45,6 +49,12 @@ function toProjectInvitationDelivery(row: typeof messageOutboxTable.$inferSelect
     lastAttemptAt: row.lastAttemptAt,
     failureReason: row.failureReason,
     createdAt: row.createdAt,
+    attemptHistory: attemptHistory.map((attempt) => ({
+      attemptNumber: attempt.attemptNumber,
+      status: attempt.status,
+      attemptedAt: attempt.attemptedAt,
+      failureReason: attempt.failureReason,
+    })),
   };
 }
 
@@ -83,18 +93,34 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
   ]);
   const deliveries = await db.select().from(messageOutboxTable)
     .where(inArray(messageOutboxTable.messageId, messageIds));
+  const attempts = messageIds.length === 0
+    ? []
+    : await db.select().from(messageDeliveryAttemptsTable)
+      .where(inArray(messageDeliveryAttemptsTable.messageId, messageIds))
+      .orderBy(
+        asc(messageDeliveryAttemptsTable.attemptedAt),
+        asc(messageDeliveryAttemptsTable.attemptNumber),
+      );
   const byMessageId = new Map(deliveries.map((row) => [row.messageId, row]));
+  const attemptsByMessageId = new Map<string, Array<typeof messageDeliveryAttemptsTable.$inferSelect>>();
+  for (const attempt of attempts) {
+    const messageAttempts = attemptsByMessageId.get(attempt.messageId) ?? [];
+    messageAttempts.push(attempt);
+    attemptsByMessageId.set(attempt.messageId, messageAttempts);
+  }
+  const toDelivery = (messageId: string) => {
+    const row = byMessageId.get(messageId);
+    return row
+      ? toProjectInvitationDelivery(row, attemptsByMessageId.get(messageId) ?? [])
+      : null;
+  };
   return memberships.map((membership) => ({
     ...membership,
-    invitationDelivery: byMessageId.has(`project-invitation-${membership.invitationId}`)
-      ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-${membership.invitationId}`)!)
-      : null,
-    responseDelivery: (
+    invitationDelivery: toDelivery(`project-invitation-${membership.invitationId}`),
+    responseDelivery: toDelivery(
       byMessageId.has(`project-invitation-response-${membership.invitationId}-ACTIVE`)
-        ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-response-${membership.invitationId}-ACTIVE`)!)
-        : byMessageId.has(`project-invitation-response-${membership.invitationId}-REJECTED`)
-          ? toProjectInvitationDelivery(byMessageId.get(`project-invitation-response-${membership.invitationId}-REJECTED`)!)
-          : null
+        ? `project-invitation-response-${membership.invitationId}-ACTIVE`
+        : `project-invitation-response-${membership.invitationId}-REJECTED`,
     ),
   }));
 }

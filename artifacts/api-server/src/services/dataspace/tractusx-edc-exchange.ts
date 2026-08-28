@@ -1,5 +1,9 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
-import { hubDb as db, messageOutboxTable } from "@workspace/db";
+import {
+  hubDb as db,
+  messageDeliveryAttemptsTable,
+  messageOutboxTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   serializeExternalProjectInvitation,
@@ -57,17 +61,24 @@ export class TractusXEdcExchange implements DataspaceExchange {
         payload: payload as unknown as Record<string, unknown>, status: "PENDING",
       });
     }
-    return this.sendProjectMessage(messageId, messageType, payload as unknown as Record<string, unknown>);
+    return this.sendProjectMessage(
+      messageId,
+      messageType,
+      payload as unknown as Record<string, unknown>,
+      existing?.attemptCount ?? 0,
+    );
   }
 
   private async sendProjectMessage(
     messageId: string,
     messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
     payload: Record<string, unknown>,
+    previousAttemptCount: number,
   ): Promise<ExchangeReference> {
     const endpoint = process.env.DATASPACE_CONNECTOR_URL;
     if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
     const now = new Date();
+    const attemptCount = previousAttemptCount + 1;
     try {
       const outboundPayload = messageType === "PROJECT_INVITATION"
         ? serializeExternalProjectInvitation(payload as unknown as ExternalProjectInvitation)
@@ -80,16 +91,30 @@ export class TractusXEdcExchange implements DataspaceExchange {
       if (!response.ok) throw new Error(`Dataspace connector returned HTTP ${response.status}`);
       const body = await response.json().catch(() => ({})) as { messageId?: string; externalReference?: string };
       const [row] = await db.update(messageOutboxTable).set({
-        status: "DELIVERED", attemptCount: 1, sentAt: now, lastAttemptAt: now,
+        status: "DELIVERED", attemptCount, sentAt: now, lastAttemptAt: now,
         deliveredAt: new Date(), failureReason: null,
       }).where(eq(messageOutboxTable.messageId, messageId)).returning();
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "DELIVERED",
+        attemptedAt: now,
+      }).onConflictDoNothing();
       return { exchangeId: body.messageId ?? messageId, externalReference: body.externalReference ?? messageId,
         status: "DELIVERED", sentAt: row.sentAt, deliveredAt: row.deliveredAt, attemptCount: row.attemptCount };
     } catch (error) {
+      const failureReason = error instanceof Error ? error.message : String(error);
       await db.update(messageOutboxTable).set({
-        status: "FAILED", attemptCount: 1, lastAttemptAt: now,
-        failureReason: error instanceof Error ? error.message : String(error),
+        status: "FAILED", attemptCount, lastAttemptAt: now,
+        failureReason,
       }).where(eq(messageOutboxTable.messageId, messageId));
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "FAILED",
+        attemptedAt: now,
+        failureReason,
+      }).onConflictDoNothing();
       throw error;
     }
   }
@@ -126,6 +151,12 @@ export class TractusXEdcExchange implements DataspaceExchange {
       const [updated] = await db.update(messageOutboxTable).set({
         status: "DELIVERED", deliveredAt: new Date(),
       }).where(eq(messageOutboxTable.id, row.id)).returning();
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "DELIVERED",
+        attemptedAt: now,
+      }).onConflictDoNothing();
       return { exchangeId: messageId, externalReference: body.externalReference ?? messageId,
         status: "DELIVERED", sentAt: updated.sentAt, deliveredAt: updated.deliveredAt, attemptCount: updated.attemptCount };
     } catch (error) {
@@ -133,6 +164,13 @@ export class TractusXEdcExchange implements DataspaceExchange {
       const [updated] = await db.update(messageOutboxTable).set({
         status: "FAILED", failureReason: reason,
       }).where(eq(messageOutboxTable.id, row.id)).returning();
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "FAILED",
+        attemptedAt: now,
+        failureReason: reason,
+      }).onConflictDoNothing();
       return { exchangeId: messageId, status: "FAILED", sentAt: updated.sentAt,
         deliveredAt: updated.deliveredAt, attemptCount: updated.attemptCount,
         error: { code: "TRANSPORT_FAILURE", message: reason } };

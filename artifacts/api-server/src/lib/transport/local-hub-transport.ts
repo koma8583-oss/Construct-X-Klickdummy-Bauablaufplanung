@@ -28,7 +28,12 @@
  *     → on transaction failure:
  *         outbox → FAILED + failureReason  (best-effort outside tx)
  */
-import { hubDb, messageOutboxTable, messageInboxTable } from "@workspace/db";
+import {
+  hubDb,
+  messageOutboxTable,
+  messageInboxTable,
+  messageDeliveryAttemptsTable,
+} from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import type { MessageEnvelope, MessageTransport, TransportResult, InboxMessage, InboxQueryOptions } from "./message-transport";
 import type { DataspaceMessageType } from "@workspace/api-zod";
@@ -236,6 +241,13 @@ export class LocalHubTransport implements MessageTransport {
           .update(messageOutboxTable)
           .set({ status: "DELIVERED", deliveredAt: now })
           .where(eq(messageOutboxTable.id, outboxRow.id));
+
+        await tx.insert(messageDeliveryAttemptsTable).values({
+          messageId: outboxRow.messageId,
+          attemptNumber: 1,
+          status: "DELIVERED",
+          attemptedAt: now,
+        });
       });
 
       // 10. Return result from the now-committed outbox row
@@ -250,6 +262,7 @@ export class LocalHubTransport implements MessageTransport {
       // Transaction rolled back — outbox is still PENDING; mark it FAILED
       const failureReason =
         err instanceof Error ? err.message : String(err);
+      const attemptedAt = new Date();
 
       await hubDb
         .update(messageOutboxTable)
@@ -257,9 +270,22 @@ export class LocalHubTransport implements MessageTransport {
           status: "FAILED",
           failureReason,
           attemptCount: 1,
-          lastAttemptAt: new Date(),
+          lastAttemptAt: attemptedAt,
         })
         .where(eq(messageOutboxTable.id, outboxRow.id))
+        .catch(() => {
+          // Best-effort — do not mask the original failure
+        });
+      await hubDb
+        .insert(messageDeliveryAttemptsTable)
+        .values({
+          messageId: outboxRow.messageId,
+          attemptNumber: 1,
+          status: "FAILED",
+          attemptedAt,
+          failureReason,
+        })
+        .onConflictDoNothing()
         .catch(() => {
           // Best-effort — do not mask the original failure
         });
@@ -432,6 +458,13 @@ export class LocalHubTransport implements MessageTransport {
           .update(messageOutboxTable)
           .set({ status: "DELIVERED", deliveredAt: now })
           .where(eq(messageOutboxTable.id, outboxRow.id));
+
+        await tx.insert(messageDeliveryAttemptsTable).values({
+          messageId: outboxRow.messageId,
+          attemptNumber: newAttemptCount,
+          status: "DELIVERED",
+          attemptedAt: now,
+        });
       });
 
       const [updated] = await hubDb
@@ -454,6 +487,17 @@ export class LocalHubTransport implements MessageTransport {
           lastAttemptAt: now,
         })
         .where(eq(messageOutboxTable.id, outboxRow.id))
+        .catch(() => {});
+      await hubDb
+        .insert(messageDeliveryAttemptsTable)
+        .values({
+          messageId: outboxRow.messageId,
+          attemptNumber: newAttemptCount,
+          status: "FAILED",
+          attemptedAt: now,
+          failureReason,
+        })
+        .onConflictDoNothing()
         .catch(() => {});
 
       return {
