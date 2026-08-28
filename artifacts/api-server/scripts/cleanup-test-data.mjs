@@ -14,12 +14,25 @@ const testFixtureNumbers = [
   "44", "45", "47", "48", "49", "52", "54", "62", "63", "64", "65",
   "66", "68", "69", "72", "73", "76", "77", "78", "79", "80", "81",
   "82", "83", "84", "85", "90", "92", "104", "105", "112", "116",
-  "120", "135", "177", "185", "212", "239", "240",
+  "120", "135", "177", "185", "212", "239", "240", "300",
 ].join("|");
 const testFixtureNamePattern =
   `^(?:T(?:${testFixtureNumbers})(?:$|[- ])|ODRL-SC|Task 239)`;
 const testFixtureIdOrEmailPattern =
   `^(?:t(?:${testFixtureNumbers})(?:$|[-_@])|odrl-sc|task[-_]?239)`;
+const testMessageIdPattern =
+  "^(?:"
+  + "t(?:"
+  + testFixtureNumbers
+  + ")(?:[-_])"
+  + "|project-invitation-t239-"
+  + "|project-invitation-message-1$"
+  + "|project-invitation-serialization-mutation$"
+  + "|coordination-decision-message-1$"
+  + "|an-local-inbound-message$"
+  + "|message-(?:request|response|decision|invitation|invitation-response)$"
+  + "|mock-msg-id$"
+  + ")";
 
 const pool = new pg.Pool({ connectionString });
 const client = await pool.connect();
@@ -85,6 +98,26 @@ try {
       );
       idsAdded ||= result.rowCount > 0;
     }
+  }
+
+  // Delivery attempts are append-only and intentionally have no foreign key
+  // to message_outbox: the outbox row may be removed while its history is
+  // retained in production. Test cleanup must nevertheless remove attempts
+  // for test messages, or a rerun can collide on (message_id, attempt_number).
+  const { rows: deliveryAttemptTable } = await client.query(
+    "SELECT to_regclass('public.message_delivery_attempts') AS table_name",
+  );
+  if (deliveryAttemptTable[0]?.table_name) {
+    await client.query(`
+      DELETE FROM message_delivery_attempts attempts
+      WHERE attempts.message_id ~* '${testMessageIdPattern}'
+         OR attempts.message_id IN (
+           SELECT outbox.message_id
+           FROM message_outbox outbox
+           WHERE outbox.sender_org_id::text = ANY(ARRAY(SELECT id FROM cleanup_ids))
+              OR outbox.recipient_org_id::text = ANY(ARRAY(SELECT id FROM cleanup_ids))
+         )
+    `);
   }
 
   // All matching rows are now identified. Disable FK enforcement only inside

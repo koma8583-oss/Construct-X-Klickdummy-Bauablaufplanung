@@ -55,6 +55,7 @@ const RETRY_MEMBERSHIP_ID = `${PREFIX}-retry-membership`;
 const RETRY_INVITATION_ID = `${PREFIX}-retry-invitation`;
 const RETRY_MESSAGE_ID = `project-invitation-${RETRY_INVITATION_ID}`;
 const RETRY_CORRELATION_ID = `${PREFIX}-retry-correlation`;
+const T239_MESSAGE_PREFIX = "project-invitation-t239-";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function token(userId: string, orgId: string, orgType: "AG" | "AN", roles?: string[]) {
@@ -69,6 +70,19 @@ const agToken = token(AG_USER_ID, AG_ID, "AG");
 const otherAgToken = token(OTHER_AG_USER_ID, OTHER_AG_ID, "AG");
 const anToken = token(AN_USER_ID, AN_ID, "AN");
 const otherAnToken = token(OTHER_AN_USER_ID, OTHER_AN_ID, "AN");
+
+async function removeDeliveryAttempts() {
+  await db.delete(messageDeliveryAttemptsTable).where(sql`
+    ${messageDeliveryAttemptsTable.messageId} LIKE ${`${T239_MESSAGE_PREFIX}%`}
+    OR ${messageDeliveryAttemptsTable.messageId} = ${RETRY_MESSAGE_ID}
+    OR ${messageDeliveryAttemptsTable.messageId} IN (
+      SELECT ${messageOutboxTable.messageId}
+      FROM ${messageOutboxTable}
+      WHERE ${messageOutboxTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})
+         OR ${messageOutboxTable.recipientOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})
+    )
+  `).catch(() => {});
+}
 
 async function removeRequestData(projectId: string) {
   const takts = await db.select({ id: takteTable.id }).from(takteTable).where(eq(takteTable.projectId, projectId));
@@ -88,6 +102,7 @@ beforeAll(async () => {
   await anDb.delete(anProjectInvitationsTable).where(
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
+  await removeDeliveryAttempts();
   await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
@@ -183,6 +198,7 @@ afterAll(async () => {
   await anDb.delete(anProjectInvitationsTable).where(
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
+  await removeDeliveryAttempts();
   await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});

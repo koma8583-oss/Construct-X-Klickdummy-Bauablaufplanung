@@ -1,6 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
-import { hubDb as db, messageOutboxTable, organizationsTable } from "@workspace/db";
+import {
+  hubDb as db,
+  messageDeliveryAttemptsTable,
+  messageOutboxTable,
+  organizationsTable,
+} from "@workspace/db";
 import {
   toExternalResourceRequirements,
   toExternalResourceRequirementsFromSnapshot,
@@ -22,8 +27,25 @@ const PROJECT_INVITATION_MESSAGE_IDS = [
   "project-invitation-message-1",
   "project-invitation-serialization-mutation",
 ];
+const TEST_MESSAGE_IDS = [
+  ...PROJECT_INVITATION_MESSAGE_IDS,
+  COORDINATION_DECISION_MESSAGE_ID,
+];
+
+async function cleanupMessageFixtures() {
+  await db.delete(messageDeliveryAttemptsTable)
+    .where(inArray(messageDeliveryAttemptsTable.messageId, TEST_MESSAGE_IDS))
+    .catch(() => {});
+  await db.delete(messageOutboxTable)
+    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
+    .catch(() => {});
+  await db.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
+    .catch(() => {});
+}
 
 beforeAll(async () => {
+  await cleanupMessageFixtures();
   await db.insert(organizationsTable).values([
     { id: TRACTUSX_TEST_ORG_IDS[0], name: "Tractus-X adapter test AG", type: "AG" },
     { id: TRACTUSX_TEST_ORG_IDS[1], name: "Tractus-X adapter test AN", type: "AN" },
@@ -31,21 +53,11 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  await db.delete(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
-    .catch(() => {});
-  await db.delete(messageOutboxTable)
-    .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
-    .catch(() => {});
+  await cleanupMessageFixtures();
 });
 
 afterAll(async () => {
-  await db.delete(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
-    .catch(() => {});
-  await db.delete(messageOutboxTable)
-    .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
-    .catch(() => {});
+  await cleanupMessageFixtures();
   await db.delete(organizationsTable)
     .where(inArray(organizationsTable.id, TRACTUSX_TEST_ORG_IDS))
     .catch(() => {});
