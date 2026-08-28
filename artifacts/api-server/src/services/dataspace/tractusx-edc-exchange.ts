@@ -4,7 +4,7 @@ import {
   messageDeliveryAttemptsTable,
   messageOutboxTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   serializeExternalProjectInvitation,
   type ExternalCoordinationDecision,
@@ -65,7 +65,33 @@ export class TractusXEdcExchange implements DataspaceExchange {
       messageId,
       messageType,
       payload as unknown as Record<string, unknown>,
-      existing?.attemptCount ?? 0,
+      existing?.status === "FAILED" ? "FAILED" : "PENDING",
+    );
+  }
+
+  private async claimDeliveryAttempt(
+    rowId: string,
+    expectedStatus: "PENDING" | "FAILED",
+    now: Date,
+  ): Promise<typeof messageOutboxTable.$inferSelect> {
+    const [claimed] = await db.update(messageOutboxTable).set({
+      status: "SENT",
+      attemptCount: sql<number>`${messageOutboxTable.attemptCount} + 1`,
+      sentAt: now,
+      lastAttemptAt: now,
+      failureReason: null,
+    }).where(and(
+      eq(messageOutboxTable.id, rowId),
+      eq(messageOutboxTable.status, expectedStatus),
+    )).returning();
+
+    if (claimed) return claimed;
+
+    const [current] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.id, rowId)).limit(1);
+    if (!current) throw new Error(`Message delivery not found: ${rowId}`);
+    throw new Error(
+      `Message ${current.messageId} cannot be retried — current status is ${current.status}`,
     );
   }
 
@@ -73,12 +99,16 @@ export class TractusXEdcExchange implements DataspaceExchange {
     messageId: string,
     messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
     payload: Record<string, unknown>,
-    previousAttemptCount: number,
+    expectedStatus: "PENDING" | "FAILED",
   ): Promise<ExchangeReference> {
     const endpoint = process.env.DATASPACE_CONNECTOR_URL;
     if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
     const now = new Date();
-    const attemptCount = previousAttemptCount + 1;
+    const [outboxRow] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (!outboxRow) throw new Error(`Project invitation delivery not found: ${messageId}`);
+    const claimed = await this.claimDeliveryAttempt(outboxRow.id, expectedStatus, now);
+    const attemptCount = claimed.attemptCount;
     try {
       const outboundPayload = messageType === "PROJECT_INVITATION"
         ? serializeExternalProjectInvitation(payload as unknown as ExternalProjectInvitation)
@@ -131,10 +161,8 @@ export class TractusXEdcExchange implements DataspaceExchange {
     if (!row) throw new Error(`Project invitation delivery not found: ${messageId}`);
     if (row.status !== "FAILED") throw new Error(`Message ${messageId} cannot be retried — current status is ${row.status}`);
     const now = new Date();
-    const attemptCount = row.attemptCount + 1;
-    await db.update(messageOutboxTable).set({
-      status: "SENT", attemptCount, sentAt: now, lastAttemptAt: now, failureReason: null,
-    }).where(eq(messageOutboxTable.id, row.id));
+    const claimed = await this.claimDeliveryAttempt(row.id, "FAILED", now);
+    const attemptCount = claimed.attemptCount;
     try {
       const endpoint = process.env.DATASPACE_CONNECTOR_URL;
       if (!endpoint) throw new Error("Tractus-X EDC adapter not configured: DATASPACE_CONNECTOR_URL is required");
@@ -199,14 +227,12 @@ export class TractusXEdcExchange implements DataspaceExchange {
     throwOnFailure: boolean,
   ): Promise<ExchangeReference> {
     const now = new Date();
-    const attemptCount = row.attemptCount + 1;
-    await db.update(messageOutboxTable).set({
-      status: "SENT",
-      attemptCount,
-      sentAt: now,
-      lastAttemptAt: now,
-      failureReason: null,
-    }).where(eq(messageOutboxTable.id, row.id));
+    const claimed = await this.claimDeliveryAttempt(
+      row.id,
+      row.status === "FAILED" ? "FAILED" : "PENDING",
+      now,
+    );
+    const attemptCount = claimed.attemptCount;
 
     try {
       const endpoint = process.env.DATASPACE_CONNECTOR_URL;

@@ -28,6 +28,7 @@ const PROJECT_INVITATION_MESSAGE_IDS = [
   "project-invitation-serialization-mutation",
   "project-invitation-retry-message-1",
   "project-invitation-response-retry-message-1",
+  "project-invitation-concurrent-retry-message-1",
 ];
 const TEST_MESSAGE_IDS = [
   ...PROJECT_INVITATION_MESSAGE_IDS,
@@ -541,6 +542,103 @@ describe("dataspace exchange boundary", () => {
       });
       expect(deliveredResponse.lastAttemptAt).toEqual(responseHistory[1].attemptedAt);
       expect(deliveredResponse.deliveredAt).toBeInstanceOf(Date);
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
+  });
+
+  it("rejects a simultaneous invitation retry without losing the delivery attempt", async () => {
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const messageId = "project-invitation-concurrent-retry-message-1";
+    const failureReason = "connector rejected the first invitation attempt";
+    let releaseRetryConnector!: () => void;
+    let retryConnectorStarted!: () => void;
+    const retryConnectorReady = new Promise<void>((resolve) => {
+      retryConnectorStarted = resolve;
+    });
+    const retryConnectorReleased = new Promise<void>((resolve) => {
+      releaseRetryConnector = resolve;
+    });
+    const connectorFetch = vi.fn()
+      .mockRejectedValueOnce(new Error(failureReason))
+      .mockImplementationOnce(async () => {
+        retryConnectorStarted();
+        await retryConnectorReleased;
+        return {
+          ok: true,
+          json: async () => ({ externalReference: "concurrent-retry-reference-1" }),
+        };
+      });
+    const payload = {
+      metadata: {
+        messageId,
+        correlationId: "project-invitation-concurrent-retry-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: TRACTUSX_TEST_ORG_IDS[0],
+        receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      invitationId: "invitation-concurrent-retry-1",
+      project: {
+        projectReference: "project-concurrent-retry-1",
+        projectName: "Concurrent retry project",
+      },
+      requestedRole: "CONTRACTOR" as const,
+      purpose: "PROJECT_COLLABORATION" as const,
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP" as const,
+        allowedConsumerParticipantId: "participant-concurrent-retry-an",
+      },
+    };
+    const exchange = new TractusXEdcExchange();
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test";
+    try {
+      await expect(exchange.publishProjectInvitation(payload))
+        .rejects.toThrow(failureReason);
+
+      const firstRetry = exchange.retryProjectInvitation(messageId);
+      const secondRetry = exchange.retryProjectInvitation(messageId);
+      await retryConnectorReady;
+      releaseRetryConnector();
+
+      const results = await Promise.allSettled([firstRetry, secondRetry]);
+      const successfulRetries = results.filter(
+        (result) => result.status === "fulfilled",
+      );
+      const rejectedRetries = results.filter(
+        (result) => result.status === "rejected",
+      );
+      expect(successfulRetries).toHaveLength(1);
+      expect(successfulRetries[0].value).toMatchObject({
+        exchangeId: messageId,
+        externalReference: "concurrent-retry-reference-1",
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+      expect(rejectedRetries).toHaveLength(1);
+      expect(rejectedRetries[0].reason).toHaveProperty("message", expect.stringMatching(
+        /current status is (SENT|DELIVERED)/,
+      ));
+      expect(connectorFetch).toHaveBeenCalledTimes(2);
+
+      const history = (await db.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, messageId)))
+        .sort((left, right) => left.attemptNumber - right.attemptNumber);
+      const [outbox] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, messageId));
+      expect(history).toHaveLength(2);
+      expect(history.map((attempt) => [attempt.attemptNumber, attempt.status]))
+        .toEqual([[1, "FAILED"], [2, "DELIVERED"]]);
+      expect(outbox).toMatchObject({
+        status: "DELIVERED",
+        attemptCount: history.length,
+        failureReason: null,
+      });
+      expect(outbox.lastAttemptAt).toEqual(history[1].attemptedAt);
     } finally {
       vi.unstubAllGlobals();
       if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;

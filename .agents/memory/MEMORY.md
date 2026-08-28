@@ -49,3 +49,4 @@
 - [External decision retry](external-decision-retry.md) — Tractus-X decisions retry from the persisted public envelope and never loop back through local inbound processing.
 - [AG public requirement boundary](ag-public-resource-requirements.md) — AG outbound coordination payloads derive requirements from immutable public snapshots, never AN catalog tables.
 - [Delivery history transport coverage](delivery-history-transport-coverage.md) — append-only delivery history must be written by every connector adapter, including adapters that bypass the shared transport.
+- [Atomic delivery claims](atomic-delivery-claims.md) — increment attempt counts in the same conditional outbox claim that transitions a retry to SENT; history uniqueness alone cannot prevent lost races.
