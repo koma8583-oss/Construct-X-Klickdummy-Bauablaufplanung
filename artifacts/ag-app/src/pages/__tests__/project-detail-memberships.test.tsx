@@ -94,6 +94,7 @@ const membershipFixtures: MembershipFixture[] = [
 ];
 
 let memberships = [...membershipFixtures];
+let dataPublications: any[] = [];
 let updateMemberships: React.Dispatch<React.SetStateAction<MembershipFixture[]>> | undefined;
 let retryDelivery: ReturnType<typeof vi.fn>;
 let retryShouldFail = false;
@@ -173,7 +174,7 @@ vi.mock("@workspace/api-client-react", async () => {
     useListProjectSubcontractors: () => queryResult([]),
     useGetProject: () => queryResult({}),
     useGetProjectCalendar: () => queryResult(undefined),
-    useGetProjectDataPublications: () => queryResult([]),
+     useGetProjectDataPublications: () => queryResult(dataPublications),
     useCreateTakt: () => mutation(),
     useUpdateTakt: () => mutation(),
     useDeleteTakt: () => mutation(),
@@ -236,6 +237,7 @@ function renderPage() {
 describe("project participant directory membership lifecycle", () => {
   beforeEach(() => {
     memberships = [...membershipFixtures];
+    dataPublications = [];
     updateMemberships = undefined;
     retryShouldFail = false;
     retryTransientShouldFail = false;
@@ -404,5 +406,82 @@ describe("project participant directory membership lifecycle", () => {
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({
       title: "Keine weiteren Wiederholungen möglich",
     }));
+  });
+
+  it("shows complete project dataspace publication details and recipient states", async () => {
+    dataPublications = [{
+      id: "publication-1",
+      agOrgId: "ag-1",
+      projectId: "project-1",
+      dataProductType: "PROJECT_OVERVIEW",
+      title: "Projektfreigabe August",
+      description: "Zusammenfassung für die beteiligten Nachunternehmen.",
+      version: 2,
+      schemaVersion: "1.0",
+      status: "PUBLISHED",
+      policyTemplateId: "policy-1",
+      policyCode: "SCHEDULE_COORDINATION",
+      policyName: "Abstimmung von Rahmenterminen",
+      policy: {
+        id: "policy-1",
+        code: "SCHEDULE_COORDINATION",
+        name: "Abstimmung von Rahmenterminen",
+        description: null,
+        purpose: "Termine bilateral abstimmen",
+        permissions: ["READ"],
+        prohibitions: ["DISTRIBUTE"],
+        validityRule: "Während der Projektlaufzeit",
+        retentionRule: null,
+        active: true,
+      },
+      selectedFields: ["projectName", "milestones"],
+      selectedTaktIds: ["takt-1", "takt-2"],
+      validFrom: "2026-08-01T00:00:00.000Z",
+      validUntil: "2026-12-31T00:00:00.000Z",
+      publishedAt: "2026-08-01T10:00:00.000Z",
+      createdAt: "2026-07-30T10:00:00.000Z",
+      updatedAt: "2026-08-01T10:00:00.000Z",
+      recipients: [
+        {
+          id: "recipient-1",
+          anOrgId: "an-active",
+          anName: "Aktiver Betrieb",
+          status: "ACCEPTED",
+          notifiedAt: "2026-08-01T10:01:00.000Z",
+          policyAcceptedAt: "2026-08-02T09:00:00.000Z",
+          firstAccessedAt: "2026-08-02T09:05:00.000Z",
+        },
+        {
+          id: "recipient-2",
+          anOrgId: "an-invited",
+          anName: "Eingeladener Betrieb",
+          status: "OFFERED",
+        },
+      ],
+    }];
+
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.getByTestId("project-dataspace-section")).toBeInTheDocument();
+    expect(screen.getByText("Projektfreigabe August")).toBeInTheDocument();
+    expect(screen.getAllByText("Projektübersicht").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("project-dataspace-suspend-publication-1")).toBeInTheDocument();
+    expect(screen.getByTestId("project-dataspace-withdraw-publication-1")).toBeInTheDocument();
+
+    const publicationDetails = screen.getByTestId("project-dataspace-publication-details-publication-1");
+    await user.click(publicationDetails.querySelector("summary") as HTMLElement);
+
+    expect(screen.getByText("Zusammenfassung für die beteiligten Nachunternehmen.")).toBeInTheDocument();
+    expect(screen.getByText("Abstimmung von Rahmenterminen")).toBeInTheDocument();
+    expect(screen.getByText("READ")).toBeInTheDocument();
+    expect(screen.getByText("DISTRIBUTE")).toBeInTheDocument();
+    expect(screen.getByText("Projektname")).toBeInTheDocument();
+    expect(screen.getByText("Ausgewählte Takte (2):")).toBeInTheDocument();
+    expect(screen.getByText("takt-1, takt-2")).toBeInTheDocument();
+    expect(screen.getByTestId("project-dataspace-recipient-an-active")).toHaveTextContent("Aktiver Betrieb");
+    expect(screen.getByTestId("project-dataspace-recipient-an-active")).toHaveTextContent("Policy akzeptiert");
+    expect(screen.getByTestId("project-dataspace-recipient-an-invited")).toHaveTextContent("Eingeladener Betrieb");
+    expect(screen.getByTestId("project-dataspace-recipient-an-invited")).toHaveTextContent("Angeboten");
   });
 });

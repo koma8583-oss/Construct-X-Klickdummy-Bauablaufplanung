@@ -83,7 +83,7 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "dataOffer": zod.object({
   "publicationId": zod.string(),
   "title": zod.string(),
-  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']).optional(),
+  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'TAKT_INFORMATION_PACKAGE']).optional(),
   "selectedFields": zod.array(zod.string()),
   "policy": zod.object({
   "id": zod.string(),
@@ -834,7 +834,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "publication": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "dataProductType": zod.enum(['TAKT_INFORMATION_PACKAGE']),
+  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'TAKT_INFORMATION_PACKAGE']),
   "title": zod.string(),
   "status": zod.enum(['PUBLISHED']),
   "policyTemplateId": zod.string(),

@@ -398,6 +398,96 @@ function makeGanttListTable(
   };
 }
 
+const DATA_PRODUCT_LABELS: Record<string, string> = {
+  PROJECT_OVERVIEW: 'Projektübersicht',
+  PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
+  TAKT_INFORMATION_PACKAGE: 'Leistungsinformationspaket',
+};
+
+const PUBLICATION_STATUS_LABELS: Record<string, string> = {
+  PUBLISHED: 'Veröffentlicht',
+  DRAFT: 'Entwurf',
+  SUSPENDED: 'Pausiert',
+  WITHDRAWN: 'Zurückgezogen',
+  EXPIRED: 'Abgelaufen',
+};
+
+const PUBLICATION_STATUS_COLORS: Record<string, string> = {
+  PUBLISHED: 'text-emerald-600 dark:text-emerald-400',
+  DRAFT: 'text-muted-foreground',
+  SUSPENDED: 'text-amber-600 dark:text-amber-400',
+  WITHDRAWN: 'text-red-500 dark:text-red-400',
+  EXPIRED: 'text-muted-foreground',
+};
+
+const RECIPIENT_STATUS_LABELS: Record<string, string> = {
+  OFFERED: 'Angeboten',
+  ACCEPTED: 'Policy akzeptiert',
+  REJECTED: 'Abgelehnt',
+  REVOKED: 'Widerrufen',
+  EXPIRED: 'Abgelaufen',
+};
+
+const RECIPIENT_STATUS_COLORS: Record<string, string> = {
+  OFFERED: 'text-amber-600 dark:text-amber-400',
+  ACCEPTED: 'text-emerald-600 dark:text-emerald-400',
+  REJECTED: 'text-red-500 dark:text-red-400',
+  REVOKED: 'text-muted-foreground',
+  EXPIRED: 'text-muted-foreground',
+};
+
+function formatPublicationDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString('de-DE');
+}
+
+function formatPublicationDateTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatPublicationValidity(pub: DataPublication): string {
+  const from = formatPublicationDate(pub.validFrom);
+  const until = formatPublicationDate(pub.validUntil);
+  if (from && until) return `${from} – ${until}`;
+  if (from) return `ab ${from}`;
+  if (until) return `bis ${until}`;
+  return 'Nicht begrenzt';
+}
+
+function publicationFieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    projectReference: 'Projektreferenz',
+    projectName: 'Projektname',
+    projectStatus: 'Projektstatus',
+    startDate: 'Projektbeginn',
+    endDate: 'Projektende',
+    projectLocation: 'Projektstandort',
+    projectDescription: 'Projektbeschreibung',
+    milestones: 'Meilensteine',
+    documentReferences: 'Dokumentreferenzen',
+    logisticsConstraints: 'Logistikvorgaben',
+    coordinationConstraints: 'Koordinationsvorgaben',
+    interfaceDescriptions: 'Schnittstellen',
+    relevantTimeWindows: 'Relevante Zeitfenster',
+    kurzbezeichnung: 'Leistungsbezeichnung',
+    workPackage: 'Arbeitspaket',
+    trade: 'Gewerk',
+    plannedTimeWindow: 'Geplantes Zeitfenster',
+    bufferTimeWindow: 'Pufferzeitfenster',
+    location: 'Ausführungsort / Zone',
+    executionNotes: 'Ausführungshinweise',
+    predecessors: 'Vorgänger',
+    successors: 'Nachfolger',
+    resourceRequirements: 'Ressourcenbedarf',
+  };
+  return labels[field] ?? field;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProjectDetail() {
@@ -594,7 +684,11 @@ export default function ProjectDetail() {
   const updateCalendar = useUpdateProjectCalendar();
 
   // Dataspace publications for this project
-  const { data: dataPublications } = useGetProjectDataPublications(projectId);
+  const {
+    data: dataPublications,
+    isLoading: dataPublicationsLoading,
+    isError: dataPublicationsError,
+  } = useGetProjectDataPublications(projectId);
   const suspendPublication = useSuspendDataPublication();
   const withdrawPublication = useWithdrawDataPublication();
   const visibleDataPublications = useMemo(
@@ -1535,92 +1629,239 @@ export default function ProjectDetail() {
       </details>
 
       {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
-      {visibleDataPublications.length > 0 && (
-        <details className="rounded-xl border border-border bg-card overflow-hidden">
-          <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
-            <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />Datenraum <span className="text-xs text-muted-foreground">({visibleDataPublications.length})</span></span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </summary>
+      <details
+        className="rounded-xl border border-border bg-card overflow-hidden"
+        data-testid="project-dataspace-section"
+        open={dataPublicationsLoading || dataPublicationsError || visibleDataPublications.length > 0}
+      >
+        <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            Datenraum
+            {visibleDataPublications.length > 0 && (
+              <span className="text-xs text-muted-foreground">({visibleDataPublications.length})</span>
+            )}
+          </span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </summary>
         <div className="border-t border-border/60">
-          <div className="divide-y divide-border/50">
-            {visibleDataPublications.map((pub: DataPublication) => {
-              const statusColors: Record<string, string> = {
-                PUBLISHED: 'text-emerald-600 dark:text-emerald-400',
-                DRAFT: 'text-muted-foreground',
-                SUSPENDED: 'text-amber-600 dark:text-amber-400',
-                WITHDRAWN: 'text-red-500 dark:text-red-400',
-                EXPIRED: 'text-muted-foreground',
-              };
-              const statusLabels: Record<string, string> = {
-                PUBLISHED: 'Veröffentlicht',
-                DRAFT: 'Entwurf',
-                SUSPENDED: 'Pausiert',
-                WITHDRAWN: 'Zurückgezogen',
-                EXPIRED: 'Abgelaufen',
-              };
-              const productLabels: Record<string, string> = {
-                PROJECT_OVERVIEW: 'Projektübersicht',
-                PROJECT_COORDINATION_PACKAGE: 'Koordinationspaket',
-                TAKT_INFORMATION_PACKAGE: 'Leistungsinformationspaket',
-              };
-              const accepted = (pub.recipients ?? []).filter(r => r.status === 'ACCEPTED').length;
-              const total = (pub.recipients ?? []).length;
-              return (
-                <div key={pub.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium truncate">{pub.title}</span>
-                      <span className="text-[10px] text-muted-foreground">v{pub.version}</span>
-                      <span className={`text-[11px] font-medium ${statusColors[pub.status] ?? 'text-muted-foreground'}`}>
-                        {statusLabels[pub.status] ?? pub.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                      <span>{productLabels[pub.dataProductType] ?? pub.dataProductType}</span>
-                      {pub.policyCode && <span>· {pub.policyCode}</span>}
-                      <span>· {accepted}/{total} Akzeptiert</span>
-                      {pub.publishedAt && (
-                        <span>· {new Date(pub.publishedAt).toLocaleDateString('de-DE')}</span>
+          {dataPublicationsLoading ? (
+            <div className="px-4 py-5 text-sm text-muted-foreground" data-testid="project-dataspace-loading">
+              Datenraum wird geladen …
+            </div>
+          ) : dataPublicationsError ? (
+            <div className="px-4 py-5 text-sm text-destructive" data-testid="project-dataspace-error">
+              Die Datenraum-Bereitstellungen konnten nicht geladen werden.
+            </div>
+          ) : visibleDataPublications.length === 0 ? (
+            <div className="px-4 py-5 text-sm text-muted-foreground" data-testid="project-dataspace-empty">
+              Für dieses Projekt sind noch keine Datenpublikationen vorhanden.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {visibleDataPublications.map((pub: DataPublication) => {
+                const recipients = pub.recipients ?? [];
+                const accepted = recipients.filter((recipient) => recipient.status === 'ACCEPTED').length;
+                const policy = pub.policy;
+                return (
+                  <div key={pub.id} className="flex items-start gap-3 px-4 py-3" data-testid={`project-dataspace-publication-${pub.id}`}>
+                    <details className="min-w-0 flex-1 group" data-testid={`project-dataspace-publication-details-${pub.id}`}>
+                      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                        <div className="flex items-start gap-2">
+                          <ChevronRight className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground group-open:rotate-90 transition-transform" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium break-words">{pub.title || 'Unbenannte Publikation'}</span>
+                              <span className="text-[10px] text-muted-foreground">v{pub.version}</span>
+                              <span className={`text-[11px] font-medium ${PUBLICATION_STATUS_COLORS[pub.status] ?? 'text-muted-foreground'}`}>
+                                {PUBLICATION_STATUS_LABELS[pub.status] ?? pub.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground flex-wrap">
+                              <span>{DATA_PRODUCT_LABELS[pub.dataProductType] ?? pub.dataProductType}</span>
+                              {pub.policyCode && <span>Policy: {pub.policyCode}</span>}
+                              <span>{accepted}/{recipients.length} Policies akzeptiert</span>
+                              {pub.publishedAt && <span>Veröffentlicht: {formatPublicationDate(pub.publishedAt)}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </summary>
+
+                      <div className="ml-6 mt-3 rounded-lg border border-border/70 bg-muted/10 p-3 space-y-4">
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="space-y-3 min-w-0">
+                            <div>
+                              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                                Publikation
+                              </div>
+                              {pub.description ? (
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{pub.description}</p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">Keine Beschreibung angegeben.</p>
+                              )}
+                            </div>
+                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                              <div>
+                                <dt className="text-muted-foreground">Produkttyp</dt>
+                                <dd className="font-medium break-words">{DATA_PRODUCT_LABELS[pub.dataProductType] ?? pub.dataProductType}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">Schema</dt>
+                                <dd className="font-medium">v{pub.version} · {pub.schemaVersion}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">Gültigkeit</dt>
+                                <dd className="font-medium">{formatPublicationValidity(pub)}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">Erstellt</dt>
+                                <dd className="font-medium">{formatPublicationDateTime(pub.createdAt) ?? '–'}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">Veröffentlicht</dt>
+                                <dd className="font-medium">{formatPublicationDateTime(pub.publishedAt) ?? 'Noch nicht veröffentlicht'}</dd>
+                              </div>
+                              {pub.withdrawnAt && (
+                                <div>
+                                  <dt className="text-muted-foreground">Zurückgezogen</dt>
+                                  <dd className="font-medium">{formatPublicationDateTime(pub.withdrawnAt) ?? '–'}</dd>
+                                </div>
+                              )}
+                            </dl>
+                          </div>
+
+                          <div className="space-y-3 min-w-0">
+                            <div>
+                              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                                Policy
+                              </div>
+                              <p className="text-sm font-medium break-words">{pub.policyName ?? 'Keine Policy-Information'}</p>
+                              {pub.policyCode && <p className="text-xs text-muted-foreground break-words">{pub.policyCode}</p>}
+                              {policy?.purpose && <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words">{policy.purpose}</p>}
+                            </div>
+                            {policy && (
+                              <dl className="grid grid-cols-1 gap-y-2 text-xs">
+                                <div>
+                                  <dt className="text-muted-foreground">Erlaubnisse</dt>
+                                  <dd className="font-medium break-words">{policy.permissions?.length ? policy.permissions.join(', ') : 'Keine angegeben'}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-muted-foreground">Verbote</dt>
+                                  <dd className="font-medium break-words">{policy.prohibitions?.length ? policy.prohibitions.join(', ') : 'Keine angegeben'}</dd>
+                                </div>
+                                {policy.validityRule && (
+                                  <div>
+                                    <dt className="text-muted-foreground">Gültigkeitsregel</dt>
+                                    <dd className="font-medium break-words">{policy.validityRule}</dd>
+                                  </div>
+                                )}
+                              </dl>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                            Ausgewählte Inhalte
+                          </div>
+                          {pub.selectedFields?.length ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {pub.selectedFields.map((field) => (
+                                <span key={field} className="rounded-md border border-border bg-card px-2 py-1 text-xs break-words">
+                                  {publicationFieldLabel(field)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Keine Datenfelder angegeben.</p>
+                          )}
+                          {pub.selectedTaktIds?.length ? (
+                            <div className="mt-2 text-xs text-muted-foreground break-words">
+                              <span className="font-medium text-foreground">Ausgewählte Takte ({pub.selectedTaktIds.length}):</span>{' '}
+                              {pub.selectedTaktIds.join(', ')}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="border-t border-border/60 pt-3">
+                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                            Adressierte Nachunternehmen ({recipients.length})
+                          </div>
+                          {recipients.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Keine Empfänger adressiert.</p>
+                          ) : (
+                            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                              {recipients.map((recipient) => (
+                                <div
+                                  key={recipient.id ?? recipient.anOrgId}
+                                  className="min-w-0 rounded-lg border border-border bg-card px-3 py-2"
+                                  data-testid={`project-dataspace-recipient-${recipient.anOrgId}`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="text-sm font-medium break-words">{recipient.anName || 'Unbekanntes Nachunternehmen'}</span>
+                                    <span className={`shrink-0 text-xs font-medium ${RECIPIENT_STATUS_COLORS[recipient.status] ?? 'text-muted-foreground'}`}>
+                                      {RECIPIENT_STATUS_LABELS[recipient.status] ?? recipient.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                                    {recipient.notifiedAt && <div>Benachrichtigt: {formatPublicationDateTime(recipient.notifiedAt)}</div>}
+                                    {recipient.policyAcceptedAt && <div>Policy akzeptiert: {formatPublicationDateTime(recipient.policyAcceptedAt)}</div>}
+                                    {recipient.policyRejectedAt && <div>Policy abgelehnt: {formatPublicationDateTime(recipient.policyRejectedAt)}</div>}
+                                    {recipient.firstAccessedAt && <div>Erster Zugriff: {formatPublicationDateTime(recipient.firstAccessedAt)}</div>}
+                                    {recipient.lastAccessedAt && <div>Letzter Zugriff: {formatPublicationDateTime(recipient.lastAccessedAt)}</div>}
+                                    {!recipient.notifiedAt && !recipient.policyAcceptedAt && !recipient.policyRejectedAt && !recipient.firstAccessedAt && !recipient.lastAccessedAt && (
+                                      <div>Noch keine Aktivität verzeichnet.</div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      {pub.status === 'PUBLISHED' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs text-amber-600 hover:text-amber-700 h-7"
+                          data-testid={`project-dataspace-suspend-${pub.id}`}
+                          onClick={() => suspendPublication.mutate(pub.id, {
+                            onSuccess: () => toast({ title: 'Bereitstellung pausiert' }),
+                            onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
+                          })}
+                        >
+                          Pausieren
+                        </Button>
+                      )}
+                      {['PUBLISHED', 'SUSPENDED'].includes(pub.status) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs text-red-500 hover:text-red-600 h-7"
+                          data-testid={`project-dataspace-withdraw-${pub.id}`}
+                          onClick={() => {
+                            if (confirm('Bereitstellung zurückziehen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+                              withdrawPublication.mutate(pub.id, {
+                                onSuccess: () => toast({ title: 'Bereitstellung zurückgezogen' }),
+                                onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
+                              });
+                            }
+                          }}
+                        >
+                          Zurückziehen
+                        </Button>
                       )}
                     </div>
                   </div>
-                  {pub.status === 'PUBLISHED' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-xs text-amber-600 hover:text-amber-700 h-7"
-                      onClick={() => suspendPublication.mutate(pub.id, {
-                        onSuccess: () => toast({ title: 'Bereitstellung pausiert' }),
-                        onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
-                      })}
-                    >
-                      Pausieren
-                    </Button>
-                  )}
-                  {['PUBLISHED', 'SUSPENDED'].includes(pub.status) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-xs text-red-500 hover:text-red-600 h-7"
-                      onClick={() => {
-                        if (confirm('Bereitstellung zurückziehen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
-                          withdrawPublication.mutate(pub.id, {
-                            onSuccess: () => toast({ title: 'Bereitstellung zurückgezogen' }),
-                            onError: (e) => toast({ title: 'Fehler', description: e.message, variant: 'destructive' }),
-                          });
-                        }
-                      }}
-                    >
-                      Zurückziehen
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-        </details>
-      )}
+      </details>
 
       {/* Status legend */}
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">

@@ -3838,7 +3838,7 @@ components:
       properties:
         id: { type: string }
         projectId: { type: string }
-        dataProductType: { type: string, enum: [TAKT_INFORMATION_PACKAGE] }
+        dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, TAKT_INFORMATION_PACKAGE] }
         title: { type: string }
         status: { type: string, enum: [PUBLISHED] }
         policyTemplateId: { type: string }
@@ -4015,7 +4015,7 @@ components:
           properties:
             publicationId: { type: string }
             title: { type: string }
-            dataProductType: { type: string, enum: [TAKT_INFORMATION_PACKAGE] }
+            dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, TAKT_INFORMATION_PACKAGE] }
             selectedFields:
               type: array
               items: { type: string }

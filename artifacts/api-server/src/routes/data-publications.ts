@@ -218,9 +218,17 @@ router.get(
       publications.map(async (pub) => {
         const recipients = await db
           .select({
+            id: dataPublicationRecipientsTable.id,
             anOrgId: dataPublicationRecipientsTable.anOrgId,
             status: dataPublicationRecipientsTable.status,
             anName: organizationsTable.name,
+            notifiedAt: dataPublicationRecipientsTable.notifiedAt,
+            policyAcceptedAt: dataPublicationRecipientsTable.policyAcceptedAt,
+            policyRejectedAt: dataPublicationRecipientsTable.policyRejectedAt,
+            firstAccessedAt: dataPublicationRecipientsTable.firstAccessedAt,
+            lastAccessedAt: dataPublicationRecipientsTable.lastAccessedAt,
+            revokedAt: dataPublicationRecipientsTable.revokedAt,
+            projectMembershipId: dataPublicationRecipientsTable.projectMembershipId,
           })
           .from(dataPublicationRecipientsTable)
           .innerJoin(
@@ -240,6 +248,7 @@ router.get(
           recipients,
           policyCode: policy[0]?.code ?? null,
           policyName: policy[0]?.name ?? null,
+          policy: policy[0] ?? null,
         };
       }),
     );

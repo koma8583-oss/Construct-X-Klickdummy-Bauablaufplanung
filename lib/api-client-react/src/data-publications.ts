@@ -15,7 +15,10 @@ import { customFetch } from "./custom-fetch";
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
-export type DataProductType = "TAKT_INFORMATION_PACKAGE";
+export type DataProductType =
+  | "PROJECT_OVERVIEW"
+  | "PROJECT_COORDINATION_PACKAGE"
+  | "TAKT_INFORMATION_PACKAGE";
 
 export type PublicationStatus =
   | "DRAFT"
@@ -58,6 +61,7 @@ export interface PublicationRecipientSummary {
   policyRejectedAt?: string | null;
   firstAccessedAt?: string | null;
   lastAccessedAt?: string | null;
+  revokedAt?: string | null;
   projectMembershipId?: string | null;
 }
 
@@ -125,6 +129,32 @@ export interface AgDataPublication extends DataPublication {
 // ── FIELD_WHITELISTS (must mirror the server-side constant) ───────────────────
 
 export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
+  PROJECT_OVERVIEW: [
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
+    "milestones",
+    "documentReferences",
+  ],
+  PROJECT_COORDINATION_PACKAGE: [
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "startDate",
+    "endDate",
+    "projectLocation",
+    "projectDescription",
+    "milestones",
+    "logisticsConstraints",
+    "coordinationConstraints",
+    "interfaceDescriptions",
+    "relevantTimeWindows",
+    "documentReferences",
+  ],
   TAKT_INFORMATION_PACKAGE: [
     // Projektdaten
     "projectReference",
@@ -177,6 +207,26 @@ export const FIELD_LABELS: Record<string, string> = {
 // ── FIELD_GROUPS — grouped layout for TAKT_INFORMATION_PACKAGE Step 1 ─────────
 
 export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: string[] }[] | null> = {
+  PROJECT_OVERVIEW: [
+    {
+      label: "Projektdaten",
+      fields: ["projectName", "projectStatus", "startDate", "endDate", "projectLocation", "projectDescription", "projectReference"],
+    },
+    {
+      label: "Projektzusammenfassung",
+      fields: ["milestones", "documentReferences"],
+    },
+  ],
+  PROJECT_COORDINATION_PACKAGE: [
+    {
+      label: "Projektdaten",
+      fields: ["projectName", "projectStatus", "startDate", "endDate", "projectLocation", "projectDescription", "projectReference"],
+    },
+    {
+      label: "Koordination",
+      fields: ["milestones", "logisticsConstraints", "coordinationConstraints", "interfaceDescriptions", "relevantTimeWindows", "documentReferences"],
+    },
+  ],
   TAKT_INFORMATION_PACKAGE: [
     {
       label: "Projektdaten",

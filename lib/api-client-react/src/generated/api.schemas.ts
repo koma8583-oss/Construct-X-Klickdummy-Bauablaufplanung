@@ -190,6 +190,8 @@ export type ProjectDataPublicationDataProductType = typeof ProjectDataPublicatio
 
 
 export const ProjectDataPublicationDataProductType = {
+  PROJECT_OVERVIEW: 'PROJECT_OVERVIEW',
+  PROJECT_COORDINATION_PACKAGE: 'PROJECT_COORDINATION_PACKAGE',
   TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
 } as const;
 
@@ -429,6 +431,8 @@ export type ProjectInvitationDataOfferDataProductType = typeof ProjectInvitation
 
 
 export const ProjectInvitationDataOfferDataProductType = {
+  PROJECT_OVERVIEW: 'PROJECT_OVERVIEW',
+  PROJECT_COORDINATION_PACKAGE: 'PROJECT_COORDINATION_PACKAGE',
   TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
 } as const;
 
