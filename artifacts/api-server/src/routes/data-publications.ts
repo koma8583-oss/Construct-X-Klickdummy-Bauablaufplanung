@@ -178,6 +178,9 @@ router.get(
         templateVersion: entry.version,
         availableTemplateVersions: [entry.version],
         registryTemplateId: entry.templateId,
+        ...(entry.allowedPublicationFields
+          ? { allowedPublicationFields: [...entry.allowedPublicationFields] }
+          : {}),
       }];
     }));
   },
@@ -286,7 +289,8 @@ router.post(
       validUntil,
     } = parsed.data;
 
-    // Validate fields are within the whitelist for this data product type
+    // Validate fields against both the product whitelist and the selected
+    // policy's narrower publication scope.
     const allowedFields = new Set(FIELD_WHITELISTS[dataProductType]);
     const invalidFields = selectedFields.filter((f) => !allowedFields.has(f as never));
     if (invalidFields.length > 0) {
@@ -313,6 +317,19 @@ router.post(
     if (!policy) {
       res.status(400).json({ error: "Policy template not found, unavailable, or inactive" });
       return;
+    }
+
+    const catalogPolicy = getPublicationPolicyTemplate(policy.code);
+    const policyAllowedFields = catalogPolicy?.allowedPublicationFields;
+    if (policyAllowedFields) {
+      const policyFieldSet = new Set(policyAllowedFields);
+      const disallowedFields = selectedFields.filter((field) => !policyFieldSet.has(field));
+      if (disallowedFields.length > 0) {
+        res.status(400).json({
+          error: `Die ausgewählte Policy erlaubt diese Datenfelder nicht: ${disallowedFields.join(", ")}`,
+        });
+        return;
+      }
     }
 
     // Only ACTIVE bilateral project members may receive a publication.
@@ -360,7 +377,9 @@ router.post(
         title,
         description,
         version: nextVersion,
-        policyTemplateId,
+        // Persist the resolved FK, not a registry alias such as
+        // "tk-policy-schedule-coordination".
+        policyTemplateId: policy.id,
         selectedFields,
         selectedTaktIds: selectedTaktIds ?? null,
         validFrom: validFrom ? new Date(validFrom) : null,

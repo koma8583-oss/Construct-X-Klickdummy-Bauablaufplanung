@@ -50,7 +50,7 @@ type PolicyDefinition = {
   extraConstraints?: OdrlConstraint[];
   /** Duties on the "use" permission (e.g. delete obligation). */
   duties?: OdrlDuty[];
-  /** Prohibition action verbs. SCHEDULE_COORDINATION intentionally omits "derive". */
+  /** Prohibition action verbs for the policy's permitted use. */
   prohibitionActions: string[];
 };
 
@@ -83,21 +83,13 @@ const POLICY_DEFINITIONS: Record<string, PolicyDefinition> = {
         operator:     "eq",
         rightOperand: "taktkoord:restrictedToRecipient",
       },
-    ],
-    duties: [
       {
-        action: "delete",
-        constraint: [
-          {
-            leftOperand:  "taktkoord:trigger",
-            operator:     "eq",
-            rightOperand: "taktkoord:noLongerNeeded",
-          },
-        ],
+        leftOperand:  "taktkoord:contentScope",
+        operator:     "eq",
+        rightOperand: "taktkoord:projectAndRequestedService",
       },
     ],
-    // Only "distribute" — no "derive" for this policy.
-    prohibitionActions: ["distribute"],
+    prohibitionActions: ["distribute", "derive", "modify", "commercialize"],
   },
 
   COORDINATION_USE: {

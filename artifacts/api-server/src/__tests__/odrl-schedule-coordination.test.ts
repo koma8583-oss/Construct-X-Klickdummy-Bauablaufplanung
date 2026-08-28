@@ -5,7 +5,7 @@
  *   ✓ permission.action === "use"
  *   ✓ purpose constraint === "scheduleCoordination"
  *   ✓ prohibition includes "distribute"
- *   ✗ prohibition does NOT include "derive"
+ *   ✓ prohibition includes "derive", "modify", and "commercialize"
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -156,14 +156,23 @@ describe("GET /api/data-publications/:id/odrl — SCHEDULE_COORDINATION", () => 
     expect(actions).toContain("distribute");
   });
 
-  it("prohibition does NOT include 'derive'", async () => {
+  it("prohibits deriving, modifying, and commercial reuse", async () => {
     const res = await request(app)
       .get(`/api/data-publications/${pubId}/odrl`)
       .set("Authorization", `Bearer ${agToken}`);
 
     const prohibitions: Array<{ action: string }> = res.body.prohibition;
     const actions = prohibitions.map((p) => p.action);
-    expect(actions).not.toContain("derive");
+    expect(actions).toEqual(expect.arrayContaining(["derive", "modify", "commercialize"]));
+  });
+
+  it("does not add a retention/deletion duty", async () => {
+    const res = await request(app)
+      .get(`/api/data-publications/${pubId}/odrl`)
+      .set("Authorization", `Bearer ${agToken}`);
+
+    const usePerm = (res.body.permission as Array<{ duty?: unknown }>).find((p) => p.duty);
+    expect(usePerm).toBeUndefined();
   });
 
   it("AN recipient can also fetch the ODRL (200, same shape)", async () => {

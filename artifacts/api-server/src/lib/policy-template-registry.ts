@@ -26,6 +26,7 @@ export interface PolicyTemplateRegistryEntry {
   readonly prohibitions: readonly string[];
   readonly validityRule: string;
   readonly retentionRule: string | null;
+  readonly allowedPublicationFields?: readonly string[];
 }
 
 /**
@@ -35,62 +36,48 @@ export interface PolicyTemplateRegistryEntry {
  * registry also contains templates used by other Dataspace flows, while this
  * catalog is the public contract for creating data publications.
  */
+const RAHMENTERMIN_PUBLICATION_FIELDS = [
+  "projectReference",
+  "projectName",
+  "projectStatus",
+  "startDate",
+  "endDate",
+  "projectLocation",
+  "projectDescription",
+  "kurzbezeichnung",
+  "workPackage",
+  "trade",
+  "plannedTimeWindow",
+  "bufferTimeWindow",
+  "location",
+  "executionNotes",
+  "predecessors",
+  "successors",
+] as const;
+
 const PUBLICATION_ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
   {
-    templateId: "tk-policy-project-coordination-read-only",
-    version: 1,
-    code: "PROJECT_COORDINATION_READ_ONLY",
-    name: "Projektkoordination – Nur Lesen",
-    description: "Lesender Zugriff auf die für die Projektkoordination freigegebenen Daten.",
-    purpose: "projectCoordination",
+    templateId: "tk-policy-schedule-coordination",
+    version: 4,
+    code: "SCHEDULE_COORDINATION",
+    name: "Abstimmung von Rahmenterminen",
+    description:
+      "Allgemeine Projektinformationen und konkrete Angaben zur angefragten Leistung für die Abstimmung von Rahmenterminen.",
+    purpose: "scheduleCoordination",
     requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
     allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
-    permissions: ["READ", "DOWNLOAD", "USE_FOR_PROJECT_COORDINATION"],
-    prohibitions: ["REDISTRIBUTE", "USE_IN_OTHER_PROJECTS", "COMMERCIAL_REUSE", "AI_TRAINING"],
-    validityRule: "bis Projektende",
-    retentionRule: "Löschung spätestens 30 Tage nach Projektende",
-  },
-  {
-    templateId: "tk-policy-takt-execution-use",
-    version: 1,
-    code: "TAKT_EXECUTION_USE",
-    name: "Taktbezogene Ausführung",
-    description: "Nutzung der freigegebenen Daten für die Ausführung des zugeordneten Takts.",
-    purpose: "taktExecution",
-    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference", "workPackageReference"],
-    allowedOverrides: [
-      "recipientOrganizationId", "purpose", "projectReference",
-      "workPackageReference", "validFrom", "validUntil",
+    allowedPublicationFields: RAHMENTERMIN_PUBLICATION_FIELDS,
+    permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+    prohibitions: [
+      "REDISTRIBUTE",
+      "SHARE_OUTSIDE_PROJECT_TEAM",
+      "DERIVE",
+      "MODIFY",
+      "COMMERCIAL_REUSE",
+      "AI_TRAINING",
     ],
-    permissions: [
-      "READ",
-      "DOWNLOAD",
-      "USE_FOR_ASSIGNED_WORK_PACKAGE",
-      "USE_FOR_INTERNAL_RESOURCE_PLANNING",
-    ],
-    prohibitions: ["SHARE_OUTSIDE_PROJECT_TEAM", "USE_IN_OTHER_PROJECTS", "COMMERCIAL_REUSE", "AI_TRAINING"],
-    validityRule: "bis 30 Tage nach Ende des betreffenden Takts",
-    retentionRule: "Löschung spätestens 30 Tage nach Ende des betreffenden Takts",
-  },
-  {
-    templateId: "tk-policy-extended-project-collaboration",
-    version: 1,
-    code: "EXTENDED_PROJECT_COLLABORATION",
-    name: "Erweiterte Projektzusammenarbeit",
-    description: "Erweiterte projektbezogene Nutzung einschließlich abgeleiteter Ergebnisse.",
-    purpose: "projectExecution",
-    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
-    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
-    permissions: [
-      "READ",
-      "DOWNLOAD",
-      "USE_FOR_PROJECT_EXECUTION",
-      "CREATE_DERIVED_RESULTS",
-      "SHARE_DERIVED_RESULTS_WITH_AG",
-    ],
-    prohibitions: ["EXTERNAL_REDISTRIBUTION", "COMMERCIAL_REUSE_OUTSIDE_PROJECT"],
-    validityRule: "bis 180 Tage nach Projektende",
-    retentionRule: "Löschung spätestens 180 Tage nach Projektende",
+    validityRule: "Ausschließlich für die Rahmentermin-Abstimmung im konkreten Projekt.",
+    retentionRule: null,
   },
 ];
 
@@ -166,6 +153,52 @@ const ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
     retentionRule: "Nur so lange speichern, wie die Projektkoordination dies erfordert.",
   },
   {
+    templateId: "tk-policy-schedule-coordination",
+    version: 3,
+    code: "SCHEDULE_COORDINATION",
+    name: "Rahmentermin-Abstimmung – interne Nutzung",
+    description:
+      "Allgemeine Projektinformationen und konkrete Angaben zur angefragten Leistung für die Abstimmung von Rahmenterminen.",
+    purpose: "scheduleCoordination",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    allowedPublicationFields: RAHMENTERMIN_PUBLICATION_FIELDS,
+    permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+    prohibitions: [
+      "REDISTRIBUTE",
+      "SHARE_OUTSIDE_PROJECT_TEAM",
+      "DERIVE",
+      "MODIFY",
+      "COMMERCIAL_REUSE",
+      "AI_TRAINING",
+    ],
+    validityRule: "Ausschließlich für die Rahmentermin-Abstimmung im konkreten Projekt.",
+    retentionRule: "Löschung spätestens 30 Tage nach Abschluss der Abstimmung oder nach Projektende.",
+  },
+  {
+    templateId: "tk-policy-schedule-coordination",
+    version: 4,
+    code: "SCHEDULE_COORDINATION",
+    name: "Abstimmung von Rahmenterminen",
+    description:
+      "Allgemeine Projektinformationen und konkrete Angaben zur angefragten Leistung für die Abstimmung von Rahmenterminen.",
+    purpose: "scheduleCoordination",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    allowedPublicationFields: RAHMENTERMIN_PUBLICATION_FIELDS,
+    permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+    prohibitions: [
+      "REDISTRIBUTE",
+      "SHARE_OUTSIDE_PROJECT_TEAM",
+      "DERIVE",
+      "MODIFY",
+      "COMMERCIAL_REUSE",
+      "AI_TRAINING",
+    ],
+    validityRule: "Ausschließlich für die Rahmentermin-Abstimmung im konkreten Projekt.",
+    retentionRule: null,
+  },
+  {
     templateId: "tk-policy-performance-coordination",
     version: 1,
     code: "PERFORMANCE_COORDINATION",
@@ -191,6 +224,9 @@ function cloneEntry(entry: PolicyTemplateRegistryEntry): PolicyTemplateRegistryE
     allowedOverrides: Object.freeze([...entry.allowedOverrides]),
     permissions: Object.freeze([...entry.permissions]),
     prohibitions: Object.freeze([...entry.prohibitions]),
+    ...(entry.allowedPublicationFields
+      ? { allowedPublicationFields: Object.freeze([...entry.allowedPublicationFields]) }
+      : {}),
   });
 }
 

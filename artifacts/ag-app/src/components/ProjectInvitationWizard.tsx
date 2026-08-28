@@ -62,14 +62,14 @@ function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
         { leftOperand: "purpose", operator: "eq", rightOperand: policyCode === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : policyCode },
         { leftOperand: "taktkoord:scope", operator: "eq", rightOperand: "taktkoord:projectSpecific" },
         { leftOperand: "taktkoord:internalUse", operator: "eq", rightOperand: "taktkoord:restrictedToRecipient" },
+        { leftOperand: "taktkoord:contentScope", operator: "eq", rightOperand: "taktkoord:projectAndRequestedService" },
       ],
-      duty: [{
-        action: "delete",
-        constraint: [{ leftOperand: "taktkoord:trigger", operator: "eq", rightOperand: "taktkoord:noLongerNeeded" }],
-      }],
     }],
     prohibition: [
       { target: "data-publication:project-invitation-preview", action: "distribute" },
+      { target: "data-publication:project-invitation-preview", action: "derive" },
+      { target: "data-publication:project-invitation-preview", action: "modify" },
+      { target: "data-publication:project-invitation-preview", action: "commercialize" },
     ],
   };
 }
@@ -113,6 +113,17 @@ export function ProjectInvitationWizard({
     [policies],
   );
   const selectedPolicy = invitationPolicies[0];
+  const allowedFields = selectedPolicy?.allowedPublicationFields ?? ALL_FIELDS;
+  const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
+  const visibleFieldGroups = useMemo(
+    () => (FIELD_GROUPS[PRODUCT_TYPE] ?? [])
+      .map((group) => ({
+        ...group,
+        fields: group.fields.filter((field) => allowedFieldSet.has(field)),
+      }))
+      .filter((group) => group.fields.length > 0),
+    [allowedFieldSet],
+  );
   useEffect(() => {
     if (selectedPolicy && policyTemplateId !== selectedPolicy.id) {
       setPolicyTemplateId(selectedPolicy.id);
@@ -120,7 +131,13 @@ export function ProjectInvitationWizard({
     if (selectedPolicy && policyTemplateVersion === undefined) {
       setPolicyTemplateVersion(selectedPolicy.templateVersion);
     }
-  }, [selectedPolicy, policyTemplateId, policyTemplateVersion]);
+    if (selectedPolicy?.allowedPublicationFields) {
+      setSelectedFields((previous) => {
+        const next = new Set([...previous].filter((field) => allowedFieldSet.has(field)));
+        return next.size === previous.size ? previous : next;
+      });
+    }
+  }, [allowedFieldSet, selectedPolicy, policyTemplateId, policyTemplateVersion]);
   const autoTitle = useMemo(
     () => `Projekteinladung & Informationspaket – ${projectName}`,
     [projectName],
@@ -330,12 +347,12 @@ export function ProjectInvitationWizard({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">Nur ausgewählte, zugelassene Felder werden in den Snapshot aufgenommen.</p>
-                <button type="button" onClick={() => setSelectedFields(selectedFields.size === ALL_FIELDS.length ? new Set() : new Set(ALL_FIELDS))} className="text-xs text-primary hover:underline">
-                  {selectedFields.size === ALL_FIELDS.length ? "Alle abwählen" : "Alle wählen"}
+                <button type="button" onClick={() => setSelectedFields(selectedFields.size === allowedFields.length ? new Set() : new Set(allowedFields))} className="text-xs text-primary hover:underline">
+                  {selectedFields.size === allowedFields.length ? "Alle abwählen" : "Alle wählen"}
                 </button>
               </div>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {FIELD_GROUPS[PRODUCT_TYPE]?.map((group) => (
+                {visibleFieldGroups.map((group) => (
                   <div key={group.label} className="overflow-hidden rounded-xl border">
                     <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</div>
                     <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
@@ -349,7 +366,7 @@ export function ProjectInvitationWizard({
                   </div>
                 ))}
               </div>
-              <p className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Interne Daten werden serverseitig zusätzlich ausgeschlossen.</p>
+              <p className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Diese Policy umfasst nur Projektbasisdaten und die angefragte Leistung. Ressourcen- und Logistikdetails werden nicht freigegeben.</p>
             </div>
           )}
 

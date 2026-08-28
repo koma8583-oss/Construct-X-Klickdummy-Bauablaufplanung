@@ -17,11 +17,16 @@ const providerContext = {
 describe("policy template registry", () => {
   it("looks up stable templates by id/code and exposes parallel versions", () => {
     const templates = listPolicyTemplateRegistry();
-    expect(templates).toHaveLength(6);
+    expect(templates).toHaveLength(8);
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 1)?.version).toBe(1);
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 2)?.version).toBe(2);
     expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION", 1)?.templateId)
       .toBe("tk-policy-schedule-coordination");
+    expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION")?.version).toBe(4);
+    expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION")?.allowedPublicationFields)
+      .toContain("plannedTimeWindow");
+    expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION")?.allowedPublicationFields)
+      .not.toContain("resourceRequirements");
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION")?.templateId)
       .toBe("tk-policy-project-coordination");
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION")?.version).toBe(2);

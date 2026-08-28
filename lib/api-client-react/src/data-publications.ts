@@ -45,6 +45,7 @@ export interface PolicyTemplate {
   templateVersion?: number;
   availableTemplateVersions?: number[];
   registryTemplateId?: string | null;
+  allowedPublicationFields?: string[];
 }
 
 export interface PublicationRecipientSummary {
@@ -134,6 +135,7 @@ export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
     "projectLocation",
     "projectDescription",
     // Leistungsdaten
+    "kurzbezeichnung",
     "workPackage",
     "trade",
     // Zeitplanung
@@ -160,6 +162,7 @@ export const FIELD_LABELS: Record<string, string> = {
   projectLocation: "Projektstandort / Bauvorhaben",
   projectDescription: "Projektbeschreibung",
   // Leistungsfelder (TAKT_INFORMATION_PACKAGE)
+  kurzbezeichnung: "Leistungsbezeichnung",
   workPackage: "Leistungsbezeichnung",
   trade: "Gewerk",
   plannedTimeWindow: "Geplantes Zeitfenster",
@@ -181,7 +184,7 @@ export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: stri
     },
     {
       label: "Leistungsdaten",
-      fields: ["workPackage", "trade"],
+      fields: ["kurzbezeichnung", "workPackage", "trade"],
     },
     {
       label: "Zeitplanung",

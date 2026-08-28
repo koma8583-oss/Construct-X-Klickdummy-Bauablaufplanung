@@ -53,6 +53,7 @@ let anotherAgUserId: string;
 let projectId: string;
 let policyTemplateId: string;
 let compatibilityPolicyTemplateId: string;
+let nonCatalogPolicyId: string;
 
 let agToken: string;
 let anToken: string;
@@ -136,15 +137,21 @@ beforeAll(async () => {
   const [pt] = await db
     .select({ id: policyTemplatesTable.id })
     .from(policyTemplatesTable)
-    .where(eq(policyTemplatesTable.code, "PROJECT_COORDINATION_READ_ONLY"))
-    .limit(1);
-  policyTemplateId = pt.id;
-  const [compatibilityPolicy] = await db
-    .select({ id: policyTemplatesTable.id })
-    .from(policyTemplatesTable)
     .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
     .limit(1);
-  compatibilityPolicyTemplateId = compatibilityPolicy.id;
+  policyTemplateId = pt.id;
+  const [nonCatalogPolicy] = await db.insert(policyTemplatesTable).values({
+    code: `T112_NON_CATALOG_POLICY_${crypto.randomUUID()}`,
+    name: "T112 non-catalog policy",
+    description: "Test-only policy that must not be available in the publication catalog.",
+    purpose: "test",
+    permissions: ["READ"],
+    prohibitions: ["REDISTRIBUTE"],
+    validityRule: "test",
+    active: true,
+  }).returning({ id: policyTemplatesTable.id });
+  nonCatalogPolicyId = nonCatalogPolicy.id;
+  compatibilityPolicyTemplateId = nonCatalogPolicyId;
 
   // Tokens
   agToken = makeToken(agUserId, agOrgId, "AG", ["AG_ADMIN"]);
@@ -160,6 +167,9 @@ afterAll(async () => {
   await db
     .delete(dataPublicationsTable)
     .where(eq(dataPublicationsTable.projectId, projectId));
+  await db
+    .delete(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.id, nonCatalogPolicyId));
 
   await db
     .delete(projectContractorsTable)
@@ -226,15 +236,16 @@ describe("GET /api/policy-templates", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(3);
+    expect(res.body.length).toBe(1);
     const codes = res.body.map((p: { code: string }) => p.code);
-    expect(codes).toContain("PROJECT_COORDINATION_READ_ONLY");
-    expect(codes).toContain("TAKT_EXECUTION_USE");
-    expect(codes).toContain("EXTENDED_PROJECT_COLLABORATION");
+    expect(codes).toEqual(["SCHEDULE_COORDINATION"]);
+    expect(res.body[0].name).toBe("Abstimmung von Rahmenterminen");
+    expect(res.body[0].templateVersion).toBe(4);
+    expect(res.body[0].retentionRule).toBeNull();
+    expect(res.body[0].allowedPublicationFields).not.toContain("resourceRequirements");
     for (const policy of res.body) {
       expect(policy.registryTemplateId).toMatch(/^tk-policy-/);
-      expect(policy.templateVersion).toBe(1);
-      expect(policy.availableTemplateVersions).toEqual([1]);
+      expect(policy.availableTemplateVersions).toEqual([4]);
     }
   });
 
@@ -259,7 +270,7 @@ describe("POST /api/projects/:projectId/data-publications", () => {
 
   it("accepts the stable registry reference returned by the catalog", async () => {
     const res = await createDraftPublication({
-      policyTemplateId: "tk-policy-project-coordination-read-only",
+      policyTemplateId: "tk-policy-schedule-coordination",
     });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
@@ -411,7 +422,7 @@ describe("AN data-offer access", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(res.status).toBe(200);
     expect(res.body.policy).not.toBeNull();
-    expect(res.body.policy.code).toBe("PROJECT_COORDINATION_READ_ONLY");
+    expect(res.body.policy.code).toBe("SCHEDULE_COORDINATION");
   });
 
   it("5c: AN cannot access content before accepting policy", async () => {

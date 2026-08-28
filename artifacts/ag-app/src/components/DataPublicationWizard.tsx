@@ -4,7 +4,7 @@
  * Single coordinated onboarding flow for AG: participants, policy, field
  * whitelist and final review become one invitation plus data-offer message.
  */
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -121,8 +121,9 @@ const POLICY_DEFINITIONS: Record<string, {
     extraConstraints: [
       { leftOperand: 'taktkoord:scope',       operator: 'eq', rightOperand: 'taktkoord:projectSpecific' },
       { leftOperand: 'taktkoord:internalUse', operator: 'eq', rightOperand: 'taktkoord:restrictedToRecipient' },
+      { leftOperand: 'taktkoord:contentScope', operator: 'eq', rightOperand: 'taktkoord:projectAndRequestedService' },
     ],
-    prohibitionActions: ['distribute'], // no "derive" for this policy
+    prohibitionActions: ['distribute', 'derive', 'modify', 'commercialize'],
   },
   COORDINATION_USE: {
     purposeValue: 'coordinationUse',
@@ -226,6 +227,25 @@ export function DataPublicationWizard({
 
   const activeContractors = contractors.filter((c) => c.assignmentStatus === 'ACTIVE');
   const selectedPolicy = policyTemplates?.find((p) => p.id === policyTemplateId);
+  const allowedFields = selectedPolicy?.allowedPublicationFields ?? ALL_FIELDS;
+  const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
+  const visibleFieldGroups = useMemo(
+    () => (FIELD_GROUPS[PRODUCT_TYPE] ?? [])
+      .map((group) => ({
+        ...group,
+        fields: group.fields.filter((field) => allowedFieldSet.has(field)),
+      }))
+      .filter((group) => group.fields.length > 0),
+    [allowedFieldSet],
+  );
+
+  useEffect(() => {
+    if (!selectedPolicy?.allowedPublicationFields) return;
+    setSelectedFields((previous) => {
+      const next = new Set([...previous].filter((field) => allowedFieldSet.has(field)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [allowedFieldSet, selectedPolicy?.allowedPublicationFields]);
 
   const autoTitle = useMemo(() => {
     const dt = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -346,17 +366,17 @@ export function DataPublicationWizard({
                 <button
                   type="button"
                   onClick={() => setSelectedFields(
-                    selectedFields.size === ALL_FIELDS.length ? new Set() : new Set(ALL_FIELDS)
+                    selectedFields.size === allowedFields.length ? new Set() : new Set(allowedFields)
                   )}
                   className="text-xs text-primary hover:underline shrink-0 ml-3"
                 >
-                  {selectedFields.size === ALL_FIELDS.length ? 'Alle abwählen' : 'Alle wählen'}
+                  {selectedFields.size === allowedFields.length ? 'Alle abwählen' : 'Alle wählen'}
                 </button>
               </div>
 
               {/* Grouped fields */}
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {FIELD_GROUPS[PRODUCT_TYPE]!.map((group) => (
+                {visibleFieldGroups.map((group) => (
                   <div key={group.label} className="border border-border rounded-xl overflow-hidden">
                     <button
                       type="button"
@@ -388,8 +408,8 @@ export function DataPublicationWizard({
               </div>
 
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Lock className="h-3 w-3 shrink-0" />
-                Interne Felder (Kalkulation, Risikobewertung, Notizen) werden niemals übertragen.
+                 <Lock className="h-3 w-3 shrink-0" />
+                 Diese Policy umfasst nur Projektbasisdaten und die angefragte Leistung. Ressourcen- und Logistikdetails werden nicht freigegeben.
               </p>
             </div>
           )}

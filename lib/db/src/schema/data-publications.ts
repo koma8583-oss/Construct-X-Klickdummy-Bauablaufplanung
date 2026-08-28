@@ -80,10 +80,8 @@ export const publicationRecipientStatusEnum = pgEnum(
 /**
  * Seed-only policy templates. Not editable by end users in the PoC.
  *
- * Three templates ship as seed data:
- *   PROJECT_COORDINATION_READ_ONLY  — read/download, until project end
- *   TAKT_EXECUTION_USE              — read/download/use for work package, until 30d after Takt end
- *   EXTENDED_PROJECT_COLLABORATION  — read/download/create derived, until 180d after project end
+ * The active publication catalog ships one template:
+ *   SCHEDULE_COORDINATION — internal use for framework-date coordination
  */
 export const policyTemplatesTable = pgTable("policy_templates", {
   id: text("id")

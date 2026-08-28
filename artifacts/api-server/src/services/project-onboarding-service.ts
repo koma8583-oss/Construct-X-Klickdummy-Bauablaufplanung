@@ -16,6 +16,7 @@ import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 import { ProjectMembershipError } from "./project-membership-service";
 import { createPolicySnapshot } from "./policy-snapshot-service";
 import { toDataOfferPolicy, toInvitationPolicy } from "./policy-contract-adapters";
+import { getPublicationPolicyTemplate } from "../lib/policy-template-registry";
 
 type CombinedInvitationInput = {
   projectId: string;
@@ -37,16 +38,19 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
     .limit(1);
   if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
 
-  const allowedFields = new Set(FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE);
-  const invalidFields = input.selectedFields.filter((field) => !allowedFields.has(field));
-  if (invalidFields.length) {
-    throw new ProjectMembershipError("DATA_FIELDS_INVALID", `Nicht freigabefähige Datenfelder: ${invalidFields.join(", ")}`);
-  }
-
   const [policy] = await agDb.select().from(policyTemplatesTable)
     .where(and(eq(policyTemplatesTable.id, input.policyTemplateId), eq(policyTemplatesTable.active, true)))
     .limit(1);
   if (!policy) throw new ProjectMembershipError("POLICY_NOT_AVAILABLE", "Die ausgewählte Policy ist nicht verfügbar.");
+
+  const catalogPolicy = getPublicationPolicyTemplate(policy.code);
+  const allowedFields = new Set(
+    catalogPolicy?.allowedPublicationFields ?? FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE,
+  );
+  const invalidFields = input.selectedFields.filter((field) => !allowedFields.has(field));
+  if (invalidFields.length) {
+    throw new ProjectMembershipError("DATA_FIELDS_INVALID", `Nicht freigabefähige Datenfelder: ${invalidFields.join(", ")}`);
+  }
 
   const uniqueParticipantIds = [...new Set(input.participantIds)];
   const participants = await Promise.all(uniqueParticipantIds.map((id) => resolveDataspaceParticipant(id)));
