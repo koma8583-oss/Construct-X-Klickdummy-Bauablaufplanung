@@ -57,6 +57,33 @@ BEGIN
       UNIQUE (response_payload_hash);
   END IF;
 END $$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.leistungsabhaengigkeiten') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+       FROM pg_constraint
+       WHERE conrelid = 'public.leistungsabhaengigkeiten'::regclass
+         AND conname = 'leistungsabhaengigkeiten_predecessor_id_successor_id_unique'
+     )
+  THEN
+    IF EXISTS (
+      SELECT predecessor_id, successor_id
+      FROM public.leistungsabhaengigkeiten
+      GROUP BY predecessor_id, successor_id
+      HAVING COUNT(*) > 1
+    )
+    THEN
+      RAISE EXCEPTION
+        'Cannot add leistungsabhaengigkeiten predecessor/successor uniqueness: duplicate pairs exist';
+    END IF;
+
+    ALTER TABLE public.leistungsabhaengigkeiten
+      ADD CONSTRAINT leistungsabhaengigkeiten_predecessor_id_successor_id_unique
+      UNIQUE (predecessor_id, successor_id);
+  END IF;
+END $$;
 SQL
 }
 
