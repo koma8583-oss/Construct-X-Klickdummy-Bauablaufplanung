@@ -35,6 +35,9 @@ import {
   PublicationNotFoundError,
   PublicationStatusError,
   PublicationRecipientError,
+  PublicationDeliveryError,
+  getDataPublicationDeliveries,
+  retryDataPublicationDelivery,
   FIELD_WHITELISTS,
   syncDataPublicationProjection,
 } from "../services/data-publication-service";
@@ -236,6 +239,10 @@ router.get(
             eq(dataPublicationRecipientsTable.anOrgId, organizationsTable.id),
           )
           .where(eq(dataPublicationRecipientsTable.publicationId, pub.id));
+        const deliveries = await getDataPublicationDeliveries(
+          pub.id,
+          recipients.map((recipient) => recipient.anOrgId),
+        );
 
         const policy = await db
           .select({ code: policyTemplatesTable.code, name: policyTemplatesTable.name })
@@ -245,7 +252,10 @@ router.get(
 
         return {
           ...pub,
-          recipients,
+          recipients: recipients.map((recipient) => ({
+            ...recipient,
+            delivery: deliveries.get(recipient.anOrgId) ?? null,
+          })),
           policyCode: policy[0]?.code ?? null,
           policyName: policy[0]?.name ?? null,
           policy: policy[0] ?? null,
@@ -254,6 +264,36 @@ router.get(
     );
 
     res.json(enriched);
+  },
+);
+
+// ── POST /data-publications/:publicationId/recipients/:anOrgId/retry ─────────
+router.post(
+  "/data-publications/:publicationId/recipients/:anOrgId/retry",
+  requireJwt,
+  requireRole("AG_ADMIN", "GENERAL_PLANNER"),
+  async (req, res): Promise<void> => {
+    const caller = req.user!;
+    try {
+      const result = await retryDataPublicationDelivery(
+        req.params.publicationId as string,
+        req.params.anOrgId as string,
+        caller.orgId!,
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof PublicationNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof PublicationDeliveryError) {
+        const status = err.code === "PUBLICATION_DELIVERY_NOT_FOUND" ||
+          err.code === "PUBLICATION_RECIPIENT_NOT_FOUND" ? 404 : 409;
+        res.status(status).json({ error: err.message, code: err.code });
+        return;
+      }
+      throw err;
+    }
   },
 );
 

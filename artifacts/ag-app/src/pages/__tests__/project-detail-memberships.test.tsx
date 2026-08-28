@@ -99,6 +99,7 @@ let updateMemberships: React.Dispatch<React.SetStateAction<MembershipFixture[]>>
 let retryDelivery: ReturnType<typeof vi.fn>;
 let retryShouldFail = false;
 let retryTransientShouldFail = false;
+let retryDataOffer: ReturnType<typeof vi.fn>;
 let toastMock: ReturnType<typeof vi.fn>;
 
 vi.mock("wouter", () => ({
@@ -161,6 +162,10 @@ vi.mock("@workspace/api-client-react", async () => {
     useRetryProjectInvitationDelivery: () => ({
       isPending: false,
       mutate: retryDelivery,
+    }),
+    useRetryDataPublicationDelivery: () => ({
+      isPending: false,
+      mutate: retryDataOffer,
     }),
     useListOrganizations: () => queryResult([
       { id: "an-invited", name: "Eingeladener Betrieb", contactEmail: "invited@example.com" },
@@ -241,6 +246,13 @@ describe("project participant directory membership lifecycle", () => {
     updateMemberships = undefined;
     retryShouldFail = false;
     retryTransientShouldFail = false;
+    retryDataOffer = vi.fn((_variables, options) => {
+      options?.onSuccess?.({
+        exchangeId: "dataspace-offer-retry",
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+    });
     toastMock = vi.fn();
     retryDelivery = vi.fn(({ messageId }: { messageId: string }, options?: {
       onSuccess?: (result: { status: string; error?: { code: string; message: string } }) => void;
@@ -456,6 +468,15 @@ describe("project participant directory membership lifecycle", () => {
           anOrgId: "an-invited",
           anName: "Eingeladener Betrieb",
           status: "OFFERED",
+          delivery: {
+            messageId: "dataspace-offer-publication-1-an-invited",
+            messageType: "DATA_OFFER_PUBLISHED",
+            status: "FAILED",
+            attemptCount: 1,
+            failureReason: "Connector nicht erreichbar",
+            createdAt: "2026-08-01T10:00:00.000Z",
+            attemptHistory: [],
+          },
         },
       ],
     }];
@@ -483,5 +504,15 @@ describe("project participant directory membership lifecycle", () => {
     expect(screen.getByTestId("project-dataspace-recipient-an-active")).toHaveTextContent("Policy akzeptiert");
     expect(screen.getByTestId("project-dataspace-recipient-an-invited")).toHaveTextContent("Eingeladener Betrieb");
     expect(screen.getByTestId("project-dataspace-recipient-an-invited")).toHaveTextContent("Angeboten");
+
+    await user.click(within(screen.getByTestId("project-dataspace-recipient-an-invited"))
+      .getByRole("button", { name: "Erneut zustellen" }));
+    expect(retryDataOffer).toHaveBeenCalledWith(
+      { publicationId: "publication-1", anOrgId: "an-invited" },
+      expect.anything(),
+    );
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Datenangebot erneut zugestellt",
+    }));
   });
 });

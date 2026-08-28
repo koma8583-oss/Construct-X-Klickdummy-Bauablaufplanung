@@ -204,6 +204,15 @@ export class TractusXEdcExchange implements DataspaceExchange {
         error: { code: "TRANSPORT_FAILURE", message: reason } };
     }
   }
+  async retryDataOffer(messageId: string): Promise<ExchangeReference> {
+    const [row] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (!row || row.messageType !== "DATA_OFFER_PUBLISHED") {
+      throw new Error(`Data offer delivery not found: ${messageId}`);
+    }
+    return this.retryProjectInvitation(messageId);
+  }
+
   async publishServiceRequest(payload: ExternalServiceRequest): Promise<ExchangeReference> {
     return this.publish(payload, "SERVICE_REQUEST");
   }

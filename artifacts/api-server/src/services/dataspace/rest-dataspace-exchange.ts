@@ -1,5 +1,9 @@
 import { DataspaceMessageType } from "@workspace/api-zod";
-import { hubDb as db, dataspaceExchangesTable } from "@workspace/db";
+import {
+  hubDb as db,
+  dataspaceExchangesTable,
+  messageOutboxTable,
+} from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
@@ -111,6 +115,25 @@ export class RestDataspaceExchange implements DataspaceExchange {
       eq(dataspaceExchangesTable.direction, "OUTBOUND"),
       eq(dataspaceExchangesTable.messageId, messageId),
     ));
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      status: result.status,
+      sentAt: result.sentAt,
+      deliveredAt: result.deliveredAt,
+      attemptCount: result.attemptCount,
+      error: result.error,
+    };
+  }
+
+  async retryDataOffer(messageId: string): Promise<ExchangeReference> {
+    const [outbox] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (!outbox || outbox.messageType !== "DATA_OFFER_PUBLISHED") {
+      throw new Error(`Data offer delivery not found: ${messageId}`);
+    }
+
+    const result = await this.transport.retry(messageId);
     return {
       exchangeId: result.messageId,
       externalReference: result.messageId,

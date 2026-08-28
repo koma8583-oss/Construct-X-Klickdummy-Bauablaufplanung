@@ -63,6 +63,32 @@ export interface PublicationRecipientSummary {
   lastAccessedAt?: string | null;
   revokedAt?: string | null;
   projectMembershipId?: string | null;
+  delivery?: DataPublicationDelivery | null;
+}
+
+export type DataPublicationDeliveryStatus =
+  | "PENDING"
+  | "SENT"
+  | "DELIVERED"
+  | "READ"
+  | "FAILED";
+
+export interface DataPublicationDeliveryAttempt {
+  attemptNumber: number;
+  status: DataPublicationDeliveryStatus;
+  attemptedAt: string;
+  failureReason?: string | null;
+}
+
+export interface DataPublicationDelivery {
+  messageId: string;
+  messageType: "DATA_OFFER_PUBLISHED";
+  status: DataPublicationDeliveryStatus;
+  attemptCount: number;
+  lastAttemptAt?: string | null;
+  failureReason?: string | null;
+  createdAt: string;
+  attemptHistory: DataPublicationDeliveryAttempt[];
 }
 
 export interface DataPublication {
@@ -410,6 +436,43 @@ export function useDeleteDataPublication(): UseMutationResult<
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["data-publications"] });
+    },
+  });
+}
+
+export function useRetryDataPublicationDelivery(
+  projectId?: string,
+): UseMutationResult<
+  {
+    exchangeId: string;
+    status: DataPublicationDeliveryStatus;
+    attemptCount?: number;
+    sentAt?: string | null;
+    deliveredAt?: string | null;
+    error?: { code: string; message: string };
+  },
+  Error,
+  { publicationId: string; anOrgId: string }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ publicationId, anOrgId }) =>
+      customFetch<{
+        exchangeId: string;
+        status: DataPublicationDeliveryStatus;
+        attemptCount?: number;
+        sentAt?: string | null;
+        deliveredAt?: string | null;
+        error?: { code: string; message: string };
+      }>(
+        `/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`,
+        { method: "POST" },
+      ),
+    onSettled: (_data, _error, variables) => {
+      void qc.invalidateQueries({ queryKey: ["data-publications", variables.publicationId] });
+      if (projectId) {
+        void qc.invalidateQueries({ queryKey: ["data-publications", projectId] });
+      }
     },
   });
 }

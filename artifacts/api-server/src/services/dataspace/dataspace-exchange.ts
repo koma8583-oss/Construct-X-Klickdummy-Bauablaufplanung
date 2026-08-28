@@ -22,6 +22,7 @@ export interface DataspaceExchange {
   publishProjectInvitation(payload: ExternalProjectInvitation): Promise<ExchangeReference>;
   publishProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<ExchangeReference>;
   retryProjectInvitation(messageId: string): Promise<ExchangeReference>;
+  retryDataOffer(messageId: string): Promise<ExchangeReference>;
   receiveProjectInvitation(
     payload: ExternalProjectInvitation,
     process?: (payload: ExternalProjectInvitation) => Promise<void>,

@@ -15,7 +15,12 @@
  *   - Published versions are immutable.
  */
 import crypto from "node:crypto";
-import { db, messageOutboxTable } from "@workspace/db";
+import {
+  db,
+  hubDb,
+  messageOutboxTable,
+  messageDeliveryAttemptsTable,
+} from "@workspace/db";
 import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
@@ -26,7 +31,7 @@ import {
   taktDependenciesTable,
   organizationsTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, asc } from "drizzle-orm";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
 import {
@@ -52,6 +57,177 @@ export class PublicationRecipientError extends Error {
     super(msg);
     this.name = "PublicationRecipientError";
   }
+}
+
+export class PublicationDeliveryError extends Error {
+  constructor(
+    public readonly code: string,
+    msg: string,
+  ) {
+    super(msg);
+    this.name = "PublicationDeliveryError";
+  }
+}
+
+export const MAX_PUBLICATION_DELIVERY_ATTEMPTS = 5;
+
+function toDataPublicationDelivery(
+  row: typeof messageOutboxTable.$inferSelect,
+  attemptHistory: Array<typeof messageDeliveryAttemptsTable.$inferSelect>,
+) {
+  return {
+    messageId: row.messageId,
+    messageType: row.messageType as "DATA_OFFER_PUBLISHED",
+    status: row.status,
+    attemptCount: row.attemptCount,
+    lastAttemptAt: row.lastAttemptAt,
+    failureReason: row.failureReason,
+    createdAt: row.createdAt,
+    attemptHistory: attemptHistory.map((attempt) => ({
+      attemptNumber: attempt.attemptNumber,
+      status: attempt.status,
+      attemptedAt: attempt.attemptedAt,
+      failureReason: attempt.failureReason,
+    })),
+  };
+}
+
+export async function getDataPublicationDeliveries(
+  publicationId: string,
+  recipientOrgIds: string[],
+) {
+  const messageIds = recipientOrgIds.map(
+    (anOrgId) => `dataspace-offer-${publicationId}-${anOrgId}`,
+  );
+  if (messageIds.length === 0) return new Map<string, ReturnType<typeof toDataPublicationDelivery>>();
+
+  const outboxRows = await hubDb
+    .select()
+    .from(messageOutboxTable)
+    .where(inArray(messageOutboxTable.messageId, messageIds as [string, ...string[]]));
+  const attempts = await hubDb
+    .select()
+    .from(messageDeliveryAttemptsTable)
+    .where(inArray(messageDeliveryAttemptsTable.messageId, messageIds as [string, ...string[]]))
+    .orderBy(
+      asc(messageDeliveryAttemptsTable.attemptedAt),
+      asc(messageDeliveryAttemptsTable.attemptNumber),
+    );
+  const attemptsByMessageId = new Map<string, Array<typeof messageDeliveryAttemptsTable.$inferSelect>>();
+  for (const attempt of attempts) {
+    const existing = attemptsByMessageId.get(attempt.messageId) ?? [];
+    existing.push(attempt);
+    attemptsByMessageId.set(attempt.messageId, existing);
+  }
+
+  return new Map(
+    outboxRows.map((row) => [
+      row.recipientOrgId,
+      toDataPublicationDelivery(row, attemptsByMessageId.get(row.messageId) ?? []),
+    ]),
+  );
+}
+
+export async function retryDataPublicationDelivery(
+  publicationId: string,
+  anOrgId: string,
+  agOrgId: string,
+) {
+  const [publication] = await db
+    .select({
+      id: dataPublicationsTable.id,
+      agOrgId: dataPublicationsTable.agOrgId,
+      status: dataPublicationsTable.status,
+    })
+    .from(dataPublicationsTable)
+    .where(and(
+      eq(dataPublicationsTable.id, publicationId),
+      eq(dataPublicationsTable.agOrgId, agOrgId),
+    ))
+    .limit(1);
+  if (!publication) {
+    throw new PublicationNotFoundError(publicationId);
+  }
+  if (publication.status !== "PUBLISHED") {
+    throw new PublicationDeliveryError(
+      "PUBLICATION_DELIVERY_NOT_ACTIVE",
+      `Die Datenbereitstellung ist nicht aktiv (Status: ${publication.status}).`,
+    );
+  }
+
+  const [recipient] = await db
+    .select({ id: dataPublicationRecipientsTable.id })
+    .from(dataPublicationRecipientsTable)
+    .where(and(
+      eq(dataPublicationRecipientsTable.publicationId, publicationId),
+      eq(dataPublicationRecipientsTable.anOrgId, anOrgId),
+    ))
+    .limit(1);
+  if (!recipient) {
+    throw new PublicationDeliveryError(
+      "PUBLICATION_RECIPIENT_NOT_FOUND",
+      "Der adressierte Empfänger wurde nicht gefunden.",
+    );
+  }
+
+  const messageId = `dataspace-offer-${publicationId}-${anOrgId}`;
+  const [outbox] = await hubDb
+    .select()
+    .from(messageOutboxTable)
+    .where(and(
+      eq(messageOutboxTable.messageId, messageId),
+      eq(messageOutboxTable.senderOrgId, agOrgId),
+      eq(messageOutboxTable.recipientOrgId, anOrgId),
+      eq(messageOutboxTable.messageType, "DATA_OFFER_PUBLISHED"),
+    ))
+    .limit(1);
+  if (!outbox) {
+    throw new PublicationDeliveryError(
+      "PUBLICATION_DELIVERY_NOT_FOUND",
+      "Für diesen Empfänger wurde keine Datenangebot-Zustellung gefunden.",
+    );
+  }
+  if (outbox.status !== "FAILED") {
+    throw new PublicationDeliveryError(
+      outbox.status === "SENT"
+        ? "PUBLICATION_DELIVERY_RETRY_RACE"
+        : "PUBLICATION_DELIVERY_NOT_RETRYABLE",
+      outbox.status === "SENT"
+        ? "Die Zustellung wird bereits von einem anderen Vorgang wiederholt."
+        : `Die Zustellung kann nicht wiederholt werden (Status: ${outbox.status}).`,
+    );
+  }
+  if (outbox.attemptCount >= MAX_PUBLICATION_DELIVERY_ATTEMPTS) {
+    throw new PublicationDeliveryError(
+      "PUBLICATION_DELIVERY_RETRY_EXHAUSTED",
+      "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.",
+    );
+  }
+
+  const exchange = createDataspaceExchange();
+  let result;
+  try {
+    result = await exchange.retryDataOffer(messageId);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /cannot be retried — current status is (?:SENT|DELIVERED)/.test(error.message)
+    ) {
+      throw new PublicationDeliveryError(
+        "PUBLICATION_DELIVERY_RETRY_RACE",
+        "Die Zustellung wird bereits von einem anderen Vorgang wiederholt.",
+      );
+    }
+    throw error;
+  }
+
+  if (result.status === "DELIVERED") {
+    await db
+      .update(dataPublicationRecipientsTable)
+      .set({ notifiedAt: new Date() })
+      .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+  }
+  return result;
 }
 
 // ── Whitelists ────────────────────────────────────────────────────────────────
@@ -433,7 +609,7 @@ export async function publishDataPublication(
     const messageId = `dataspace-offer-${publicationId}-${recipient.anOrgId}`;
 
     try {
-      await transport.send({
+      const delivery = await transport.send({
         messageId,
         schemaVersion: "1.0",
         messageType: "DATA_OFFER_PUBLISHED",
@@ -445,10 +621,12 @@ export async function publishDataPublication(
         payload: notificationPayload,
       });
 
-      await db
-        .update(dataPublicationRecipientsTable)
-        .set({ notifiedAt: now })
-        .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+      if (delivery.status === "DELIVERED") {
+        await db
+          .update(dataPublicationRecipientsTable)
+          .set({ notifiedAt: now })
+          .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+      }
 
       // The AN offer view is backed exclusively by Dataspace-delivered local
       // projections. Standalone publications do not have the combined

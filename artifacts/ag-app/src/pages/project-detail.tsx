@@ -106,6 +106,7 @@ import {
   useDeactivateProjectSubcontractor,
   getListProjectSubcontractorsQueryKey,
   useGetProjectDataPublications,
+  useRetryDataPublicationDelivery,
   useSuspendDataPublication,
   useWithdrawDataPublication,
   useGetProjectCalendar,
@@ -691,6 +692,7 @@ export default function ProjectDetail() {
   } = useGetProjectDataPublications(projectId);
   const suspendPublication = useSuspendDataPublication();
   const withdrawPublication = useWithdrawDataPublication();
+  const retryDataPublicationDelivery = useRetryDataPublicationDelivery(projectId);
   const visibleDataPublications = useMemo(
     () => deduplicateDataPublications(dataPublications ?? []),
     [dataPublications],
@@ -1376,6 +1378,29 @@ export default function ProjectDetail() {
     });
   };
 
+  const handleRetryDataPublicationDelivery = (publicationId: string, anOrgId: string) => {
+    retryDataPublicationDelivery.mutate({ publicationId, anOrgId }, {
+      onSuccess: (result) => {
+        if (result.status === 'FAILED') {
+          toast({
+            title: 'Datenangebot konnte nicht zugestellt werden',
+            description: `${result.error?.message ?? 'Die Zustellung ist fehlgeschlagen.'} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        toast({ title: 'Datenangebot erneut zugestellt' });
+      },
+      onError: (err) => {
+        toast({
+          title: 'Datenangebot konnte nicht erneut zugestellt werden',
+          description: err.message,
+          variant: 'destructive',
+        });
+      },
+    });
+  };
+
   const handleCloseRequest = () => {
     setConfirmCloseRequest(true);
   };
@@ -1804,6 +1829,20 @@ export default function ProjectDetail() {
                                     </span>
                                   </div>
                                   <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                                    {recipient.delivery && (
+                                      <div
+                                        className={recipient.delivery.status === 'FAILED' ? 'text-red-600' : recipient.delivery.status === 'DELIVERED' ? 'text-emerald-600' : 'text-muted-foreground'}
+                                        data-testid={`project-dataspace-delivery-status-${recipient.anOrgId}`}
+                                      >
+                                        Datenangebot: {recipient.delivery.status === 'FAILED' ? 'Zustellung fehlgeschlagen' : recipient.delivery.status === 'DELIVERED' ? 'zugestellt' : recipient.delivery.status.toLowerCase()}
+                                        {' '}({recipient.delivery.attemptCount}/5 Versuche)
+                                      </div>
+                                    )}
+                                    {recipient.delivery?.failureReason && (
+                                      <div className="break-words text-red-600">
+                                        Fehlergrund: {recipient.delivery.failureReason}
+                                      </div>
+                                    )}
                                     {recipient.notifiedAt && <div>Benachrichtigt: {formatPublicationDateTime(recipient.notifiedAt)}</div>}
                                     {recipient.policyAcceptedAt && <div>Policy akzeptiert: {formatPublicationDateTime(recipient.policyAcceptedAt)}</div>}
                                     {recipient.policyRejectedAt && <div>Policy abgelehnt: {formatPublicationDateTime(recipient.policyRejectedAt)}</div>}
@@ -1813,6 +1852,20 @@ export default function ProjectDetail() {
                                       <div>Noch keine Aktivität verzeichnet.</div>
                                     )}
                                   </div>
+                                  {recipient.delivery?.status === 'FAILED' && recipient.delivery.attemptCount < 5 && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="mt-2 h-7 px-2 text-xs"
+                                      data-testid={`project-dataspace-retry-${pub.id}-${recipient.anOrgId}`}
+                                      onClick={() => handleRetryDataPublicationDelivery(pub.id, recipient.anOrgId)}
+                                      disabled={retryDataPublicationDelivery.isPending}
+                                    >
+                                      <RefreshCw className="mr-1 h-3 w-3" />
+                                      Erneut zustellen
+                                    </Button>
+                                  )}
                                 </div>
                               ))}
                             </div>

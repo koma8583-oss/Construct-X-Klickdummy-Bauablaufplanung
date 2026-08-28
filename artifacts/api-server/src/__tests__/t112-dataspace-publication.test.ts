@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -670,5 +670,60 @@ describe("Version incrementing", () => {
     const v1 = (first.body as { version: number }).version;
     const v2 = (second.body as { version: number }).version;
     expect(v2).toBe(v1 + 1);
+  });
+});
+
+describe("Publication delivery recovery", () => {
+  it("exposes a failed offer and retries the persisted delivery envelope", async () => {
+    const draft = await createDraftPublication();
+    const publicationId = (draft.body as { id: string }).id;
+    const published = await request(app)
+      .post(`/api/data-publications/${publicationId}/publish`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(published.status).toBe(200);
+
+    const messageId = `dataspace-offer-${publicationId}-${anOrgId}`;
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, messageId));
+    await hubDb.update(messageOutboxTable).set({
+      status: "FAILED",
+      failureReason: "Connector nicht erreichbar",
+      attemptCount: 1,
+      lastAttemptAt: new Date(),
+    }).where(eq(messageOutboxTable.messageId, messageId));
+
+    const listed = await request(app)
+      .get(`/api/projects/${projectId}/data-publications`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(listed.status).toBe(200);
+    const publication = listed.body.find((row: { id: string }) => row.id === publicationId);
+    expect(publication.recipients[0].delivery).toMatchObject({
+      messageId,
+      status: "FAILED",
+      attemptCount: 1,
+      failureReason: "Connector nicht erreichbar",
+    });
+    expect(publication.recipients[0].notifiedAt).toBeTruthy();
+
+    const retried = await request(app)
+      .post(`/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(retried.status).toBe(200);
+    expect(retried.body.status).toBe("DELIVERED");
+
+    const refreshed = await request(app)
+      .get(`/api/projects/${projectId}/data-publications`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(refreshed.body.find((row: { id: string }) => row.id === publicationId)
+      .recipients[0].delivery.status).toBe("DELIVERED");
+
+    await hubDb.update(messageOutboxTable).set({
+      status: "FAILED",
+      attemptCount: 5,
+    }).where(eq(messageOutboxTable.messageId, messageId));
+    const exhausted = await request(app)
+      .post(`/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(exhausted.status).toBe(409);
+    expect(exhausted.body.code).toBe("PUBLICATION_DELIVERY_RETRY_EXHAUSTED");
   });
 });
