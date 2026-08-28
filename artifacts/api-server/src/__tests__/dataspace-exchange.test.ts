@@ -26,6 +26,8 @@ const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
 const PROJECT_INVITATION_MESSAGE_IDS = [
   "project-invitation-message-1",
   "project-invitation-serialization-mutation",
+  "project-invitation-retry-message-1",
+  "project-invitation-response-retry-message-1",
 ];
 const TEST_MESSAGE_IDS = [
   ...PROJECT_INVITATION_MESSAGE_IDS,
@@ -379,6 +381,166 @@ describe("dataspace exchange boundary", () => {
       expect(() => serializeExternalProjectInvitation(
         invalidSnapshotPayload as typeof payload,
       )).toThrow(/Project invitation contract validation failed.*unexpectedField/);
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
+  });
+
+  it("preserves connector failure history across invitation and response retries", async () => {
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const invitationMessageId = "project-invitation-retry-message-1";
+    const responseMessageId = "project-invitation-response-retry-message-1";
+    const invitationFailureReason = "connector rejected project invitation";
+    const responseFailureReason = "connector timed out while sending invitation response";
+    const invitationPayload = {
+      metadata: {
+        messageId: invitationMessageId,
+        correlationId: "project-invitation-retry-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: TRACTUSX_TEST_ORG_IDS[0],
+        receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      invitationId: "invitation-retry-1",
+      project: {
+        projectReference: "project-retry-1",
+        projectName: "Retry project",
+      },
+      requestedRole: "CONTRACTOR" as const,
+      purpose: "PROJECT_COLLABORATION" as const,
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP" as const,
+        allowedConsumerParticipantId: "participant-retry-an",
+      },
+    };
+    const responsePayload = {
+      metadata: {
+        messageId: responseMessageId,
+        correlationId: "project-invitation-retry-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: TRACTUSX_TEST_ORG_IDS[1],
+        receiverOrgId: TRACTUSX_TEST_ORG_IDS[0],
+        createdAt: "2026-08-26T08:01:00.000Z",
+      },
+      invitationId: "invitation-retry-1",
+      projectReference: "project-retry-1",
+      decision: "REJECTED" as const,
+      respondedAt: "2026-08-26T08:02:00.000Z",
+      message: "The project cannot be accepted at this time.",
+    };
+    const connectorFetch = vi.fn()
+      .mockRejectedValueOnce(new Error(invitationFailureReason))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ externalReference: "invitation-retry-reference-1" }),
+      })
+      .mockRejectedValueOnce(new Error(responseFailureReason))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ externalReference: "response-retry-reference-1" }),
+      });
+    const exchange = new TractusXEdcExchange();
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test";
+    try {
+      await expect(exchange.publishProjectInvitation(invitationPayload))
+        .rejects.toThrow(invitationFailureReason);
+
+      const [failedInvitation] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, invitationMessageId));
+      const [failedInvitationAttempt] = await db.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, invitationMessageId));
+      expect(failedInvitation).toMatchObject({
+        status: "FAILED",
+        attemptCount: 1,
+        failureReason: invitationFailureReason,
+      });
+      expect(failedInvitation.lastAttemptAt).toBeInstanceOf(Date);
+      expect(failedInvitationAttempt).toMatchObject({
+        attemptNumber: 1,
+        status: "FAILED",
+        failureReason: invitationFailureReason,
+      });
+      expect(failedInvitationAttempt.attemptedAt).toEqual(failedInvitation.lastAttemptAt);
+
+      const invitationRetry = await exchange.retryProjectInvitation(invitationMessageId);
+      expect(invitationRetry).toMatchObject({
+        exchangeId: invitationMessageId,
+        externalReference: "invitation-retry-reference-1",
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+
+      const invitationHistory = (await db.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, invitationMessageId)))
+        .sort((left, right) => left.attemptNumber - right.attemptNumber);
+      const [deliveredInvitation] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, invitationMessageId));
+      expect(invitationHistory).toHaveLength(2);
+      expect(invitationHistory.map((attempt) => [attempt.attemptNumber, attempt.status]))
+        .toEqual([[1, "FAILED"], [2, "DELIVERED"]]);
+      expect(invitationHistory[0].failureReason).toBe(invitationFailureReason);
+      expect(invitationHistory[1].failureReason).toBeNull();
+      expect(invitationHistory[1].attemptedAt.getTime())
+        .toBeGreaterThanOrEqual(invitationHistory[0].attemptedAt.getTime());
+      expect(deliveredInvitation).toMatchObject({
+        status: "DELIVERED",
+        attemptCount: 2,
+        failureReason: null,
+      });
+      expect(deliveredInvitation.lastAttemptAt).toEqual(invitationHistory[1].attemptedAt);
+      expect(deliveredInvitation.deliveredAt).toBeInstanceOf(Date);
+
+      await expect(exchange.publishProjectInvitationResponse(responsePayload))
+        .rejects.toThrow(responseFailureReason);
+
+      const [failedResponse] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, responseMessageId));
+      const [failedResponseAttempt] = await db.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, responseMessageId));
+      expect(failedResponse).toMatchObject({
+        status: "FAILED",
+        attemptCount: 1,
+        failureReason: responseFailureReason,
+      });
+      expect(failedResponse.lastAttemptAt).toBeInstanceOf(Date);
+      expect(failedResponseAttempt).toMatchObject({
+        attemptNumber: 1,
+        status: "FAILED",
+        failureReason: responseFailureReason,
+      });
+      expect(failedResponseAttempt.attemptedAt).toEqual(failedResponse.lastAttemptAt);
+
+      const responseRetry = await exchange.retryProjectInvitation(responseMessageId);
+      expect(responseRetry).toMatchObject({
+        exchangeId: responseMessageId,
+        externalReference: "response-retry-reference-1",
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+
+      const responseHistory = (await db.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, responseMessageId)))
+        .sort((left, right) => left.attemptNumber - right.attemptNumber);
+      const [deliveredResponse] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, responseMessageId));
+      expect(responseHistory).toHaveLength(2);
+      expect(responseHistory.map((attempt) => [attempt.attemptNumber, attempt.status]))
+        .toEqual([[1, "FAILED"], [2, "DELIVERED"]]);
+      expect(responseHistory[0].failureReason).toBe(responseFailureReason);
+      expect(responseHistory[1].failureReason).toBeNull();
+      expect(responseHistory[1].attemptedAt.getTime())
+        .toBeGreaterThanOrEqual(responseHistory[0].attemptedAt.getTime());
+      expect(deliveredResponse).toMatchObject({
+        status: "DELIVERED",
+        attemptCount: 2,
+        failureReason: null,
+      });
+      expect(deliveredResponse.lastAttemptAt).toEqual(responseHistory[1].attemptedAt);
+      expect(deliveredResponse.deliveredAt).toBeInstanceOf(Date);
     } finally {
       vi.unstubAllGlobals();
       if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
