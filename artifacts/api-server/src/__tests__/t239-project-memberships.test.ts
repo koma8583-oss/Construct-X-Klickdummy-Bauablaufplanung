@@ -6,12 +6,12 @@
  * inserted directly so each assertion tests the route/service behavior rather
  * than the auth-registration flow.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import { deliverLocalProjectInvitation } from "../services/dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation } from "../services/dataspace/external-contracts";
 import {
@@ -56,6 +56,7 @@ const RETRY_INVITATION_ID = `${PREFIX}-retry-invitation`;
 const RETRY_MESSAGE_ID = `project-invitation-${RETRY_INVITATION_ID}`;
 const RETRY_CORRELATION_ID = `${PREFIX}-retry-correlation`;
 const T239_MESSAGE_PREFIX = "project-invitation-t239-";
+const CONCURRENT_RETRY_MESSAGE_ID = `${T239_MESSAGE_PREFIX}concurrent-retry`;
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function token(userId: string, orgId: string, orgType: "AG" | "AN", roles?: string[]) {
@@ -72,7 +73,7 @@ const anToken = token(AN_USER_ID, AN_ID, "AN");
 const otherAnToken = token(OTHER_AN_USER_ID, OTHER_AN_ID, "AN");
 
 async function removeDeliveryAttempts() {
-  await db.delete(messageDeliveryAttemptsTable).where(sql`
+  await hubDb.delete(messageDeliveryAttemptsTable).where(sql`
     ${messageDeliveryAttemptsTable.messageId} LIKE ${`${T239_MESSAGE_PREFIX}%`}
     OR ${messageDeliveryAttemptsTable.messageId} = ${RETRY_MESSAGE_ID}
     OR ${messageDeliveryAttemptsTable.messageId} IN (
@@ -103,10 +104,14 @@ beforeAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await removeDeliveryAttempts();
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(projectMembershipsTable).where(
     inArray(projectMembershipsTable.projectId, [
       PROJECT_ID,
@@ -199,10 +204,10 @@ afterAll(async () => {
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
   await removeDeliveryAttempts();
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
-  await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
+  await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID)).catch(() => {});
   await removeRequestData(PROJECT_ID);
   await db.delete(dataPublicationRecipientsTable).where(
     eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
@@ -222,13 +227,13 @@ afterAll(async () => {
   await db.delete(projectContractorsTable).where(
     inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
   ).catch(() => {});
-  await db.delete(messageOutboxTable).where(
+  await hubDb.delete(messageOutboxTable).where(
     and(
       sql`${messageOutboxTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
       sql`${messageOutboxTable.recipientOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
     ),
   ).catch(() => {});
-  await db.delete(dataspaceExchangesTable).where(
+  await hubDb.delete(dataspaceExchangesTable).where(
     sql`${dataspaceExchangesTable.senderOrgId} IN (${AG_ID}, ${AN_ID}, ${OTHER_AN_ID})`,
   ).catch(() => {});
   await db.delete(projectsTable).where(
@@ -388,7 +393,7 @@ describe("project invitation delivery retries", () => {
 
     // A conflicting inbox row makes the real local transport transaction fail
     // and leaves the persisted outbound envelope in FAILED status.
-    await db.insert(messageInboxTable).values({
+    await hubDb.insert(messageInboxTable).values({
       messageId: RETRY_MESSAGE_ID,
       messageType: "PROJECT_INVITATION",
       senderOrgId: AG_ID,
@@ -400,12 +405,12 @@ describe("project invitation delivery retries", () => {
     const failedDelivery = await deliverLocalProjectInvitation(payload);
     expect(failedDelivery.status).toBe("FAILED");
 
-    const [failedOutbox] = await db.select().from(messageOutboxTable).where(
+    const [failedOutbox] = await hubDb.select().from(messageOutboxTable).where(
       eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID),
     );
     expect(failedOutbox.status).toBe("FAILED");
     expect(failedOutbox.attemptCount).toBe(1);
-    const [failedOutbound] = await db.select().from(dataspaceExchangesTable).where(and(
+    const [failedOutbound] = await hubDb.select().from(dataspaceExchangesTable).where(and(
       eq(dataspaceExchangesTable.direction, "OUTBOUND"),
       eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
     ));
@@ -413,7 +418,7 @@ describe("project invitation delivery retries", () => {
 
     // Remove only the transient delivery conflict; retry must reuse the same
     // outbox message and then run the local inbound projection exactly once.
-    await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID));
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, RETRY_MESSAGE_ID));
     const retry = await request(app)
       .post(`/api/project-invitation-deliveries/${RETRY_MESSAGE_ID}/retry`)
       .set("Authorization", `Bearer ${agToken}`);
@@ -422,21 +427,21 @@ describe("project invitation delivery retries", () => {
     expect(retry.body.exchangeId).toBe(RETRY_MESSAGE_ID);
     expect(retry.body.attemptCount).toBe(2);
 
-    const [outbox] = await db.select().from(messageOutboxTable).where(
+    const [outbox] = await hubDb.select().from(messageOutboxTable).where(
       eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID),
     );
     expect(outbox.status).toBe("DELIVERED");
     expect(outbox.attemptCount).toBe(2);
-    const [inbox] = await db.select().from(messageInboxTable).where(
+    const [inbox] = await hubDb.select().from(messageInboxTable).where(
       eq(messageInboxTable.messageId, RETRY_MESSAGE_ID),
     );
     expect(inbox.status).toBe("DELIVERED");
 
-    const [outbound] = await db.select().from(dataspaceExchangesTable).where(and(
+    const [outbound] = await hubDb.select().from(dataspaceExchangesTable).where(and(
       eq(dataspaceExchangesTable.direction, "OUTBOUND"),
       eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
     ));
-    const [inbound] = await db.select().from(dataspaceExchangesTable).where(and(
+    const [inbound] = await hubDb.select().from(dataspaceExchangesTable).where(and(
       eq(dataspaceExchangesTable.direction, "INBOUND"),
       eq(dataspaceExchangesTable.messageId, RETRY_MESSAGE_ID),
     ));
@@ -471,7 +476,7 @@ describe("project invitation delivery retries", () => {
       status: "PENDING",
     });
 
-    await db.update(messageOutboxTable).set({
+    await hubDb.update(messageOutboxTable).set({
       status: "FAILED",
       attemptCount: 5,
     }).where(eq(messageOutboxTable.messageId, RETRY_MESSAGE_ID));
@@ -480,6 +485,122 @@ describe("project invitation delivery retries", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect(exhausted.status).toBe(409);
     expect(exhausted.body.code).toBe("PROJECT_INVITATION_RETRY_EXHAUSTED");
+  });
+
+  it("allows only one concurrent HTTP retry to reach the connector", async () => {
+    const previousTransport = process.env.DATASPACE_TRANSPORT;
+    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
+    const initialAttemptAt = new Date("2026-08-28T08:00:00.000Z");
+    const payload: ExternalProjectInvitation = {
+      metadata: {
+        messageId: CONCURRENT_RETRY_MESSAGE_ID,
+        correlationId: `${PREFIX}-concurrent-retry-correlation`,
+        schemaVersion: "1.0",
+        senderOrgId: AG_ID,
+        receiverOrgId: AN_ID,
+        createdAt: initialAttemptAt.toISOString(),
+      },
+      invitationId: `${PREFIX}-concurrent-retry-invitation`,
+      project: {
+        projectReference: RETRY_PROJECT_ID,
+        projectName: "Task 329 Concurrent Retry Project",
+      },
+      requestedRole: "CONTRACTOR",
+      purpose: "PROJECT_COLLABORATION",
+      policy: {
+        usagePurpose: "PROJECT_MEMBERSHIP",
+        allowedConsumerParticipantId: `local:${AN_ID}`,
+      },
+    };
+    await hubDb.insert(messageOutboxTable).values({
+      messageId: CONCURRENT_RETRY_MESSAGE_ID,
+      schemaVersion: payload.metadata.schemaVersion,
+      messageType: "PROJECT_INVITATION",
+      senderOrgId: AG_ID,
+      recipientOrgId: AN_ID,
+      correlationId: payload.metadata.correlationId,
+      payload: payload as unknown as Record<string, unknown>,
+      status: "FAILED",
+      attemptCount: 1,
+      lastAttemptAt: initialAttemptAt,
+      failureReason: "initial connector failure",
+    });
+    await hubDb.insert(messageDeliveryAttemptsTable).values({
+      messageId: CONCURRENT_RETRY_MESSAGE_ID,
+      attemptNumber: 1,
+      status: "FAILED",
+      attemptedAt: initialAttemptAt,
+      failureReason: "initial connector failure",
+    });
+
+    let releaseConnector!: () => void;
+    const connectorReleased = new Promise<void>((resolve) => {
+      releaseConnector = resolve;
+    });
+    const connectorFetch = vi.fn(async () => {
+      await connectorReleased;
+      return {
+        ok: true,
+        json: async () => ({ externalReference: `${PREFIX}-concurrent-retry-reference` }),
+      };
+    });
+
+    vi.stubGlobal("fetch", connectorFetch);
+    process.env.DATASPACE_TRANSPORT = "tractusx-edc";
+    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test";
+    try {
+      const retries = [
+        request(app)
+          .post(`/api/project-invitation-deliveries/${CONCURRENT_RETRY_MESSAGE_ID}/retry`)
+          .set("Authorization", `Bearer ${agToken}`),
+        request(app)
+          .post(`/api/project-invitation-deliveries/${CONCURRENT_RETRY_MESSAGE_ID}/retry`)
+          .set("Authorization", `Bearer ${agToken}`),
+      ].map((retry) => retry.then((response) => response));
+      const responsesPromise = Promise.all(retries);
+      const firstCompleted = await Promise.race(
+        retries.map((retry, index) => retry.then((response) => ({ index, response }))),
+      );
+      expect(firstCompleted.response.status).toBe(409);
+      expect(firstCompleted.response.body.code).toBe("PROJECT_INVITATION_RETRY_RACE");
+      releaseConnector();
+
+      const responses = await responsesPromise;
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+      const successfulResponse = responses.find((response) => response.status === 200);
+      const losingResponse = responses.find((response) => response.status === 409);
+      expect(successfulResponse?.body).toMatchObject({
+        exchangeId: CONCURRENT_RETRY_MESSAGE_ID,
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+      expect(losingResponse?.body).toMatchObject({
+        code: "PROJECT_INVITATION_RETRY_RACE",
+      });
+      expect(connectorFetch).toHaveBeenCalledTimes(1);
+
+      const history = (await hubDb.select().from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)))
+        .sort((left, right) => left.attemptNumber - right.attemptNumber);
+      const [outbox] = await hubDb.select().from(messageOutboxTable).where(
+        eq(messageOutboxTable.messageId, CONCURRENT_RETRY_MESSAGE_ID),
+      );
+      expect(history.map((attempt) => [attempt.attemptNumber, attempt.status]))
+        .toEqual([[1, "FAILED"], [2, "DELIVERED"]]);
+      expect(outbox).toMatchObject({
+        status: "DELIVERED",
+        attemptCount: history.length,
+        failureReason: null,
+      });
+      expect(outbox.lastAttemptAt).toEqual(history[1].attemptedAt);
+      expect(successfulResponse?.body.attemptCount).toBe(outbox.attemptCount);
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousTransport === undefined) delete process.env.DATASPACE_TRANSPORT;
+      else process.env.DATASPACE_TRANSPORT = previousTransport;
+      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
+      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
   });
 });
 
@@ -506,11 +627,11 @@ describe("membership gates and legacy compatibility", () => {
     expect(response.body.memberships[0].status).toBe("INVITED");
     const invitationId = response.body.memberships[0].invitationId as string;
     const messageId = `project-invitation-${invitationId}`;
-    const [outbound] = await db.select().from(dataspaceExchangesTable).where(and(
+    const [outbound] = await hubDb.select().from(dataspaceExchangesTable).where(and(
       eq(dataspaceExchangesTable.direction, "OUTBOUND"),
       eq(dataspaceExchangesTable.messageId, messageId),
     ));
-    const [inbound] = await db.select().from(dataspaceExchangesTable).where(and(
+    const [inbound] = await hubDb.select().from(dataspaceExchangesTable).where(and(
       eq(dataspaceExchangesTable.direction, "INBOUND"),
       eq(dataspaceExchangesTable.messageId, messageId),
     ));
@@ -522,7 +643,7 @@ describe("membership gates and legacy compatibility", () => {
     expect(inbound.status).toBe("PROCESSED");
     expect(anInvitation.status).toBe("PENDING");
 
-    const [outboundEnvelope] = await db.select({ payload: messageOutboxTable.payload })
+    const [outboundEnvelope] = await hubDb.select({ payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, messageId));
     const outboundPayload = outboundEnvelope.payload as {

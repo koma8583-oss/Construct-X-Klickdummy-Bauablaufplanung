@@ -147,6 +147,12 @@ export async function retryProjectInvitationDelivery(messageId: string, agOrgId:
     throw new ProjectMembershipError("PROJECT_INVITATION_DELIVERY_NOT_FOUND", "Zustellung der Projekteinladung nicht gefunden.");
   }
   if (!["PENDING", "FAILED"].includes(outbox.status)) {
+    if (outbox.status === "SENT") {
+      throw new ProjectMembershipError(
+        "PROJECT_INVITATION_RETRY_RACE",
+        "Die Zustellung wird bereits von einem anderen Vorgang wiederholt.",
+      );
+    }
     throw new ProjectMembershipError("PROJECT_INVITATION_DELIVERY_NOT_RETRYABLE", `Die Zustellung kann nicht wiederholt werden (Status: ${outbox.status}).`);
   }
   if (outbox.attemptCount >= 5) {
@@ -154,26 +160,43 @@ export async function retryProjectInvitationDelivery(messageId: string, agOrgId:
   }
   const payload = outbox.payload as unknown as ExternalProjectInvitation | ExternalProjectInvitationResponse;
   const exchange = createDataspaceExchange();
-  // publish establishes the exchange adapter record if a process stopped
-  // immediately after the transactional outbox commit; retry then drains the
-  // persisted envelope without creating another business row.
-  const published = outbox.messageType === "PROJECT_INVITATION"
-    ? await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange)
-    : await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
-  const result = published.status === "DELIVERED"
-    ? published
-    : await exchange.retryProjectInvitation(messageId);
-  if (published.status !== "DELIVERED" && result.status === "DELIVERED") {
-    if (outbox.messageType === "PROJECT_INVITATION") {
-      await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange);
-    } else {
-      await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
+  try {
+    // publish establishes the exchange adapter record if a process stopped
+    // immediately after the transactional outbox commit; retry then drains the
+    // persisted envelope without creating another business row.
+    const published = outbox.messageType === "PROJECT_INVITATION"
+      ? await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange)
+      : await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
+    const result = published.status === "DELIVERED"
+      ? published
+      : await exchange.retryProjectInvitation(messageId);
+    if (published.status !== "DELIVERED" && result.status === "DELIVERED") {
+      if (outbox.messageType === "PROJECT_INVITATION") {
+        await deliverLocalProjectInvitation(payload as ExternalProjectInvitation, exchange);
+      } else {
+        await deliverLocalProjectInvitationResponse(payload as ExternalProjectInvitationResponse, exchange);
+      }
     }
+    if (result.status === "FAILED" && (result.attemptCount ?? 0) >= 5) {
+      throw new ProjectMembershipError("PROJECT_INVITATION_RETRY_EXHAUSTED", "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.");
+    }
+    return result;
+  } catch (error) {
+    // The transport claims FAILED → SENT atomically. A second operator click
+    // therefore loses the claim while the first request is still dispatching.
+    // Keep that expected race as a structured domain conflict for the HTTP
+    // boundary instead of exposing it as an unhandled adapter error.
+    if (
+      error instanceof Error &&
+      /cannot be retried — current status is (?:SENT|DELIVERED)/.test(error.message)
+    ) {
+      throw new ProjectMembershipError(
+        "PROJECT_INVITATION_RETRY_RACE",
+        "Die Zustellung wird bereits von einem anderen Vorgang wiederholt.",
+      );
+    }
+    throw error;
   }
-  if (result.status === "FAILED" && (result.attemptCount ?? 0) >= 5) {
-    throw new ProjectMembershipError("PROJECT_INVITATION_RETRY_EXHAUSTED", "Die Zustellung wurde nach fünf Versuchen aufgegeben. Bitte prüfen Sie den Dataspace-Connector.");
-  }
-  return result;
 }
 
 export async function listPendingProjectInvitations(anOrgId: string) {

@@ -26,7 +26,8 @@ function sendDomainError(res: Response, error: unknown) {
     : error.code.includes("NOT_ACTIVE") || error.code.includes("FORBIDDEN") ? 403
     : error.code.includes("VERIFIED") || error.code.includes("REACHABLE") ? 422
     : error.code.includes("ALREADY") || error.code.includes("CONFLICT") ? 409
-    : error.code.includes("NOT_RETRYABLE") || error.code.includes("EXHAUSTED") ? 409
+    : error.code.includes("NOT_RETRYABLE") || error.code.includes("EXHAUSTED") ||
+      error.code.includes("RETRY_RACE") ? 409
     : 400;
   res.status(status).json({ error: error.message, code: error.code });
 }
