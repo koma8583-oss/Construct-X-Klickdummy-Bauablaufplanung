@@ -454,6 +454,10 @@ export async function publishDataPublication(
       // projections. Standalone publications do not have the combined
       // invitation dispatcher, so the local transport needs the same inbound
       // package to create the AN-side offer and policy snapshot.
+      console.error("publication delivery branch", {
+        local: isLocalDataspaceTransport(),
+        projectId: pub.projectId,
+      });
       if (isLocalDataspaceTransport()) {
         const [project] = await db.select({
           id: projectsTable.id,
@@ -471,6 +475,7 @@ export async function publishDataPublication(
           eq(projectMembershipsTable.anOrgId, recipient.anOrgId),
           eq(projectMembershipsTable.status, "ACTIVE"),
         )).limit(1);
+        console.error("publication delivery project", { found: Boolean(project) });
         if (project) {
           const policySnapshot = {
             policyId: `publication-policy:${publicationId}`,
@@ -548,7 +553,8 @@ export async function publishDataPublication(
           }
         }
       }
-    } catch {
+    } catch (error) {
+      console.error("data publication local delivery failed", error);
       // Best-effort — delivery failure must not abort the publish
     }
   }
