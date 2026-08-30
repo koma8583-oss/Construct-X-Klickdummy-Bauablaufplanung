@@ -219,7 +219,7 @@ export const FIELD_LABELS: Record<string, string> = {
   projectDescription: "Projektbeschreibung",
   // Leistungsfelder (TAKT_INFORMATION_PACKAGE)
   kurzbezeichnung: "Leistungsbezeichnung",
-  workPackage: "Leistungsbezeichnung",
+  workPackage: "Arbeitspaket",
   trade: "Gewerk",
   plannedTimeWindow: "Geplantes Zeitfenster",
   bufferTimeWindow: "Puffer (Frühest / Spätest)",
