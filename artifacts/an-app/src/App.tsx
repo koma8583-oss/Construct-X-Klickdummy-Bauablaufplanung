@@ -87,6 +87,7 @@ function AuthRoutedApp() {
         <Route path="/data-offers" component={DataOffers} />
         <Route path="/data-room/policies/:code" component={PolicyLibrary} />
         <Route path="/data-room/policies" component={PolicyLibrary} />
+        <Route path="/data-room" component={PolicyLibrary} />
         <Route path="/project-invitations">
           <Redirect to="/leistungsanfragen" />
         </Route>

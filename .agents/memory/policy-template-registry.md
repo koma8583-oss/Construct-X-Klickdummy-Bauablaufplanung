@@ -14,3 +14,9 @@ The existing `SCHEDULE_COORDINATION` identity is retained for the stricter Rahme
 **Why:** Existing database rows and immutable policy snapshots refer to the stable policy code; replacing it would create an unnecessary migration boundary and could break historical Dataspace offers.
 
 **How to apply:** Treat the latest schedule-coordination registry version as the default for new publications, and preserve explicit older versions for already-created snapshots.
+
+The AG Datenraum displays the latest registry version for every policy code, while the publication wizard continues to use the narrower publication catalog.
+
+**Why:** The registry contains policies for multiple Dataspace flows; exposing all of them in the read-only library must not implicitly make them selectable for publication.
+
+**How to apply:** Use the full registry for informative policy listings and details; keep publication creation bound to `listPublicationPolicyTemplates()`.

@@ -280,8 +280,10 @@ describe("Transactional registration", () => {
   it("[11] AG registration → access token includes AG_ADMIN role", async () => {
     const res = await request(app)
       .post("/auth-service/register")
+      .set("X-TaktKoord-App", "AG")
       .send({ name: "T104 AG", email: emailAG, password: "test1234", orgType: "AG", companyName: "T104 Corp" });
     expect(res.status).toBe(201);
+    expect(res.headers["set-cookie"]?.some((cookie: string) => cookie.startsWith("tk_refresh_ag="))).toBe(true);
 
     const payload = jwt.decode(res.body.accessToken) as any;
     expect(payload.roles).toContain("AG_ADMIN");
@@ -291,8 +293,10 @@ describe("Transactional registration", () => {
   it("[12] AN registration → access token includes AN_ADMIN role", async () => {
     const res = await request(app)
       .post("/auth-service/register")
+      .set("X-TaktKoord-App", "AN")
       .send({ name: "T104 AN", email: emailAN, password: "test1234", orgType: "AN", companyName: "T104 Bau GmbH" });
     expect(res.status).toBe(201);
+    expect(res.headers["set-cookie"]?.some((cookie: string) => cookie.startsWith("tk_refresh_an="))).toBe(true);
 
     const payload = jwt.decode(res.body.accessToken) as any;
     expect(payload.roles).toContain("AN_ADMIN");
@@ -308,6 +312,23 @@ describe("Transactional registration", () => {
     // Confirm only one user with this email exists (no partial duplicate)
     const rows = await db.select().from(usersTable).where(eq(usersTable.email, emailAG));
     expect(rows.length).toBe(1);
+  });
+
+  it("[14] AG refresh cookie cannot be used by the AN app", async () => {
+    const login = await request(app)
+      .post("/auth-service/login")
+      .set("X-TaktKoord-App", "AG")
+      .send({ email: emailAG, password: "test1234" });
+    expect(login.status).toBe(200);
+
+    const agCookie = login.headers["set-cookie"]?.find((cookie: string) => cookie.startsWith("tk_refresh_ag="));
+    expect(agCookie).toBeDefined();
+
+    const crossAppRefresh = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "AN")
+      .set("Cookie", agCookie!.split(";")[0]);
+    expect(crossAppRefresh.status).toBe(401);
   });
 });
 

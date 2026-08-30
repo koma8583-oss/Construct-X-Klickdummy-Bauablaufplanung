@@ -37,7 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
     { href: "/local-projects", icon: FolderOpen, label: "Ressourcen" },
-    { href: "/data-room/policies", icon: Globe, label: "Datenraum" },
+    { href: "/data-room", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
   ];
 

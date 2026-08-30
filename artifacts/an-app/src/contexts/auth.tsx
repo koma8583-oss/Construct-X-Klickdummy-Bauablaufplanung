@@ -35,7 +35,9 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: 'include', ...init });
+  const headers = new Headers(init?.headers);
+  headers.set('X-TaktKoord-App', 'AN');
+  const res = await fetch(path, { credentials: 'include', ...init, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw Object.assign(

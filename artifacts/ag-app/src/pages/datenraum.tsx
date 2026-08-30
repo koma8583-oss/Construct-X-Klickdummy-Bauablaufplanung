@@ -25,9 +25,11 @@ import {
 } from "lucide-react";
 import {
   useGetAllAgDataPublications,
+  useGetPolicyTemplateRegistry,
   useDeleteDataPublication,
   useRetryDataPublicationDelivery,
   type AgDataPublication,
+  type PolicyTemplateRegistryEntry,
   type PublicationStatus,
   type PublicationRecipientStatus,
   type DataPublicationDeliveryStatus,
@@ -406,6 +408,11 @@ const STATUS_FILTER_LABELS: Record<PublicationStatus | "ALL", string> = {
 
 export default function DatenraumPage() {
   const { data: publications, isLoading, isError } = useGetAllAgDataPublications();
+  const {
+    data: policyRegistry,
+    isLoading: isPolicyRegistryLoading,
+    isError: isPolicyRegistryError,
+  } = useGetPolicyTemplateRegistry();
   const deletePublication = useDeleteDataPublication();
   const retryDataPublicationDelivery = useRetryDataPublicationDelivery();
   const { toast } = useToast();
@@ -421,6 +428,17 @@ export default function DatenraumPage() {
     () => deduplicateDataPublications(publications ?? []),
     [publications],
   );
+
+  const availablePolicies = useMemo(() => {
+    const latestByCode = new Map<string, PolicyTemplateRegistryEntry>();
+    for (const policy of policyRegistry ?? []) {
+      const current = latestByCode.get(policy.code);
+      if (!current || policy.version > current.version) {
+        latestByCode.set(policy.code, policy);
+      }
+    }
+    return Array.from(latestByCode.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }, [policyRegistry]);
 
   // Unique projects for filter
   const projects = useMemo(() => {
@@ -543,6 +561,69 @@ export default function DatenraumPage() {
           color="text-blue-600 bg-blue-500/10"
         />
       </div>
+
+      {/* Policy catalog */}
+      <section className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+              Verfügbare Policies
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Alle aktuell verfügbaren Nutzungsrichtlinien für Datenaustausch und Koordination.
+            </p>
+          </div>
+          <Link
+            href="/data-room/policies"
+            className="text-sm text-primary hover:underline whitespace-nowrap"
+          >
+            Details anzeigen
+          </Link>
+        </div>
+
+        {isPolicyRegistryLoading ? (
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            Policies werden geladen …
+          </div>
+        ) : isPolicyRegistryError ? (
+          <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-6 text-sm text-destructive">
+            <AlertTriangle className="w-4 h-4" />
+            Die verfügbaren Policies konnten nicht geladen werden.
+          </div>
+        ) : availablePolicies.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+            Aktuell sind keine Policies verfügbar.
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {availablePolicies.map((policy) => (
+              <Link
+                key={policy.code}
+                href={`/data-room/policies/${policy.code}`}
+                className="group rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/20"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <ShieldCheck className="w-5 h-5 shrink-0 text-primary" />
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                    v{policy.version}
+                  </span>
+                </div>
+                <h3 className="mt-3 font-semibold leading-snug group-hover:text-primary">{policy.name}</h3>
+                <p className="mt-1 text-xs font-medium text-muted-foreground">{policy.code}</p>
+                <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">{policy.description}</p>
+                <div className="mt-4 flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>{policy.permissions.length} Erlaubnisse</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{policy.prohibitions.length} Verbote</span>
+                  <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">

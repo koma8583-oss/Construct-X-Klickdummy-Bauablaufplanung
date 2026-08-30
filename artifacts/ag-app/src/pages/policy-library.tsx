@@ -1,6 +1,9 @@
 import { Link, useParams } from "wouter";
 import { ArrowLeft, ChevronRight, Globe, ShieldCheck } from "lucide-react";
-import { useGetPolicyTemplates } from "@workspace/api-client-react";
+import {
+  type PolicyTemplateRegistryEntry,
+  useGetPolicyTemplateRegistry,
+} from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -21,7 +24,7 @@ function buildPolicyOdrl(code: string): Record<string, unknown> {
   };
 }
 
-function PolicyDetails({ policy }: { policy: NonNullable<ReturnType<typeof useGetPolicyTemplates>["data"]>[number] }) {
+function PolicyDetails({ policy }: { policy: PolicyTemplateRegistryEntry }) {
   return (
     <div className="space-y-4">
       {policy.description && <p>{policy.description}</p>}
@@ -40,8 +43,15 @@ function PolicyDetails({ policy }: { policy: NonNullable<ReturnType<typeof useGe
 
 export default function PolicyLibraryPage() {
   const { code } = useParams<{ code?: string }>();
-  const { data: policies, isLoading, isError } = useGetPolicyTemplates();
-  const selected = policies?.find((policy) => policy.code === code);
+  const { data: policyRegistry, isLoading, isError } = useGetPolicyTemplateRegistry();
+  const policies = Array.from(
+    (policyRegistry ?? []).reduce((latest, policy) => {
+      const current = latest.get(policy.code);
+      if (!current || policy.version > current.version) latest.set(policy.code, policy);
+      return latest;
+    }, new Map<string, PolicyTemplateRegistryEntry>()).values(),
+  ).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const selected = policies.find((policy) => policy.code === code);
 
   if (code) {
     return (
@@ -57,11 +67,11 @@ export default function PolicyLibraryPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div><h1 className="flex items-center gap-2 text-2xl font-bold"><Globe className="h-6 w-6 text-primary" />Datenraum</h1><p className="mt-1 text-sm text-muted-foreground">Übersicht der verfügbaren Nutzungsrichtlinien. Diese Ansicht ist rein informativ.</p></div>
+      <div><h1 className="flex items-center gap-2 text-2xl font-bold"><Globe className="h-6 w-6 text-primary" />Verfügbare Policies</h1><p className="mt-1 text-sm text-muted-foreground">Übersicht der verfügbaren Nutzungsrichtlinien. Diese Ansicht ist rein informativ.</p></div>
       {isLoading && <p className="text-muted-foreground">Policies werden geladen…</p>}
       {isError && <p className="text-destructive">Policies konnten nicht geladen werden.</p>}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {policies?.map((policy) => <Link key={policy.id} href={`/data-room/policies/${policy.code}`}><Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/20"><CardHeader><CardTitle className="flex items-start justify-between gap-2 text-base"><span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" />{policy.name}</span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /></CardTitle><p className="text-xs text-muted-foreground">{policy.code}</p></CardHeader><CardContent><p className="line-clamp-3 text-sm text-muted-foreground">{policy.description ?? policy.purpose}</p><div className="mt-4 flex flex-wrap gap-1"><Badge variant="outline">{policy.permissions.length} Erlaubnisse</Badge><Badge variant="outline">{policy.prohibitions.length} Verbote</Badge></div></CardContent></Card></Link>)}
+        {policies.map((policy) => <Link key={policy.templateId} href={`/data-room/policies/${policy.code}`}><Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/20"><CardHeader><CardTitle className="flex items-start justify-between gap-2 text-base"><span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" />{policy.name}</span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /></CardTitle><p className="text-xs text-muted-foreground">{policy.code}</p></CardHeader><CardContent><p className="line-clamp-3 text-sm text-muted-foreground">{policy.description || policy.purpose}</p><div className="mt-4 flex flex-wrap gap-1"><Badge variant="outline">{policy.permissions.length} Erlaubnisse</Badge><Badge variant="outline">{policy.prohibitions.length} Verbote</Badge></div></CardContent></Card></Link>)}
       </div>
     </div>
   );

@@ -28,7 +28,11 @@ const router = Router();
 const JWT_SECRET =
   process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const ACCESS_TOKEN_EXPIRY = "15m";
-const REFRESH_COOKIE_NAME = "tk_refresh";
+const LEGACY_REFRESH_COOKIE_NAME = "tk_refresh";
+const REFRESH_COOKIE_NAMES = {
+  AG: "tk_refresh_ag",
+  AN: "tk_refresh_an",
+} as const;
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const REFRESH_TOKEN_EXPIRY_MS =
   REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
@@ -66,14 +70,32 @@ async function createRefreshToken(userId: string): Promise<string> {
   return token;
 }
 
-function setRefreshCookie(res: any, token: string): void {
-  res.cookie(REFRESH_COOKIE_NAME, token, {
+function getRefreshCookieName(req: { headers: Record<string, string | string[] | undefined> }): string {
+  const header = req.headers["x-taktkoord-app"];
+  const app = Array.isArray(header) ? header[0] : header;
+  if (app === "AG" || app === "AN") return REFRESH_COOKIE_NAMES[app];
+  return LEGACY_REFRESH_COOKIE_NAME;
+}
+
+function clearRefreshCookies(res: any, cookieName: string): void {
+  res.clearCookie(cookieName, { path: "/" });
+  if (cookieName !== LEGACY_REFRESH_COOKIE_NAME) {
+    // Remove the old shared cookie after an app has migrated to an isolated session.
+    res.clearCookie(LEGACY_REFRESH_COOKIE_NAME, { path: "/" });
+  }
+}
+
+function setRefreshCookie(res: any, token: string, cookieName: string): void {
+  res.cookie(cookieName, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict" as const,
     maxAge: REFRESH_TOKEN_EXPIRY_MS,
     path: "/",
   });
+  if (cookieName !== LEGACY_REFRESH_COOKIE_NAME) {
+    res.clearCookie(LEGACY_REFRESH_COOKIE_NAME, { path: "/" });
+  }
 }
 
 async function buildUserProfile(userId: string): Promise<UserProfile | null> {
@@ -219,7 +241,7 @@ router.post("/register", async (req, res): Promise<void> => {
 
   const accessToken = signAccessToken(tokenPayload);
   const refreshToken = await createRefreshToken(user.id);
-  setRefreshCookie(res, refreshToken);
+  setRefreshCookie(res, refreshToken, getRefreshCookieName(req));
 
   const profile: UserProfile = {
     id: user.id,
@@ -289,16 +311,18 @@ router.post("/login", async (req, res): Promise<void> => {
 
   const accessToken = signAccessToken(tokenPayload);
   const refreshToken = await createRefreshToken(user.id);
-  setRefreshCookie(res, refreshToken);
+  setRefreshCookie(res, refreshToken, getRefreshCookieName(req));
 
   res.json({ accessToken, user: profile });
 });
 
 // ── POST /auth-service/refresh ───────────────────────────────────────────────
 router.post("/refresh", async (req, res): Promise<void> => {
-  const oldToken = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
+  const cookieName = getRefreshCookieName(req);
+  const oldToken = req.cookies?.[cookieName] as string | undefined;
 
   if (!oldToken) {
+    clearRefreshCookies(res, cookieName);
     res.status(401).json({ error: "No refresh token" });
     return;
   }
@@ -310,14 +334,14 @@ router.post("/refresh", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!row || row.expiresAt < new Date()) {
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: "/" });
+    clearRefreshCookies(res, cookieName);
     res.status(401).json({ error: "Refresh token expired or invalid" });
     return;
   }
 
   const profile = await buildUserProfile(row.userId);
   if (!profile) {
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: "/" });
+    clearRefreshCookies(res, cookieName);
     res.status(401).json({ error: "User not found" });
     return;
   }
@@ -327,7 +351,7 @@ router.post("/refresh", async (req, res): Promise<void> => {
     .delete(refreshTokensTable)
     .where(eq(refreshTokensTable.token, oldToken));
   const newRefreshToken = await createRefreshToken(row.userId);
-  setRefreshCookie(res, newRefreshToken);
+  setRefreshCookie(res, newRefreshToken, cookieName);
 
   const tokenPayload: TokenPayload = {
     userId: profile.id,
@@ -344,7 +368,8 @@ router.post("/refresh", async (req, res): Promise<void> => {
 
 // ── POST /auth-service/logout ────────────────────────────────────────────────
 router.post("/logout", async (req, res): Promise<void> => {
-  const token = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
+  const cookieName = getRefreshCookieName(req);
+  const token = req.cookies?.[cookieName] as string | undefined;
 
   if (token) {
     await db
@@ -355,7 +380,7 @@ router.post("/logout", async (req, res): Promise<void> => {
       });
   }
 
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: "/" });
+  clearRefreshCookies(res, cookieName);
   res.json({ ok: true });
 });
 
