@@ -64,6 +64,17 @@ function makeToken(orgId: string | null, orgType: "AG" | "AN" | null, roles: str
   return jwt.sign({ userId: USER_ID, orgId, orgType, hubAdmin, roles }, JWT_SECRET, { expiresIn: "1h" });
 }
 
+function findSetCookie(headers: unknown, prefix: string): string | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const raw = (headers as Record<string, unknown>)["set-cookie"];
+  const cookies = Array.isArray(raw)
+    ? raw.filter((cookie): cookie is string => typeof cookie === "string")
+    : typeof raw === "string"
+      ? [raw]
+      : [];
+  return cookies.find((cookie) => cookie.startsWith(prefix));
+}
+
 const nuAToken      = makeToken(NU_ORG_A, "AN", ["AN_ADMIN"]);
 const nuBToken      = makeToken(NU_ORG_B, "AN", ["AN_ADMIN"]);
 const nuNoRoleToken = makeToken(NU_ORG_A, "AN", []);
@@ -283,7 +294,7 @@ describe("Transactional registration", () => {
       .set("X-TaktKoord-App", "AG")
       .send({ name: "T104 AG", email: emailAG, password: "test1234", orgType: "AG", companyName: "T104 Corp" });
     expect(res.status).toBe(201);
-    expect(res.headers["set-cookie"]?.some((cookie: string) => cookie.startsWith("tk_refresh_ag="))).toBe(true);
+    expect(findSetCookie(res.headers, "tk_refresh_ag=")).toBeDefined();
 
     const payload = jwt.decode(res.body.accessToken) as any;
     expect(payload.roles).toContain("AG_ADMIN");
@@ -296,7 +307,7 @@ describe("Transactional registration", () => {
       .set("X-TaktKoord-App", "AN")
       .send({ name: "T104 AN", email: emailAN, password: "test1234", orgType: "AN", companyName: "T104 Bau GmbH" });
     expect(res.status).toBe(201);
-    expect(res.headers["set-cookie"]?.some((cookie: string) => cookie.startsWith("tk_refresh_an="))).toBe(true);
+    expect(findSetCookie(res.headers, "tk_refresh_an=")).toBeDefined();
 
     const payload = jwt.decode(res.body.accessToken) as any;
     expect(payload.roles).toContain("AN_ADMIN");
@@ -321,7 +332,7 @@ describe("Transactional registration", () => {
       .send({ email: emailAG, password: "test1234" });
     expect(login.status).toBe(200);
 
-    const agCookie = login.headers["set-cookie"]?.find((cookie: string) => cookie.startsWith("tk_refresh_ag="));
+    const agCookie = findSetCookie(login.headers, "tk_refresh_ag=");
     expect(agCookie).toBeDefined();
 
     const crossAppRefresh = await request(app)
@@ -329,6 +340,89 @@ describe("Transactional registration", () => {
       .set("X-TaktKoord-App", "AN")
       .set("Cookie", agCookie!.split(";")[0]);
     expect(crossAppRefresh.status).toBe(401);
+  });
+
+  it("[15] AG and AN sessions refresh and logout independently", async () => {
+    const agLogin = await request(app)
+      .post("/auth-service/login")
+      .set("X-TaktKoord-App", "AG")
+      .send({ email: emailAG, password: "test1234" });
+    const anLogin = await request(app)
+      .post("/auth-service/login")
+      .set("X-TaktKoord-App", "AN")
+      .send({ email: emailAN, password: "test1234" });
+
+    expect(agLogin.status).toBe(200);
+    expect(anLogin.status).toBe(200);
+
+    const agCookie = findSetCookie(agLogin.headers, "tk_refresh_ag=");
+    const anCookie = findSetCookie(anLogin.headers, "tk_refresh_an=");
+    expect(agCookie).toBeDefined();
+    expect(anCookie).toBeDefined();
+
+    const foreignForAg = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "AG")
+      .set("Cookie", anCookie!.split(";")[0]);
+    const foreignForAn = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "AN")
+      .set("Cookie", agCookie!.split(";")[0]);
+    expect(foreignForAg.status).toBe(401);
+    expect(foreignForAn.status).toBe(401);
+
+    const [agRefresh, anRefresh] = await Promise.all([
+      request(app)
+        .post("/auth-service/refresh")
+        .set("X-TaktKoord-App", "AG")
+        .set("Cookie", agCookie!.split(";")[0]),
+      request(app)
+        .post("/auth-service/refresh")
+        .set("X-TaktKoord-App", "AN")
+        .set("Cookie", anCookie!.split(";")[0]),
+    ]);
+
+    expect(agRefresh.status).toBe(200);
+    expect(agRefresh.body.user.orgType).toBe("AG");
+    expect(anRefresh.status).toBe(200);
+    expect(anRefresh.body.user.orgType).toBe("AN");
+
+    const anPolicies = await request(app)
+      .get("/api/an/policies")
+      .set("Authorization", `Bearer ${anRefresh.body.accessToken}`);
+    expect(anPolicies.status).toBe(200);
+    expect(anPolicies.body).toEqual([]);
+
+    const refreshedAgCookie = findSetCookie(agRefresh.headers, "tk_refresh_ag=");
+    const refreshedAnCookie = findSetCookie(anRefresh.headers, "tk_refresh_an=");
+    expect(refreshedAgCookie).toBeDefined();
+    expect(refreshedAnCookie).toBeDefined();
+
+    const anLogout = await request(app)
+      .post("/auth-service/logout")
+      .set("X-TaktKoord-App", "AN")
+      .set("Cookie", refreshedAnCookie!.split(";")[0]);
+    expect(anLogout.status).toBe(200);
+
+    const agAfterAnLogout = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "AG")
+      .set("Cookie", refreshedAgCookie!.split(";")[0]);
+    const anAfterLogout = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "AN")
+      .set("Cookie", refreshedAnCookie!.split(";")[0]);
+    expect(agAfterAnLogout.status).toBe(200);
+    expect(agAfterAnLogout.body.user.orgType).toBe("AG");
+    expect(anAfterLogout.status).toBe(401);
+
+    const finalAgCookie = findSetCookie(agAfterAnLogout.headers, "tk_refresh_ag=");
+    expect(finalAgCookie).toBeDefined();
+    const agLogout = await request(app)
+      .post("/auth-service/logout")
+      .set("X-TaktKoord-App", "AG")
+      .set("Cookie", finalAgCookie!.split(";")[0]);
+    expect(agLogout.status).toBe(200);
   });
 });
 
