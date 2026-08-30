@@ -282,19 +282,72 @@ export async function processIncomingProjectInvitationResponse(payload: External
       throw new Error("Inbound data-offer response references an unknown publication recipient");
     }
     const nextStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" : "REJECTED";
-    if (recipient.status === nextStatus) return;
-    if (recipient.status !== "OFFERED") {
+    const [membership] = recipient.projectMembershipId
+      ? await agDb.select().from(projectMembershipsTable).where(and(
+        eq(projectMembershipsTable.id, recipient.projectMembershipId),
+        eq(projectMembershipsTable.projectId, payload.projectReference),
+        eq(projectMembershipsTable.agOrgId, payload.metadata.receiverOrgId),
+        eq(projectMembershipsTable.anOrgId, payload.metadata.senderOrgId),
+        eq(projectMembershipsTable.dataPublicationId, payload.dataPublicationId),
+        eq(projectMembershipsTable.invitationId, payload.invitationId),
+        eq(projectMembershipsTable.correlationId, payload.metadata.correlationId),
+      )).limit(1)
+      : [];
+    if (recipient.projectMembershipId && !membership) {
+      throw new Error("Inbound data-offer response references an unknown project membership");
+    }
+
+    const nextMembershipStatus = payload.decision === "ACCEPTED" ? "ACTIVE" : "REJECTED";
+    if (
+      recipient.status !== nextStatus &&
+      recipient.status !== "OFFERED"
+    ) {
       throw new Error("Inbound data-offer response conflicts with the current recipient status");
     }
+    if (
+      membership &&
+      membership.status !== nextMembershipStatus &&
+      membership.status !== "INVITED"
+    ) {
+      throw new Error("Inbound data-offer response conflicts with the current project membership status");
+    }
+    if (
+      recipient.status === nextStatus &&
+      (!membership || membership.status === nextMembershipStatus)
+    ) return;
+
     const respondedAt = new Date(payload.respondedAt);
-    await agDb.update(dataPublicationRecipientsTable).set(
-      nextStatus === "ACCEPTED"
-        ? { status: "ACCEPTED", policyAcceptedAt: respondedAt, updatedAt: new Date() }
-        : { status: "REJECTED", policyRejectedAt: respondedAt, updatedAt: new Date() },
-    ).where(and(
-      eq(dataPublicationRecipientsTable.id, recipient.id),
-      eq(dataPublicationRecipientsTable.status, "OFFERED"),
-    ));
+    await agDb.transaction(async (tx) => {
+      if (membership && membership.status !== nextMembershipStatus) {
+        const [updatedMembership] = await tx.update(projectMembershipsTable).set({
+          status: nextMembershipStatus,
+          respondedAt,
+          acceptedAt: nextMembershipStatus === "ACTIVE" ? respondedAt : null,
+          rejectedAt: nextMembershipStatus === "REJECTED" ? respondedAt : null,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(projectMembershipsTable.id, membership.id),
+          eq(projectMembershipsTable.status, "INVITED"),
+        )).returning();
+        if (!updatedMembership) {
+          throw new Error("Inbound data-offer response conflicts with the current project membership status");
+        }
+      }
+
+      if (recipient.status !== nextStatus) {
+        const [updatedRecipient] = await tx.update(dataPublicationRecipientsTable).set(
+          nextStatus === "ACCEPTED"
+            ? { status: "ACCEPTED", policyAcceptedAt: respondedAt, updatedAt: new Date() }
+            : { status: "REJECTED", policyRejectedAt: respondedAt, updatedAt: new Date() },
+        ).where(and(
+          eq(dataPublicationRecipientsTable.id, recipient.id),
+          eq(dataPublicationRecipientsTable.status, "OFFERED"),
+        )).returning();
+        if (!updatedRecipient) {
+          throw new Error("Inbound data-offer response conflicts with the current recipient status");
+        }
+      }
+    });
     return;
   }
 

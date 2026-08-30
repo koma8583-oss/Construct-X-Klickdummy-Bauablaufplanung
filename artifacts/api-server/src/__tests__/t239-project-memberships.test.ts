@@ -661,6 +661,25 @@ describe("membership gates and legacy compatibility", () => {
     expect(outboundPayload.dataOffer.policy?.templateVersion).toBe(outboundPayload.policySnapshot.templateVersion);
     expect(outboundPayload.dataOffer.policy?.code).toBe(outboundPayload.policySnapshot.code);
 
+    const acceptedOffer = await request(app)
+      .post(`/api/an/data-offers/${response.body.publicationId}/accept`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(acceptedOffer.status).toBe(200);
+    expect(acceptedOffer.body.status).toBe("ACCEPTED");
+
+    const [acceptedMembership] = await db.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, response.body.memberships[0].id));
+    expect(acceptedMembership.status).toBe("ACTIVE");
+    expect(acceptedMembership.acceptedAt).toBeInstanceOf(Date);
+
+    const [acceptedRecipient] = await db.select().from(dataPublicationRecipientsTable)
+      .where(and(
+        eq(dataPublicationRecipientsTable.publicationId, response.body.publicationId),
+        eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
+      ));
+    expect(acceptedRecipient.status).toBe("ACCEPTED");
+    expect(acceptedRecipient.policyAcceptedAt).toBeInstanceOf(Date);
+
     const idempotent = await request(app)
       .post(`/api/projects/${REINVITE_PROJECT_ID}/invitation-packages`)
       .set("Authorization", `Bearer ${agToken}`)
