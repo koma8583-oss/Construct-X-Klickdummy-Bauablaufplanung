@@ -690,6 +690,92 @@ describe("membership gates and legacy compatibility", () => {
     expect(conflictingVersion.body.code).toBe("PROJECT_INVITATION_IDEMPOTENCY_CONFLICT");
   });
 
+  it("repairs a failed invitation when the coupled data offer is already delivered", async () => {
+    const [policy] = await db.select({ id: policyTemplatesTable.id })
+      .from(policyTemplatesTable)
+      .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+      .limit(1);
+
+    const created = await request(app)
+      .post(`/api/projects/${BACKFILL_PROJECT_ID}/invitation-packages`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: policy.id,
+        policyTemplateVersion: 1,
+        selectedFields: ["projectName"],
+        title: "Task 239 coupled retry",
+        idempotencyKey: `${PREFIX}-coupled-retry-package`,
+      });
+    expect(created.status).toBe(201);
+
+    const publicationId = created.body.publicationId as string;
+    const membershipId = created.body.memberships[0].id as string;
+    const invitationId = created.body.memberships[0].invitationId as string;
+    const invitationMessageId = `project-invitation-${invitationId}`;
+    const offerMessageId = `dataspace-offer-${publicationId}-${AN_ID}`;
+
+    await anDb.delete(anProjectInvitationsTable).where(
+      eq(anProjectInvitationsTable.invitationId, invitationId),
+    );
+    await hubDb.delete(messageInboxTable).where(
+      eq(messageInboxTable.messageId, invitationMessageId),
+    );
+    await hubDb.delete(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.direction, "INBOUND"),
+      eq(dataspaceExchangesTable.messageId, invitationMessageId),
+    ));
+    await hubDb.update(dataspaceExchangesTable).set({
+      status: "FAILED",
+      errorCode: "TRANSPORT_FAILURE",
+    }).where(and(
+      eq(dataspaceExchangesTable.direction, "OUTBOUND"),
+      eq(dataspaceExchangesTable.messageId, invitationMessageId),
+    ));
+    await hubDb.update(messageOutboxTable).set({
+      status: "FAILED",
+      failureReason: "initial invitation delivery failure",
+      attemptCount: 1,
+      lastAttemptAt: new Date(),
+    }).where(eq(messageOutboxTable.messageId, invitationMessageId));
+
+    const [recipient] = await db.select().from(dataPublicationRecipientsTable).where(and(
+      eq(dataPublicationRecipientsTable.publicationId, publicationId),
+      eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
+    ));
+    expect(recipient.projectMembershipId).toBe(membershipId);
+    const [offer] = await hubDb.select().from(messageOutboxTable).where(
+      eq(messageOutboxTable.messageId, offerMessageId),
+    );
+    expect(offer.status).toBe("DELIVERED");
+
+    const retried = await request(app)
+      .post(`/api/data-publications/${publicationId}/recipients/${AN_ID}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(retried.status).toBe(200);
+    expect(retried.body.status).toBe("DELIVERED");
+
+    const [invitationOutbox] = await hubDb.select().from(messageOutboxTable).where(
+      eq(messageOutboxTable.messageId, invitationMessageId),
+    );
+    expect(invitationOutbox.status).toBe("DELIVERED");
+
+    const [anInvitation] = await anDb.select().from(anProjectInvitationsTable).where(
+      eq(anProjectInvitationsTable.invitationId, invitationId),
+    );
+    expect(anInvitation).toMatchObject({
+      invitationId,
+      projectReference: BACKFILL_PROJECT_ID,
+      status: "PENDING",
+    });
+
+    const memberships = await db.select().from(projectMembershipsTable).where(
+      eq(projectMembershipsTable.dataPublicationId, publicationId),
+    );
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0].id).toBe(membershipId);
+  });
+
   it("blocks request creation for an invited AN and for an ACTIVE legacy contractor without membership", async () => {
     // The first invitation is now ACTIVE from the prior test, so use a fresh AN.
     await db.insert(projectContractorsTable).values({

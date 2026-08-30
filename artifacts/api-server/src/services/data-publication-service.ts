@@ -128,6 +128,74 @@ export async function getDataPublicationDeliveries(
   );
 }
 
+async function reconcileLinkedProjectInvitation(
+  publicationId: string,
+  anOrgId: string,
+  agOrgId: string,
+  projectMembershipId: string,
+): Promise<void> {
+  const [membership] = await db
+    .select({
+      invitationId: projectMembershipsTable.invitationId,
+    })
+    .from(projectMembershipsTable)
+    .where(and(
+      eq(projectMembershipsTable.id, projectMembershipId),
+      eq(projectMembershipsTable.dataPublicationId, publicationId),
+      eq(projectMembershipsTable.anOrgId, anOrgId),
+    ))
+    .limit(1);
+  if (!membership) {
+    throw new PublicationDeliveryError(
+      "PROJECT_INVITATION_DELIVERY_NOT_FOUND",
+      "Die gekoppelte Projekteinladung wurde nicht gefunden.",
+    );
+  }
+
+  const messageId = `project-invitation-${membership.invitationId}`;
+  const [invitationOutbox] = await hubDb
+    .select()
+    .from(messageOutboxTable)
+    .where(and(
+      eq(messageOutboxTable.messageId, messageId),
+      eq(messageOutboxTable.senderOrgId, agOrgId),
+      eq(messageOutboxTable.recipientOrgId, anOrgId),
+      eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
+    ))
+    .limit(1);
+  if (!invitationOutbox) {
+    throw new PublicationDeliveryError(
+      "PROJECT_INVITATION_DELIVERY_NOT_FOUND",
+      "Für den adressierten AN wurde keine Projekteinladung zugestellt.",
+    );
+  }
+
+  const payload = invitationOutbox.payload as unknown as ExternalProjectInvitation;
+  const exchange = createDataspaceExchange();
+  let delivery = await deliverLocalProjectInvitation(payload, exchange);
+  const [currentInvitationOutbox] = await hubDb
+    .select({ status: messageOutboxTable.status })
+    .from(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, messageId))
+    .limit(1);
+  if (
+    delivery.status === "PENDING" ||
+    delivery.status === "FAILED" ||
+    currentInvitationOutbox?.status !== "DELIVERED"
+  ) {
+    delivery = await exchange.retryProjectInvitation(messageId);
+    if (delivery.status === "DELIVERED") {
+      await deliverLocalProjectInvitation(payload, exchange);
+    }
+  }
+  if (delivery.status !== "DELIVERED") {
+    throw new PublicationDeliveryError(
+      "PROJECT_INVITATION_DELIVERY_FAILED",
+      delivery.error?.message ?? "Die gekoppelte Projekteinladung konnte nicht zugestellt werden.",
+    );
+  }
+}
+
 export async function retryDataPublicationDelivery(
   publicationId: string,
   anOrgId: string,
@@ -156,7 +224,10 @@ export async function retryDataPublicationDelivery(
   }
 
   const [recipient] = await db
-    .select({ id: dataPublicationRecipientsTable.id })
+    .select({
+      id: dataPublicationRecipientsTable.id,
+      projectMembershipId: dataPublicationRecipientsTable.projectMembershipId,
+    })
     .from(dataPublicationRecipientsTable)
     .where(and(
       eq(dataPublicationRecipientsTable.publicationId, publicationId),
@@ -187,7 +258,40 @@ export async function retryDataPublicationDelivery(
       "Für diesen Empfänger wurde keine Datenangebot-Zustellung gefunden.",
     );
   }
-  if (outbox.status !== "FAILED") {
+  const [linkedMembership] = recipient.projectMembershipId
+    ? await db
+      .select({ invitationId: projectMembershipsTable.invitationId })
+      .from(projectMembershipsTable)
+      .where(and(
+        eq(projectMembershipsTable.id, recipient.projectMembershipId),
+        eq(projectMembershipsTable.dataPublicationId, publicationId),
+        eq(projectMembershipsTable.anOrgId, anOrgId),
+      ))
+      .limit(1)
+    : [];
+  const [linkedInvitationOutbox] = linkedMembership
+    ? await hubDb
+      .select()
+      .from(messageOutboxTable)
+      .where(and(
+        eq(
+          messageOutboxTable.messageId,
+          `project-invitation-${linkedMembership.invitationId}`,
+        ),
+        eq(messageOutboxTable.senderOrgId, agOrgId),
+        eq(messageOutboxTable.recipientOrgId, anOrgId),
+        eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
+      ))
+      .limit(1)
+    : [];
+  const invitationNeedsRecovery = Boolean(
+    linkedInvitationOutbox &&
+    ["PENDING", "FAILED"].includes(linkedInvitationOutbox.status),
+  );
+  const canRecoverInvitationAfterOfferDelivery =
+    outbox.status === "DELIVERED" && invitationNeedsRecovery;
+
+  if (outbox.status !== "FAILED" && !canRecoverInvitationAfterOfferDelivery) {
     throw new PublicationDeliveryError(
       outbox.status === "SENT"
         ? "PUBLICATION_DELIVERY_RETRY_RACE"
@@ -206,19 +310,30 @@ export async function retryDataPublicationDelivery(
 
   const exchange = createDataspaceExchange();
   let result;
-  try {
-    result = await exchange.retryDataOffer(messageId);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      /cannot be retried — current status is (?:SENT|DELIVERED)/.test(error.message)
-    ) {
-      throw new PublicationDeliveryError(
-        "PUBLICATION_DELIVERY_RETRY_RACE",
-        "Die Zustellung wird bereits von einem anderen Vorgang wiederholt.",
-      );
+  if (outbox.status === "FAILED") {
+    try {
+      result = await exchange.retryDataOffer(messageId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /cannot be retried — current status is (?:SENT|DELIVERED)/.test(error.message)
+      ) {
+        throw new PublicationDeliveryError(
+          "PUBLICATION_DELIVERY_RETRY_RACE",
+          "Die Zustellung wird bereits von einem anderen Vorgang wiederholt.",
+        );
+      }
+      throw error;
     }
-    throw error;
+  } else {
+    result = {
+      exchangeId: outbox.messageId,
+      externalReference: outbox.messageId,
+      status: outbox.status,
+      sentAt: outbox.sentAt,
+      deliveredAt: outbox.deliveredAt,
+      attemptCount: outbox.attemptCount,
+    };
   }
 
   if (result.status === "DELIVERED") {
@@ -226,6 +341,24 @@ export async function retryDataPublicationDelivery(
       .update(dataPublicationRecipientsTable)
       .set({ notifiedAt: new Date() })
       .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+    if (recipient.projectMembershipId) {
+      if (
+        linkedInvitationOutbox &&
+        linkedInvitationOutbox.status === "FAILED" &&
+        linkedInvitationOutbox.attemptCount >= MAX_PUBLICATION_DELIVERY_ATTEMPTS
+      ) {
+        throw new PublicationDeliveryError(
+          "PROJECT_INVITATION_RETRY_EXHAUSTED",
+          "Die gekoppelte Projekteinladung wurde nach fünf Versuchen aufgegeben.",
+        );
+      }
+      await reconcileLinkedProjectInvitation(
+        publicationId,
+        anOrgId,
+        agOrgId,
+        recipient.projectMembershipId,
+      );
+    }
   }
   return result;
 }
