@@ -110,7 +110,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     renderInbox();
 
     expect(await screen.findByText("Leistungsanfrage")).toBeInTheDocument();
-    expect(screen.getByText("Keine")).toBeInTheDocument();
+    expect(screen.getByText("Noch keine")).toBeInTheDocument();
   });
 
   it("applies service-request filters without treating invitations as service requests", async () => {
