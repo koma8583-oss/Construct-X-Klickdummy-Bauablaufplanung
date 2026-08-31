@@ -752,9 +752,13 @@ export default function ProjectDetail() {
       .sort((a, b) => b.version - a.version),
     [policyRegistry],
   );
-  const selectedSchedulePolicy = schedulePolicies[0];
+  const selectedSchedulePolicy = useMemo(
+    () => schedulePolicies.find((policy) => policy.version === createAssignmentPolicyVersion)
+      ?? schedulePolicies[0],
+    [createAssignmentPolicyVersion, schedulePolicies],
+  );
   useEffect(() => {
-    if (selectedSchedulePolicy && createAssignmentPolicyVersion === undefined) {
+    if (selectedSchedulePolicy && createAssignmentPolicyVersion !== selectedSchedulePolicy.version) {
       setCreateAssignmentPolicyVersion(selectedSchedulePolicy.version);
     }
   }, [createAssignmentPolicyVersion, selectedSchedulePolicy]);
@@ -2339,7 +2343,7 @@ export default function ProjectDetail() {
                       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                      const anName = anAssignments[0]?.anName
                        ?? allAnOrgs?.find(candidate => candidate.id === anOrgId)?.name
-                       ?? anOrgId;
+                       ?? 'Unbekanntes Nachunternehmen';
                      const membership = memberships?.find(
                        candidate => candidate.anOrgId === anOrgId && candidate.status === 'ACTIVE',
                      );
@@ -3746,7 +3750,7 @@ export default function ProjectDetail() {
                     .filter((membership) => membership.status === 'ACTIVE')
                     .map((membership) => (
                       <SelectItem key={membership.anOrgId} value={membership.anOrgId}>
-                        {allAnOrgs?.find((organization) => organization.id === membership.anOrgId)?.name ?? membership.anOrgId}
+                        {allAnOrgs?.find((organization) => organization.id === membership.anOrgId)?.name ?? 'Unbekanntes Nachunternehmen'}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -3765,12 +3769,24 @@ export default function ProjectDetail() {
                 <Input value={createAssignmentWorkPackage} onChange={(event) => setCreateAssignmentWorkPackage(event.target.value)} placeholder="z. B. WP-01" />
               </div>
             </div>
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="font-medium">Rahmentermin-Policy</p>
-              <p className="text-muted-foreground">
-                {selectedSchedulePolicy?.name ?? 'SCHEDULE_COORDINATION'}
-                {selectedSchedulePolicy ? ` · v${selectedSchedulePolicy.version}` : ''}
-              </p>
+             <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm">
+               <Label>Policy für Leistungs- und Rahmenterminabstimmung</Label>
+               <Select
+                 value={selectedSchedulePolicy ? String(selectedSchedulePolicy.version) : ''}
+                 onValueChange={(value) => setCreateAssignmentPolicyVersion(Number(value))}
+                 disabled={schedulePolicies.length === 0}
+               >
+                 <SelectTrigger>
+                   <SelectValue placeholder="Rahmentermin-Policy auswählen" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   {schedulePolicies.map((policy) => (
+                     <SelectItem key={`${policy.code}-${policy.version}`} value={String(policy.version)}>
+                       {policy.name} · v{policy.version}
+                     </SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
               <p className="mt-1 text-xs text-muted-foreground">
                 Diese Policy wird ausschließlich für die konkrete Leistungs- und Rahmenterminabstimmung gespeichert.
               </p>
