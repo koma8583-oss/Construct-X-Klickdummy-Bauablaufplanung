@@ -106,6 +106,10 @@ export interface DataPublication {
   policyTemplateId: string;
   policyCode?: string | null;
   policyName?: string | null;
+  /** Code-owned registry identity of the policy used by this publication. */
+  policyRegistryTemplateId?: string | null;
+  /** Immutable code-owned registry version of the policy used by this publication. */
+  policyTemplateVersion?: number | null;
   selectedFields: string[];
   selectedTaktIds?: string[] | null;
   contentHash?: string | null;

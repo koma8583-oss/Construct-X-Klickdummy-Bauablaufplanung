@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Calendar, Clock, MapPin, Pencil, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link, useParams } from 'wouter';
@@ -24,6 +24,7 @@ import { DatePicker } from '@/components/date-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { buildAssignablePartners } from '@/lib/vergabe';
+import { LeistungVergabeDialog, type LeistungVergabeSubmitValues } from '@/components/LeistungVergabeDialog';
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -42,14 +43,22 @@ export default function TaktDetail() {
   const { data: taktRequests } = useListTaktRequests(undefined, {
     query: { enabled: !!projectId, queryKey: getListTaktRequestsQueryKey() },
   });
-  const { data: assignments } = useListProjectSubcontractors(projectId, {
+  const { data: assignments, isLoading: assignmentsLoading, isError: assignmentsError } = useListProjectSubcontractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
-  const { data: memberships } = useListProjectMemberships(projectId, {
+  const { data: memberships, isLoading: membershipsLoading, isError: membershipsError } = useListProjectMemberships(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
-  const { data: publications } = useGetProjectDataPublications(projectId);
-  const { data: dataspaceParticipants } = useQuery({
+  const {
+    data: publications,
+    isLoading: publicationsLoading,
+    isError: publicationsError,
+  } = useGetProjectDataPublications(projectId);
+  const {
+    data: dataspaceParticipants,
+    isLoading: participantsLoading,
+    isError: participantsError,
+  } = useQuery({
     queryKey: ['takt-detail-dataspace-participants', projectId],
     enabled: !!projectId,
     queryFn: async () => {
@@ -64,7 +73,11 @@ export default function TaktDetail() {
       }>>;
     },
   });
-  const { data: policyRegistry } = useGetPolicyTemplateRegistry();
+  const {
+    data: policyRegistry,
+    isLoading: policiesLoading,
+    isError: policiesError,
+  } = useGetPolicyTemplateRegistry();
   const updateTakt = useUpdateTakt();
   const createRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendRequest = useSendTaktRequest();
@@ -73,10 +86,6 @@ export default function TaktDetail() {
   const activeRequest = taktRequests?.find((request) => request.taktId === taktId && !['CLOSED', 'REJECTED'].includes(request.status));
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
-  const [publicationId, setPublicationId] = useState('');
-  const [selectedPolicyKey, setSelectedPolicyKey] = useState('');
-  const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [editPlannedStart, setEditPlannedStart] = useState('');
   const [editPlannedEnd, setEditPlannedEnd] = useState('');
@@ -101,6 +110,14 @@ export default function TaktDetail() {
     setEditRiskClassification((takt as { riskClassification?: string | null }).riskClassification ?? '');
   }, [editOpen, takt]);
 
+  const projectName = project?.name ?? 'Projekt';
+  const participantDirectory = (dataspaceParticipants ?? []).map((participant) => ({
+    id: participant.localOrgId,
+    name: participant.organizationName,
+  }));
+  const assignablePartners = buildAssignablePartners(assignments, memberships, participantDirectory);
+  const durationDays = (takt as { durationDays?: string | number | null } | undefined)?.durationDays;
+
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -122,39 +139,6 @@ export default function TaktDetail() {
       </div>
     );
   }
-
-  const projectName = project?.name ?? 'Projekt';
-  const participantDirectory = (dataspaceParticipants ?? []).map((participant) => ({
-    id: participant.localOrgId,
-    name: participant.organizationName,
-  }));
-  const assignablePartners = buildAssignablePartners(assignments, memberships, participantDirectory)
-    .map((partner) => ({ id: partner.anOrgId, name: partner.label }));
-  const schedulePolicies = useMemo(
-    () => (policyRegistry ?? [])
-      .filter((policy) => policy.code === 'SCHEDULE_COORDINATION')
-      .sort((a, b) => b.version - a.version),
-    [policyRegistry],
-  );
-  const selectedPolicy = schedulePolicies.find(
-    (policy) => `${policy.code}:${policy.version}` === selectedPolicyKey,
-  )
-    ?? schedulePolicies[0];
-  useEffect(() => {
-    const policyKey = selectedPolicy ? `${selectedPolicy.code}:${selectedPolicy.version}` : '';
-    if (policyKey && selectedPolicyKey !== policyKey) {
-      setSelectedPolicyKey(policyKey);
-    }
-  }, [selectedPolicy, selectedPolicyKey]);
-  const durationDays = (takt as { durationDays?: string | number | null }).durationDays;
-  const eligiblePublications = (publications ?? []).filter(
-    (publication) =>
-      publication.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
-      publication.status === 'PUBLISHED' &&
-      (publication.selectedTaktIds == null || publication.selectedTaktIds.includes(takt.id)) &&
-      selectedNuIds.every((nuId) => (publication.recipients ?? []).some((recipient) => recipient.anOrgId === nuId)) &&
-      (!selectedPolicy || publication.policyCode === selectedPolicy.code || publication.policy?.code === selectedPolicy.code),
-  );
 
   const refreshTaktData = () => {
     queryClient.invalidateQueries({ queryKey: getListTakteQueryKey(projectId) });
@@ -194,31 +178,25 @@ export default function TaktDetail() {
     }
   };
 
-  const handleAssign = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!publicationId || selectedNuIds.length === 0) {
-      toast({ title: 'Angaben fehlen', description: 'Wählen Sie mindestens einen Nachunternehmer und eine Veröffentlichung aus.', variant: 'destructive' });
-      return;
-    }
+  const handleAssign = async (values: LeistungVergabeSubmitValues) => {
+    if (!takt) return;
     setSavingAssignment(true);
     try {
       const created = await createRequestBatch.mutateAsync({
         data: {
           taktId: takt.id,
-          nuOrgIds: selectedNuIds,
-          message: String(new FormData(event.currentTarget).get('message') ?? '') || undefined,
-          dataPublicationId: publicationId,
-          ...(responseRequiredBy ? { responseRequiredBy: new Date(responseRequiredBy).toISOString() } : {}),
+          nuOrgIds: values.nuOrgIds,
+          message: values.message,
+          dataPublicationId: values.dataPublicationId,
+          ...(values.responseRequiredBy
+            ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
+            : {}),
         },
       });
       await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));
       refreshTaktData();
       setAssignOpen(false);
-      setSelectedNuIds([]);
-      setPublicationId('');
-      setSelectedPolicyKey('');
-      setResponseRequiredBy('');
-      toast({ title: selectedNuIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
+      toast({ title: values.nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
     } catch (error) {
       toast({ title: 'Fehler bei der Vergabe', description: (error as Error).message, variant: 'destructive' });
     } finally {
@@ -413,76 +391,22 @@ export default function TaktDetail() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={assignOpen} onOpenChange={(open) => {
-        setAssignOpen(open);
-        if (!open) {
-          setSelectedNuIds([]);
-          setPublicationId('');
-          setSelectedPolicyKey('');
-          setResponseRequiredBy('');
-        }
-      }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Leistung vergeben</DialogTitle></DialogHeader>
-          <form id="takt-assign-form" onSubmit={handleAssign} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nachunternehmer</Label>
-              <div className="rounded-md border divide-y">
-                {assignablePartners.map((partner) => {
-                  const checked = selectedNuIds.includes(partner.id);
-                  return (
-                    <label key={partner.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={checked} onChange={() => setSelectedNuIds((current) => checked ? current.filter((id) => id !== partner.id) : [...current, partner.id])} />
-                      {partner.name}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Nutzungsrichtlinie *</Label>
-              <Select
-                value={selectedPolicy ? `${selectedPolicy.code}:${selectedPolicy.version}` : selectedPolicyKey}
-                onValueChange={(value) => {
-                  setSelectedPolicyKey(value);
-                  setPublicationId('');
-                }}
-                disabled={schedulePolicies.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Policy auswählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {schedulePolicies.map((policy) => (
-                    <SelectItem key={`${policy.code}-${policy.version}`} value={`${policy.code}:${policy.version}`}>
-                      {policy.name} · v{policy.version}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Die Veröffentlichung muss diese Policy für die Rahmentermin-Abstimmung verwenden.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Veröffentlichte Leistungsinformationen *</Label>
-              <Select value={publicationId} onValueChange={setPublicationId}>
-                <SelectTrigger><SelectValue placeholder={selectedNuIds.length ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} /></SelectTrigger>
-                <SelectContent>{eligiblePublications.map((publication) => <SelectItem key={publication.id} value={publication.id}>{publication.title} (v{publication.version})</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <Textarea name="message" placeholder="Hinweis (optional)" />
-            <div className="space-y-2">
-              <Label>Antwortfrist (optional)</Label>
-              <DatePicker includeTime value={responseRequiredBy} onChange={setResponseRequiredBy} min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)} />
-            </div>
-          </form>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)}>Abbrechen</Button>
-            <Button type="submit" form="takt-assign-form" disabled={savingAssignment || !publicationId}>{savingAssignment ? 'Vergibt…' : 'Vergeben'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LeistungVergabeDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        taktId={takt.id}
+        partners={assignablePartners}
+        partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
+        partnersError={assignmentsError || membershipsError || participantsError}
+        publications={publications}
+        publicationsLoading={publicationsLoading}
+        publicationsError={publicationsError}
+        policies={policyRegistry}
+        policiesLoading={policiesLoading}
+        policiesError={policiesError}
+        isSubmitting={savingAssignment}
+        onSubmit={handleAssign}
+      />
     </div>
   );
 }

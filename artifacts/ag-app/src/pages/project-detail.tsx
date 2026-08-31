@@ -120,6 +120,7 @@ import {
   type ProjectCalendar,
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
+import { LeistungVergabeDialog, type LeistungVergabeSubmitValues } from '@/components/LeistungVergabeDialog';
 import { ProjectInvitationWizard } from '@/components/ProjectInvitationWizard';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
 import { CoordinationBoard } from '@/components/coordination-board';
@@ -127,7 +128,6 @@ import { findAlternativeImpacts, type AlternativeImpact } from '@/lib/alternativ
 import {
   buildAssignablePartners,
   deduplicateDataPublications,
-  getEligibleVergabePublications,
 } from '@/lib/vergabe';
 
 // ── Working-days client utility ────────────────────────────────────────────────
@@ -631,10 +631,14 @@ export default function ProjectDetail() {
   const { data: contractors } = useListProjectContractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectContractorsQueryKey(projectId) },
   });
-  const { data: memberships } = useListProjectMemberships(projectId, {
+  const { data: memberships, isLoading: membershipsLoading, isError: membershipsError } = useListProjectMemberships(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
-  const { data: allAnOrgs } = useQuery({
+  const {
+    data: allAnOrgs,
+    isLoading: participantsLoading,
+    isError: participantsError,
+  } = useQuery({
     queryKey: ['dataspace-participants', projectId],
     enabled: !!projectId,
     queryFn: async () => {
@@ -671,10 +675,14 @@ export default function ProjectDetail() {
   const { data: deps } = useListTaktDependencies(projectId, {
     query: { enabled: !!projectId, queryKey: getListTaktDependenciesQueryKey(projectId) },
   });
-  const { data: assignments } = useListProjectSubcontractors(projectId, {
+  const { data: assignments, isLoading: assignmentsLoading, isError: assignmentsError } = useListProjectSubcontractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
-  const { data: policyRegistry } = useGetPolicyTemplateRegistry();
+  const {
+    data: policyRegistry,
+    isLoading: policiesLoading,
+    isError: policiesError,
+  } = useGetPolicyTemplateRegistry();
 
   // Full project data (includes description + location not in overview)
   const { data: fullProject } = useGetProject(projectId, {
@@ -726,11 +734,6 @@ export default function ProjectDetail() {
   const [confirmRevokeMembership, setConfirmRevokeMembership] = useState<ProjectMembership | null>(null);
   const [confirmCloseRequest, setConfirmCloseRequest] = useState(false);
   const [confirmDeleteDep, setConfirmDeleteDep] = useState<string | null>(null);
-  const [vergabeAnOrgIds, setVergabeAnOrgIds] = useState<string[]>([]);
-  const [vergabePublicationId, setVergabePublicationId] = useState<string>('');
-  const [vergabeResponseRequiredBy, setVergabeResponseRequiredBy] = useState<string>('');
-  const [vergabeResponseRequiredByError, setVergabeResponseRequiredByError] = useState<string>('');
-
   const [editAssignmentId, setEditAssignmentId] = useState<string | null>(null);
 
   // Controlled state for the edit-assignment form — synced on open so reopening
@@ -1078,13 +1081,6 @@ export default function ProjectDetail() {
     [takte, editTargetId, editTaktPredecessors],
   );
 
-  /** Publications eligible for the current Vergabe form (TAKT_INFORMATION_PACKAGE, PUBLISHED,
-   *  contains the selected takt, and the selected AN is a recipient). */
-  const vergabePubs = useMemo(
-    () => getEligibleVergabePublications(dataPublications, selectedTakt?.id, vergabeAnOrgIds),
-    [dataPublications, selectedTakt, vergabeAnOrgIds],
-  );
-
   function handleGanttClick(taskId: string) {
     if (taskId.startsWith('alt-')) {
       // alt-{requestId}-{altId} — navigate directly to the request detail
@@ -1275,42 +1271,18 @@ export default function ProjectDetail() {
   };
 
   // TaktRequest is created + sent in two steps (snapshot → send)
-  const handleDelegateTakt = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleDelegateTakt = async (values: LeistungVergabeSubmitValues) => {
     if (!selectedTakt || isDelegating) return;
-    const fd = new FormData(e.currentTarget);
-    const nuOrgIds = vergabeAnOrgIds;
-    const message  = (fd.get('message') as string) || undefined;
-    if (nuOrgIds.length === 0) {
-      toast({ title: 'Nachunternehmer auswählen', description: 'Wählen Sie mindestens einen Nachunternehmer aus.', variant: 'destructive' });
-      return;
-    }
-    if (!vergabePublicationId) {
-      toast({
-        title: 'Veröffentlichung erforderlich',
-        description: 'Bitte wählen Sie eine Datenraum-Veröffentlichung aus.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (vergabeResponseRequiredBy) {
-      const deadline = new Date(vergabeResponseRequiredBy);
-      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
-      if (deadline < oneHourFromNow) {
-        setVergabeResponseRequiredByError('Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen.');
-        return;
-      }
-    }
     setIsDelegating(true);
     try {
       const created = await createTaktRequestBatch.mutateAsync({
         data: {
           taktId: selectedTakt.id,
-          nuOrgIds,
-          message,
-          dataPublicationId: vergabePublicationId,
-          ...(vergabeResponseRequiredBy
-            ? { responseRequiredBy: new Date(vergabeResponseRequiredBy).toISOString() }
+          nuOrgIds: values.nuOrgIds,
+          message: values.message,
+          dataPublicationId: values.dataPublicationId,
+          ...(values.responseRequiredBy
+            ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
         },
       });
@@ -1318,14 +1290,11 @@ export default function ProjectDetail() {
         sendTaktRequest.mutateAsync({ requestId: requestItem.id }),
       ));
       toast({
-        title: nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet',
-        description: nuOrgIds.length === 1 ? undefined : `${nuOrgIds.length} Nachunternehmer wurden parallel angefragt.`,
+        title: values.nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet',
+        description: values.nuOrgIds.length === 1 ? undefined : `${values.nuOrgIds.length} Nachunternehmer wurden parallel angefragt.`,
       });
       invalidateTakte();
       setIsVergabeOpen(false);
-      setVergabeAnOrgIds([]);
-      setVergabePublicationId('');
-      setVergabeResponseRequiredBy('');
     } catch (err) {
       toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' });
     } finally {
@@ -2867,139 +2836,7 @@ export default function ProjectDetail() {
                           )}
 
                           {canManageTaktRequests && isVergabeOpen && (
-                            <form onSubmit={handleDelegateTakt} className="mt-3 space-y-3 p-3 rounded-lg border border-border/60 bg-muted/10">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Nachunternehmer</Label>
-                                <div className="rounded-md border border-input bg-background divide-y">
-                                   {assignablePartners.map(a => {
-                                     const checked = vergabeAnOrgIds.includes(a.anOrgId);
-                                    return (
-                                       <label key={a.anOrgId} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50">
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => {
-                                            setVergabeAnOrgIds(current => checked
-                                              ? current.filter(id => id !== a.anOrgId)
-                                              : [...current, a.anOrgId],
-                                            );
-                                            setVergabePublicationId('');
-                                          }}
-                                        />
-                                         <span>{a.label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                   {assignablePartners.length === 0 && (
-                                    <p className="px-3 py-2 text-xs text-muted-foreground">Keine aktiven Nachunternehmer zugeordnet.</p>
-                                  )}
-                                </div>
-                                {vergabeAnOrgIds.length > 0 && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {vergabeAnOrgIds.length} Nachunternehmer ausgewählt
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Publication selector — required for the Dataspace policy gate */}
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">
-                                  Veröffentlichte Leistungsinformationen{' '}
-                                  <span className="text-destructive">*</span>
-                                </Label>
-                                {vergabeAnOrgIds.length > 0 && vergabePubs.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground rounded border border-border/60 bg-muted/20 p-2">
-                                    Keine gültige Veröffentlichung für diese Leistung und alle ausgewählten AN vorhanden.{' '}
-                                    <button
-                                      type="button"
-                                      className="underline text-primary"
-                                      onClick={() => setIsDataspaceOpen(true)}
-                                    >
-                                      Jetzt erstellen
-                                    </button>
-                                  </p>
-                                ) : (
-                                  <Select
-                                    value={vergabePublicationId}
-                                    onValueChange={setVergabePublicationId}
-                                    disabled={vergabeAnOrgIds.length === 0}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder={vergabeAnOrgIds.length > 0 ? 'Veröffentlichung auswählen…' : 'Erst AN auswählen'} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {vergabePubs.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>
-                                          {p.title} (v{p.version})
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              </div>
-
-                              <Textarea name="message" placeholder="Hinweis (optional)" className="resize-none h-16" />
-
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">
-                                  Antwortfrist{' '}
-                                  <span className="text-muted-foreground font-normal">(optional)</span>
-                                </Label>
-                                <DatePicker
-                                  includeTime
-                                  value={vergabeResponseRequiredBy}
-                                  min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)}
-                                  onChange={(val) => {
-                                    setVergabeResponseRequiredBy(val);
-                                    if (val) {
-                                      const deadline = new Date(val);
-                                      const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
-                                      setVergabeResponseRequiredByError(
-                                        deadline < oneHourFromNow
-                                          ? 'Die Antwortfrist muss mindestens 1 Stunde in der Zukunft liegen.'
-                                          : '',
-                                      );
-                                    } else {
-                                      setVergabeResponseRequiredByError('');
-                                    }
-                                  }}
-                                  className="h-9"
-                                />
-                                {vergabeResponseRequiredByError && (
-                                  <p className="text-xs text-destructive flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3 shrink-0" />
-                                    {vergabeResponseRequiredByError}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="flex-1"
-                                  onClick={() => {
-                                    setIsVergabeOpen(false);
-                                    setVergabeAnOrgIds([]);
-                                    setVergabePublicationId('');
-                                    setVergabeResponseRequiredBy('');
-                                    setVergabeResponseRequiredByError('');
-                                  }}
-                                >
-                                  Abbrechen
-                                </Button>
-                                <Button
-                                  type="submit"
-                                  size="sm"
-                                  className="flex-1"
-                                  disabled={isDelegating || !vergabePublicationId}
-                                >
-                                  <Send className="w-3.5 h-3.5 mr-1.5" />
-                                  {isDelegating ? 'Vergabe läuft…' : 'Vergeben'}
-                                </Button>
-                              </div>
-                            </form>
+                            <span className="sr-only">Vergabe-Dialog geöffnet</span>
                           )}
                         </>
                       )}
@@ -3011,6 +2848,24 @@ export default function ProjectDetail() {
           )}
         </SheetContent>
       </Sheet>
+
+      <LeistungVergabeDialog
+        open={isVergabeOpen}
+        onOpenChange={setIsVergabeOpen}
+        taktId={selectedTakt?.id ?? ''}
+        partners={assignablePartners}
+        partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
+        partnersError={assignmentsError || membershipsError || participantsError}
+        publications={dataPublications}
+        publicationsLoading={dataPublicationsLoading}
+        publicationsError={dataPublicationsError}
+        policies={policyRegistry}
+        policiesLoading={policiesLoading}
+        policiesError={policiesError}
+        isSubmitting={isDelegating}
+        onSubmit={handleDelegateTakt}
+        onCreatePublication={() => setIsDataspaceOpen(true)}
+      />
 
       {/* ── Edit Takt Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={isEditOpen} onOpenChange={(open) => { if (!open) { setIsEditOpen(false); setEditTargetId(null); } }}>

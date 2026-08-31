@@ -24,6 +24,12 @@ export type VergabePartner = {
   label: string;
 };
 
+export type VergabePolicySelection = {
+  templateId: string;
+  code: string;
+  version: number;
+};
+
 /**
  * A publication version is unique per project and product type. Keep the
  * most useful row when older data contains the same version more than once
@@ -56,8 +62,8 @@ export function deduplicateDataPublications<T extends DataPublication>(
  * Builds the AN choices shown in the "Leistung vergeben" form.
  *
  * Assignments normally contain anName, but older/local projection rows may
- * omit it. In that case use the participant directory before falling back to
- * the stable organisation id.
+ * omit it. In that case use the participant directory and never expose a
+ * technical organisation id as a visible fallback.
  */
 export function buildAssignablePartners(
   assignments: ProjectSubcontractorAssignment[] | undefined,
@@ -112,6 +118,7 @@ export function getEligibleVergabePublications(
   publications: DataPublication[] | undefined,
   selectedTaktId: string | undefined,
   recipientOrgIds: string[],
+  selectedPolicy?: VergabePolicySelection,
 ): DataPublication[] {
   if (!selectedTaktId || recipientOrgIds.length === 0) return [];
 
@@ -131,9 +138,36 @@ export function getEligibleVergabePublications(
 
     const recipients = publication.recipients ?? [];
     if (recipients.length === 0) return false;
-    return requiredRecipientIds.every((orgId) =>
+    const hasAllRecipients = requiredRecipientIds.every((orgId) =>
       recipients.some((recipient) => recipient.anOrgId === orgId),
     );
+    if (!hasAllRecipients) return false;
+
+    if (selectedPolicy) {
+      const publicationPolicyCode = publication.policyCode ?? publication.policy?.code;
+      if (publicationPolicyCode !== selectedPolicy.code) return false;
+
+      // Registry entries use a stable template id, while the publication
+      // endpoint exposes the compatibility DB id. When a publication carries
+      // the enriched policy, accept either stable id and enforce its version.
+      const publicationPolicy = publication.policy;
+      const publicationRegistryTemplateId =
+        publication.policyRegistryTemplateId ?? publicationPolicy?.registryTemplateId;
+      const hasMatchingTemplate =
+        publication.policyTemplateId === selectedPolicy.templateId ||
+        publicationPolicy?.id === selectedPolicy.templateId ||
+        publicationRegistryTemplateId === selectedPolicy.templateId;
+      if (publicationRegistryTemplateId && !hasMatchingTemplate) return false;
+      if (
+        publication.policyTemplateVersion !== undefined &&
+        publication.policyTemplateVersion !== null &&
+        publication.policyTemplateVersion !== selectedPolicy.version
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   return deduplicateDataPublications(eligible);

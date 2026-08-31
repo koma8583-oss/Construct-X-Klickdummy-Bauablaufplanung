@@ -142,6 +142,9 @@ router.get(
           .from(policyTemplatesTable)
           .where(eq(policyTemplatesTable.id, pub.policyTemplateId))
           .limit(1);
+        const policyRegistryEntry = policy
+          ? getPublicationPolicyTemplate(policy.code)
+          : undefined;
 
         return {
           ...pub,
@@ -152,6 +155,8 @@ router.get(
           })),
           policyCode: policy?.code ?? null,
           policyName: policy?.name ?? null,
+          policyRegistryTemplateId: policyRegistryEntry?.templateId ?? null,
+          policyTemplateVersion: policyRegistryEntry?.version ?? null,
         };
       }),
     );
@@ -259,6 +264,9 @@ router.get(
           .from(policyTemplatesTable)
           .where(eq(policyTemplatesTable.id, pub.policyTemplateId))
           .limit(1);
+        const policyRegistryEntry = policy[0]
+          ? getPublicationPolicyTemplate(policy[0].code)
+          : undefined;
 
         return {
           ...pub,
@@ -268,6 +276,8 @@ router.get(
           })),
           policyCode: policy[0]?.code ?? null,
           policyName: policy[0]?.name ?? null,
+          policyRegistryTemplateId: policyRegistryEntry?.templateId ?? null,
+          policyTemplateVersion: policyRegistryEntry?.version ?? null,
           policy: policy[0] ?? null,
         };
       }),

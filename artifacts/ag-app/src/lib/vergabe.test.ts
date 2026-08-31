@@ -105,4 +105,39 @@ describe('Leistung vergeben helpers', () => {
     expect(getEligibleVergabePublications(publications, 'takt-1', ['an-1', 'an-2']))
       .toEqual([]);
   });
+
+  it('matches the selected Rahmentermin policy and registry version', () => {
+    const publications = [
+      {
+        id: 'v4',
+        projectId: 'project-1',
+        dataProductType: 'TAKT_INFORMATION_PACKAGE',
+        version: 1,
+        status: 'PUBLISHED',
+        selectedTaktIds: ['takt-1'],
+        policyCode: 'SCHEDULE_COORDINATION',
+        policyRegistryTemplateId: 'tk-policy-schedule-coordination',
+        policyTemplateVersion: 4,
+        recipients: [{ anOrgId: 'an-1', status: 'OFFERED', anName: 'Baupartner GmbH' }],
+      },
+      {
+        id: 'v3',
+        projectId: 'project-1',
+        dataProductType: 'TAKT_INFORMATION_PACKAGE',
+        version: 2,
+        status: 'PUBLISHED',
+        selectedTaktIds: ['takt-1'],
+        policyCode: 'SCHEDULE_COORDINATION',
+        policyRegistryTemplateId: 'tk-policy-schedule-coordination',
+        policyTemplateVersion: 3,
+        recipients: [{ anOrgId: 'an-1', status: 'OFFERED', anName: 'Baupartner GmbH' }],
+      },
+    ] as any;
+
+    expect(getEligibleVergabePublications(publications, 'takt-1', ['an-1'], {
+      templateId: 'tk-policy-schedule-coordination',
+      code: 'SCHEDULE_COORDINATION',
+      version: 4,
+    }).map((publication) => publication.id)).toEqual(['v4']);
+  });
 });
