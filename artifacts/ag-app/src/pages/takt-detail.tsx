@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Calendar, Clock, MapPin, Pencil, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link, useParams } from 'wouter';
@@ -9,6 +9,7 @@ import {
   useGetProjectDataPublications, useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
   useListTaktRequests, useDeleteTakt,
   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
+  useGetPolicyTemplateRegistry,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,8 +21,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DatePicker } from '@/components/date-picker';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { buildAssignablePartners } from '@/lib/vergabe';
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -47,6 +49,22 @@ export default function TaktDetail() {
     query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
   const { data: publications } = useGetProjectDataPublications(projectId);
+  const { data: dataspaceParticipants } = useQuery({
+    queryKey: ['takt-detail-dataspace-participants', projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/dataspace/participants?organizationType=AN&projectId=${encodeURIComponent(projectId)}`,
+      );
+      if (!response.ok) throw new Error('Nachunternehmer konnten nicht geladen werden.');
+      return response.json() as Promise<Array<{
+        localOrgId: string;
+        participantId: string;
+        organizationName: string;
+      }>>;
+    },
+  });
+  const { data: policyRegistry } = useGetPolicyTemplateRegistry();
   const updateTakt = useUpdateTakt();
   const createRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendRequest = useSendTaktRequest();
@@ -57,6 +75,7 @@ export default function TaktDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
   const [publicationId, setPublicationId] = useState('');
+  const [selectedPolicyKey, setSelectedPolicyKey] = useState('');
   const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [editPlannedStart, setEditPlannedStart] = useState('');
@@ -105,27 +124,36 @@ export default function TaktDetail() {
   }
 
   const projectName = project?.name ?? 'Projekt';
-  const assignablePartners = Array.from(new Map([
-    ...(assignments ?? [])
-      .filter((assignment) => assignment.assignmentStatus === 'ACTIVE')
-      .map((assignment) => [assignment.anOrgId, {
-        id: assignment.anOrgId,
-        name: `${assignment.anName} – ${assignment.trade || 'Alle Gewerke'}`,
-      }] as const),
-    ...(memberships ?? [])
-      .filter((membership) => membership.status === 'ACTIVE')
-      .map((membership) => [membership.anOrgId, {
-        id: membership.anOrgId,
-        name: membership.anOrgId,
-      }] as const),
-  ]).values());
+  const participantDirectory = (dataspaceParticipants ?? []).map((participant) => ({
+    id: participant.localOrgId,
+    name: participant.organizationName,
+  }));
+  const assignablePartners = buildAssignablePartners(assignments, memberships, participantDirectory)
+    .map((partner) => ({ id: partner.anOrgId, name: partner.label }));
+  const schedulePolicies = useMemo(
+    () => (policyRegistry ?? [])
+      .filter((policy) => policy.code === 'SCHEDULE_COORDINATION')
+      .sort((a, b) => b.version - a.version),
+    [policyRegistry],
+  );
+  const selectedPolicy = schedulePolicies.find(
+    (policy) => `${policy.code}:${policy.version}` === selectedPolicyKey,
+  )
+    ?? schedulePolicies[0];
+  useEffect(() => {
+    const policyKey = selectedPolicy ? `${selectedPolicy.code}:${selectedPolicy.version}` : '';
+    if (policyKey && selectedPolicyKey !== policyKey) {
+      setSelectedPolicyKey(policyKey);
+    }
+  }, [selectedPolicy, selectedPolicyKey]);
   const durationDays = (takt as { durationDays?: string | number | null }).durationDays;
   const eligiblePublications = (publications ?? []).filter(
     (publication) =>
       publication.dataProductType === 'TAKT_INFORMATION_PACKAGE' &&
       publication.status === 'PUBLISHED' &&
       (publication.selectedTaktIds == null || publication.selectedTaktIds.includes(takt.id)) &&
-      selectedNuIds.every((nuId) => (publication.recipients ?? []).some((recipient) => recipient.anOrgId === nuId)),
+      selectedNuIds.every((nuId) => (publication.recipients ?? []).some((recipient) => recipient.anOrgId === nuId)) &&
+      (!selectedPolicy || publication.policyCode === selectedPolicy.code || publication.policy?.code === selectedPolicy.code),
   );
 
   const refreshTaktData = () => {
@@ -188,6 +216,7 @@ export default function TaktDetail() {
       setAssignOpen(false);
       setSelectedNuIds([]);
       setPublicationId('');
+      setSelectedPolicyKey('');
       setResponseRequiredBy('');
       toast({ title: selectedNuIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
     } catch (error) {
@@ -384,7 +413,15 @@ export default function TaktDetail() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+      <Dialog open={assignOpen} onOpenChange={(open) => {
+        setAssignOpen(open);
+        if (!open) {
+          setSelectedNuIds([]);
+          setPublicationId('');
+          setSelectedPolicyKey('');
+          setResponseRequiredBy('');
+        }
+      }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Leistung vergeben</DialogTitle></DialogHeader>
           <form id="takt-assign-form" onSubmit={handleAssign} className="space-y-4">
@@ -401,6 +438,31 @@ export default function TaktDetail() {
                   );
                 })}
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Nutzungsrichtlinie *</Label>
+              <Select
+                value={selectedPolicy ? `${selectedPolicy.code}:${selectedPolicy.version}` : selectedPolicyKey}
+                onValueChange={(value) => {
+                  setSelectedPolicyKey(value);
+                  setPublicationId('');
+                }}
+                disabled={schedulePolicies.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Policy auswählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schedulePolicies.map((policy) => (
+                    <SelectItem key={`${policy.code}-${policy.version}`} value={`${policy.code}:${policy.version}`}>
+                      {policy.name} · v{policy.version}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Die Veröffentlichung muss diese Policy für die Rahmentermin-Abstimmung verwenden.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Veröffentlichte Leistungsinformationen *</Label>
