@@ -32,16 +32,35 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     ) {
       throw new AnProjectInvitationError("INVITATION_CONFLICT", "Die eingegangene Einladung stimmt nicht mit der vorhandenen Einladung überein.");
     }
+    const updates: Partial<typeof anProjectInvitationsTable.$inferInsert> = {
+      ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
+      ...(payload.project.description !== undefined
+        ? { projectDescription: payload.project.description }
+        : {}),
+      ...(payload.project.location !== undefined
+        ? { projectLocation: payload.project.location }
+        : {}),
+      ...(payload.invitationMessage !== undefined
+        ? { invitationMessage: payload.invitationMessage }
+        : {}),
+      ...(payload.validUntil !== undefined
+        ? { invitationExpiresAt: new Date(payload.validUntil) }
+        : {}),
+      updatedAt: new Date(),
+    };
     if (payload.dataOffer) {
-      const [updated] = await anDb.update(anProjectInvitationsTable).set({
+      Object.assign(updates, {
         dataPublicationTitle: payload.dataOffer.title,
         selectedFields: payload.dataOffer.selectedFields,
         dataOfferSnapshot: payload.dataOffer as unknown as Record<string, unknown>,
         invitationExpiresAt: payload.dataOffer.validUntil
           ? new Date(payload.dataOffer.validUntil)
-          : invitation.invitationExpiresAt,
-        updatedAt: new Date(),
-      }).where(eq(anProjectInvitationsTable.id, invitation.id)).returning();
+          : updates.invitationExpiresAt ?? invitation.invitationExpiresAt,
+      });
+    }
+    if (Object.keys(updates).length > 1) {
+      const [updated] = await anDb.update(anProjectInvitationsTable).set(updates)
+        .where(eq(anProjectInvitationsTable.id, invitation.id)).returning();
       return updated ?? invitation;
     }
     return invitation;

@@ -14,3 +14,9 @@ AN-local list projections may intentionally omit AG-side coordination fields suc
 **Why:** The AN projection is the data-sovereignty boundary, so it cannot be assumed to have every enriched AG list field even when a shared client type does.
 
 **How to apply:** Treat absent coordination metadata as an explicit neutral state in AN inboxes and preserve the local projection shape instead of joining AG planning data just to satisfy the shared UI.
+
+Inbound invitation replays may enrich an existing AN projection with newly available immutable policy and project display details, but must not change its decision state or participant ownership.
+
+**Why:** Legacy invitation delivery and later canonical package delivery can share an invitation identity; retaining the richer received contract improves the AN experience without creating a second decision path.
+
+**How to apply:** Update only received display/snapshot fields on replay, keep acceptance/rejection routed through the existing local invitation API, and never infer a data publication for invitations that did not carry one.

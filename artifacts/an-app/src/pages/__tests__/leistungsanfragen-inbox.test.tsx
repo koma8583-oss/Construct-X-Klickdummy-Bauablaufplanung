@@ -108,6 +108,54 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     ]));
   });
 
+  it("zeigt bei älteren Einladungen Projektaufnahme, vollständige Policy und keinen Datenzugriff an", async () => {
+    setAuthTokenGetter(() => "authenticated-an-test-token");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/takt-requests")) return json([]);
+      if (url === "/api/an/project-invitations") {
+        return json([{
+          id: "legacy-invitation",
+          invitationId: "project-invitation-legacy",
+          correlationId: "correlation-legacy",
+          senderAgOrgId: "ag-legacy",
+          receiverAnOrgId: "an-1",
+          projectReference: "P-LEGACY-1",
+          projectName: "Bestandsprojekt",
+          projectDescription: "Sanierung des Bestandsgebäudes",
+          projectLocation: "Baufeld West",
+          policySnapshot: {
+            policyId: "tk-policy-legacy",
+            templateVersion: 1,
+            code: "PROJECT_MEMBERSHIP",
+            name: "Projektaufnahme",
+            description: "Grundlegende Projektinformationen für die Aufnahme.",
+            purpose: "projectMembership",
+            permissions: ["READ", "USE_AS_PROJECT_PARTNER"],
+            prohibitions: ["REDISTRIBUTE", "AI_TRAINING"],
+            validUntil: "2026-12-31T00:00:00.000Z",
+          },
+          status: "PENDING",
+          createdAt: "2026-10-11T09:00:00.000Z",
+          updatedAt: "2026-10-11T09:00:00.000Z",
+        }]);
+      }
+      return json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderInbox();
+
+    const invitationCard = await screen.findByText("Bestandsprojekt");
+    const card = invitationCard.closest("[class*='border-border']") ?? invitationCard.parentElement!;
+    expect(within(card).getAllByText("Projektaufnahme").length).toBeGreaterThan(0);
+    expect(within(card).getByText("P-LEGACY-1")).toBeInTheDocument();
+    expect(within(card).getByText("READ, USE_AS_PROJECT_PARTNER")).toBeInTheDocument();
+    expect(within(card).getByText("REDISTRIBUTE, AI_TRAINING")).toBeInTheDocument();
+    expect(within(card).getByText(/keine separate Datenfreigabe/i)).toBeInTheDocument();
+    expect(within(card).queryByText("Datenangebot:")).not.toBeInTheDocument();
+  });
+
   it("rendert lokale AN-Projektionen ohne optionale Koordinationsfelder", async () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
     const { scheduleDelta: _scheduleDelta, ...localProjectionRequest } = request;
@@ -156,7 +204,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     const filtered = filterInboxItems(mixedInbox, {
       inboxFilter: "OPEN",
       deadlineFilter: "ALL",
-      statusFilter: "DELIVERED",
+      statusFilter: "RECEIVED",
       coordinationFilter: "ALL",
       proposalFilter: "ALL",
       actionOwnerFilter: "ALL",
@@ -209,7 +257,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Projekt beitreten" })).not.toBeInTheDocument();
     });
-    expect(screen.getByText("Keine Anfragen für diese Filter")).toBeInTheDocument();
+    expect(screen.getByText("Keine offenen Arbeitsaufträge")).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
       "/api/an/project-invitations/invitation-2/accept",
     );

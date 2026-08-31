@@ -10,6 +10,8 @@ import {
   Check,
   Clock3,
   Inbox,
+  Eye,
+  Lock,
   MapPin,
   RefreshCw,
   ShieldCheck,
@@ -24,6 +26,7 @@ import {
   type AnLeistungsanfrageListItemStatus,
   type AnProjectInvitation,
   useAcceptAnProjectInvitation,
+  useGetDataPublicationOdrl,
   useListAnLeistungsanfragen,
   useListAnProjectInvitations,
   useRejectAnProjectInvitation,
@@ -65,6 +68,19 @@ function dateText(value?: string | null, withTime = false) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Nicht veröffentlicht";
   return format(parsed, withTime ? "dd.MM.yyyy, HH:mm 'Uhr'" : "dd.MM.yyyy", { locale: de });
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function policyText(policy: Record<string, unknown>, key: string): string | null {
+  const value = policy[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function policyList(policy: Record<string, unknown>, key: string): string[] {
+  return isStringArray(policy[key]) ? policy[key] : [];
 }
 
 function deadline(item: AnLeistungsanfrageListItem) {
@@ -129,28 +145,47 @@ function StatusBadge({ status }: { status: AnLeistungsanfrageListItemStatus }) {
 
 function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
   const [confirmed, setConfirmed] = useState(false);
+  const [showOdrl, setShowOdrl] = useState(false);
   const { toast } = useToast();
   const client = useQueryClient();
   const accept = useAcceptAnProjectInvitation();
   const reject = useRejectAnProjectInvitation();
   const busy = accept.isPending || reject.isPending;
-  const policy = invitation.policySnapshot ?? {};
-  const permissions = Array.isArray(policy.permissions) ? policy.permissions.filter((item): item is string => typeof item === "string") : [];
-  const prohibitions = Array.isArray(policy.prohibitions) ? policy.prohibitions.filter((item): item is string => typeof item === "string") : [];
+  const policy = (invitation.policySnapshot ?? {}) as Record<string, unknown>;
+  const hasDataOffer = Boolean(invitation.dataPublicationId);
+  const policyName = policyText(policy, "name") ?? "Nutzungsrichtlinie";
+  const policyPurpose = policyText(policy, "purpose") ?? policyText(policy, "usagePurpose");
+  const permissions = policyList(policy, "permissions");
+  const prohibitions = policyList(policy, "prohibitions");
+  const validityRule = policyText(policy, "validityRule");
+  const retentionRule = policyText(policy, "retentionRule");
+  const policyCode = policyText(policy, "code") ?? "PROJECT_MEMBERSHIP";
+  const policyVersion = typeof policy.templateVersion === "number" ? policy.templateVersion : null;
+  const policyId = policyText(policy, "policyId");
+  const policyValidFrom = policyText(policy, "validFrom");
+  const policyValidUntil = policyText(policy, "validUntil") ?? invitation.invitationExpiresAt;
+  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
+    invitation.dataPublicationId ?? "",
+    showOdrl,
+  );
 
   const decide = async (kind: "accept" | "reject") => {
     try {
       if (kind === "accept") await accept.mutateAsync({ id: invitation.id, data: { policyAccepted: true } });
       else await reject.mutateAsync({ id: invitation.id, data: {} });
       await client.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
-      toast({ title: kind === "accept" ? "Projektzugang angenommen" : "Einladung abgelehnt" });
+      toast({
+        title: kind === "accept"
+          ? hasDataOffer ? "Projekt und Datenfreigabe angenommen" : "Projektaufnahme angenommen"
+          : "Einladung abgelehnt",
+      });
     } catch {
       toast({ title: "Aktion konnte nicht ausgeführt werden", description: "Bitte versuchen Sie es erneut.", variant: "destructive" });
     }
   };
 
   return (
-    <article data-testid={`card-invitation-${invitation.id}`} className="relative overflow-hidden rounded-2xl border border-amber-700/20 bg-card p-5 shadow-sm">
+    <article data-testid={`card-invitation-${invitation.id}`} className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="absolute inset-y-0 left-0 w-1 bg-accent" />
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 gap-3">
@@ -167,23 +202,87 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
           {invitation.status === "PENDING" ? "Offen" : invitation.status === "ACCEPTED" ? "Beigetreten" : "Abgelehnt"}
         </Badge>
       </div>
-      <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
-        <div><p className="text-xs text-muted-foreground">Projektort</p><p className="mt-1">{invitation.projectLocation || "Nicht veröffentlicht"}</p></div>
-        <div><p className="text-xs text-muted-foreground">Datennutzung</p><p className="mt-1">{typeof policy.name === "string" ? policy.name : invitation.dataPublicationTitle || "Richtlinie liegt vor"}</p></div>
+      <div className="mt-5 space-y-2 rounded-xl border bg-muted/20 p-3 text-sm">
+        <div className="flex items-center gap-2 font-medium">
+          <Building2 className="h-4 w-4 text-primary" />
+          Projektaufnahme
+        </div>
+        <div className="grid gap-1 sm:grid-cols-2">
+          <p><span className="text-muted-foreground">Projekt-ID:</span> {invitation.projectReference}</p>
+          {invitation.projectLocation && (
+            <p><span className="text-muted-foreground">Ort:</span> {invitation.projectLocation}</p>
+          )}
+        </div>
+        {invitation.projectDescription && <p>{invitation.projectDescription}</p>}
       </div>
       {invitation.invitationMessage && <p className="mt-4 rounded-xl bg-muted/60 p-3 text-sm leading-relaxed">{invitation.invitationMessage}</p>}
-      {(permissions.length > 0 || prohibitions.length > 0) && (
-        <div className="mt-4 rounded-xl border border-primary/15 bg-primary/5 p-3 text-xs">
-          <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-primary" />Veröffentlichte Nutzungsrichtlinie</div>
-          {permissions.length > 0 && <p className="mt-2 text-muted-foreground"><span className="font-medium text-foreground">Erlaubt:</span> {permissions.join(", ")}</p>}
-          {prohibitions.length > 0 && <p className="mt-1 text-muted-foreground"><span className="font-medium text-foreground">Nicht erlaubt:</span> {prohibitions.join(", ")}</p>}
+      {invitation.dataPublicationTitle && (
+        <div className="mt-4 space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Lock className="h-4 w-4 text-primary" />
+            Datenangebot: {invitation.dataPublicationTitle}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {invitation.selectedFields?.map((field) => (
+              <Badge key={field} variant="secondary" className="text-[10px]">{field}</Badge>
+            ))}
+          </div>
         </div>
       )}
+      <div className="mt-4 space-y-2 rounded-xl border p-3 text-sm">
+        <div className="flex items-center gap-2 font-medium">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <span>{policyName}</span>
+          <Badge variant="outline" className="ml-auto text-[10px]">{policyCode}</Badge>
+        </div>
+        {(policyVersion || policyId) && (
+          <p className="text-xs text-muted-foreground">
+            {policyVersion ? `Version ${policyVersion}` : ""}
+            {policyVersion && policyId ? " · " : ""}
+            {policyId ? `Nachweis ${policyId}` : ""}
+          </p>
+        )}
+        {policyPurpose && <p className="text-muted-foreground">{policyPurpose}</p>}
+        {policyText(policy, "description") && <p>{policyText(policy, "description")}</p>}
+        {permissions.length > 0 && <p><strong>Erlaubt:</strong> {permissions.join(", ")}</p>}
+        {prohibitions.length > 0 && <p><strong>Nicht erlaubt:</strong> {prohibitions.join(", ")}</p>}
+        {validityRule && <p><strong>Bedingungen:</strong> {validityRule}</p>}
+        {retentionRule && <p><strong>Aufbewahrung:</strong> {retentionRule}</p>}
+        {(policyValidFrom || policyValidUntil) && (
+          <p>
+            <strong>Gültigkeit:</strong>{" "}
+            {policyValidFrom ? `ab ${dateText(policyValidFrom)}` : "ab Annahme"}
+            {policyValidUntil ? ` bis ${dateText(policyValidUntil)}` : " · ohne festes Enddatum"}
+          </p>
+        )}
+        {invitation.dataPublicationId && (
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowOdrl((visible) => !visible)}>
+              <Eye className="mr-2 h-4 w-4" />
+              {showOdrl ? "ODRL ausblenden" : "ODRL anzeigen"}
+            </Button>
+            {showOdrl && (
+              odrlLoading ? (
+                <p className="text-xs text-muted-foreground">ODRL wird geladen…</p>
+              ) : odrl ? (
+                <pre className="max-h-64 overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">{JSON.stringify(odrl, null, 2)}</pre>
+              ) : (
+                <p className="text-xs text-muted-foreground">ODRL konnte nicht geladen werden.</p>
+              )
+            )}
+          </>
+        )}
+      </div>
       {invitation.status === "PENDING" ? (
         <div className="mt-5 space-y-4">
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background/60 p-3 text-sm">
             <Checkbox data-testid={`checkbox-policy-${invitation.id}`} checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} />
-            <span>Ich bestätige die angezeigte Nutzungsrichtlinie. Projektmitgliedschaft und Datenzugriff werden erst danach aktiviert.</span>
+            <span>
+              Ich bestätige die angezeigte Nutzungsrichtlinie.{" "}
+              {hasDataOffer
+                ? "Projektmitgliedschaft und Datenzugriff werden erst danach aktiviert."
+                : "Die Projektmitgliedschaft wird erst danach aktiviert. Diese ältere Einladung enthält keine separate Datenfreigabe."}
+            </span>
           </label>
           <div className="flex flex-wrap gap-2">
             <Button data-testid={`button-accept-invitation-${invitation.id}`} disabled={!confirmed || busy} onClick={() => void decide("accept")}><Check className="mr-2 h-4 w-4" />Projekt beitreten</Button>
@@ -222,7 +321,7 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
         <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />{due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
         <div className="mt-auto flex items-center justify-between gap-3 pt-5">
           <p className="text-xs text-muted-foreground">{item.resourceRequirementCount ? `${item.resourceRequirementCount} Ressourcenbedarf${item.resourceRequirementCount === 1 ? "" : "e"} veröffentlicht` : "Kein Ressourcenbedarf veröffentlicht"}</p>
-          <Link data-testid={`link-open-request-${item.id}`} href={`/leistungsanfragen/${item.leistungsanfrageId}`} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
+          <Link aria-label={title} data-testid={`link-open-request-${item.id}`} href={`/leistungsanfragen/${item.leistungsanfrageId}`} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
             {isDone(item.status) ? "Details ansehen" : item.status === "REVISION_REQUIRED" ? "Überarbeiten" : "Prüfen"}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>

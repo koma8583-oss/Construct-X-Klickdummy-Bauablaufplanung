@@ -200,6 +200,26 @@ describe("inbound project invitation policy participants", () => {
     expect(exchange.status).toBe("PROCESSED");
   });
 
+  it("upgrades an older local invitation projection when a full policy snapshot arrives", async () => {
+    const invitation = inboundInvitation();
+    const legacyPayload: ExternalProjectInvitation = {
+      ...invitation,
+      policySnapshot: undefined,
+      dataOffer: undefined,
+    };
+    await expect(processIncomingProjectInvitation(legacyPayload)).resolves.toBeUndefined();
+
+    const completeSnapshot = inboundPolicySnapshot();
+    await expect(processIncomingProjectInvitation({
+      ...legacyPayload,
+      policySnapshot: completeSnapshot,
+    })).resolves.toBeUndefined();
+
+    const [projection] = await anDb.select().from(anProjectInvitationsTable)
+      .where(eq(anProjectInvitationsTable.invitationId, invitation.invitationId));
+    expect(projection.policySnapshot).toEqual(completeSnapshot);
+  });
+
   it("rejects a provider mismatch before creating an AN invitation projection", async () => {
     const invitation = inboundInvitation(inboundPolicySnapshot("t300-other-provider"));
 
