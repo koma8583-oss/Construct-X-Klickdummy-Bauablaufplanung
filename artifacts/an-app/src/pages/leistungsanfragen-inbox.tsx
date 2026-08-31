@@ -194,7 +194,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
           </span>
           <div className="min-w-0">
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Projekteinladung</p>
-            <h2 className="mt-1 truncate text-lg font-semibold">{invitation.projectName}</h2>
+            <h2 className="mt-1 line-clamp-2 break-words text-lg font-semibold">{invitation.projectName || "Projektname nicht veröffentlicht"}</h2>
             <p className="mt-1 text-xs text-muted-foreground">Von {invitation.senderAgOrgName ?? "Auftraggebername nicht veröffentlicht"} · {dateText(invitation.createdAt, true)}</p>
           </div>
         </div>
@@ -304,17 +304,17 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{item.requestNumber}</p>
-            <h2 data-testid={`text-request-title-${item.id}`} className="mt-1 truncate text-lg font-semibold">{title}</h2>
+            <h2 data-testid={`text-request-title-${item.id}`} className="mt-1 line-clamp-2 break-words text-lg font-semibold">{title}</h2>
             <p className="mt-1 text-xs text-muted-foreground">Eingegangen {dateText(item.receivedAt, true)}</p>
           </div>
           <StatusBadge status={item.status} />
         </div>
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border/70 py-4 text-sm">
-          <div className="col-span-2 flex items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 truncate font-medium">{item.guOrgName || "Auftraggebername nicht veröffentlicht"}</p></div></div>
-          <div className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 truncate font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
-          <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 truncate font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
-          <div className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 truncate font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
-          <div className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Arbeitsbereich</p><p className="mt-0.5 truncate font-medium">{item.takt.taktBezeichnung || "Nicht veröffentlicht"}</p></div></div>
+          <div className="col-span-2 flex min-w-0 items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 break-words font-medium">{item.guOrgName || "Auftraggebername nicht veröffentlicht"}</p></div></div>
+          <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 break-words font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 break-words font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
+          <div className="flex min-w-0 items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 break-words font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Arbeitsbereich</p><p className="mt-0.5 break-words font-medium">{item.takt.taktBezeichnung || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistungsfenster</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
           <div className="flex items-start gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Version</p><p className="mt-0.5 font-medium">Leistung {item.leistungVersion ? `v${item.leistungVersion}` : "nicht angegeben"} · Takt {item.taktVersion ? `v${item.taktVersion}` : "nicht angegeben"}</p></div></div>
         </div>

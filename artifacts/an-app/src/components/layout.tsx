@@ -44,7 +44,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="flex h-[100dvh] w-full bg-background text-foreground overflow-hidden">
+    <div className="flex h-[100dvh] min-h-0 w-full bg-background text-foreground overflow-hidden">
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
@@ -81,14 +81,14 @@ export function Layout({ children }: { children: ReactNode }) {
           {/* Mobile: close */}
           <button
             onClick={closeMobile}
-            className="sm:hidden ml-auto flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors flex-shrink-0"
+             className="sm:hidden ml-auto flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
           {/* Desktop: collapse */}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors flex-shrink-0 ${collapsed ? "mx-auto" : "ml-auto"}`}
+             className={`hidden sm:flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors flex-shrink-0 ${collapsed ? "mx-auto" : "ml-auto"}`}
             title={collapsed ? "Seitenleiste öffnen" : "Seitenleiste schließen"}
           >
             {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
@@ -96,7 +96,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Org label */}
-        <div className={`text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-5 pt-4 pb-2 ${collapsed ? "sm:hidden" : ""}`}>
+         <div className={`text-[10px] uppercase tracking-wider text-sidebar-foreground/70 font-semibold px-5 pt-4 pb-2 ${collapsed ? "sm:hidden" : ""}`}>
           {user?.orgName || "Nachunternehmen"}
         </div>
 
@@ -116,7 +116,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   "px-3 py-2.5", collapsed ? "sm:justify-center sm:p-2" : "",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                 ].join(" ")}
               >
                 {/* Icon — dot overlay in collapsed mode */}
@@ -140,7 +140,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className={`border-t border-sidebar-border p-3 ${collapsed ? "p-2" : ""}`}>
+         <div className={`border-t border-sidebar-border p-3 ${collapsed ? "p-2" : ""}`}>
           <div className={`${collapsed ? "sm:hidden" : ""}`}>
             <Link href="/settings" onClick={closeMobile}>
               <div className="flex items-center gap-3 px-2 py-2 mb-1 rounded-md hover:bg-sidebar-accent/50 cursor-pointer transition-colors">
@@ -149,7 +149,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-sm font-medium truncate">{user?.name}</span>
-                  <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
+                   <span className="text-xs text-sidebar-foreground/70 truncate">{user?.email}</span>
                 </div>
               </div>
             </Link>
@@ -158,7 +158,7 @@ export function Layout({ children }: { children: ReactNode }) {
             onClick={() => logout()}
             title={collapsed ? t("nav.logout") : undefined}
             className={[
-              "flex items-center gap-2 rounded-md text-muted-foreground hover:text-foreground",
+               "flex items-center gap-2 rounded-md text-sidebar-foreground/80 hover:text-sidebar-foreground",
               "hover:bg-sidebar-accent/50 transition-colors w-full text-sm px-3 py-2",
               collapsed ? "sm:justify-center sm:p-2" : "",
             ].join(" ")}
@@ -170,12 +170,12 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+       <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-hidden bg-background">
         {/* Mobile-only top bar */}
         <div className="h-14 flex-shrink-0 flex items-center px-4 border-b border-sidebar-border bg-sidebar sm:hidden">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60 transition-colors"
+             className="p-1.5 rounded-md text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -185,7 +185,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="text-[9px] text-primary uppercase font-bold tracking-wider">Subcontractor</span>
           </div>
         </div>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative">{children}</main>
+         <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-8 relative">{children}</main>
       </div>
     </div>
   );

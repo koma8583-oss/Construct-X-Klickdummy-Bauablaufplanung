@@ -77,17 +77,17 @@ function getDeadlineState(item: TaktRequestListItem): DeadlineState {
     const h = differenceInHours(now, due);
     const d = differenceInDays(now, due);
     const label = h < 24 ? `Seit ${h}h überfällig` : `Seit ${d}T überfällig`;
-    return { kind: 'overdue', label, color: 'text-red-600 font-medium' };
+    return { kind: 'overdue', label, color: 'text-red-800 dark:text-red-200 font-medium' };
   }
 
   const h = differenceInHours(due, now);
   if (h <= 8) {
-    return { kind: 'due-today', label: `Fällig in ${h}h`, color: 'text-red-600 font-medium' };
+    return { kind: 'due-today', label: `Fällig in ${h}h`, color: 'text-red-800 dark:text-red-200 font-medium' };
   }
   if (h <= 48) {
     const d = differenceInDays(due, now);
     const label = d === 0 ? 'Fällig heute' : d === 1 ? 'Fällig morgen' : `Fällig in ${d} Tagen`;
-    return { kind: 'due-soon', label, color: 'text-amber-600' };
+    return { kind: 'due-soon', label, color: 'text-amber-800 dark:text-amber-200' };
   }
 
   const d = differenceInDays(due, now);
@@ -105,14 +105,14 @@ function canRespond(item: TaktRequestListItem): boolean {
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT:                 'text-muted-foreground bg-muted/60',
-  SENT:                  'text-blue-600 bg-blue-500/10',
-  DELIVERED:             'text-blue-600 bg-blue-500/10',
-  DETAILS_RETRIEVED:     'text-amber-600 bg-amber-500/10',
-  UNDER_REVIEW:          'text-amber-600 bg-amber-500/10',
-  ACCEPTED:              'text-emerald-600 bg-emerald-500/10',
-  ALTERNATIVES_PROPOSED: 'text-orange-600 bg-orange-500/10',
-  REJECTED:              'text-red-600 bg-red-500/10',
-  REVISION_REQUIRED:     'text-orange-600 bg-orange-500/10',
+  SENT:                  'text-blue-800 dark:text-blue-200 bg-blue-500/10',
+  DELIVERED:             'text-blue-800 dark:text-blue-200 bg-blue-500/10',
+  DETAILS_RETRIEVED:     'text-amber-800 dark:text-amber-200 bg-amber-500/10',
+  UNDER_REVIEW:          'text-amber-800 dark:text-amber-200 bg-amber-500/10',
+  ACCEPTED:              'text-emerald-800 dark:text-emerald-200 bg-emerald-500/10',
+  ALTERNATIVES_PROPOSED: 'text-orange-800 dark:text-orange-200 bg-orange-500/10',
+  REJECTED:              'text-red-800 dark:text-red-200 bg-red-500/10',
+  REVISION_REQUIRED:     'text-orange-800 dark:text-orange-200 bg-orange-500/10',
   CANCELLED:             'text-muted-foreground bg-muted/40',
   EXPIRED:               'text-muted-foreground bg-muted/40',
   SUPERSEDED:            'text-muted-foreground bg-muted/40',
@@ -311,18 +311,18 @@ export default function TaktRequestsInboxPage() {
                   return (
                     <TableRow
                       key={item.id}
-                      className={`border-border hover:bg-muted/30 transition-colors ${isExpired ? 'opacity-60' : ''}`}
+                      className={`border-border hover:bg-muted/30 transition-colors ${isExpired ? 'bg-muted/20' : ''}`}
                     >
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {item.requestNumber}
                       </TableCell>
-                      <TableCell className="text-sm max-w-[130px] truncate hidden sm:table-cell" title={(item as any).agOrgName ?? '–'}>
+                      <TableCell className="hidden max-w-[180px] whitespace-normal text-sm sm:table-cell" title={(item as any).agOrgName ?? '–'}>
                         {(item as any).agOrgName ?? <span className="text-muted-foreground">–</span>}
                       </TableCell>
                       <TableCell className="text-sm max-w-[160px]">
-                        <div className="truncate font-medium" title={item.taktBezeichnung ?? undefined}>{item.taktBezeichnung ?? '–'}</div>
+                        <div className="line-clamp-2 break-words font-medium" title={item.taktBezeichnung ?? undefined}>{item.taktBezeichnung ?? '–'}</div>
                         {((item as any).zone || (item as any).gewerk) && (
-                          <div className="text-xs text-muted-foreground truncate">
+                          <div className="line-clamp-2 break-words text-xs text-muted-foreground">
                             {[(item as any).zone, (item as any).gewerk].filter(Boolean).join(' · ')}
                           </div>
                         )}

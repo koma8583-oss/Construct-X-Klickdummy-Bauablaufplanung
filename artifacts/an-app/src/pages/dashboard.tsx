@@ -36,11 +36,11 @@ function fmtDateTime(s?: string | Date | null): string {
 }
 
 const ACTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  OVERDUE:           { label: "Überfällig",              color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30",      icon: <AlertTriangle className="w-4 h-4 text-red-500" /> },
-  POLICY_PENDING:    { label: "Policy akzeptieren",      color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30", icon: <Shield className="w-4 h-4 text-amber-500" /> },
-  RETRIEVE_DATA:     { label: "Leistungsdaten abrufen",   color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30",    icon: <BookOpen className="w-4 h-4 text-blue-500" /> },
-  ADD_REQUIREMENTS:  { label: "Ressourcenbedarf erfassen", color: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30", icon: <ClipboardList className="w-4 h-4 text-violet-500" /> },
-  SUBMIT_RESPONSE:   { label: "Antwort einreichen",      color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30", icon: <CalendarCheck className="w-4 h-4 text-emerald-500" /> },
+  OVERDUE:           { label: "Überfällig",              color: "bg-red-500/10 text-red-800 dark:text-red-200 border-red-500/30",      icon: <AlertTriangle className="w-4 h-4 text-red-700 dark:text-red-300" /> },
+  POLICY_PENDING:    { label: "Policy akzeptieren",      color: "bg-amber-500/10 text-amber-900 dark:text-amber-200 border-amber-500/30", icon: <Shield className="w-4 h-4 text-amber-800 dark:text-amber-300" /> },
+  RETRIEVE_DATA:     { label: "Leistungsdaten abrufen",   color: "bg-blue-500/10 text-blue-800 dark:text-blue-200 border-blue-500/30",    icon: <BookOpen className="w-4 h-4 text-blue-700 dark:text-blue-300" /> },
+  ADD_REQUIREMENTS:  { label: "Ressourcenbedarf erfassen", color: "bg-violet-500/10 text-violet-800 dark:text-violet-200 border-violet-500/30", icon: <ClipboardList className="w-4 h-4 text-violet-700 dark:text-violet-300" /> },
+  SUBMIT_RESPONSE:   { label: "Antwort einreichen",      color: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border-emerald-500/30", icon: <CalendarCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-300" /> },
 };
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
@@ -54,9 +54,9 @@ interface KpiCardProps {
 
 function KpiCard({ title, value, icon, variant = "default" }: KpiCardProps) {
   const valueClass =
-    variant === "danger"  ? "text-red-600 dark:text-red-400" :
-    variant === "warning" ? "text-amber-600 dark:text-amber-400" :
-    variant === "success" ? "text-emerald-600 dark:text-emerald-400" :
+    variant === "danger"  ? "text-red-800 dark:text-red-200" :
+    variant === "warning" ? "text-amber-900 dark:text-amber-200" :
+    variant === "success" ? "text-emerald-800 dark:text-emerald-200" :
     "text-foreground";
 
   return (
@@ -115,14 +115,14 @@ export default function Dashboard() {
       {/* ── Policy-Hinweis Banner ─────────────────────────────────────────── */}
       {policyPending > 0 && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-            <Shield className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <Shield className="h-5 w-5 text-amber-800 dark:text-amber-200 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
                 {policyPending === 1
                   ? "1 Datenraum-Policy muss noch akzeptiert werden"
                   : `${policyPending} Datenraum-Policies müssen noch akzeptiert werden`}
               </p>
-              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+              <p className="text-xs text-amber-800 dark:text-amber-200 mt-0.5">
                 Ohne Akzeptanz können die verknüpften Leistungsdaten nicht abgerufen werden. Zum Datenraum →
               </p>
             </div>
@@ -134,25 +134,25 @@ export default function Dashboard() {
         <KpiCard
           title={t("dashboard.pendingRequests")}
           value={pendingRequests}
-          icon={<Inbox className="h-4 w-4 text-amber-500" />}
+          icon={<Inbox className="h-4 w-4 text-amber-800 dark:text-amber-200" />}
           variant={pendingRequests > 0 ? "warning" : "default"}
         />
         <KpiCard
           title="Policy ausstehend"
           value={policyPending}
-          icon={<Shield className="h-4 w-4 text-amber-600" />}
+          icon={<Shield className="h-4 w-4 text-amber-800 dark:text-amber-200" />}
           variant={policyPending > 0 ? "warning" : "default"}
         />
         <KpiCard
           title="Antwort bald fällig"
           value={dueSoon}
-          icon={<Clock className="h-4 w-4 text-red-500" />}
+          icon={<Clock className="h-4 w-4 text-red-700 dark:text-red-300" />}
           variant={dueSoon > 0 ? "danger" : "default"}
         />
         <KpiCard
           title="Aktive Ressourcenbelegungen"
           value={activeBookings}
-          icon={<Layers className="h-4 w-4 text-blue-500" />}
+          icon={<Layers className="h-4 w-4 text-blue-700 dark:text-blue-300" />}
         />
       </div>
 
@@ -178,39 +178,39 @@ export default function Dashboard() {
 
                 return (
                   <Link key={action.id} href={`/leistungsanfragen/${action.id}`}>
-                    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors hover:bg-muted/40 ${meta.color}`}>
+                      <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors hover:bg-muted/40 ${meta.color}`}>
                       <span className="shrink-0">{meta.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">
+                        <div className="text-sm font-medium break-words text-foreground">
                           {action.taktBezeichnung
                             ? `${action.gewerk ?? ""} · ${action.zone ?? ""} ${action.taktBezeichnung}`
                             : action.requestNumber}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className="text-[11px] opacity-70">{action.guOrgName ?? "Auftraggebername nicht veröffentlicht"}</span>
+                          <span className="text-[11px] text-muted-foreground">{action.guOrgName ?? "Auftraggebername nicht veröffentlicht"}</span>
                           {action.projectLocation && (
-                            <span className="flex items-center gap-0.5 text-[11px] opacity-70">
+                              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
                               <MapPin className="w-2.5 h-2.5 shrink-0" />
-                              <span className="truncate max-w-[120px]">{action.projectLocation}</span>
+                              <span className="max-w-[120px] break-words">{action.projectLocation}</span>
                             </span>
                           )}
                           {deadline && (
-                            <span className={`text-[11px] font-medium ${isOverdue ? "text-red-500" : "opacity-70"}`}>
+                            <span className={`text-[11px] font-medium ${isOverdue ? "text-red-800 dark:text-red-200" : "text-muted-foreground"}`}>
                               Frist: {fmtDateTime(deadline)}
                             </span>
                           )}
                         </div>
                         {action.projectDescription && (
-                          <div className="text-[11px] opacity-60 truncate mt-0.5">
+                          <div className="mt-0.5 line-clamp-2 break-words text-[11px] text-muted-foreground">
                             {action.projectDescription}
                           </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide opacity-70 hidden sm:block">
+                          <span className="hidden text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:block">
                           {meta.label}
                         </span>
-                        <ChevronRight className="w-4 h-4 opacity-40" />
+                        <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
                       </div>
                     </div>
                   </Link>
@@ -246,7 +246,7 @@ export default function Dashboard() {
                           <span className="text-[10px] text-muted-foreground">
                             {format(deadline, "MMM", { locale: de })}
                           </span>
-                          <span className={`text-base font-bold leading-none ${isOverdue ? "text-red-500" : ""}`}>
+                           <span className={`text-base font-bold leading-none ${isOverdue ? "text-red-800 dark:text-red-200" : ""}`}>
                             {format(deadline, "dd")}
                           </span>
                         </div>
@@ -256,7 +256,7 @@ export default function Dashboard() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">
+                        <div className="break-words text-sm font-medium text-foreground">
                           {takt?.gewerk
                             ? `${takt.gewerk} – ${takt.zone ?? ""}`
                             : req.requestNumber}
@@ -266,17 +266,17 @@ export default function Dashboard() {
                           {req.projectLocation && (
                             <span className="flex items-center gap-0.5">
                               <MapPin className="w-3 h-3 shrink-0" />
-                              <span className="truncate max-w-[110px]">{req.projectLocation}</span>
+                               <span className="max-w-[110px] break-words">{req.projectLocation}</span>
                             </span>
                           )}
                           {deadline && (
-                            <span className={isOverdue ? "text-red-500 font-semibold" : ""}>
+                          <span className={isOverdue ? "font-semibold text-red-800 dark:text-red-200" : ""}>
                               Frist: {fmtDate(deadline)}
                             </span>
                           )}
                         </div>
                         {req.projectDescription && (
-                          <div className="text-[11px] text-muted-foreground/70 truncate mt-0.5">
+                          <div className="mt-0.5 line-clamp-2 break-words text-[11px] text-muted-foreground">
                             {req.projectDescription}
                           </div>
                         )}
