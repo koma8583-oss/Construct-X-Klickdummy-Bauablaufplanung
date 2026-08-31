@@ -146,10 +146,10 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
-    const invitationCard = await screen.findByText("Bestandsprojekt");
-    const card = invitationCard.closest("[class*='border-border']") ?? invitationCard.parentElement!;
+    await screen.findByTestId("card-invitation-legacy-invitation");
+    const card = screen.getByTestId("card-invitation-legacy-invitation");
     expect(within(card).getAllByText("Projektaufnahme").length).toBeGreaterThan(0);
-    expect(within(card).getByText("P-LEGACY-1")).toBeInTheDocument();
+    expect(within(card).queryByText("P-LEGACY-1")).not.toBeInTheDocument();
     expect(within(card).getByText("READ, USE_AS_PROJECT_PARTNER")).toBeInTheDocument();
     expect(within(card).getByText("REDISTRIBUTE, AI_TRAINING")).toBeInTheDocument();
     expect(within(card).getByText(/keine separate Datenfreigabe/i)).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
-    const invitationCard = await screen.findByText("Umbau Essen");
+    await screen.findByTestId("card-invitation-invitation-2");
     const card = screen.getByTestId("card-invitation-invitation-2");
     await user.click(within(card).getByRole("checkbox"));
     await user.click(within(card).getByRole("button", { name: "Projekt beitreten" }));

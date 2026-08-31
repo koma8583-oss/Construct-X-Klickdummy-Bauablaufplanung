@@ -195,7 +195,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
           <div className="min-w-0">
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Projekteinladung</p>
             <h2 className="mt-1 truncate text-lg font-semibold">{invitation.projectName}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Von {invitation.senderAgOrgId} · {dateText(invitation.createdAt, true)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Von {invitation.senderAgOrgName ?? "Auftraggebername nicht veröffentlicht"} · {dateText(invitation.createdAt, true)}</p>
           </div>
         </div>
         <Badge variant="outline" className={invitation.status === "PENDING" ? "border-amber-600/30 bg-amber-500/10 text-amber-800" : "border-border text-muted-foreground"}>
@@ -208,7 +208,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
           Projektaufnahme
         </div>
         <div className="grid gap-1 sm:grid-cols-2">
-          <p><span className="text-muted-foreground">Projekt-ID:</span> {invitation.projectReference}</p>
+          <p><span className="text-muted-foreground">Projekt:</span> {invitation.projectName || "Projektname nicht veröffentlicht"}</p>
           {invitation.projectLocation && (
             <p><span className="text-muted-foreground">Ort:</span> {invitation.projectLocation}</p>
           )}
@@ -310,7 +310,7 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
           <StatusBadge status={item.status} />
         </div>
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border/70 py-4 text-sm">
-          <div className="col-span-2 flex items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 truncate font-medium">{item.guOrgId || "Nicht veröffentlicht"}</p></div></div>
+          <div className="col-span-2 flex items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 truncate font-medium">{item.guOrgName || "Auftraggebername nicht veröffentlicht"}</p></div></div>
           <div className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 truncate font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 truncate font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
           <div className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 truncate font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>

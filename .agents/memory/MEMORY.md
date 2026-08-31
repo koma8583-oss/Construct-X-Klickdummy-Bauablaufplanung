@@ -48,6 +48,7 @@
 - [Dataspace schedule changes](dataspace-schedule-changes.md) — AG commits bilateral schedule changes only after an AN Dataspace response; AN validates local projections and bookings.
 - [External decision retry](external-decision-retry.md) — Tractus-X decisions retry from the persisted public envelope and never loop back through local inbound processing.
 - [AG public requirement boundary](ag-public-resource-requirements.md) — AG outbound coordination payloads derive requirements from immutable public snapshots, never AN catalog tables.
+- [Published display labels](published-display-labels.md) — business-facing AN labels must come from published Dataspace names; missing names use neutral text, never technical IDs.
 - [Delivery history transport coverage](delivery-history-transport-coverage.md) — append-only delivery history must be written by every connector adapter, including adapters that bypass the shared transport.
 - [Atomic delivery claims](atomic-delivery-claims.md) — increment attempt counts in the same conditional outbox claim that transitions a retry to SENT; history uniqueness alone cannot prevent lost races.
 - [Role-specific browser sessions](role-session-isolation.md) — AG and AN auth flows need separate refresh-cookie state when both apps share a browser origin.

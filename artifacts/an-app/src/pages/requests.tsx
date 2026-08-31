@@ -122,7 +122,7 @@ export default function Requests() {
                     </TableCell>
                     <TableCell>
                       <Link href={`/takt-requests/${request.id}`} className="block">
-                        {request.guOrgId}
+                        {request.guOrgName ?? "Auftraggebername nicht veröffentlicht"}
                       </Link>
                     </TableCell>
                     <TableCell>

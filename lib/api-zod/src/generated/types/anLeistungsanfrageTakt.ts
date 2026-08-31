@@ -8,7 +8,8 @@
 
 export interface AnLeistungsanfrageTakt {
   id: string;
-  taktBezeichnung: string;
+  /** @nullable */
+  taktBezeichnung: string | null;
   /** @nullable */
   kurzbezeichnung: string | null;
   /** @nullable */

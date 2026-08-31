@@ -3862,6 +3862,7 @@ components:
         invitationId: { type: string }
         correlationId: { type: string }
         senderAgOrgId: { type: string }
+        senderAgOrgName: { type: ["string", "null"] }
         receiverAnOrgId: { type: string }
         projectReference: { type: string }
         projectName: { type: string }
@@ -3896,6 +3897,7 @@ components:
         leistungVersion: { type: integer, minimum: 1 }
         taktVersion: { type: integer, minimum: 1 }
         guOrgId: { type: string }
+        guOrgName: { type: ["string", "null"] }
         nuOrgId: { type: string }
         projektId: { type: string }
         projectId: { type: string }
@@ -3928,7 +3930,7 @@ components:
       required: [id, taktBezeichnung, kurzbezeichnung, gewerk, zone, plannedStart, plannedEnd]
       properties:
         id: { type: string }
-        taktBezeichnung: { type: string }
+        taktBezeichnung: { type: ["string", "null"] }
         kurzbezeichnung: { type: ["string", "null"] }
         gewerk: { type: ["string", "null"] }
         zone: { type: ["string", "null"] }
@@ -3940,7 +3942,7 @@ components:
       required: [id, name, location]
       properties:
         id: { type: string }
-        name: { type: string }
+        name: { type: ["string", "null"] }
         location: { type: ["string", "null"] }
 
     AnLeistungsanfrageResourceRequirement:

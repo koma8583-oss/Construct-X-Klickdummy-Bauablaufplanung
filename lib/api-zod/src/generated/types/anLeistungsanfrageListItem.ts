@@ -25,6 +25,8 @@ export interface AnLeistungsanfrageListItem {
   /** @minimum 1 */
   taktVersion?: number;
   guOrgId: string;
+  /** @nullable */
+  guOrgName?: string | null;
   nuOrgId: string;
   projektId: string;
   projectId: string;

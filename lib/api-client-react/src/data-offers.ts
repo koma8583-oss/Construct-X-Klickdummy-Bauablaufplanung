@@ -24,8 +24,9 @@ export type { DataProductType, PublicationStatus, PublicationRecipientStatus, Po
 export interface DataOfferSummary {
   publicationId: string;
   title: string;
-  agName: string;
+  agName: string | null;
   projectReference: string;
+  projectName: string | null;
   dataProductType: DataProductType;
   version: number;
   publicationStatus: PublicationStatus;

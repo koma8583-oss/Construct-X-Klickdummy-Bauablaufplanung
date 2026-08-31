@@ -43,7 +43,7 @@ function DataOfferCard({ offer }: { offer: DataOfferSummary }) {
             <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{offer.agName}</span>
+            <span>{offer.agName || "Auftraggebername nicht veröffentlicht"}</span>
             <span aria-hidden="true">·</span>
             <span>{PRODUCT_LABEL[offer.dataProductType] ?? offer.dataProductType}</span>
           </div>
@@ -52,7 +52,7 @@ function DataOfferCard({ offer }: { offer: DataOfferSummary }) {
           <div className="grid gap-1 text-sm">
             <div>
               <span className="text-xs text-muted-foreground">Projekt: </span>
-              <span className="font-medium">{offer.projectReference}</span>
+              <span className="font-medium">{offer.projectName || "Projektname nicht veröffentlicht"}</span>
             </div>
             {offer.policyName && (
               <div>
@@ -200,7 +200,7 @@ export default function PolicyLibraryPage() {
             <SelectContent>
               <SelectItem value="all">Alle Projekte</SelectItem>
               {uniqueProjects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>{project.agName} · {project.name}</SelectItem>
+                <SelectItem key={project.id} value={project.id}>{project.agName || "Auftraggebername nicht veröffentlicht"} · {project.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -224,7 +224,7 @@ export default function PolicyLibraryPage() {
                 <p className="line-clamp-3 text-sm text-muted-foreground">{policy.description ?? policy.purpose}</p>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                   <div className="font-medium text-foreground">Akzeptiert für:</div>
-                  {policy.projects.map((project) => <div key={project.id}>{project.agName} · {project.name}</div>)}
+                  {policy.projects.map((project) => <div key={project.id}>{project.agName || "Auftraggebername nicht veröffentlicht"} · {project.name}</div>)}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-1">
                   <Badge variant="outline">{policy.permissions.length} Erlaubnisse</Badge>

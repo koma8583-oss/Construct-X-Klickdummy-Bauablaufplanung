@@ -241,6 +241,8 @@ export interface AnProjectInvitation {
   invitationId: string;
   correlationId: string;
   senderAgOrgId: string;
+  /** @nullable */
+  senderAgOrgName?: string | null;
   receiverAnOrgId: string;
   projectReference: string;
   projectName: string;
@@ -291,7 +293,8 @@ export type AnLeistungsanfrageListItemPolicySnapshot = { [key: string]: unknown 
 
 export interface AnLeistungsanfrageTakt {
   id: string;
-  taktBezeichnung: string;
+  /** @nullable */
+  taktBezeichnung: string | null;
   /** @nullable */
   kurzbezeichnung: string | null;
   /** @nullable */
@@ -304,7 +307,8 @@ export interface AnLeistungsanfrageTakt {
 
 export interface AnLeistungsanfrageProject {
   id: string;
-  name: string;
+  /** @nullable */
+  name: string | null;
   /** @nullable */
   location: string | null;
 }
@@ -324,6 +328,8 @@ export interface AnLeistungsanfrageListItem {
   /** @minimum 1 */
   taktVersion?: number;
   guOrgId: string;
+  /** @nullable */
+  guOrgName?: string | null;
   nuOrgId: string;
   projektId: string;
   projectId: string;

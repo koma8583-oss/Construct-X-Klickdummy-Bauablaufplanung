@@ -187,7 +187,7 @@ export default function Dashboard() {
                             : action.requestNumber}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className="text-[11px] opacity-70">{action.agName ?? "AG"}</span>
+                          <span className="text-[11px] opacity-70">{action.guOrgName ?? "Auftraggebername nicht veröffentlicht"}</span>
                           {action.projectLocation && (
                             <span className="flex items-center gap-0.5 text-[11px] opacity-70">
                               <MapPin className="w-2.5 h-2.5 shrink-0" />
@@ -262,7 +262,7 @@ export default function Dashboard() {
                             : req.requestNumber}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-                          <span>{req.agOrganization?.name ?? "AG"}</span>
+                          <span>{req.guOrgName ?? "Auftraggebername nicht veröffentlicht"}</span>
                           {req.projectLocation && (
                             <span className="flex items-center gap-0.5">
                               <MapPin className="w-3 h-3 shrink-0" />

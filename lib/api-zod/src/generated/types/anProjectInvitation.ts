@@ -13,6 +13,8 @@ export interface AnProjectInvitation {
   invitationId: string;
   correlationId: string;
   senderAgOrgId: string;
+  /** @nullable */
+  senderAgOrgName?: string | null;
   receiverAnOrgId: string;
   projectReference: string;
   projectName: string;

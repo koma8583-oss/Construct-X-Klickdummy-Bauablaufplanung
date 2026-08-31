@@ -26,6 +26,7 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
   projectMembershipsTable,
+  organizationsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -77,6 +78,7 @@ import {
   toExternalServiceResponseFromEnvelope,
   toExternalServiceRequest,
   toExternalResourceRequirementsFromSnapshot,
+  publicSnapshotFromRecord,
 } from "../services/dataspace/external-mappers";
 import { IdempotencyConflictError } from "../lib/transport/transport-errors";
 import {
@@ -836,16 +838,24 @@ router.post(
       return;
     }
     const snapshotPayload = (currentSnap?.snapshotPayload as Record<string, unknown> | null) ?? {};
+    const [senderOrganization, project] = await Promise.all([
+      db.select({ name: organizationsTable.name }).from(organizationsTable)
+        .where(eq(organizationsTable.id, guOrgId)).limit(1),
+      db.select({ name: projectsTable.name }).from(projectsTable)
+        .where(eq(projectsTable.id, String(snapPayload.projectReference ?? ""))).limit(1),
+    ]);
     let externalRequest;
     try {
       externalRequest = toExternalServiceRequest({
         requestId: id,
         requestVersion: existing.taktVersion,
         projectReference: String(snapPayload.projectReference ?? existing.taktId),
+        projectName: project[0]?.name,
         taktReference: existing.taktId,
         plannedStart: plannedTimeWindow.start,
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,
+        senderOrganizationName: senderOrganization[0]?.name,
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
         messageId: notificationMessageId(id),
@@ -853,6 +863,7 @@ router.post(
           snapshotPayload.resourceRequirements,
           { start: plannedTimeWindow.start, end: plannedTimeWindow.end },
         ),
+        publicSnapshot: publicSnapshotFromRecord(snapshotPayload),
         policySnapshot: (snapPayload.policySnapshot as Parameters<typeof toExternalServiceRequest>[0]["policySnapshot"]),
       });
     } catch (error) {

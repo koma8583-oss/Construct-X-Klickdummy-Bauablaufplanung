@@ -6,6 +6,11 @@ import type {
   ExternalResourceRequirement,
   ExternalPolicySnapshot,
 } from "./external-contracts";
+import {
+  TAKT_REQUEST_SNAPSHOT_PUBLIC_FIELDS,
+  TaktRequestSnapshotPayloadSchema,
+  type TaktRequestSnapshotPayload,
+} from "@workspace/api-zod";
 import type { MessageEnvelope } from "../../lib/transport/message-transport";
 
 const SCHEMA_VERSION = "1.0";
@@ -97,15 +102,18 @@ export function toExternalServiceRequest(input: {
   changeProposalId?: string;
   baseTimeWindow?: { start: string; end: string };
   projectReference: string;
+  projectName?: string;
   leistungReference?: string;
   taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   senderOrgId: string;
+  senderOrganizationName?: string;
   receiverOrgId: string;
   correlationId?: string;
   messageId?: string;
   resourceRequirements?: ExternalResourceRequirement[];
+  publicSnapshot?: TaktRequestSnapshotPayload;
   policySnapshot?: ExternalPolicySnapshot;
 }): ExternalServiceRequest {
   if (!input.plannedStart || !input.plannedEnd) {
@@ -123,19 +131,39 @@ export function toExternalServiceRequest(input: {
     metadata,
     requestId: input.requestId,
     requestVersion: input.requestVersion,
+    senderOrganizationName: input.senderOrganizationName,
     requestKind: input.requestKind,
     sourceRequestId: input.sourceRequestId,
     changeProposalId: input.changeProposalId,
     baseTimeWindow: input.baseTimeWindow,
     projectReference: input.projectReference,
+    projectName: input.projectName,
     leistungReference: input.leistungReference,
     taktReference: input.taktReference,
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
     resourceRequirements: input.resourceRequirements ?? [],
+    ...(input.publicSnapshot ? { publicSnapshot: input.publicSnapshot } : {}),
     policy: { allowedConsumerOrgId: input.receiverOrgId, usagePurpose: CONSTRUCTION_SERVICE_COORDINATION_PURPOSE },
     ...(input.policySnapshot ? { policySnapshot: input.policySnapshot } : {}),
   };
+}
+
+/**
+ * Keep the public snapshot separate from notification metadata and coordination
+ * context. This is the only snapshot shape allowed onto the Dataspace wire.
+ */
+export function publicSnapshotFromRecord(value: Record<string, unknown>): TaktRequestSnapshotPayload {
+  const candidate = Object.fromEntries(
+    TAKT_REQUEST_SNAPSHOT_PUBLIC_FIELDS
+      .filter((field) => Object.prototype.hasOwnProperty.call(value, field))
+      .map((field) => [field, value[field]]),
+  );
+  const parsed = TaktRequestSnapshotPayloadSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error("The released Takt snapshot is incomplete or malformed");
+  }
+  return parsed.data;
 }
 
 export function toExternalServiceResponse(input: {

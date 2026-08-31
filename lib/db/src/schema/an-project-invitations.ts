@@ -28,6 +28,7 @@ export const anProjectInvitationsTable = pgTable(
     invitationId: text("invitation_id").notNull().unique(),
     correlationId: text("correlation_id").notNull().unique(),
     senderAgOrgId: text("sender_ag_org_id").notNull(),
+    senderAgOrgName: text("sender_ag_org_name"),
     receiverAnOrgId: text("receiver_an_org_id").notNull(),
     projectReference: text("project_reference").notNull(),
     projectName: text("project_name").notNull(),

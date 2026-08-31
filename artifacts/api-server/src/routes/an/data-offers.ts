@@ -81,7 +81,8 @@ function toOffer(invitation: typeof anProjectInvitationsTable.$inferSelect) {
   return {
     publicationId,
     title: asString(dataOffer.title, invitation.dataPublicationTitle ?? invitation.projectName),
-    agName: invitation.senderAgOrgId,
+    agName: invitation.senderAgOrgName,
+    projectName: invitation.projectName,
     projectReference: invitation.projectReference,
     dataProductType: asString(dataOffer.dataProductType, "PROJECT_OVERVIEW"),
     version: asPositiveInteger(dataOffer.publicationVersion ?? dataOffer.version, 1),

@@ -50,7 +50,7 @@ router.get("/policies", requireJwt, async (req, res): Promise<void> => {
         id: invitation.projectReference,
         name: invitation.projectName,
         agOrgId: invitation.senderAgOrgId,
-        agName: invitation.senderAgOrgId,
+        agName: invitation.senderAgOrgName ?? "Auftraggebername nicht veröffentlicht",
       });
     }
     byPolicy.set(policyId, current);

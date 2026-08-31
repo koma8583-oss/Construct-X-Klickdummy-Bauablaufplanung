@@ -38,6 +38,7 @@ describe("AN data offers use local invitation projections", () => {
       invitationId: "an-local-offer-external-invitation",
       correlationId: "an-local-offer-correlation",
       senderAgOrgId: "ag-local-offer-test",
+      senderAgOrgName: "Bauunternehmen Lokal",
       receiverAnOrgId: AN_ORG,
       projectReference: "ag-project-reference",
       projectName: "Lokales Projektabbild",
@@ -66,7 +67,8 @@ describe("AN data offers use local invitation projections", () => {
       expect.objectContaining({
         publicationId: PUBLICATION_ID,
         title: "Lokales Datenangebot",
-        agName: "ag-local-offer-test",
+        agName: "Bauunternehmen Lokal",
+        projectName: "Lokales Projektabbild",
         recipientStatus: "OFFERED",
         policyCode: "LOCAL_POLICY",
       }),

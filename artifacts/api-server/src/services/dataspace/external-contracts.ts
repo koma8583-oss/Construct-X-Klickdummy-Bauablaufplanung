@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TaktRequestSnapshotPayloadSchema } from "@workspace/api-zod";
 
 const nonEmpty = (max = 512) => z.string().trim().min(1).max(max);
 const externalDate = nonEmpty(80).refine((value) => {
@@ -110,6 +111,7 @@ const alternativeSchema = z.object({
 export const externalProjectInvitationSchema = z.object({
   metadata: metadataSchema,
   invitationId: nonEmpty(200),
+  senderOrganizationName: nonEmpty(500).optional(),
   project: z.object({
     projectReference: nonEmpty(200),
     projectName: nonEmpty(500),
@@ -171,16 +173,20 @@ export const externalServiceRequestSchema = z.object({
   metadata: metadataSchema,
   requestId: nonEmpty(200),
   requestVersion: z.number().int().min(1),
+  senderOrganizationName: nonEmpty(500).optional(),
   requestKind: z.enum(["INITIAL", "SCHEDULE_CHANGE"]).optional(),
   sourceRequestId: nonEmpty(200).optional(),
   changeProposalId: nonEmpty(200).optional(),
   baseTimeWindow: timeWindowSchema.optional(),
   projectReference: nonEmpty(200),
+  projectName: nonEmpty(500).optional(),
   leistungReference: nonEmpty(200).optional(),
   taktReference: nonEmpty(200).optional(),
   plannedStart: externalDate,
   plannedEnd: externalDate,
   resourceRequirements: z.array(resourceRequirementSchema).max(100),
+  /** Public, immutable coordination data; never contains AN-local resources. */
+  publicSnapshot: TaktRequestSnapshotPayloadSchema.optional(),
   policy: policySchema.optional(),
   policySnapshot: policySnapshotSchema.optional(),
 }).strict()
@@ -318,6 +324,7 @@ export type DataspaceParticipant = {
 export type ExternalProjectInvitation = {
   metadata: ExchangeMetadata;
   invitationId: string;
+  senderOrganizationName?: string;
   project: {
     projectReference: string;
     projectName: string;
@@ -520,16 +527,19 @@ export type ExternalServiceRequest = {
   metadata: ExchangeMetadata;
   requestId: string;
   requestVersion: number;
+  senderOrganizationName?: string;
   requestKind?: "INITIAL" | "SCHEDULE_CHANGE";
   sourceRequestId?: string;
   changeProposalId?: string;
   baseTimeWindow?: { start: string; end: string };
   projectReference: string;
+  projectName?: string;
   leistungReference?: string;
   taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   resourceRequirements: ExternalResourceRequirement[];
+  publicSnapshot?: z.infer<typeof TaktRequestSnapshotPayloadSchema>;
   policy?: ExchangePolicy;
   policySnapshot?: ExternalPolicySnapshot;
 };

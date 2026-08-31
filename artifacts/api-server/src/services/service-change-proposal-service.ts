@@ -6,6 +6,8 @@ import {
   leistungsantwortEntscheidungenTable,
   leistungsanfrageSnapshotsTable,
   leistungenTable,
+  projectsTable,
+  organizationsTable,
   serviceChangeProposalsTable,
   serviceClarificationsTable,
   serviceConstraintsTable,
@@ -18,6 +20,7 @@ import { compareCalendarDates, differenceInCalendarDays } from "../lib/calendar-
 import {
   toExternalResourceRequirementsFromSnapshot,
   toExternalServiceRequest,
+  publicSnapshotFromRecord,
 } from "./dataspace/external-mappers";
 import { deliverLocalServiceRequest } from "./dataspace/local-dataspace-delivery";
 import type { ExternalServiceResponse } from "./dataspace/external-contracts";
@@ -161,6 +164,10 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
     }
     const [service] = await tx.select().from(leistungenTable).where(eq(leistungenTable.id, request.leistungId)).limit(1);
     if (!service || !request.agreedStart || !request.agreedEnd) throw Object.assign(new Error("Leistungsanfrage unvollständig"), { statusCode: 422 });
+    const [[project], [senderOrganization]] = await Promise.all([
+      tx.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, service.projectId)).limit(1),
+      tx.select({ name: organizationsTable.name }).from(organizationsTable).where(eq(organizationsTable.id, request.guOrgId)).limit(1),
+    ]);
     const [snapshot] = await tx.select({ snapshotPayload: leistungsanfrageSnapshotsTable.snapshotPayload })
       .from(leistungsanfrageSnapshotsTable)
       .where(eq(leistungsanfrageSnapshotsTable.leistungsanfrageId, request.id))
@@ -174,8 +181,11 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
       requestId: proposal.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: request.id, changeProposalId: proposal.id,
       baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
       projectReference: service.projectId, taktReference: service.id, plannedStart: proposal.start.toISOString(), plannedEnd: proposal.end.toISOString(),
+      projectName: project?.name,
+      senderOrganizationName: senderOrganization?.name,
       senderOrgId: request.guOrgId, receiverOrgId: request.nuOrgId, correlationId: proposal.id, messageId: `schedule-change:${proposal.id}`,
       resourceRequirements: requirements,
+      ...(snapshotPayload ? { publicSnapshot: publicSnapshotFromRecord(snapshotPayload) } : {}),
     });
     return { proposal, payload };
   });

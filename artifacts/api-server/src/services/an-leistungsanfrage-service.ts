@@ -30,11 +30,19 @@ function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
 
 function toRequestView(projection: Projection, requirementCount = 0) {
   const snapshot = snapshotOf(projection);
-  const plannedTimeWindow = snapshotValue(snapshot, "plannedTimeWindow") as Record<string, unknown> | undefined;
+  const releasedSnapshot = snapshotValue(snapshot, "publicSnapshot");
+  const displaySnapshot = Object.keys(objectRecord(releasedSnapshot)).length > 0
+    ? objectRecord(releasedSnapshot)
+    : snapshot;
+  const plannedTimeWindow = snapshotValue(displaySnapshot, "plannedTimeWindow") as Record<string, unknown> | undefined;
   const responseRequiredBy = snapshotValue(snapshot, "responseRequiredBy");
   const requestNumber = snapshotValue(snapshot, "requestNumber");
   const projectName = snapshotValue(snapshot, "projectName");
-  const location = snapshotValue(snapshot, "location");
+  const location = snapshotValue(displaySnapshot, "projectLocation");
+  const serviceName = snapshotValue(displaySnapshot, "kurzbezeichnung");
+  const workPackage = snapshotValue(displaySnapshot, "workPackage");
+  const trade = snapshotValue(displaySnapshot, "trade");
+  const zone = objectRecord(snapshotValue(displaySnapshot, "location")).zone;
 
   return {
     id: projection.externalLeistungsanfrageId,
@@ -46,6 +54,8 @@ function toRequestView(projection: Projection, requirementCount = 0) {
     leistungVersion: projection.externalRequestVersion,
     taktVersion: projection.externalRequestVersion,
     guOrgId: projection.senderAgOrgId,
+    guOrgName: typeof snapshotValue(snapshot, "senderOrganizationName") === "string"
+      ? snapshotValue(snapshot, "senderOrganizationName") : null,
     nuOrgId: projection.receiverAnOrgId,
     projektId: projection.projectReference,
     projectId: projection.projectReference,
@@ -60,21 +70,25 @@ function toRequestView(projection: Projection, requirementCount = 0) {
     resourceRequirementCount: requirementCount,
     takt: {
       id: projection.leistungReference,
-      taktBezeichnung: typeof snapshotValue(snapshot, "taktBezeichnung") === "string"
-        ? snapshotValue(snapshot, "taktBezeichnung") : projection.leistungReference,
-      kurzbezeichnung: typeof snapshotValue(snapshot, "kurzbezeichnung") === "string"
-        ? snapshotValue(snapshot, "kurzbezeichnung") : null,
-      gewerk: typeof snapshotValue(snapshot, "gewerk") === "string" ? snapshotValue(snapshot, "gewerk") : null,
-      zone: typeof snapshotValue(snapshot, "zone") === "string" ? snapshotValue(snapshot, "zone") : null,
+      taktBezeichnung: typeof workPackage === "string" ? workPackage : null,
+      kurzbezeichnung: typeof serviceName === "string" ? serviceName : null,
+      gewerk: typeof trade === "string" ? trade : null,
+      zone: typeof zone === "string" ? zone : null,
       plannedStart: typeof plannedTimeWindow?.start === "string" ? plannedTimeWindow.start : projection.plannedStart,
       plannedEnd: typeof plannedTimeWindow?.end === "string" ? plannedTimeWindow.end : projection.plannedEnd,
     },
     project: {
       id: projection.projectReference,
-      name: typeof projectName === "string" ? projectName : projection.projectReference,
+      name: typeof projectName === "string" ? projectName : null,
       location: typeof location === "string" ? location : null,
     },
   };
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 export async function listAnLeistungsanfragen(
@@ -126,10 +140,13 @@ export async function getAnLeistungsanfrageDetail(
 
   const requirements = await anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
     .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, current.id));
+  const publicSnapshot = objectRecord(snapshotValue(snapshotOf(current), "publicSnapshot"));
   return {
     ...toRequestView(current, requirements.length),
     schemaVersion: String(snapshotValue(snapshotOf(current), "schemaVersion") ?? "1.0"),
-    snapshotPayload: current.payloadSnapshot,
+    snapshotPayload: Object.keys(publicSnapshot).length > 0
+      ? publicSnapshot
+      : current.payloadSnapshot,
     resourceRequirements: requirements.map((requirement) => ({
       id: requirement.id,
       resourceTypeId: requirement.localResourceTypeId,

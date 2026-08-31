@@ -406,6 +406,10 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     eq(projectsTable.agOrgId, input.agOrgId),
   )).limit(1);
   if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
+  const [agOrganization] = await db.select({ name: organizationsTable.name })
+    .from(organizationsTable)
+    .where(eq(organizationsTable.id, input.agOrgId))
+    .limit(1);
 
   const [policy] = await db.select().from(policyTemplatesTable).where(and(
     or(
@@ -664,6 +668,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           createdAt: now.toISOString(),
         },
         invitationId,
+        ...(agOrganization?.name ? { senderOrganizationName: agOrganization.name } : {}),
         project: {
           projectReference: project.id,
           projectName: project.name,

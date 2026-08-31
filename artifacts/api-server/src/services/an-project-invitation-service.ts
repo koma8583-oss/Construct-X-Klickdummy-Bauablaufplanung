@@ -33,6 +33,9 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
       throw new AnProjectInvitationError("INVITATION_CONFLICT", "Die eingegangene Einladung stimmt nicht mit der vorhandenen Einladung überein.");
     }
     const updates: Partial<typeof anProjectInvitationsTable.$inferInsert> = {
+      ...(payload.senderOrganizationName !== undefined
+        ? { senderAgOrgName: payload.senderOrganizationName }
+        : {}),
       ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
       ...(payload.project.description !== undefined
         ? { projectDescription: payload.project.description }
@@ -70,6 +73,7 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     invitationId: payload.invitationId,
     correlationId: payload.metadata.correlationId,
     senderAgOrgId: payload.metadata.senderOrgId,
+    senderAgOrgName: payload.senderOrganizationName ?? null,
     receiverAnOrgId: payload.metadata.receiverOrgId,
     projectReference: payload.project.projectReference,
     projectName: payload.project.projectName,

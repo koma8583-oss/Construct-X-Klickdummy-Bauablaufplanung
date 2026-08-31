@@ -901,6 +901,7 @@ export const ListAnProjectInvitationsResponseItem = zod.object({
   "invitationId": zod.string(),
   "correlationId": zod.string(),
   "senderAgOrgId": zod.string(),
+  "senderAgOrgName": zod.string().nullish(),
   "receiverAnOrgId": zod.string(),
   "projectReference": zod.string(),
   "projectName": zod.string(),
@@ -945,6 +946,7 @@ export const ListAnLeistungsanfragenResponseItem = zod.object({
   "leistungVersion": zod.number().min(1).optional(),
   "taktVersion": zod.number().min(1).optional(),
   "guOrgId": zod.string(),
+  "guOrgName": zod.string().nullish(),
   "nuOrgId": zod.string(),
   "projektId": zod.string(),
   "projectId": zod.string(),
@@ -959,7 +961,7 @@ export const ListAnLeistungsanfragenResponseItem = zod.object({
   "updatedAt": zod.coerce.date(),
   "takt": zod.object({
   "id": zod.string(),
-  "taktBezeichnung": zod.string(),
+  "taktBezeichnung": zod.string().nullable(),
   "kurzbezeichnung": zod.string().nullable(),
   "gewerk": zod.string().nullable(),
   "zone": zod.string().nullable(),
@@ -968,7 +970,7 @@ export const ListAnLeistungsanfragenResponseItem = zod.object({
 }),
   "project": zod.object({
   "id": zod.string(),
-  "name": zod.string(),
+  "name": zod.string().nullable(),
   "location": zod.string().nullable()
 })
 }).describe('Local AN projection used by the AN worklist; distinct from AG coordination DTOs.')
@@ -998,6 +1000,7 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
   "leistungVersion": zod.number().min(1).optional(),
   "taktVersion": zod.number().min(1).optional(),
   "guOrgId": zod.string(),
+  "guOrgName": zod.string().nullish(),
   "nuOrgId": zod.string(),
   "projektId": zod.string(),
   "projectId": zod.string(),
@@ -1012,7 +1015,7 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "takt": zod.object({
   "id": zod.string(),
-  "taktBezeichnung": zod.string(),
+  "taktBezeichnung": zod.string().nullable(),
   "kurzbezeichnung": zod.string().nullable(),
   "gewerk": zod.string().nullable(),
   "zone": zod.string().nullable(),
@@ -1021,7 +1024,7 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
 }),
   "project": zod.object({
   "id": zod.string(),
-  "name": zod.string(),
+  "name": zod.string().nullable(),
   "location": zod.string().nullable()
 })
 }).describe('Local AN projection used by the AN worklist; distinct from AG coordination DTOs.').and(zod.object({
@@ -1064,6 +1067,7 @@ export const AcceptAnProjectInvitationResponse = zod.object({
   "invitationId": zod.string(),
   "correlationId": zod.string(),
   "senderAgOrgId": zod.string(),
+  "senderAgOrgName": zod.string().nullish(),
   "receiverAnOrgId": zod.string(),
   "projectReference": zod.string(),
   "projectName": zod.string(),
@@ -1105,6 +1109,7 @@ export const RejectAnProjectInvitationResponse = zod.object({
   "invitationId": zod.string(),
   "correlationId": zod.string(),
   "senderAgOrgId": zod.string(),
+  "senderAgOrgName": zod.string().nullish(),
   "receiverAnOrgId": zod.string(),
   "projectReference": zod.string(),
   "projectName": zod.string(),

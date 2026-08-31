@@ -8,7 +8,8 @@
 
 export interface AnLeistungsanfrageProject {
   id: string;
-  name: string;
+  /** @nullable */
+  name: string | null;
   /** @nullable */
   location: string | null;
 }
