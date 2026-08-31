@@ -130,6 +130,7 @@ export const externalProjectInvitationSchema = z.object({
     dataProductType: z.enum([
       "PROJECT_OVERVIEW",
       "PROJECT_COORDINATION_PACKAGE",
+      "PROJECT_MEMBERSHIP",
       "TAKT_INFORMATION_PACKAGE",
     ]).optional(),
     publicationVersion: z.number().int().positive().optional(),
@@ -342,7 +343,7 @@ export type ExternalProjectInvitation = {
   dataOffer?: {
     publicationId: string;
     title: string;
-    dataProductType?: "PROJECT_OVERVIEW" | "PROJECT_COORDINATION_PACKAGE" | "TAKT_INFORMATION_PACKAGE";
+    dataProductType?: "PROJECT_OVERVIEW" | "PROJECT_COORDINATION_PACKAGE" | "PROJECT_MEMBERSHIP" | "TAKT_INFORMATION_PACKAGE";
     publicationVersion?: number;
     status?: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
     contentHash?: string;

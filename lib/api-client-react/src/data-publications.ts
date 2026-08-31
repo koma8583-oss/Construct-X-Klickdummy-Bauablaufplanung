@@ -18,6 +18,7 @@ import { customFetch } from "./custom-fetch";
 export type DataProductType =
   | "PROJECT_OVERVIEW"
   | "PROJECT_COORDINATION_PACKAGE"
+  | "PROJECT_MEMBERSHIP"
   | "TAKT_INFORMATION_PACKAGE";
 
 export type PublicationStatus =
@@ -181,6 +182,12 @@ export const FIELD_WHITELISTS: Record<DataProductType, string[]> = {
     "relevantTimeWindows",
     "documentReferences",
   ],
+  PROJECT_MEMBERSHIP: [
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "projectLocation",
+  ],
   TAKT_INFORMATION_PACKAGE: [
     // Projektdaten
     "projectReference",
@@ -217,6 +224,8 @@ export const FIELD_LABELS: Record<string, string> = {
   endDate: "Projektende",
   projectLocation: "Projektstandort / Bauvorhaben",
   projectDescription: "Projektbeschreibung",
+  // Projektaufnahme
+  // (the policy intentionally excludes project dates and operational data)
   // Leistungsfelder (TAKT_INFORMATION_PACKAGE)
   kurzbezeichnung: "Leistungsbezeichnung",
   workPackage: "Arbeitspaket",
@@ -251,6 +260,12 @@ export const FIELD_GROUPS: Record<DataProductType, { label: string; fields: stri
     {
       label: "Koordination",
       fields: ["milestones", "logisticsConstraints", "coordinationConstraints", "interfaceDescriptions", "relevantTimeWindows", "documentReferences"],
+    },
+  ],
+  PROJECT_MEMBERSHIP: [
+    {
+      label: "Projektbasisdaten",
+      fields: ["projectName", "projectStatus", "projectLocation", "projectReference"],
     },
   ],
   TAKT_INFORMATION_PACKAGE: [

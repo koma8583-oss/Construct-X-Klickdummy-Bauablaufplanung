@@ -104,7 +104,9 @@ import {
   useListProjectSubcontractors,
   useUpdateProjectSubcontractor,
   useDeactivateProjectSubcontractor,
+  useCreateProjectSubcontractor,
   getListProjectSubcontractorsQueryKey,
+  useGetPolicyTemplateRegistry,
   useGetProjectDataPublications,
   useRetryDataPublicationDelivery,
   useSuspendDataPublication,
@@ -672,6 +674,7 @@ export default function ProjectDetail() {
   const { data: assignments } = useListProjectSubcontractors(projectId, {
     query: { enabled: !!projectId, queryKey: getListProjectSubcontractorsQueryKey(projectId) },
   });
+  const { data: policyRegistry } = useGetPolicyTemplateRegistry();
 
   // Full project data (includes description + location not in overview)
   const { data: fullProject } = useGetProject(projectId, {
@@ -713,6 +716,7 @@ export default function ProjectDetail() {
   
   const updateProject = useUpdateProject();
   const updateAssignment = useUpdateProjectSubcontractor();
+  const createAssignment = useCreateProjectSubcontractor();
   const deactivateAssignment = useDeactivateProjectSubcontractor();
 
   const [isDelegating, setIsDelegating] = useState(false);
@@ -736,6 +740,24 @@ export default function ProjectDetail() {
   const [editValidFrom, setEditValidFrom] = useState('');
   const [editValidTo, setEditValidTo] = useState('');
   const [editAssignmentStatus, setEditAssignmentStatus] = useState<'PLANNED' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  const [isCreateAssignmentOpen, setIsCreateAssignmentOpen] = useState(false);
+  const [createAssignmentAnOrgId, setCreateAssignmentAnOrgId] = useState('');
+  const [createAssignmentTrade, setCreateAssignmentTrade] = useState('');
+  const [createAssignmentWorkPackage, setCreateAssignmentWorkPackage] = useState('');
+  const [createAssignmentPolicyVersion, setCreateAssignmentPolicyVersion] = useState<number | undefined>();
+
+  const schedulePolicies = useMemo(
+    () => (policyRegistry ?? [])
+      .filter((policy) => policy.code === 'SCHEDULE_COORDINATION')
+      .sort((a, b) => b.version - a.version),
+    [policyRegistry],
+  );
+  const selectedSchedulePolicy = schedulePolicies[0];
+  useEffect(() => {
+    if (selectedSchedulePolicy && createAssignmentPolicyVersion === undefined) {
+      setCreateAssignmentPolicyVersion(selectedSchedulePolicy.version);
+    }
+  }, [createAssignmentPolicyVersion, selectedSchedulePolicy]);
 
   // Sync edit-assignment form fields whenever the dialog opens OR when the
   // assignments query result refreshes while the dialog is already open (so an
@@ -1515,6 +1537,36 @@ export default function ProjectDetail() {
     });
   };
 
+  const handleCreateAssignment = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!createAssignmentAnOrgId || !selectedSchedulePolicy) return;
+    createAssignment.mutate({
+      projectId,
+      data: {
+        anOrgId: createAssignmentAnOrgId,
+        trade: createAssignmentTrade || undefined,
+        workPackageReference: createAssignmentWorkPackage || undefined,
+        assignmentStatus: 'PLANNED',
+        coordinationPolicyTemplateId: selectedSchedulePolicy.code,
+        coordinationPolicyVersion: createAssignmentPolicyVersion ?? selectedSchedulePolicy.version,
+      },
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProjectSubcontractorsQueryKey(projectId) });
+        toast({ title: 'AN-Leistungszuordnung angelegt' });
+        setIsCreateAssignmentOpen(false);
+        setCreateAssignmentAnOrgId('');
+        setCreateAssignmentTrade('');
+        setCreateAssignmentWorkPackage('');
+      },
+      onError: (err) => toast({
+        title: t('common.error'),
+        description: (err as Error).message,
+        variant: 'destructive',
+      }),
+    });
+  };
+
   if (projectLoading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-1/3" /><Skeleton className="h-64 w-full" /></div>;
   }
@@ -2256,6 +2308,12 @@ export default function ProjectDetail() {
                   <Users className="w-4 h-4 mr-1.5" />
                   Zum Projekt einladen
                 </Button>
+                 {(memberships ?? []).some((membership) => membership.status === 'ACTIVE') && (
+                   <Button size="sm" variant="outline" onClick={() => setIsCreateAssignmentOpen(true)}>
+                     <Plus className="w-4 h-4 mr-1.5" />
+                     AN-Leistung zuordnen
+                   </Button>
+                 )}
               </div>
 
               {uniqueAnOrgs.length === 0 ? (
@@ -3663,6 +3721,69 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* ── Create Assignment Dialog ───────────────────────────────────────────── */}
+      <Dialog open={isCreateAssignmentOpen} onOpenChange={(open) => {
+        setIsCreateAssignmentOpen(open);
+        if (!open) {
+          setCreateAssignmentAnOrgId('');
+          setCreateAssignmentTrade('');
+          setCreateAssignmentWorkPackage('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>AN einer konkreten Leistung zuordnen</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateAssignment} className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Projektpartner</Label>
+              <Select value={createAssignmentAnOrgId} onValueChange={setCreateAssignmentAnOrgId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Aktiven Projektpartner auswählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(memberships ?? [])
+                    .filter((membership) => membership.status === 'ACTIVE')
+                    .map((membership) => (
+                      <SelectItem key={membership.anOrgId} value={membership.anOrgId}>
+                        {allAnOrgs?.find((organization) => organization.id === membership.anOrgId)?.name ?? membership.anOrgId}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Nur angenommene Projektaufnahmen sind hier auswählbar.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Gewerk</Label>
+                <Input value={createAssignmentTrade} onChange={(event) => setCreateAssignmentTrade(event.target.value)} placeholder="z. B. Trockenbau" />
+              </div>
+              <div className="space-y-2">
+                <Label>Arbeitspaket</Label>
+                <Input value={createAssignmentWorkPackage} onChange={(event) => setCreateAssignmentWorkPackage(event.target.value)} placeholder="z. B. WP-01" />
+              </div>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-sm">
+              <p className="font-medium">Rahmentermin-Policy</p>
+              <p className="text-muted-foreground">
+                {selectedSchedulePolicy?.name ?? 'SCHEDULE_COORDINATION'}
+                {selectedSchedulePolicy ? ` · v${selectedSchedulePolicy.version}` : ''}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Diese Policy wird ausschließlich für die konkrete Leistungs- und Rahmenterminabstimmung gespeichert.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsCreateAssignmentOpen(false)}>Abbrechen</Button>
+              <Button type="submit" disabled={!createAssignmentAnOrgId || !selectedSchedulePolicy || createAssignment.isPending}>
+                {createAssignment.isPending ? 'Wird gespeichert…' : 'Zuordnung anlegen'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {/* ── Edit Assignment Dialog ────────────────────────────────────────────────── */}
       <Dialog open={!!editAssignmentId} onOpenChange={(open) => { if (!open) setEditAssignmentId(null); }}>
         <DialogContent className="sm:max-w-[500px]">
@@ -3711,6 +3832,13 @@ export default function ProjectDetail() {
                     </SelectContent>
                   </Select>
                 </div>
+                 <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                   <p className="font-medium">Rahmentermin-Policy</p>
+                   <p className="text-muted-foreground">
+                     {selectedSchedulePolicy?.name ?? 'SCHEDULE_COORDINATION'}
+                     {assignment.coordinationPolicyVersion ? ` · v${assignment.coordinationPolicyVersion}` : ''}
+                   </p>
+                 </div>
                 <DialogFooter className="mt-6">
                   <Button type="button" variant="outline" onClick={() => setEditAssignmentId(null)}>Abbrechen</Button>
                   <Button type="submit" disabled={updateAssignment.isPending}>Speichern</Button>

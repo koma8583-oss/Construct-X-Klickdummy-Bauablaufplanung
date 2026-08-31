@@ -192,6 +192,7 @@ export type ProjectDataPublicationDataProductType = typeof ProjectDataPublicatio
 export const ProjectDataPublicationDataProductType = {
   PROJECT_OVERVIEW: 'PROJECT_OVERVIEW',
   PROJECT_COORDINATION_PACKAGE: 'PROJECT_COORDINATION_PACKAGE',
+  PROJECT_MEMBERSHIP: 'PROJECT_MEMBERSHIP',
   TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
 } as const;
 
@@ -433,6 +434,7 @@ export type ProjectInvitationDataOfferDataProductType = typeof ProjectInvitation
 export const ProjectInvitationDataOfferDataProductType = {
   PROJECT_OVERVIEW: 'PROJECT_OVERVIEW',
   PROJECT_COORDINATION_PACKAGE: 'PROJECT_COORDINATION_PACKAGE',
+  PROJECT_MEMBERSHIP: 'PROJECT_MEMBERSHIP',
   TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
 } as const;
 
@@ -1010,6 +1012,10 @@ export interface ProjectSubcontractorAssignment {
   assignmentStatus: ProjectContractorStatus;
   validFrom?: string | null;
   validTo?: string | null;
+  /** Persisted Rahmentermin-Policy for later service coordination */
+  coordinationPolicyTemplateId?: string | null;
+  /** @minimum 1 */
+  coordinationPolicyVersion?: number | null;
   addedAt?: string;
 }
 
@@ -1022,6 +1028,13 @@ export interface CreateProjectSubcontractorRequest {
   assignmentStatus?: ProjectContractorStatus;
   validFrom?: string | null;
   validTo?: string | null;
+  /** Policy code or persisted policy template ID; must resolve to SCHEDULE_COORDINATION */
+  coordinationPolicyTemplateId?: string;
+  /**
+     * Exact immutable registry version
+     * @minimum 1
+     */
+  coordinationPolicyVersion?: number;
 }
 
 /**
@@ -1033,6 +1046,10 @@ export interface PatchProjectSubcontractorRequest {
   assignmentStatus?: ProjectContractorStatus;
   validFrom?: string | null;
   validTo?: string | null;
+  /** Policy code or persisted policy template ID */
+  coordinationPolicyTemplateId?: string;
+  /** @minimum 1 */
+  coordinationPolicyVersion?: number;
 }
 
 export type AgProjectSummaryProjectStatus = typeof AgProjectSummaryProjectStatus[keyof typeof AgProjectSummaryProjectStatus];

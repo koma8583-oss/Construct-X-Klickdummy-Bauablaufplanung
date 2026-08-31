@@ -12,5 +12,6 @@ export type ProjectDataPublicationDataProductType = typeof ProjectDataPublicatio
 export const ProjectDataPublicationDataProductType = {
   PROJECT_OVERVIEW: 'PROJECT_OVERVIEW',
   PROJECT_COORDINATION_PACKAGE: 'PROJECT_COORDINATION_PACKAGE',
+  PROJECT_MEMBERSHIP: 'PROJECT_MEMBERSHIP',
   TAKT_INFORMATION_PACKAGE: 'TAKT_INFORMATION_PACKAGE',
 } as const;

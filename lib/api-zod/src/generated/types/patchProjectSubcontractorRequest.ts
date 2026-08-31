@@ -16,4 +16,8 @@ export interface PatchProjectSubcontractorRequest {
   assignmentStatus?: ProjectContractorStatus;
   validFrom?: Date | null;
   validTo?: Date | null;
+  /** Policy code or persisted policy template ID */
+  coordinationPolicyTemplateId?: string;
+  /** @minimum 1 */
+  coordinationPolicyVersion?: number;
 }

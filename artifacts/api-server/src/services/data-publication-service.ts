@@ -398,6 +398,13 @@ export const FIELD_WHITELISTS: Record<string, readonly string[]> = {
     "documentReferences",
   ],
 
+  PROJECT_MEMBERSHIP: [
+    "projectReference",
+    "projectName",
+    "projectStatus",
+    "projectLocation",
+  ],
+
   TAKT_INFORMATION_PACKAGE: [
     // Projektdaten
     "projectReference",
@@ -471,7 +478,7 @@ export async function buildContentSnapshot(
   if (dataProductType === "TAKT_INFORMATION_PACKAGE") {
     return buildTaktSnapshot(project, include, selectedTaktIds ?? []);
   }
-  // PROJECT_OVERVIEW and PROJECT_COORDINATION_PACKAGE are project-level only
+  // Project-level products do not include individual Takte.
   return buildProjectSnapshot(project, include);
 }
 

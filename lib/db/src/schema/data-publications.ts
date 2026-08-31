@@ -41,6 +41,7 @@ import { projectMembershipsTable } from "./project-memberships";
 export const dataProductTypeEnum = pgEnum("data_product_type", [
   "PROJECT_OVERVIEW",
   "PROJECT_COORDINATION_PACKAGE",
+  "PROJECT_MEMBERSHIP",
   "TAKT_INFORMATION_PACKAGE",
 ]);
 
@@ -80,8 +81,8 @@ export const publicationRecipientStatusEnum = pgEnum(
 /**
  * Seed-only policy templates. Not editable by end users in the PoC.
  *
- * The active publication catalog ships one template:
- *   SCHEDULE_COORDINATION — internal use for framework-date coordination
+ * The active publication catalog ships the schedule-coordination template.
+ * PROJECT_MEMBERSHIP is seeded as a separate invitation-only policy.
  */
 export const policyTemplatesTable = pgTable("policy_templates", {
   id: text("id")

@@ -14,7 +14,6 @@ import {
   rejectInvitation,
   revokeMembership,
 } from "../services/project-membership-service";
-import { inviteParticipantsWithData } from "../services/project-onboarding-service";
 import { z } from "zod";
 
 const router = Router();
@@ -177,18 +176,22 @@ router.post("/projects/:projectId/invitations-with-data", requireRole("AG_ADMIN"
     return;
   }
   try {
-    const result = await inviteParticipantsWithData({
+    // Keep the legacy URL as a compatibility alias, but route it through the
+    // canonical project-membership package. It must never reintroduce the old
+    // combined schedule/performance invitation semantics.
+    const result = await createProjectInvitationPackage({
       projectId: req.params.projectId as string,
       agOrgId: req.user.orgId,
       participantIds: parsed.data.participantIds,
-      invitationMessage: parsed.data.invitationMessage,
-      validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
-      policyTemplateId: parsed.data.policyTemplateId,
-      policyTemplateVersion: parsed.data.policyTemplateVersion,
+      policyTemplateId: "PROJECT_MEMBERSHIP",
+      policyTemplateVersion: undefined,
+      selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
       title: parsed.data.title,
-      description: parsed.data.description,
-      selectedFields: parsed.data.selectedFields,
+      description: undefined,
+      invitationMessage: parsed.data.invitationMessage,
       validFrom: parsed.data.validFrom ? new Date(parsed.data.validFrom) : undefined,
+      validUntil: parsed.data.validUntil ? new Date(parsed.data.validUntil) : undefined,
+      idempotencyKey: undefined,
     });
     res.status(201).json(result);
   } catch (error) {

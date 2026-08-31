@@ -3838,7 +3838,7 @@ components:
       properties:
         id: { type: string }
         projectId: { type: string }
-        dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, TAKT_INFORMATION_PACKAGE] }
+        dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, PROJECT_MEMBERSHIP, TAKT_INFORMATION_PACKAGE] }
         title: { type: string }
         status: { type: string, enum: [PUBLISHED] }
         policyTemplateId: { type: string }
@@ -4015,7 +4015,7 @@ components:
           properties:
             publicationId: { type: string }
             title: { type: string }
-            dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, TAKT_INFORMATION_PACKAGE] }
+            dataProductType: { type: string, enum: [PROJECT_OVERVIEW, PROJECT_COORDINATION_PACKAGE, PROJECT_MEMBERSHIP, TAKT_INFORMATION_PACKAGE] }
             selectedFields:
               type: array
               items: { type: string }
@@ -4727,6 +4727,14 @@ components:
           type: string
           format: date
           nullable: true
+        coordinationPolicyTemplateId:
+          type: string
+          nullable: true
+          description: Persisted Rahmentermin-Policy for later service coordination
+        coordinationPolicyVersion:
+          type: integer
+          minimum: 1
+          nullable: true
         addedAt:
           type: string
           format: date-time
@@ -4755,6 +4763,13 @@ components:
           type: string
           format: date
           nullable: true
+        coordinationPolicyTemplateId:
+          type: string
+          description: Policy code or persisted policy template ID; must resolve to SCHEDULE_COORDINATION
+        coordinationPolicyVersion:
+          type: integer
+          minimum: 1
+          description: Exact immutable registry version
       required: [anOrgId]
 
     PatchProjectSubcontractorRequest:
@@ -4777,6 +4792,12 @@ components:
           type: string
           format: date
           nullable: true
+        coordinationPolicyTemplateId:
+          type: string
+          description: Policy code or persisted policy template ID
+        coordinationPolicyVersion:
+          type: integer
+          minimum: 1
 
     AgProjectSummary:
       type: object

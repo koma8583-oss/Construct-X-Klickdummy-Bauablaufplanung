@@ -55,6 +55,13 @@ const RAHMENTERMIN_PUBLICATION_FIELDS = [
   "successors",
 ] as const;
 
+const PROJECT_MEMBERSHIP_FIELDS = [
+  "projectReference",
+  "projectName",
+  "projectStatus",
+  "projectLocation",
+] as const;
+
 const PUBLICATION_ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
   {
     templateId: "tk-policy-schedule-coordination",
@@ -82,6 +89,29 @@ const PUBLICATION_ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
 ];
 
 const ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
+  {
+    templateId: "tk-policy-project-membership",
+    version: 1,
+    code: "PROJECT_MEMBERSHIP",
+    name: "Projektaufnahme",
+    description:
+      "Schlanke Projektaufnahme mit wenigen grundlegenden Projektinformationen. Diese Policy begründet nach Annahme die Projektmitgliedschaft.",
+    purpose: "projectMembership",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    allowedPublicationFields: PROJECT_MEMBERSHIP_FIELDS,
+    permissions: ["READ", "USE_AS_PROJECT_PARTNER"],
+    prohibitions: [
+      "REDISTRIBUTE",
+      "SHARE_OUTSIDE_PROJECT_TEAM",
+      "DERIVE",
+      "MODIFY",
+      "COMMERCIAL_REUSE",
+      "AI_TRAINING",
+    ],
+    validityRule: "Ausschließlich für die Aufnahme der Organisation in das konkrete Projekt.",
+    retentionRule: null,
+  },
   {
     templateId: "tk-policy-standard-data-exchange",
     version: 1,

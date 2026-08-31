@@ -608,7 +608,7 @@ describe("membership gates and legacy compatibility", () => {
   it("reopens a revoked relationship with a delivered invitation package on both sides", async () => {
     const [policy] = await db.select({ id: policyTemplatesTable.id })
       .from(policyTemplatesTable)
-      .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+      .where(eq(policyTemplatesTable.code, "PROJECT_MEMBERSHIP"))
       .limit(1);
 
     const response = await request(app)
@@ -618,7 +618,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
         policyTemplateVersion: 1,
-        selectedFields: ["projectName"],
+        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -687,7 +687,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
         policyTemplateVersion: 1,
-        selectedFields: ["projectName"],
+        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -701,7 +701,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
         policyTemplateVersion: 2,
-        selectedFields: ["projectName"],
+        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -712,7 +712,7 @@ describe("membership gates and legacy compatibility", () => {
   it("repairs a failed invitation when the coupled data offer is already delivered", async () => {
     const [policy] = await db.select({ id: policyTemplatesTable.id })
       .from(policyTemplatesTable)
-      .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
+      .where(eq(policyTemplatesTable.code, "PROJECT_MEMBERSHIP"))
       .limit(1);
 
     const created = await request(app)
@@ -722,7 +722,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
         policyTemplateVersion: 1,
-        selectedFields: ["projectName"],
+        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 coupled retry",
         idempotencyKey: `${PREFIX}-coupled-retry-package`,
       });

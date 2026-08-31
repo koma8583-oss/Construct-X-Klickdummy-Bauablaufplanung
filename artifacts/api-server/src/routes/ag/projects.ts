@@ -21,6 +21,8 @@ import {
   projectsTable,
   projectContractorsTable,
   organizationsTable,
+  projectMembershipsTable,
+  policyTemplatesTable,
   leistungsanfragenTable,
   leistungenTable,
 } from "@workspace/db";
@@ -28,6 +30,10 @@ import { eq, and, count, sql, inArray, max } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
 import { requireRole } from "../../middlewares/requireRole";
 import { z } from "zod";
+import {
+  getLatestPolicyTemplateRegistryEntry,
+  getPolicyTemplateRegistryEntry,
+} from "../../lib/policy-template-registry";
 
 const router = Router();
 
@@ -300,6 +306,8 @@ router.get("/ag/projects/:projectId/subcontractors", async (req, res): Promise<v
       assignmentStatus:     projectContractorsTable.assignmentStatus,
       validFrom:            projectContractorsTable.validFrom,
       validTo:              projectContractorsTable.validTo,
+      coordinationPolicyTemplateId: projectContractorsTable.coordinationPolicyTemplateId,
+      coordinationPolicyVersion: projectContractorsTable.coordinationPolicyVersion,
       addedAt:              projectContractorsTable.addedAt,
     })
     .from(projectContractorsTable)
@@ -318,6 +326,8 @@ const createAssignmentSchema = z.object({
   assignmentStatus:     z.enum(["PLANNED", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   validFrom:            z.string().optional(),
   validTo:              z.string().optional(),
+  coordinationPolicyTemplateId: z.string().min(1).optional(),
+  coordinationPolicyVersion: z.number().int().positive().optional(),
 });
 
 router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("AG_ADMIN"), async (req, res): Promise<void> => {
@@ -337,7 +347,16 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
     res.status(400).json({ error: "Validation failed", details: parsed.error.issues });
     return;
   }
-  const { anOrgId, trade, workPackageReference, assignmentStatus, validFrom, validTo } = parsed.data;
+  const {
+    anOrgId,
+    trade,
+    workPackageReference,
+    assignmentStatus,
+    validFrom,
+    validTo,
+    coordinationPolicyTemplateId,
+    coordinationPolicyVersion,
+  } = parsed.data;
 
   const [anOrg] = await db
     .select({ id: organizationsTable.id })
@@ -346,6 +365,30 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
     .limit(1);
   if (!anOrg) {
     res.status(404).json({ error: "AN organisation not found" });
+    return;
+  }
+
+  const activePolicies = await db
+    .select({ id: policyTemplatesTable.id, code: policyTemplatesTable.code })
+    .from(policyTemplatesTable)
+    .where(eq(policyTemplatesTable.active, true));
+  const requestedPolicy = coordinationPolicyTemplateId
+    ? activePolicies.find((candidate) =>
+        candidate.id === coordinationPolicyTemplateId || candidate.code === coordinationPolicyTemplateId)
+    : activePolicies.find((candidate) => candidate.code === "SCHEDULE_COORDINATION");
+  if (!requestedPolicy || requestedPolicy.code !== "SCHEDULE_COORDINATION") {
+    res.status(400).json({
+      error: "A fachliche assignment requires the Rahmentermin-Policy",
+      code: "COORDINATION_POLICY_REQUIRED",
+    });
+    return;
+  }
+  const policyRegistryEntry = getPolicyTemplateRegistryEntry(
+    requestedPolicy.code,
+    coordinationPolicyVersion,
+  ) ?? getLatestPolicyTemplateRegistryEntry(requestedPolicy.code);
+  if (!policyRegistryEntry) {
+    res.status(400).json({ error: "The selected coordination policy version is unavailable" });
     return;
   }
 
@@ -390,6 +433,8 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
         assignmentStatus:     assignmentStatus ?? "PLANNED",
         validFrom:            validFrom ?? null,
         validTo:              validTo ?? null,
+        coordinationPolicyTemplateId: requestedPolicy.id,
+        coordinationPolicyVersion: policyRegistryEntry.version,
         createdByUserId:      (req.user as any)?.userId ?? null,
       })
       .returning();
@@ -416,6 +461,8 @@ const patchAssignmentSchema = z.object({
   assignmentStatus:     z.enum(["PLANNED", "INACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   validFrom:            z.string().nullable().optional(),
   validTo:              z.string().nullable().optional(),
+  coordinationPolicyTemplateId: z.string().min(1).optional(),
+  coordinationPolicyVersion: z.number().int().positive().optional(),
 });
 
 router.patch(
@@ -447,6 +494,32 @@ router.patch(
     if (parsed.data.assignmentStatus !== undefined)     updates.assignmentStatus     = parsed.data.assignmentStatus;
     if (parsed.data.validFrom !== undefined)            updates.validFrom            = parsed.data.validFrom;
     if (parsed.data.validTo !== undefined)              updates.validTo              = parsed.data.validTo;
+    if (parsed.data.coordinationPolicyTemplateId !== undefined ||
+        parsed.data.coordinationPolicyVersion !== undefined) {
+      const activePolicies = await db
+        .select({ id: policyTemplatesTable.id, code: policyTemplatesTable.code })
+        .from(policyTemplatesTable)
+        .where(eq(policyTemplatesTable.active, true));
+      const requestedPolicy = parsed.data.coordinationPolicyTemplateId
+        ? activePolicies.find((candidate) =>
+            candidate.id === parsed.data.coordinationPolicyTemplateId ||
+            candidate.code === parsed.data.coordinationPolicyTemplateId)
+        : activePolicies.find((candidate) => candidate.code === "SCHEDULE_COORDINATION");
+      if (!requestedPolicy || requestedPolicy.code !== "SCHEDULE_COORDINATION") {
+        res.status(400).json({ error: "Only the Rahmentermin-Policy can be used for a fachliche assignment" });
+        return;
+      }
+      const registryEntry = getPolicyTemplateRegistryEntry(
+        requestedPolicy.code,
+        parsed.data.coordinationPolicyVersion,
+      ) ?? getLatestPolicyTemplateRegistryEntry(requestedPolicy.code);
+      if (!registryEntry) {
+        res.status(400).json({ error: "The selected coordination policy version is unavailable" });
+        return;
+      }
+      updates.coordinationPolicyTemplateId = requestedPolicy.id;
+      updates.coordinationPolicyVersion = registryEntry.version;
+    }
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: "No fields to update" });

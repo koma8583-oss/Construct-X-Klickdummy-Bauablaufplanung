@@ -83,7 +83,7 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "dataOffer": zod.object({
   "publicationId": zod.string(),
   "title": zod.string(),
-  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'TAKT_INFORMATION_PACKAGE']).optional(),
+  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'PROJECT_MEMBERSHIP', 'TAKT_INFORMATION_PACKAGE']).optional(),
   "selectedFields": zod.array(zod.string()),
   "policy": zod.object({
   "id": zod.string(),
@@ -834,7 +834,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "publication": zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'TAKT_INFORMATION_PACKAGE']),
+  "dataProductType": zod.enum(['PROJECT_OVERVIEW', 'PROJECT_COORDINATION_PACKAGE', 'PROJECT_MEMBERSHIP', 'TAKT_INFORMATION_PACKAGE']),
   "title": zod.string(),
   "status": zod.enum(['PUBLISHED']),
   "policyTemplateId": zod.string(),
@@ -1272,6 +1272,9 @@ export const ListProjectSubcontractorsParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
+
+
+
 export const ListProjectSubcontractorsResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -1282,6 +1285,8 @@ export const ListProjectSubcontractorsResponseItem = zod.object({
   "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
   "validFrom": zod.coerce.date().nullish(),
   "validTo": zod.coerce.date().nullish(),
+  "coordinationPolicyTemplateId": zod.string().nullish().describe('Persisted Rahmentermin-Policy for later service coordination'),
+  "coordinationPolicyVersion": zod.number().min(1).nullish(),
   "addedAt": zod.coerce.date().optional()
 }).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
 export const ListProjectSubcontractorsResponse = zod.array(ListProjectSubcontractorsResponseItem)
@@ -1294,14 +1299,22 @@ export const CreateProjectSubcontractorParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
+
+
+
 export const CreateProjectSubcontractorBody = zod.object({
   "anOrgId": zod.string().describe('ID of the AN organisation to assign'),
   "trade": zod.string().nullish().describe('Gewerk \/ trade for this assignment (null = all trades)'),
   "workPackageReference": zod.string().nullish(),
   "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
   "validFrom": zod.coerce.date().nullish(),
-  "validTo": zod.coerce.date().nullish()
+  "validTo": zod.coerce.date().nullish(),
+  "coordinationPolicyTemplateId": zod.string().optional().describe('Policy code or persisted policy template ID; must resolve to SCHEDULE_COORDINATION'),
+  "coordinationPolicyVersion": zod.number().min(1).optional().describe('Exact immutable registry version')
 })
+
+
+
 
 export const CreateProjectSubcontractorResponse = zod.object({
   "id": zod.string(),
@@ -1313,6 +1326,8 @@ export const CreateProjectSubcontractorResponse = zod.object({
   "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
   "validFrom": zod.coerce.date().nullish(),
   "validTo": zod.coerce.date().nullish(),
+  "coordinationPolicyTemplateId": zod.string().nullish().describe('Persisted Rahmentermin-Policy for later service coordination'),
+  "coordinationPolicyVersion": zod.number().min(1).nullish(),
   "addedAt": zod.coerce.date().optional()
 }).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
 
@@ -1325,13 +1340,21 @@ export const UpdateProjectSubcontractorParams = zod.object({
   "assignmentId": zod.coerce.string()
 })
 
+
+
+
 export const UpdateProjectSubcontractorBody = zod.object({
   "trade": zod.string().nullish(),
   "workPackageReference": zod.string().nullish(),
   "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
   "validFrom": zod.coerce.date().nullish(),
-  "validTo": zod.coerce.date().nullish()
+  "validTo": zod.coerce.date().nullish(),
+  "coordinationPolicyTemplateId": zod.string().optional().describe('Policy code or persisted policy template ID'),
+  "coordinationPolicyVersion": zod.number().min(1).optional()
 }).describe('All fields optional — only provided fields are updated')
+
+
+
 
 export const UpdateProjectSubcontractorResponse = zod.object({
   "id": zod.string(),
@@ -1343,6 +1366,8 @@ export const UpdateProjectSubcontractorResponse = zod.object({
   "assignmentStatus": zod.enum(['PLANNED', 'ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED']),
   "validFrom": zod.coerce.date().nullish(),
   "validTo": zod.coerce.date().nullish(),
+  "coordinationPolicyTemplateId": zod.string().nullish().describe('Persisted Rahmentermin-Policy for later service coordination'),
+  "coordinationPolicyVersion": zod.number().min(1).nullish(),
   "addedAt": zod.coerce.date().optional()
 }).describe('An AN organisation assigned to a project for a specific trade or work package. Only ACTIVE assignments may receive new TaktRequests. Historical assignments (INACTIVE\/CANCELLED) are never physically deleted.\n')
 

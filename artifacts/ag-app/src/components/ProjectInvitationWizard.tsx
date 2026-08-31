@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   useCreateProjectInvitationPackage,
-  useGetPolicyTemplates,
-  FIELD_GROUPS,
-  FIELD_LABELS,
-  FIELD_WHITELISTS,
+  useGetPolicyTemplateRegistry,
 } from "@workspace/api-client-react";
 import {
   Dialog,
@@ -23,7 +20,7 @@ import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, ChevronRight, Eye, Lock, Search, Send, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Search, Send, ShieldCheck, Users } from "lucide-react";
 
 type Participant = {
   id: string;
@@ -44,9 +41,19 @@ type Props = {
   onInvitationSent?: () => void;
 };
 
-const PRODUCT_TYPE = "TAKT_INFORMATION_PACKAGE";
-const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
-const STEP_LABELS = ["Teilnehmer", "Policy", "Datenfelder", "Übersicht"];
+const PROJECT_MEMBERSHIP_FIELDS = [
+  "projectReference",
+  "projectName",
+  "projectStatus",
+  "projectLocation",
+] as const;
+const PROJECT_MEMBERSHIP_FIELD_LABELS: Record<string, string> = {
+  projectReference: "Projektreferenz (ID)",
+  projectName: "Projektname",
+  projectStatus: "Projektstatus",
+  projectLocation: "Projektstandort / Bauvorhaben",
+};
+const STEP_LABELS = ["Teilnehmer", "Policy", "Übersicht"];
 
 function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
   return {
@@ -62,7 +69,7 @@ function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
         { leftOperand: "purpose", operator: "eq", rightOperand: policyCode === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : policyCode },
         { leftOperand: "taktkoord:scope", operator: "eq", rightOperand: "taktkoord:projectSpecific" },
         { leftOperand: "taktkoord:internalUse", operator: "eq", rightOperand: "taktkoord:restrictedToRecipient" },
-        { leftOperand: "taktkoord:contentScope", operator: "eq", rightOperand: "taktkoord:projectAndRequestedService" },
+       { leftOperand: "taktkoord:contentScope", operator: "eq", rightOperand: "taktkoord:projectMembershipOnly" },
       ],
     }],
     prohibition: [
@@ -88,15 +95,13 @@ export function ProjectInvitationWizard({
   const [participantSearch, setParticipantSearch] = useState("");
   const [policyTemplateId, setPolicyTemplateId] = useState("");
   const [policyTemplateVersion, setPolicyTemplateVersion] = useState<number | undefined>();
-  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [invitationMessage, setInvitationMessage] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [policyViewOpen, setPolicyViewOpen] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
-  const { data: policies } = useGetPolicyTemplates();
+  const { data: policies } = useGetPolicyTemplateRegistry();
   const createPackage = useCreateProjectInvitationPackage();
 
   const selectableParticipants = participants.filter((participant) => participant.selectable);
@@ -109,37 +114,22 @@ export function ProjectInvitationWizard({
     );
   }, [participantSearch, selectableParticipants]);
   const invitationPolicies = useMemo(
-    () => (policies ?? []).filter((policy) => policy.code === "SCHEDULE_COORDINATION"),
+    () => (policies ?? [])
+      .filter((policy) => policy.code === "PROJECT_MEMBERSHIP")
+      .sort((a, b) => b.version - a.version),
     [policies],
   );
   const selectedPolicy = invitationPolicies[0];
-  const allowedFields = selectedPolicy?.allowedPublicationFields ?? ALL_FIELDS;
-  const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
-  const visibleFieldGroups = useMemo(
-    () => (FIELD_GROUPS[PRODUCT_TYPE] ?? [])
-      .map((group) => ({
-        ...group,
-        fields: group.fields.filter((field) => allowedFieldSet.has(field)),
-      }))
-      .filter((group) => group.fields.length > 0),
-    [allowedFieldSet],
-  );
   useEffect(() => {
-    if (selectedPolicy && policyTemplateId !== selectedPolicy.id) {
-      setPolicyTemplateId(selectedPolicy.id);
+    if (selectedPolicy && policyTemplateId !== selectedPolicy.code) {
+      setPolicyTemplateId(selectedPolicy.code);
     }
     if (selectedPolicy && policyTemplateVersion === undefined) {
-      setPolicyTemplateVersion(selectedPolicy.templateVersion);
+      setPolicyTemplateVersion(selectedPolicy.version);
     }
-    if (selectedPolicy?.allowedPublicationFields) {
-      setSelectedFields((previous) => {
-        const next = new Set([...previous].filter((field) => allowedFieldSet.has(field)));
-        return next.size === previous.size ? previous : next;
-      });
-    }
-  }, [allowedFieldSet, selectedPolicy, policyTemplateId, policyTemplateVersion]);
+  }, [selectedPolicy, policyTemplateId, policyTemplateVersion]);
   const autoTitle = useMemo(
-    () => `Projekteinladung & Informationspaket – ${projectName}`,
+    () => `Projektaufnahme – ${projectName}`,
     [projectName],
   );
 
@@ -150,9 +140,7 @@ export function ProjectInvitationWizard({
        setParticipantSearch("");
       setPolicyTemplateId("");
       setPolicyTemplateVersion(undefined);
-      setSelectedFields(new Set(ALL_FIELDS));
       setTitle("");
-      setDescription("");
       setInvitationMessage("");
       setValidFrom("");
       setValidUntil("");
@@ -168,17 +156,9 @@ export function ProjectInvitationWizard({
       return next;
     });
   };
-  const toggleField = (field: string) => {
-    setSelectedFields((previous) => {
-      const next = new Set(previous);
-      next.has(field) ? next.delete(field) : next.add(field);
-      return next;
-    });
-  };
   const canContinue = [
     selectedParticipants.size > 0,
     Boolean(policyTemplateId),
-    selectedFields.size > 0,
     true,
   ][step];
 
@@ -190,9 +170,8 @@ export function ProjectInvitationWizard({
           participantIds: Array.from(selectedParticipants),
           policyTemplateId,
           ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
-          selectedFields: Array.from(selectedFields),
+           selectedFields: [...PROJECT_MEMBERSHIP_FIELDS],
           title: title.trim() || autoTitle,
-          description: description.trim() || undefined,
           invitationMessage: invitationMessage.trim() || undefined,
           validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
           validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
@@ -200,8 +179,8 @@ export function ProjectInvitationWizard({
         },
       });
       toast({
-        title: "Einladung und Datenfreigabe vorbereitet",
-        description: "Die ausgewählten AN erhalten die Einladung mit der zu bestätigenden Policy.",
+         title: "Projektaufnahme versendet",
+         description: "Die ausgewählten AN erhalten die Projektaufnahme mit der zu bestätigenden Policy.",
       });
       onInvitationSent?.();
       close(false);
@@ -224,7 +203,7 @@ export function ProjectInvitationWizard({
             Projekteinladung mit Datenfreigabe
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Einladung, Nutzungsrichtlinie und Informationspaket werden als ein gemeinsamer Auftrag vorbereitet.
+             Die Projektaufnahme enthält nur wenige Projektbasisdaten. Die Projektpartnerschaft entsteht erst nach ausdrücklicher Annahme durch den AN.
           </p>
         </DialogHeader>
 
@@ -302,34 +281,19 @@ export function ProjectInvitationWizard({
                 <Label>Nutzungsrichtlinie</Label>
                 <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="flex-1">{selectedPolicy?.name ?? "Project Coordination Subcontractor"}</span>
+                   <span className="flex-1">{selectedPolicy?.name ?? "Projektaufnahme"}</span>
                   {selectedPolicy && (
                     <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
                       <Eye className="h-3.5 w-3.5" /> Details &amp; ODRL
                     </Button>
                   )}
                 </div>
-                {(selectedPolicy?.availableTemplateVersions?.length ?? 0) > 1 && (
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="invitation-policy-version" className="text-xs text-muted-foreground">Template-Version</Label>
-                    <Select
-                      value={String(policyTemplateVersion ?? selectedPolicy?.templateVersion ?? "")}
-                      onValueChange={(value) => setPolicyTemplateVersion(Number(value))}
-                    >
-                      <SelectTrigger id="invitation-policy-version" className="h-8 w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectedPolicy?.availableTemplateVersions?.map((version) => (
-                          <SelectItem key={version} value={String(version)}>v{version}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                 <p className="text-xs text-muted-foreground">
+                   Feste Registry-Version: v{selectedPolicy?.version ?? "—"}
+                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Titel des Informationspakets</Label>
+                 <Label>Titel der Projektaufnahme</Label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={autoTitle} />
               </div>
               <div className="space-y-2">
@@ -343,41 +307,14 @@ export function ProjectInvitationWizard({
             </div>
           )}
 
-          {step === 2 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">Nur ausgewählte, zugelassene Felder werden in den Snapshot aufgenommen.</p>
-                <button type="button" onClick={() => setSelectedFields(selectedFields.size === allowedFields.length ? new Set() : new Set(allowedFields))} className="text-xs text-primary hover:underline">
-                  {selectedFields.size === allowedFields.length ? "Alle abwählen" : "Alle wählen"}
-                </button>
-              </div>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {visibleFieldGroups.map((group) => (
-                  <div key={group.label} className="overflow-hidden rounded-xl border">
-                    <div className="bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</div>
-                    <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
-                      {group.fields.map((field) => (
-                        <label key={field} className="flex items-center gap-2 py-1 text-sm">
-                          <Checkbox checked={selectedFields.has(field)} onCheckedChange={() => toggleField(field)} />
-                          {FIELD_LABELS[field] ?? field}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Diese Policy umfasst nur Projektbasisdaten und die angefragte Leistung. Ressourcen- und Logistikdetails werden nicht freigegeben.</p>
-            </div>
-          )}
-
-          {step === 3 && (
+           {step === 2 && (
             <div className="space-y-4">
               <div className="rounded-xl border bg-card p-4 space-y-3">
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Projekt</div><div className="font-semibold">{projectName}</div></div>
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="flex flex-wrap gap-1 mt-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
-                <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Freigegebene Datenfelder ({selectedFields.size})</div><div className="flex flex-wrap gap-1 mt-1">{Array.from(selectedFields).map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{FIELD_LABELS[field] ?? field}</Badge>)}</div></div>
-                <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Mit dem Versand wird die Einladung gemeinsam mit der Policy und dem Informationspaket vorbereitet. Zugriff entsteht erst, wenn der AN die Einladung und Policy ausdrücklich bestätigt.</p>
+                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Feste Projektbasisdaten</div><div className="flex flex-wrap gap-1 mt-1">{PROJECT_MEMBERSHIP_FIELDS.map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{PROJECT_MEMBERSHIP_FIELD_LABELS[field]}</Badge>)}</div></div>
+                 <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung und Policy ausdrücklich bestätigt.</p>
               </div>
             </div>
           )}
@@ -385,7 +322,7 @@ export function ProjectInvitationWizard({
 
         <DialogFooter>
           {step > 0 && <Button type="button" variant="outline" onClick={() => setStep((current) => current - 1)} disabled={createPackage.isPending}><ChevronLeft className="mr-1 h-4 w-4" />Zurück</Button>}
-          {step < 3 ? (
+           {step < 2 ? (
             <Button type="button" onClick={() => setStep((current) => current + 1)} disabled={!canContinue}>Weiter<ChevronRight className="ml-1 h-4 w-4" /></Button>
           ) : (
             <Button type="button" onClick={() => void send()} disabled={createPackage.isPending}><Send className="mr-1.5 h-4 w-4" />{createPackage.isPending ? "Wird versendet…" : "Einladung versenden"}</Button>

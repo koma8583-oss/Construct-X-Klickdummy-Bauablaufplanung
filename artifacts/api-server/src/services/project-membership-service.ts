@@ -10,7 +10,7 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
 } from "@workspace/db";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
@@ -408,21 +408,32 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
 
   const [policy] = await db.select().from(policyTemplatesTable).where(and(
-    eq(policyTemplatesTable.id, input.policyTemplateId),
+    or(
+      eq(policyTemplatesTable.id, input.policyTemplateId),
+      eq(policyTemplatesTable.code, input.policyTemplateId),
+    ),
     eq(policyTemplatesTable.active, true),
   )).limit(1);
   if (!policy) throw new ProjectMembershipError("PROJECT_POLICY_NOT_FOUND", "Die ausgewählte Policy ist nicht verfügbar.");
 
-  const allowedFields = new Set(FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE);
-  const invalidFields = input.selectedFields.filter((field) => !allowedFields.has(field));
-  if (invalidFields.length > 0) {
+  if (policy.code !== "PROJECT_MEMBERSHIP") {
     throw new ProjectMembershipError(
-      "PROJECT_INVITATION_FIELDS_NOT_ALLOWED",
-      `Nicht erlaubte Datenfelder: ${invalidFields.join(", ")}`,
+      "PROJECT_INVITATION_POLICY_NOT_ALLOWED",
+      "Für eine Projekteinladung darf ausschließlich die Policy Projektaufnahme verwendet werden.",
     );
   }
-  if (input.selectedFields.length === 0) {
-    throw new ProjectMembershipError("PROJECT_INVITATION_FIELDS_REQUIRED", "Mindestens ein Datenfeld muss freigegeben werden.");
+  const registryPolicy = getPolicyTemplateRegistryEntry(
+    policy.code,
+    input.policyTemplateVersion,
+  );
+  const invitationFields = [...(registryPolicy?.allowedPublicationFields ?? FIELD_WHITELISTS.PROJECT_MEMBERSHIP)];
+  const requestedFields = [...new Set(input.selectedFields)].sort();
+  const fixedFields = [...new Set(invitationFields)].sort();
+  if (JSON.stringify(requestedFields) !== JSON.stringify(fixedFields)) {
+    throw new ProjectMembershipError(
+      "PROJECT_INVITATION_FIELDS_NOT_ALLOWED",
+      `Eine Projektaufnahme enthält ausschließlich die festen Projektbasisdaten: ${fixedFields.join(", ")}`,
+    );
   }
   if (input.validFrom && input.validUntil && input.validUntil < input.validFrom) {
     throw new ProjectMembershipError("PROJECT_INVITATION_INVALID_VALIDITY", "Das Ende der Gültigkeit muss nach dem Beginn liegen.");
@@ -522,9 +533,9 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   // Build and hash before opening the write transaction so a snapshot failure
   // cannot leave behind a half-prepared invitation package.
   const snapshot = await buildContentSnapshot(
-    "TAKT_INFORMATION_PACKAGE",
+    "PROJECT_MEMBERSHIP",
     input.projectId,
-    input.selectedFields,
+    invitationFields,
   );
   const contentHash = computeContentHash(snapshot);
   const publicationId = crypto.randomUUID();
@@ -541,14 +552,14 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       agOrgId: input.agOrgId,
       projectId: input.projectId,
       projectInvitationId: idempotencyKey,
-      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      dataProductType: "PROJECT_MEMBERSHIP",
       title: input.title,
       description: input.description ?? null,
       version: 1,
       schemaVersion: "1.0",
       status: "PUBLISHED",
       policyTemplateId: input.policyTemplateId,
-      selectedFields: input.selectedFields,
+      selectedFields: invitationFields,
       selectedTaktIds: null,
       contentSnapshot: snapshot,
       contentHash,
@@ -568,7 +579,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
         overrides: {
           recipientOrganizationId: anOrgId,
-          purpose: "PROJECT_COLLABORATION",
+          purpose: "PROJECT_MEMBERSHIP",
           projectReference: project.id,
           ...(input.validFrom ? { validFrom: input.validFrom.toISOString() } : {}),
           ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
@@ -655,7 +666,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         project: {
           projectReference: project.id,
           projectName: project.name,
-          ...(project.description ? { description: project.description } : {}),
           ...(project.location ? { location: project.location } : {}),
         },
         requestedRole: "CONTRACTOR",
@@ -669,7 +679,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         dataOffer: {
           publicationId: publication.id,
           title: publication.title,
-          selectedFields: input.selectedFields,
+          selectedFields: invitationFields,
           validFrom: (input.validFrom ?? now).toISOString(),
           ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
           policy: toDataOfferPolicy(policySnapshot, policy),

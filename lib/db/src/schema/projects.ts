@@ -4,6 +4,7 @@ import {
   timestamp,
   pgEnum,
   date,
+  integer,
   unique,
   index,
 } from "drizzle-orm/pg-core";
@@ -89,6 +90,9 @@ export const projectContractorsTable = pgTable(
     validFrom: date("valid_from", { mode: "string" }),
     /** Date until which this assignment is valid (inclusive, date only) */
     validTo: date("valid_to", { mode: "string" }),
+    /** Policy selected for the later Rahmentermin coordination of this assignment. */
+    coordinationPolicyTemplateId: text("coordination_policy_template_id"),
+    coordinationPolicyVersion: integer("coordination_policy_version"),
     createdByUserId: text("created_by_user_id")
       .references(() => usersTable.id, { onDelete: "set null" }),
     addedAt: timestamp("added_at", { withTimezone: true })

@@ -16,4 +16,11 @@ export interface CreateProjectSubcontractorRequest {
   assignmentStatus?: ProjectContractorStatus;
   validFrom?: Date | null;
   validTo?: Date | null;
+  /** Policy code or persisted policy template ID; must resolve to SCHEDULE_COORDINATION */
+  coordinationPolicyTemplateId?: string;
+  /**
+     * Exact immutable registry version
+     * @minimum 1
+     */
+  coordinationPolicyVersion?: number;
 }

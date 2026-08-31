@@ -20,5 +20,9 @@ export interface ProjectSubcontractorAssignment {
   assignmentStatus: ProjectContractorStatus;
   validFrom?: Date | null;
   validTo?: Date | null;
+  /** Persisted Rahmentermin-Policy for later service coordination */
+  coordinationPolicyTemplateId?: string | null;
+  /** @minimum 1 */
+  coordinationPolicyVersion?: number | null;
   addedAt?: Date;
 }

@@ -7,7 +7,7 @@ import {
   projectMembershipsTable,
   projectsTable,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { FIELD_WHITELISTS, buildContentSnapshot, computeContentHash } from "./data-publication-service";
 import { resolveDataspaceParticipant } from "./dataspace/dataspace-participant-resolver";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
@@ -16,7 +16,7 @@ import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
 import { ProjectMembershipError } from "./project-membership-service";
 import { createPolicySnapshot } from "./policy-snapshot-service";
 import { toDataOfferPolicy, toInvitationPolicy } from "./policy-contract-adapters";
-import { getPublicationPolicyTemplate } from "../lib/policy-template-registry";
+import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 
 type CombinedInvitationInput = {
   projectId: string;
@@ -39,17 +39,33 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
   if (!project) throw new ProjectMembershipError("PROJECT_NOT_FOUND", "Projekt nicht gefunden.");
 
   const [policy] = await agDb.select().from(policyTemplatesTable)
-    .where(and(eq(policyTemplatesTable.id, input.policyTemplateId), eq(policyTemplatesTable.active, true)))
+    .where(and(
+      or(
+        eq(policyTemplatesTable.id, input.policyTemplateId),
+        eq(policyTemplatesTable.code, input.policyTemplateId),
+      ),
+      eq(policyTemplatesTable.active, true),
+    ))
     .limit(1);
   if (!policy) throw new ProjectMembershipError("POLICY_NOT_AVAILABLE", "Die ausgewählte Policy ist nicht verfügbar.");
 
-  const catalogPolicy = getPublicationPolicyTemplate(policy.code);
+  if (policy.code !== "PROJECT_MEMBERSHIP") {
+    throw new ProjectMembershipError(
+      "PROJECT_INVITATION_POLICY_NOT_ALLOWED",
+      "Für eine Projekteinladung darf ausschließlich die Policy Projektaufnahme verwendet werden.",
+    );
+  }
+  const registryPolicy = getPolicyTemplateRegistryEntry(policy.code, input.policyTemplateVersion);
   const allowedFields = new Set(
-    catalogPolicy?.allowedPublicationFields ?? FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE,
+    registryPolicy?.allowedPublicationFields ?? FIELD_WHITELISTS.PROJECT_MEMBERSHIP,
   );
-  const invalidFields = input.selectedFields.filter((field) => !allowedFields.has(field));
-  if (invalidFields.length) {
-    throw new ProjectMembershipError("DATA_FIELDS_INVALID", `Nicht freigabefähige Datenfelder: ${invalidFields.join(", ")}`);
+  const requestedFields = [...new Set(input.selectedFields)].sort();
+  const fixedFields = [...allowedFields].sort();
+  if (JSON.stringify(requestedFields) !== JSON.stringify(fixedFields)) {
+    throw new ProjectMembershipError(
+      "DATA_FIELDS_INVALID",
+      `Eine Projektaufnahme enthält ausschließlich die festen Projektbasisdaten: ${fixedFields.join(", ")}`,
+    );
   }
 
   const uniqueParticipantIds = [...new Set(input.participantIds)];
@@ -78,7 +94,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
   // The immutable snapshot is assembled before the write transaction. Only its
   // whitelist-filtered result is persisted; it is never embedded in the invite.
   const snapshot = await buildContentSnapshot(
-    "TAKT_INFORMATION_PACKAGE",
+    "PROJECT_MEMBERSHIP",
     input.projectId,
     input.selectedFields,
     [],
@@ -92,12 +108,12 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
       id: publicationId,
       agOrgId: input.agOrgId,
       projectId: input.projectId,
-      dataProductType: "TAKT_INFORMATION_PACKAGE",
+       dataProductType: "PROJECT_MEMBERSHIP",
       title: input.title,
-      description: input.description ?? null,
+       description: null,
       version: 1,
       policyTemplateId: policy.id,
-      selectedFields: input.selectedFields,
+       selectedFields: fixedFields,
       selectedTaktIds: [],
       contentSnapshot: snapshot,
       contentHash,
@@ -157,11 +173,10 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
         project: {
           projectReference: project.id,
           projectName: project.name,
-          ...(project.description ? { description: project.description } : {}),
           ...(project.location ? { location: project.location } : {}),
         },
         requestedRole: "CONTRACTOR",
-        purpose: "PROJECT_COLLABORATION",
+       purpose: "PROJECT_MEMBERSHIP",
         ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
         ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
         policy: {
@@ -171,8 +186,8 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
         dataOffer: {
           publicationId: publication.id,
           title: publication.title,
-          dataProductType: "TAKT_INFORMATION_PACKAGE",
-          selectedFields: input.selectedFields,
+           dataProductType: "PROJECT_MEMBERSHIP",
+           selectedFields: fixedFields,
           policy: {
             ...toDataOfferPolicy(policySnapshot, policy),
           },

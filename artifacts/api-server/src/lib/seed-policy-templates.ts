@@ -10,6 +10,7 @@ import { db } from "@workspace/db";
 import { policyTemplatesTable } from "@workspace/db";
 import { logger } from "./logger";
 import {
+  listPolicyTemplateRegistry,
   listPublicationPolicyTemplates,
 } from "./policy-template-registry";
 
@@ -28,6 +29,9 @@ interface PolicySeed {
 
 const CANONICAL_POLICIES: PolicySeed[] = [
   ...listPublicationPolicyTemplates(),
+  ...listPolicyTemplateRegistry({ latestOnly: true }).filter(
+    (template) => template.code === "PROJECT_MEMBERSHIP",
+  ),
 ].map((template) => ({
     id: template.templateId,
     code: template.code,
