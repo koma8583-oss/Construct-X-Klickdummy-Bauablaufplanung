@@ -1,808 +1,274 @@
-/**
- * Leistungsanfragen Inbox — Task 7.7 / Task #196
- *
- * Shows Leistungsanfragen (TaktRequests) sent to this AN-Organisation.
- * Displays deadline status (Antwortfrist, Fälligkeitsstatus, überfällig, abgelaufen),
- * whether a response is still possible, and received reminders.
- *
- * Uses /api/takt-requests?role=nu which is orgId-scoped on the server.
- * Data-sovereignty: does NOT expose snapshotPayload, resourcePlanning, internalResultPayload,
- * localProjectId, customerAlias, resourceId, employeeName, internalCost, internalPriority.
- */
-import React, { useState, useMemo } from 'react';
-import { Link } from 'wouter';
-import { format, differenceInHours, differenceInDays } from 'date-fns';
-import { de } from 'date-fns/locale';
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
+import { format, differenceInHours } from "date-fns";
+import { de } from "date-fns/locale";
 import {
-  useListTaktRequests,
-  getListTaktRequestsQueryKey,
-  useListAnProjectInvitations,
-  getListAnProjectInvitationsQueryKey,
-  useAcceptAnProjectInvitation,
-  useRejectAnProjectInvitation,
-  useGetDataPublicationOdrl,
-  type AnProjectInvitation,
-  type TaktRequestListItem,
-  type TaktRequestStatus,
-} from '@workspace/api-client-react';
-import {
-  Clock,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  Inbox,
-  ChevronRight,
-  Loader2,
-  Eye,
-  Ban,
-  Bell,
-  Timer,
+  ArrowRight,
   Building2,
+  CalendarDays,
+  Check,
+  Clock3,
+  Inbox,
+  MapPin,
+  RefreshCw,
   ShieldCheck,
-  Lock,
-  CheckCircle2,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
+  Timer,
+  UserRound,
+  X,
+} from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  getListAnLeistungsanfragenQueryKey,
+  getListAnProjectInvitationsQueryKey,
+  type AnLeistungsanfrageListItem,
+  type AnLeistungsanfrageListItemStatus,
+  type AnProjectInvitation,
+  useAcceptAnProjectInvitation,
+  useListAnLeistungsanfragen,
+  useListAnProjectInvitations,
+  useRejectAnProjectInvitation,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 
-// ── Deadline helpers ──────────────────────────────────────────────────────────
-
-type DeadlineState =
-  | { kind: 'expired';    label: string; color: string }
-  | { kind: 'overdue';    label: string; color: string }
-  | { kind: 'due-today';  label: string; color: string }
-  | { kind: 'due-soon';   label: string; color: string }
-  | { kind: 'ok';         label: string; color: string }
-  | { kind: 'none';       label: string; color: string };
-
-function getDeadlineState(item: TaktRequestListItem): DeadlineState {
-  const now = new Date();
-  const expiredAt = (item as any).expiredAt as string | null | undefined;
-  const expiresAt = (item as any).expiresAt as string | null | undefined;
-  const due       = item.responseRequiredBy ? new Date(item.responseRequiredBy) : null;
-
-  if (item.status === 'EXPIRED' || expiredAt || (expiresAt && now >= new Date(expiresAt))) {
-    const at = expiredAt ?? expiresAt;
-    return { kind: 'expired', label: `Abgelaufen${at ? ` am ${format(new Date(at), 'dd.MM.yy HH:mm', { locale: de })}` : ''}`, color: 'text-muted-foreground' };
-  }
-  if (!due) return { kind: 'none', label: '–', color: 'text-muted-foreground' };
-
-  if (now > due) {
-    const h = differenceInHours(now, due);
-    const d = differenceInDays(now, due);
-    const label = h < 24 ? `Seit ${h}h überfällig` : `Seit ${d}T überfällig`;
-    return { kind: 'overdue', label, color: 'text-red-600 font-medium' };
-  }
-
-  const h = differenceInHours(due, now);
-  if (h <= 8) {
-    return { kind: 'due-today', label: `Fällig in ${h}h`, color: 'text-red-600 font-medium' };
-  }
-  if (h <= 48) {
-    const d = differenceInDays(due, now);
-    const label = d === 0 ? 'Fällig heute' : d === 1 ? 'Fällig morgen' : `Fällig in ${d} Tagen`;
-    return { kind: 'due-soon', label, color: 'text-amber-600' };
-  }
-
-  const d = differenceInDays(due, now);
-  return { kind: 'ok', label: `Fällig in ${d} Tagen`, color: 'text-foreground' };
-}
-
-function canRespond(item: TaktRequestListItem): boolean {
-  const state = getDeadlineState(item);
-  if (state.kind === 'expired') return false;
-  const s = item.status as TaktRequestStatus;
-  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'REVISION_REQUIRED'].includes(s);
-}
-
-type ScheduleDelta = {
-  startDays: number;
-  endDays: number;
-  durationDays: number;
-  hasChange: boolean;
+const STATUS_LABELS: Record<AnLeistungsanfrageListItemStatus, string> = {
+  RECEIVED: "Eingegangen",
+  DETAILS_RETRIEVED: "Daten abgerufen",
+  UNDER_REVIEW: "In Prüfung",
+  RESPONDED: "Beantwortet",
+  REVISION_REQUIRED: "Überarbeitung angefragt",
+  CONFIRMED: "Bestätigt",
+  CANCELLED: "Storniert",
+  SUPERSEDED: "Ersetzt",
 };
 
-const NO_SCHEDULE_DELTA: ScheduleDelta = {
-  startDays: 0,
-  endDays: 0,
-  durationDays: 0,
-  hasChange: false,
+const STATUS_TONE: Record<AnLeistungsanfrageListItemStatus, string> = {
+  RECEIVED: "border-cyan-700/20 bg-cyan-700/10 text-cyan-800 dark:text-cyan-200",
+  DETAILS_RETRIEVED: "border-amber-600/20 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  UNDER_REVIEW: "border-amber-600/20 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  RESPONDED: "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-200",
+  REVISION_REQUIRED: "border-orange-600/20 bg-orange-500/10 text-orange-800 dark:text-orange-200",
+  CONFIRMED: "border-emerald-700/20 bg-emerald-600/10 text-emerald-800 dark:text-emerald-200",
+  CANCELLED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
+  SUPERSEDED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
 };
 
-function getScheduleDelta(item: TaktRequestListItem): ScheduleDelta {
-  // AN-local projections may intentionally omit AG-side coordination fields.
-  // Treat an absent delta as unchanged rather than crashing the inbox.
-  const scheduleDelta = (item as unknown as { scheduleDelta?: ScheduleDelta }).scheduleDelta;
-  return scheduleDelta ?? NO_SCHEDULE_DELTA;
+type ViewFilter = "OPEN" | "ALL" | "DONE";
+
+function dateText(value?: string | null, withTime = false) {
+  if (!value) return "Nicht veröffentlicht";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Nicht veröffentlicht";
+  return format(parsed, withTime ? "dd.MM.yyyy, HH:mm 'Uhr'" : "dd.MM.yyyy", { locale: de });
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT:                 'text-muted-foreground bg-muted/60',
-  SENT:                  'text-blue-600 bg-blue-500/10',
-  DELIVERED:             'text-blue-600 bg-blue-500/10',
-  DETAILS_RETRIEVED:     'text-amber-600 bg-amber-500/10',
-  UNDER_REVIEW:          'text-amber-600 bg-amber-500/10',
-  ACCEPTED:              'text-emerald-600 bg-emerald-500/10',
-  ALTERNATIVES_PROPOSED: 'text-orange-600 bg-orange-500/10',
-  REJECTED:              'text-red-600 bg-red-500/10',
-  REVISION_REQUIRED:     'text-orange-600 bg-orange-500/10',
-  CANCELLED:             'text-muted-foreground bg-muted/40',
-  EXPIRED:               'text-muted-foreground bg-muted/40',
-  SUPERSEDED:            'text-muted-foreground bg-muted/40',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT:                 'Entwurf',
-  SENT:                  'Gesendet',
-  DELIVERED:             'Zugestellt',
-  DETAILS_RETRIEVED:     'Abgerufen',
-  UNDER_REVIEW:          'In Prüfung',
-  ACCEPTED:              'Angenommen',
-  ALTERNATIVES_PROPOSED: 'Gegenvorschlag',
-  REJECTED:              'Abgelehnt',
-  REVISION_REQUIRED:     'Überarbeitung',
-  CANCELLED:             'Storniert',
-  EXPIRED:               'Abgelaufen',
-  SUPERSEDED:            'Ersetzt',
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-muted text-muted-foreground'}`}>
-      {STATUS_LABELS[status] ?? status}
-    </span>
-  );
+function deadline(item: AnLeistungsanfrageListItem) {
+  if (!item.responseRequiredBy) return { label: "Keine Frist veröffentlicht", tone: "text-muted-foreground", urgent: false };
+  const hours = differenceInHours(new Date(item.responseRequiredBy), new Date());
+  if (hours < 0) return { label: "Antwortfrist abgelaufen", tone: "text-destructive", urgent: true };
+  if (hours < 24) return { label: `Antwort in ${Math.max(1, hours)} Std. fällig`, tone: "text-destructive", urgent: true };
+  if (hours < 72) return { label: "Antwortfrist läuft bald ab", tone: "text-amber-700 dark:text-amber-300", urgent: true };
+  return { label: `Antwort bis ${dateText(item.responseRequiredBy, true)}`, tone: "text-foreground", urgent: false };
 }
 
-// ── Deadline badge ────────────────────────────────────────────────────────────
-
-function DeadlineBadge({ item }: { item: TaktRequestListItem }) {
-  const state = getDeadlineState(item);
-  if (state.kind === 'none') return null;
-
-  const Icon =
-    state.kind === 'expired'   ? Ban :
-    state.kind === 'overdue'   ? AlertTriangle :
-    state.kind === 'due-today' ? AlertTriangle :
-    state.kind === 'due-soon'  ? Clock :
-    CheckCircle;
-
-  return (
-    <span className={`flex items-center gap-1 text-xs ${state.color}`} aria-label={state.label}>
-      <Icon size={11} aria-hidden />
-      {state.label}
-    </span>
-  );
+function isDone(status: AnLeistungsanfrageListItemStatus) {
+  return ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED"].includes(status);
 }
-
-// ── Filter ────────────────────────────────────────────────────────────────────
-
-type DeadlineFilter = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'EXPIRED';
-type StatusFilter = TaktRequestStatus | 'ALL';
-type CoordinationFilter = 'ALL' | 'AGREED' | 'NO_AGREEMENT' | 'AG_ACTION_REQUIRED' | 'AN_ACTION_REQUIRED';
-type ProposalFilter = 'ALL' | 'OPEN' | 'NONE';
-type ActionOwnerFilter = 'ALL' | 'AG' | 'AN' | 'NONE';
-type ScheduleFilter = 'ALL' | 'CHANGED' | 'UNCHANGED';
-type InboxFilter = 'ALL' | 'OPEN' | 'DONE';
 
 export type InboxItem =
-  | {
-      kind: 'invitation';
-      data: AnProjectInvitation;
-      receivedAt: string;
-      isOpen: boolean;
-    }
-  | {
-      kind: 'service-request';
-      data: TaktRequestListItem;
-      receivedAt: string;
-      isOpen: boolean;
-    };
-
-const COMPLETED_REQUEST_STATUSES = new Set<TaktRequestStatus>([
-  'ACCEPTED',
-  'REJECTED',
-  'EXPIRED',
-  'CANCELLED',
-  'SUPERSEDED',
-]);
-
-function isCompletedRequest(item: TaktRequestListItem): boolean {
-  return COMPLETED_REQUEST_STATUSES.has(item.status);
-}
+  | { kind: "invitation"; data: AnProjectInvitation; receivedAt: string; isOpen: boolean }
+  | { kind: "service-request"; data: AnLeistungsanfrageListItem & Record<string, unknown>; receivedAt: string; isOpen: boolean };
 
 export interface InboxFilterState {
-  inboxFilter: InboxFilter;
-  deadlineFilter: DeadlineFilter;
-  statusFilter: StatusFilter;
-  coordinationFilter: CoordinationFilter;
-  proposalFilter: ProposalFilter;
-  actionOwnerFilter: ActionOwnerFilter;
-  scheduleFilter: ScheduleFilter;
+  inboxFilter: "ALL" | "OPEN" | "DONE";
+  deadlineFilter: "ALL" | "DUE_SOON" | "OVERDUE" | "EXPIRED";
+  statusFilter: string;
+  coordinationFilter: string;
+  proposalFilter: string;
+  actionOwnerFilter: string;
+  scheduleFilter: string;
 }
 
-export function filterInboxItems(
-  allItems: InboxItem[],
-  {
-    inboxFilter,
-    deadlineFilter,
-    statusFilter,
-    coordinationFilter,
-    proposalFilter,
-    actionOwnerFilter,
-    scheduleFilter,
-  }: InboxFilterState,
-): InboxItem[] {
-  const serviceFilterActive = [
-    deadlineFilter,
-    statusFilter,
-    coordinationFilter,
-    proposalFilter,
-    actionOwnerFilter,
-    scheduleFilter,
-  ].some((filter) => filter !== 'ALL');
-
-  return allItems.filter((item) => {
-    if (inboxFilter !== 'ALL' && (inboxFilter === 'OPEN') !== item.isOpen) return false;
-    if (item.kind === 'invitation') return !serviceFilterActive;
-    const request = item.data;
-    if (statusFilter !== 'ALL' && request.status !== statusFilter) return false;
-    if (deadlineFilter !== 'ALL') {
-      const state = getDeadlineState(request);
-      if (deadlineFilter === 'DUE_SOON' && !(state.kind === 'due-soon' || state.kind === 'due-today')) return false;
-      if (deadlineFilter === 'OVERDUE' && state.kind !== 'overdue') return false;
-      if (deadlineFilter === 'EXPIRED' && state.kind !== 'expired') return false;
+export function filterInboxItems(items: InboxItem[], filters: InboxFilterState) {
+  const serviceFilterActive = [filters.deadlineFilter, filters.statusFilter, filters.coordinationFilter, filters.proposalFilter, filters.actionOwnerFilter, filters.scheduleFilter].some((filter) => filter !== "ALL");
+  return items.filter((item) => {
+    if (filters.inboxFilter !== "ALL" && (filters.inboxFilter === "OPEN") !== item.isOpen) return false;
+    if (item.kind === "invitation") return !serviceFilterActive;
+    const request = item.data as Record<string, unknown>;
+    if (filters.statusFilter !== "ALL" && request.status !== filters.statusFilter) return false;
+    if (filters.coordinationFilter !== "ALL" && request.coordinationState !== filters.coordinationFilter) return false;
+    if (filters.proposalFilter === "OPEN" && !request.openProposal) return false;
+    if (filters.proposalFilter === "NONE" && request.openProposal) return false;
+    if (filters.actionOwnerFilter !== "ALL" && filters.actionOwnerFilter !== request.nextActionOwner && !(filters.actionOwnerFilter === "NONE" && !request.nextActionOwner)) return false;
+    const delta = request.scheduleDelta as { hasChange?: boolean } | undefined;
+    if (filters.scheduleFilter === "CHANGED" && !delta?.hasChange) return false;
+    if (filters.scheduleFilter === "UNCHANGED" && delta?.hasChange) return false;
+    if (filters.deadlineFilter !== "ALL") {
+      const due = request.responseRequiredBy ? new Date(String(request.responseRequiredBy)) : null;
+      const expired = request.status === "EXPIRED" || (!!due && due.getTime() < Date.now());
+      if (filters.deadlineFilter === "EXPIRED" && !expired) return false;
+      if (filters.deadlineFilter === "OVERDUE" && (!expired || request.status === "EXPIRED")) return false;
+      if (filters.deadlineFilter === "DUE_SOON" && (!due || due.getTime() < Date.now() || due.getTime() - Date.now() > 48 * 60 * 60 * 1000)) return false;
     }
-    if (coordinationFilter !== 'ALL' && request.coordinationState !== coordinationFilter) return false;
-    if (proposalFilter === 'OPEN' && !request.openProposal) return false;
-    if (proposalFilter === 'NONE' && request.openProposal) return false;
-    if (actionOwnerFilter === 'NONE' && request.nextActionOwner) return false;
-    if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && request.nextActionOwner !== actionOwnerFilter) return false;
-    const scheduleDelta = getScheduleDelta(request);
-    if (scheduleFilter === 'CHANGED' && !scheduleDelta.hasChange) return false;
-    if (scheduleFilter === 'UNCHANGED' && scheduleDelta.hasChange) return false;
     return true;
   });
 }
 
-function formatReceivedAt(value: string): string {
-  try {
-    return format(new Date(value), 'dd.MM.yyyy HH:mm', { locale: de });
-  } catch {
-    return value;
-  }
+function StatusBadge({ status }: { status: AnLeistungsanfrageListItemStatus }) {
+  return (
+    <Badge data-testid={`status-request-${status}`} variant="outline" className={`font-medium ${STATUS_TONE[status]}`}>
+      {STATUS_LABELS[status]}
+    </Badge>
+  );
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
-function policyText(policy: Record<string, unknown>, key: string): string | null {
-  const value = policy[key];
-  return typeof value === 'string' && value.trim() ? value : null;
-}
-
-function policyList(policy: Record<string, unknown>, key: string): string[] {
-  return isStringArray(policy[key]) ? policy[key] : [];
-}
-
-function InvitationStatusBadge({ status }: { status: AnProjectInvitation['status'] }) {
-  const labels = {
-    PENDING: 'Offen',
-    ACCEPTED: 'Beigetreten',
-    REJECTED: 'Abgelehnt',
-  } as const;
-  const styles = {
-    PENDING: 'text-amber-700 bg-amber-500/10',
-    ACCEPTED: 'text-emerald-700 bg-emerald-500/10',
-    REJECTED: 'text-red-700 bg-red-500/10',
-  } as const;
-  return <Badge className={styles[status]}>{labels[status]}</Badge>;
-}
-
-function ProjectInvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
-  const [policyConfirmed, setPolicyConfirmed] = useState(false);
-  const [showOdrl, setShowOdrl] = useState(false);
+function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
+  const [confirmed, setConfirmed] = useState(false);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
   const accept = useAcceptAnProjectInvitation();
   const reject = useRejectAnProjectInvitation();
-  const isBusy = accept.isPending || reject.isPending;
-  const policy = (invitation.policySnapshot ?? {}) as Record<string, unknown>;
-  const policyName = policyText(policy, 'name') ?? 'Nutzungsrichtlinie';
-  const policyPurpose = policyText(policy, 'purpose') ?? policyText(policy, 'usagePurpose');
-  const permissions = policyList(policy, 'permissions');
-  const prohibitions = policyList(policy, 'prohibitions');
-  const validityRule = policyText(policy, 'validityRule');
-  const retentionRule = policyText(policy, 'retentionRule');
-  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
-    invitation.dataPublicationId ?? '',
-    showOdrl,
-  );
+  const busy = accept.isPending || reject.isPending;
+  const policy = invitation.policySnapshot ?? {};
+  const permissions = Array.isArray(policy.permissions) ? policy.permissions.filter((item): item is string => typeof item === "string") : [];
+  const prohibitions = Array.isArray(policy.prohibitions) ? policy.prohibitions.filter((item): item is string => typeof item === "string") : [];
 
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
-  };
-
-  const decide = async (action: 'accept' | 'reject') => {
+  const decide = async (kind: "accept" | "reject") => {
     try {
-      const input = action === 'accept' ? { policyAccepted: true } : {};
-      const mutation = action === 'accept' ? accept : reject;
-      await mutation.mutateAsync({ id: invitation.id, data: input });
-      toast({
-        title: action === 'accept' ? 'Projekt und Datenfreigabe angenommen' : 'Einladung abgelehnt',
-      });
-      await refresh();
-    } catch (error) {
-      toast({
-        title: 'Fehler',
-        description: error instanceof Error ? error.message : 'Aktion konnte nicht ausgeführt werden.',
-        variant: 'destructive',
-      });
+      if (kind === "accept") await accept.mutateAsync({ id: invitation.id, data: { policyAccepted: true } });
+      else await reject.mutateAsync({ id: invitation.id, data: {} });
+      await client.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
+      toast({ title: kind === "accept" ? "Projektzugang angenommen" : "Einladung abgelehnt" });
+    } catch {
+      toast({ title: "Aktion konnte nicht ausgeführt werden", description: "Bitte versuchen Sie es erneut.", variant: "destructive" });
     }
   };
 
   return (
-    <Card className="border-border bg-card shadow-sm">
-      <CardHeader className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Building2 className="h-5 w-5 shrink-0 text-primary" />
-            <CardTitle className="truncate text-lg">{invitation.projectName}</CardTitle>
-          </div>
-          <InvitationStatusBadge status={invitation.status} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">Projekteinladung</Badge>
-          <span className="text-xs text-muted-foreground">
-            Eingegangen: {formatReceivedAt(invitation.createdAt)}
+    <article data-testid={`card-invitation-${invitation.id}`} className="relative overflow-hidden rounded-2xl border border-amber-700/20 bg-card p-5 shadow-sm">
+      <div className="absolute inset-y-0 left-0 w-1 bg-accent" />
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/25 text-primary">
+            <Building2 className="h-5 w-5" />
           </span>
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Projekteinladung</p>
+            <h2 className="mt-1 truncate text-lg font-semibold">{invitation.projectName}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Von {invitation.senderAgOrgId} · {dateText(invitation.createdAt, true)}</p>
+          </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Einladung vom Auftraggeber <strong>{invitation.senderAgOrgId}</strong>
-        </p>
-        {invitation.projectLocation && <p className="text-sm">{invitation.projectLocation}</p>}
-        {invitation.projectDescription && <p className="text-sm">{invitation.projectDescription}</p>}
-        {invitation.invitationMessage && (
-          <div className="rounded-md bg-muted/50 p-3 text-sm">{invitation.invitationMessage}</div>
-        )}
-        {invitation.dataPublicationTitle && (
-          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Lock className="h-4 w-4 text-primary" />
-              Datenangebot: {invitation.dataPublicationTitle}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {invitation.selectedFields?.map((field) => (
-                <Badge key={field} variant="secondary" className="text-[10px]">{field}</Badge>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="space-y-2 rounded-lg border p-3 text-sm">
-          <div className="flex items-center gap-2 font-medium">
-            <ShieldCheck className="h-4 w-4 text-primary" />{policyName}
-          </div>
-          {policyPurpose && <p className="text-muted-foreground">{policyPurpose}</p>}
-          {policyText(policy, 'description') && <p>{policyText(policy, 'description')}</p>}
-          {permissions.length > 0 && <p><strong>Erlaubt:</strong> {permissions.join(', ')}</p>}
-          {prohibitions.length > 0 && <p><strong>Nicht erlaubt:</strong> {prohibitions.join(', ')}</p>}
-          {validityRule && <p><strong>Bedingungen:</strong> {validityRule}</p>}
-          {retentionRule && <p><strong>Aufbewahrung:</strong> {retentionRule}</p>}
-          {invitation.dataPublicationId && (
-            <>
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowOdrl((visible) => !visible)}>
-                <Eye className="mr-2 h-4 w-4" />
-                {showOdrl ? 'ODRL ausblenden' : 'ODRL anzeigen'}
-              </Button>
-              {showOdrl && (
-                odrlLoading ? (
-                  <p className="text-xs text-muted-foreground">ODRL wird geladen…</p>
-                ) : odrl ? (
-                  <pre className="max-h-64 overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">{JSON.stringify(odrl, null, 2)}</pre>
-                ) : (
-                  <p className="text-xs text-muted-foreground">ODRL konnte nicht geladen werden.</p>
-                )
-              )}
-            </>
-          )}
+        <Badge variant="outline" className={invitation.status === "PENDING" ? "border-amber-600/30 bg-amber-500/10 text-amber-800" : "border-border text-muted-foreground"}>
+          {invitation.status === "PENDING" ? "Offen" : invitation.status === "ACCEPTED" ? "Beigetreten" : "Abgelehnt"}
+        </Badge>
+      </div>
+      <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+        <div><p className="text-xs text-muted-foreground">Projektort</p><p className="mt-1">{invitation.projectLocation || "Nicht veröffentlicht"}</p></div>
+        <div><p className="text-xs text-muted-foreground">Datennutzung</p><p className="mt-1">{typeof policy.name === "string" ? policy.name : invitation.dataPublicationTitle || "Richtlinie liegt vor"}</p></div>
+      </div>
+      {invitation.invitationMessage && <p className="mt-4 rounded-xl bg-muted/60 p-3 text-sm leading-relaxed">{invitation.invitationMessage}</p>}
+      {(permissions.length > 0 || prohibitions.length > 0) && (
+        <div className="mt-4 rounded-xl border border-primary/15 bg-primary/5 p-3 text-xs">
+          <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-primary" />Veröffentlichte Nutzungsrichtlinie</div>
+          {permissions.length > 0 && <p className="mt-2 text-muted-foreground"><span className="font-medium text-foreground">Erlaubt:</span> {permissions.join(", ")}</p>}
+          {prohibitions.length > 0 && <p className="mt-1 text-muted-foreground"><span className="font-medium text-foreground">Nicht erlaubt:</span> {prohibitions.join(", ")}</p>}
         </div>
-        {invitation.status === 'PENDING' ? (
-          <>
-            <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
-              <Checkbox
-                checked={policyConfirmed}
-                onCheckedChange={(checked) => setPolicyConfirmed(checked === true)}
-              />
-              <span className="text-sm">
-                Ich bestätige die angezeigte Nutzungsrichtlinie. Projektmitgliedschaft und Datenzugriff
-                werden erst danach aktiviert.
-              </span>
-            </label>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                disabled={isBusy || !policyConfirmed}
-                onClick={() => void decide('accept')}
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" />Projekt beitreten
-              </Button>
-              <Button
-                variant="outline"
-                disabled={isBusy}
-                onClick={() => void decide('reject')}
-              >
-                <XCircle className="mr-2 h-4 w-4" />Ablehnen
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            Bearbeitet{invitation.respondedAt ? ` am ${formatReceivedAt(invitation.respondedAt)}` : ''}.
+      )}
+      {invitation.status === "PENDING" ? (
+        <div className="mt-5 space-y-4">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background/60 p-3 text-sm">
+            <Checkbox data-testid={`checkbox-policy-${invitation.id}`} checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} />
+            <span>Ich bestätige die angezeigte Nutzungsrichtlinie. Projektmitgliedschaft und Datenzugriff werden erst danach aktiviert.</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button data-testid={`button-accept-invitation-${invitation.id}`} disabled={!confirmed || busy} onClick={() => void decide("accept")}><Check className="mr-2 h-4 w-4" />Projekt beitreten</Button>
+            <Button data-testid={`button-reject-invitation-${invitation.id}`} variant="outline" disabled={busy} onClick={() => void decide("reject")}><X className="mr-2 h-4 w-4" />Ablehnen</Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      ) : <p className="mt-5 text-sm text-muted-foreground">Diese Einladung wurde bereits bearbeitet.</p>}
+    </article>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
+  const due = deadline(item);
+  const title = item.takt.kurzbezeichnung || item.takt.taktBezeichnung || "Leistung ohne Bezeichnung";
+  return (
+    <article data-testid={`card-request-${item.id}`} className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <div className={`h-1 ${due.urgent ? "bg-accent" : "bg-primary/70"}`} />
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{item.requestNumber}</p>
+            <h2 data-testid={`text-request-title-${item.id}`} className="mt-1 truncate text-lg font-semibold">{title}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Eingegangen {dateText(item.receivedAt, true)}</p>
+          </div>
+          <StatusBadge status={item.status} />
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border/70 py-4 text-sm">
+          <div className="col-span-2 flex items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 truncate font-medium">{item.guOrgId || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 truncate font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 truncate font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
+          <div className="flex items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 truncate font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Arbeitsbereich</p><p className="mt-0.5 truncate font-medium">{item.takt.taktBezeichnung || "Nicht veröffentlicht"}</p></div></div>
+          <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistungsfenster</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
+          <div className="flex items-start gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Version</p><p className="mt-0.5 font-medium">Leistung {item.leistungVersion ? `v${item.leistungVersion}` : "nicht angegeben"} · Takt {item.taktVersion ? `v${item.taktVersion}` : "nicht angegeben"}</p></div></div>
+        </div>
+        <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />{due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
+        <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+          <p className="text-xs text-muted-foreground">{item.resourceRequirementCount ? `${item.resourceRequirementCount} Ressourcenbedarf${item.resourceRequirementCount === 1 ? "" : "e"} veröffentlicht` : "Kein Ressourcenbedarf veröffentlicht"}</p>
+          <Link data-testid={`link-open-request-${item.id}`} href={`/leistungsanfragen/${item.leistungsanfrageId}`} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
+            {isDone(item.status) ? "Details ansehen" : item.status === "REVISION_REQUIRED" ? "Überarbeiten" : "Prüfen"}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 export default function LeistungsanfragenInboxPage() {
-  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('ALL');
-  const [statusFilter, setStatusFilter]     = useState<StatusFilter>('ALL');
-  const [coordinationFilter, setCoordinationFilter] = useState<CoordinationFilter>('ALL');
-  const [proposalFilter, setProposalFilter] = useState<ProposalFilter>('ALL');
-  const [actionOwnerFilter, setActionOwnerFilter] = useState<ActionOwnerFilter>('ALL');
-  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('ALL');
-  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('OPEN');
-
-  const {
-    data: requestItemsFromApi,
-    isLoading: requestsLoading,
-    isError: requestsError,
-    refetch,
-  } = useListTaktRequests(
-    { role: 'nu' } as any,
-    {
-      query: {
-        queryKey: getListTaktRequestsQueryKey({ role: 'nu' } as any),
-        refetchInterval: 10_000,
-        refetchIntervalInBackground: false,
-      },
-    },
+  const [view, setView] = useState<ViewFilter>("OPEN");
+  const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
+  const requestQuery = useListAnLeistungsanfragen(
+    status === "ALL" ? undefined : { status },
+    { query: { queryKey: getListAnLeistungsanfragenQueryKey(status === "ALL" ? undefined : { status }), refetchInterval: 15000, refetchIntervalInBackground: false } },
   );
-  const {
-    data: invitations,
-    isLoading: invitationsLoading,
-    isError: invitationsError,
-    refetch: refetchInvitations,
-  } = useListAnProjectInvitations({
-    query: {
-      queryKey: getListAnProjectInvitationsQueryKey(),
-      refetchInterval: 10_000,
-      refetchIntervalInBackground: false,
-    },
-  });
+  const invitationQuery = useListAnProjectInvitations({ query: { queryKey: getListAnProjectInvitationsQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false } });
+  const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
+  const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
+  const shownRequests = useMemo(() => requests.filter((item) => view === "ALL" || (view === "OPEN" ? !isDone(item.status) : isDone(item.status))), [requests, view]);
+  const shownInvitations = view === "DONE" ? invitations.filter((item) => item.status !== "PENDING") : view === "OPEN" ? invitations.filter((item) => item.status === "PENDING") : invitations;
+  const loading = requestQuery.isLoading || invitationQuery.isLoading;
+  const error = requestQuery.isError && invitationQuery.isError;
 
-  const allItems = useMemo<InboxItem[]>(() => {
-    const requestItems: InboxItem[] = (requestItemsFromApi ?? []).map((data) => ({
-      kind: 'service-request',
-      data,
-      receivedAt: data.createdAt,
-      isOpen: !isCompletedRequest(data),
-    }));
-    const invitationItems: InboxItem[] = (invitations ?? []).map((data) => ({
-      kind: 'invitation',
-      data,
-      receivedAt: data.createdAt,
-      isOpen: data.status === 'PENDING',
-    }));
-    return [...requestItems, ...invitationItems].sort(
-      (left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime(),
-    );
-  }, [requestItemsFromApi, invitations]);
-
-  const filtered = useMemo(
-    () => filterInboxItems(allItems, {
-      inboxFilter,
-      deadlineFilter,
-      statusFilter,
-      coordinationFilter,
-      proposalFilter,
-      actionOwnerFilter,
-      scheduleFilter,
-    }),
-    [allItems, inboxFilter, deadlineFilter, statusFilter, coordinationFilter, proposalFilter, actionOwnerFilter, scheduleFilter],
-  );
-
-  // ── Loading ────────────────────────────────────────────────────────────────
-  if (requestsLoading || invitationsLoading) {
-    return (
-      <div className="p-6 space-y-6 max-w-5xl mx-auto">
-        <Skeleton className="h-8 w-64" />
-        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-      </div>
-    );
-  }
-
-  // ── Error ──────────────────────────────────────────────────────────────────
-  if (requestsError && invitationsError) {
-    return (
-      <div className="p-6 max-w-5xl mx-auto flex flex-col items-center gap-4 py-20">
-        <AlertTriangle className="w-10 h-10 text-destructive" />
-        <p className="text-muted-foreground">Fehler beim Laden der Anfragen</p>
-        <Button variant="outline" onClick={() => { void refetch(); void refetchInvitations(); }}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Erneut versuchen
-        </Button>
-      </div>
-    );
-  }
-
-  // ── Empty ──────────────────────────────────────────────────────────────────
-  if (!allItems || allItems.length === 0) {
-    return (
-      <div className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Anfragen</h1>
-        <div className="flex flex-col items-center justify-center py-24 gap-3 border border-dashed rounded-xl">
-          <Inbox className="w-12 h-12 text-muted-foreground opacity-40" />
-          <p className="font-medium text-muted-foreground">Keine Anfragen eingegangen</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="mx-auto w-full max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-10 w-80" /><Skeleton className="h-16 w-full" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-96" /><Skeleton className="h-96" /></div></div>;
+  if (error) return <div className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Anfragen konnten nicht geladen werden</h1><p className="text-sm text-muted-foreground">Die lokale Inbox ist gerade nicht erreichbar.</p><Button data-testid="button-retry-inbox" variant="outline" onClick={() => { void requestQuery.refetch(); void invitationQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div>;
 
   return (
-    <div className="w-full min-w-0 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+    <main className="mx-auto w-full max-w-7xl space-y-7 p-5 pb-12 lg:p-8">
+      <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Anfragen</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Einladungen und Leistungsanfragen Ihres Unternehmens</p>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">AN / ARBEITSEINGANG</p>
+          <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Leistungsanfragen</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Eingehende Arbeitsaufträge prüfen, Ressourcen einordnen und fristgerecht antworten. Angezeigt werden ausschließlich veröffentlichte Projekt- und Leistungsdaten.</p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Live
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-emerald-600" />Lokal synchronisiert</div>
+      </header>
+      <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
+          {(["OPEN", "ALL", "DONE"] as ViewFilter[]).map((value) => <button data-testid={`button-filter-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "OPEN" ? "Offen" : value === "ALL" ? "Alle" : "Erledigt"}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{value === "OPEN" ? shownRequests.length + shownInvitations.length : value === "ALL" ? requests.length + invitations.length : requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length}</span></button>)}
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={inboxFilter} onValueChange={(v) => setInboxFilter(v as InboxFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[150px] text-sm">
-            <SelectValue placeholder="Ansicht" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="OPEN">Offen</SelectItem>
-            <SelectItem value="ALL">Alle</SelectItem>
-            <SelectItem value="DONE">Erledigt</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-xs font-medium text-muted-foreground sm:ml-2">
-          Leistungsanfragen filtern:
-        </span>
-        <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as DeadlineFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[200px] text-sm">
-            <SelectValue placeholder="Friststatus" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle Fristen</SelectItem>
-            <SelectItem value="DUE_SOON">Bald fällig (≤ 48h)</SelectItem>
-            <SelectItem value="OVERDUE">Überfällig</SelectItem>
-            <SelectItem value="EXPIRED">Abgelaufen</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm">
-            <SelectValue placeholder="Leistungsstatus" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle Status</SelectItem>
-            {Object.entries(STATUS_LABELS).map(([k, l]) => (
-              <SelectItem key={k} value={k}>{l}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={coordinationFilter} onValueChange={(v) => setCoordinationFilter(v as CoordinationFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[180px] text-sm"><SelectValue placeholder="Koordination" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle Koordination</SelectItem>
-            <SelectItem value="AGREED">Vereinbart</SelectItem>
-            <SelectItem value="NO_AGREEMENT">Keine Vereinbarung</SelectItem>
-            <SelectItem value="AG_ACTION_REQUIRED">AG muss handeln</SelectItem>
-            <SelectItem value="AN_ACTION_REQUIRED">AN muss handeln</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={proposalFilter} onValueChange={(v) => setProposalFilter(v as ProposalFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Vorschlag" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle Vorschläge</SelectItem>
-            <SelectItem value="OPEN">Offener Vorschlag</SelectItem>
-            <SelectItem value="NONE">Kein offener Vorschlag</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={actionOwnerFilter} onValueChange={(v) => setActionOwnerFilter(v as ActionOwnerFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Nächste Aktion" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle nächsten Aktionen</SelectItem>
-            <SelectItem value="AG">AG ist am Zug</SelectItem>
-            <SelectItem value="AN">AN ist am Zug</SelectItem>
-            <SelectItem value="NONE">Keine Aktion offen</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={scheduleFilter} onValueChange={(v) => setScheduleFilter(v as ScheduleFilter)}>
-          <SelectTrigger className="h-8 w-full sm:w-[170px] text-sm"><SelectValue placeholder="Terminänderung" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Alle Terminstände</SelectItem>
-            <SelectItem value="CHANGED">Mit Terminänderung</SelectItem>
-            <SelectItem value="UNCHANGED">Ohne Terminänderung</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {requestsError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-          <span>Leistungsanfragen konnten nicht geladen werden.</span>
-          <Button variant="ghost" size="sm" onClick={() => void refetch()}>Erneut laden</Button>
-        </div>
-      )}
-      {invitationsError && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-          <span>Projekteinladungen konnten nicht geladen werden.</span>
-          <Button variant="ghost" size="sm" onClick={() => void refetchInvitations()}>Erneut laden</Button>
-        </div>
-      )}
-
-      {/* Inbox cards */}
-      {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">
-          Keine Anfragen für diese Filter
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {filtered.map((item) => {
-            if (item.kind === 'invitation') {
-              return <ProjectInvitationCard key={`invitation-${item.data.id}`} invitation={item.data} />;
-            }
-
-            const request = item.data;
-            const isExpired = request.status === 'EXPIRED' || !!request.expiredAt;
-            const respond = canRespond(request);
-            const remCount = request.reminderCount;
-            const agOrgName = (request as any).agOrgName as string | null | undefined;
-            const zone = (request as any).zone as string | null | undefined;
-            const gewerk = (request as any).gewerk as string | null | undefined;
-            const scheduleDelta = getScheduleDelta(request);
-
-            return (
-              <article
-                key={`request-${request.id}`}
-                className={`flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-muted/20 ${isExpired ? 'opacity-60' : ''}`}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={request.requestNumber}>
-                      {request.requestNumber}
-                    </p>
-                    <StatusBadge status={request.status} />
-                  </div>
-                  <Badge variant="outline" className="w-fit">Leistungsanfrage</Badge>
-                  <div className="min-w-0">
-                    <Link
-                      href={`/leistungsanfragen/${request.id}`}
-                      className="block line-clamp-2 text-lg font-semibold leading-tight hover:text-primary"
-                      title={request.taktBezeichnung ?? undefined}
-                    >
-                      {request.taktBezeichnung ?? 'Leistungsanfrage'}
-                    </Link>
-                    <p className="mt-1 truncate text-sm text-muted-foreground" title={agOrgName ?? undefined}>
-                      {agOrgName ?? 'Auftraggeber nicht angegeben'}
-                    </p>
-                  </div>
-                </div>
-
-                {(zone || gewerk) && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {[zone, gewerk].filter(Boolean).map((value) => (
-                      <span key={value} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-                        {value}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {request.openProposal && (
-                  <div className="mt-3 rounded-lg bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-600">
-                    Offener Vorschlag · {request.nextActionOwner === 'AN' ? 'Sie sind am Zug' : 'AG ist am Zug'}
-                  </div>
-                )}
-
-                <div className="mt-4 grid grid-cols-1 gap-4 border-y border-border/70 py-4 sm:grid-cols-2 sm:gap-3">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Antwortfrist</p>
-                    <p className="mt-1 text-sm font-semibold">
-                      {request.responseRequiredBy
-                        ? format(new Date(request.responseRequiredBy), 'dd.MM.yy HH:mm', { locale: de })
-                        : 'Keine'}
-                    </p>
-                    <div className="mt-1">
-                      <DeadlineBadge item={request} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Vereinbarung</p>
-                    <p className="mt-1 text-sm font-semibold">
-                      {request.currentAgreement
-                        ? `${format(new Date(request.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(request.currentAgreement.end), 'dd.MM.yy')}`
-                        : 'Noch keine'}
-                    </p>
-                    {scheduleDelta.hasChange && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Δ {scheduleDelta.startDays > 0 ? '+' : ''}{scheduleDelta.startDays}/
-                        {scheduleDelta.endDays > 0 ? '+' : ''}{scheduleDelta.endDays} Tage
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-auto flex min-w-0 flex-col-reverse items-stretch gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0 flex items-center gap-3 text-xs text-muted-foreground">
-                    {typeof remCount === 'number' && remCount > 0 ? (
-                      <span className="flex items-center gap-1 text-orange-500">
-                        <Bell size={12} aria-hidden />
-                        {remCount}× erinnert
-                      </span>
-                    ) : (
-                      <span>Keine Erinnerungen</span>
-                    )}
-                  </div>
-                  {respond ? (
-                       <Link href={`/leistungsanfragen/${request.id}`} className="block min-w-0 w-full sm:w-auto sm:shrink-0">
-                      <Button size="sm" className="inline-flex max-w-full w-full flex-nowrap whitespace-nowrap gap-1 sm:w-auto">
-                        Antworten <ChevronRight size={14} className="shrink-0" />
-                      </Button>
-                    </Link>
-                  ) : isExpired ? (
-                    <span
-                      className="flex items-center gap-1 text-xs text-muted-foreground"
-                      title="Die Antwortfrist und der Ablaufzeitpunkt sind überschritten. Eine reguläre Antwort ist nicht mehr möglich."
-                      aria-label="Abgelaufen – Antwort nicht mehr möglich"
-                    >
-                      <Ban size={14} /> Antwort nicht möglich
-                    </span>
-                  ) : (
-                    <ChevronRight size={16} className="text-muted-foreground/30" aria-hidden />
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground">
-         {filtered.length} von {allItems.length} Anfragen
-      </p>
-    </div>
+        <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" className="w-full sm:w-56"><SelectValue placeholder="Status filtern" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>
+      </section>
+      {requestQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Leistungsanfragen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-requests" size="sm" variant="ghost" onClick={() => void requestQuery.refetch()}>Erneut laden</Button></div>}
+      {invitationQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Projekteinladungen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-invitations" size="sm" variant="ghost" onClick={() => void invitationQuery.refetch()}>Erneut laden</Button></div>}
+      {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Keine offenen Arbeitsaufträge" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen · {shownInvitations.length} Einladungen in dieser Ansicht</p>
+    </main>
   );
 }

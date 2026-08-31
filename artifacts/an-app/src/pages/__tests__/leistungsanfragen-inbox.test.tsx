@@ -9,25 +9,37 @@ import LeistungsanfragenInboxPage, { filterInboxItems, type InboxItem } from "..
 
 const request = {
   id: "request-1",
+  leistungsanfrageId: "request-1",
+  localProjectionId: "local-request-1",
   requestNumber: "TKR-2026-0001",
-  taktId: "takt-1",
-  taktBezeichnung: "Trockenbau 2. OG",
-  taktVersion: 1,
-  projectId: "project-1",
-  projectName: "Neubau Bochum",
   guOrgId: "ag-1",
   nuOrgId: "an-1",
-  nuOrgName: "IIB Rohbau",
-  status: "DELIVERED",
+  projektId: "project-1",
+  projectId: "project-1",
+  status: "RECEIVED",
   responseRequiredBy: "2026-10-16T12:00:00.000Z",
-  reminderCount: 0,
+  receivedAt: "2026-10-10T09:00:00.000Z",
+  detailsRetrievedAt: null,
   createdAt: "2026-10-10T09:00:00.000Z",
   updatedAt: "2026-10-10T09:00:00.000Z",
-  coordinationState: "AN_ACTION_REQUIRED",
-  nextActionOwner: "AN",
-  currentAgreement: null,
-  openProposal: null,
-  scheduleDelta: { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
+  leistungVersion: 1,
+  taktVersion: 1,
+  policySnapshot: null,
+  resourceRequirementCount: 0,
+  takt: {
+    id: "takt-1",
+    taktBezeichnung: "Arbeitsbereich Trockenbau",
+    kurzbezeichnung: "Trockenbau 2. OG",
+    gewerk: "Trockenbau",
+    zone: "2. OG",
+    plannedStart: "2026-10-12",
+    plannedEnd: "2026-10-16",
+  },
+  project: {
+    id: "project-1",
+    name: "Neubau Bochum",
+    location: null,
+  },
 };
 
 function renderInbox() {
@@ -58,7 +70,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/takt-requests")) return json([request]);
+      if (url === "/api/an/leistungsanfragen") return json([request]);
       if (url === "/api/an/project-invitations") {
         return json([{
           id: "invitation-1",
@@ -81,7 +93,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     const { container } = renderInbox();
 
     expect(await screen.findByText("Projekteinladung")).toBeInTheDocument();
-    expect(screen.getByText("Leistungsanfrage")).toBeInTheDocument();
+    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Leistungsanfragen");
     expect(screen.getByText("Projekt beitreten")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Trockenbau 2. OG" })).toHaveAttribute(
       "href",
@@ -91,7 +103,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
       container.textContent?.indexOf("Trockenbau 2. OG") ?? -1,
     );
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
-      expect.stringContaining("/api/takt-requests"),
+      "/api/an/leistungsanfragen",
       "/api/an/project-invitations",
     ]));
   });
@@ -101,7 +113,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     const { scheduleDelta: _scheduleDelta, ...localProjectionRequest } = request;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/takt-requests")) return json([localProjectionRequest]);
+      if (url === "/api/an/leistungsanfragen") return json([localProjectionRequest]);
       if (url === "/api/an/project-invitations") return json([]);
       return json({});
     });
@@ -109,8 +121,8 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
-    expect(await screen.findByText("Leistungsanfrage")).toBeInTheDocument();
-    expect(screen.getByText("Noch keine")).toBeInTheDocument();
+    expect(await screen.findByTestId("card-request-request-1")).toBeInTheDocument();
+    expect(screen.getByText("Kein Ressourcenbedarf veröffentlicht")).toBeInTheDocument();
   });
 
   it("applies service-request filters without treating invitations as service requests", async () => {
@@ -160,7 +172,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     let invitationStatus = "PENDING";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.startsWith("/api/takt-requests")) return json([]);
+      if (url === "/api/an/leistungsanfragen") return json([]);
       if (url === "/api/an/project-invitations") {
         return json([{
           id: "invitation-2",
@@ -190,7 +202,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     renderInbox();
 
     const invitationCard = await screen.findByText("Umbau Essen");
-    const card = invitationCard.closest("[class*='border-border']") ?? invitationCard.parentElement!;
+    const card = screen.getByTestId("card-invitation-invitation-2");
     await user.click(within(card).getByRole("checkbox"));
     await user.click(within(card).getByRole("button", { name: "Projekt beitreten" }));
 

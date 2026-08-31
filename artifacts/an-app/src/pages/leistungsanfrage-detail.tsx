@@ -1,1243 +1,314 @@
-/**
- * TaktRequest detail page — 5-Schritt-Workflow (Task #118).
- *
- * 1. Datenfreigabe  — Policy akzeptieren / Status prüfen
- * 2. Leistungsdaten      — Details abrufen + fachliche Ansicht
- * 3. Ressourcenbedarf — Ressourcentypen + Kapazitäten erfassen
- * 4. Verfügbarkeit  — Prüfung starten, Ergebnis anzeigen
- * 5. Antwort        — Entscheidung einreichen
- *
- * Route: /leistungsanfragen/:requestId
- */
-import React, { useState } from 'react';
-import { useParams, useLocation } from 'wouter';
-import { format, formatDistanceToNow, differenceInHours } from 'date-fns';
-import { de } from 'date-fns/locale';
+import { useState, type FormEvent, type ReactNode } from "react";
+import { useLocation, useParams } from "wouter";
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
 import {
-  useGetTaktRequestDetails,
-  useSubmitNuResponse,
-  useRunAvailabilityCheck,
-  useGetLatestAvailabilityCheck,
-  getGetTaktRequestDetailsQueryKey,
-  getGetLatestAvailabilityCheckQueryKey,
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  Circle,
+  FileCheck2,
+  Info,
+  Loader2,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  getGetAnLeistungsanfrageDetailsQueryKey,
+  getGetLeistungsanfrageLatestAvailabilityCheckQueryKey,
+  getListLeistungsanfrageResourceRequirementsQueryKey,
   TaktDecision,
-  createChangeProposal,
-  counterChangeProposal,
-  acceptChangeProposal,
-  rejectChangeProposal,
-} from '@workspace/api-client-react';
-import {
-  useListResourceRequirements,
-  useAddResourceRequirement,
-  useDeleteResourceRequirement,
-} from '@workspace/api-client-react';
-import { useListResourceTypes } from '@workspace/api-client-react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import {
-  ArrowLeft, Calendar, Clock, AlertTriangle, CheckCircle2, Loader2,
-  Plus, Trash2, RefreshCw, Shield, FileText, Search, Send,
-  Lock, Unlock, ChevronDown, ChevronUp, ExternalLink,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { DatePicker } from '@/components/date-picker';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
-import { ServiceCoordinationTools } from '@/components/service-coordination-tools';
-import { ProposalActions } from '@/components/proposal-actions';
-import { CurrentActionCard } from '@/components/current-action-card';
+  TaktResponseReasonCode,
+  type AnLeistungsanfrageDetails,
+  type AnLeistungsanfrageResourceRequirement,
+  type NuResponseCreate,
+  useCreateLeistungsanfrageResourceRequirement,
+  useDeleteLeistungsanfrageResourceRequirement,
+  useGetAnLeistungsanfrageDetails,
+  useGetLeistungsanfrageLatestAvailabilityCheck,
+  useListLeistungsanfrageResourceRequirements,
+  useListResourceTypes,
+  useRunLeistungsanfrageAvailabilityCheck,
+  useSubmitLeistungsanfrageResponse,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
+const EMPTY = "Nicht veröffentlicht";
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Entwurf', SENT: 'Gesendet', DELIVERED: 'Zugestellt',
-  DETAILS_RETRIEVED: 'Details abgerufen', UNDER_REVIEW: 'In Prüfung',
-  ACCEPTED: 'Angenommen', ALTERNATIVES_PROPOSED: 'Gegenvorschlag',
-  REJECTED: 'Abgelehnt', EXPIRED: 'Abgelaufen',
-  REVISION_REQUIRED: 'Überarbeitung angefordert',
-  SUPERSEDED: 'Ersetzt', CANCELLED: 'Storniert',
+  RECEIVED: "Eingegangen",
+  DETAILS_RETRIEVED: "Daten abgerufen",
+  UNDER_REVIEW: "In Prüfung",
+  RESPONDED: "Beantwortet",
+  REVISION_REQUIRED: "Überarbeitung angefragt",
+  CONFIRMED: "Bestätigt",
+  CANCELLED: "Storniert",
+  SUPERSEDED: "Ersetzt",
+  EXPIRED: "Abgelaufen",
+};
+const STATUS_TONE: Record<string, string> = {
+  RECEIVED: "border-cyan-700/20 bg-cyan-700/10 text-cyan-800 dark:text-cyan-200",
+  DETAILS_RETRIEVED: "border-amber-600/20 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  UNDER_REVIEW: "border-amber-600/20 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  RESPONDED: "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-200",
+  REVISION_REQUIRED: "border-orange-600/20 bg-orange-500/10 text-orange-800 dark:text-orange-200",
+  CONFIRMED: "border-emerald-700/20 bg-emerald-600/10 text-emerald-800 dark:text-emerald-200",
+  CANCELLED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
+  SUPERSEDED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
+  EXPIRED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
 };
 
-const REASON_CODES = [
-  { value: 'RESOURCE_CONFLICT',     label: 'Ressourcenkonflikt' },
-  { value: 'NO_CAPACITY',           label: 'Keine Kapazität' },
-  { value: 'QUALIFICATION_MISSING', label: 'Qualifikation fehlt' },
-  { value: 'OTHER',                 label: 'Sonstiges' },
-];
-
-function canRespond(status: string): boolean {
-  return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'REVISION_REQUIRED'].includes(status);
+function dateText(value?: string | null, withTime = false) {
+  if (!value) return EMPTY;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return EMPTY;
+  return format(date, withTime ? "dd.MM.yyyy, HH:mm 'Uhr'" : "dd.MM.yyyy", { locale: de });
+}
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function values(...items: unknown[]) {
+  const found = items.find((item) => typeof item === "string" && item.trim());
+  return typeof found === "string" ? found : EMPTY;
+}
+function array(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+function read(source: Record<string, unknown>, ...keys: string[]) {
+  return values(...keys.map((key) => source[key]));
 }
 
-function fmtDate(s?: string | null): string {
-  if (!s) return '—';
-  try { return format(new Date(s), 'dd.MM.yyyy', { locale: de }); } catch { return s; }
-}
-function fmtDateTime(s?: string | null): string {
-  if (!s) return '—';
-  try { return format(new Date(s), 'dd.MM.yyyy HH:mm', { locale: de }); } catch { return s; }
+function StatusBadge({ status }: { status: string }) {
+  return <Badge data-testid="status-detail" variant="outline" className={`font-medium ${STATUS_TONE[status] ?? "border-border text-muted-foreground"}`}>{STATUS_LABELS[status] ?? "Status nicht veröffentlicht"}</Badge>;
 }
 
-function CoordinationSummary({ details }: { details: any }) {
-  const agreement = details.currentAgreement as { start: string; end: string } | null | undefined;
-  const proposal = details.openProposal as { start: string; end: string; comment?: string | null } | null | undefined;
-  const delta = details.scheduleDelta as { startDays: number; endDays: number; hasChange: boolean } | undefined;
+type StepState = "done" | "current" | "open";
+function WorkflowStep({ number, title, why, state, outcome, children }: { number: number; title: string; why: string; state: StepState; outcome: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">Terminabstimmung</h2>
-          <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung und offene Änderung getrennt.</p>
+    <section data-testid={`workflow-step-${number}`} className={`overflow-hidden rounded-2xl border bg-card transition-shadow ${state === "current" ? "border-primary/45 shadow-md" : "border-border shadow-sm"}`}>
+      <div className="flex gap-4 border-b border-border/70 px-5 py-4 sm:px-6">
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-bold ${state === "done" ? "bg-emerald-600 text-white" : state === "current" ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>{state === "done" ? <Check className="h-4 w-4" /> : number}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">{title}</h2><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{state === "done" ? "Erledigt" : state === "current" ? "Nächster Schritt" : "Ausstehend"}</span></div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{why}</p>
+          <p data-testid={`step-outcome-${number}`} className="mt-2 text-xs font-medium">{outcome}</p>
         </div>
       </div>
-      <div className="grid sm:grid-cols-2 gap-3 text-sm">
-        <div className="rounded-lg border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Aktuelle Vereinbarung</p>
-          <p className="font-medium mt-1">{agreement ? `${fmtDate(agreement.start)} – ${fmtDate(agreement.end)}` : 'Noch keine Vereinbarung'}</p>
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Offener Vorschlag</p>
-          <p className="font-medium mt-1">{proposal ? `${fmtDate(proposal.start)} – ${fmtDate(proposal.end)}` : 'Kein offener Vorschlag'}</p>
-          {proposal?.comment && <p className="text-xs text-muted-foreground mt-1">{proposal.comment}</p>}
-        </div>
-      </div>
-      {delta?.hasChange && <p className="text-sm text-amber-700 dark:text-amber-300">Terminänderung: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage</p>}
+      <div className="p-5 sm:p-6">{children}</div>
     </section>
   );
 }
 
-// ── Step indicator ────────────────────────────────────────────────────────────
+function SnapshotGroups({ details }: { details: AnLeistungsanfrageDetails }) {
+  const snap = object(details.snapshotPayload);
+  const service = object(snap.leistung ?? snap.service ?? snap.workPackage);
+  const project = object(snap.project ?? snap.projekt);
+  const location = object(snap.location ?? snap.ort);
+  const timeWindow = object(snap.plannedTimeWindow ?? snap.timeWindow ?? snap.zeitfenster);
+  const buffer = object(snap.bufferTimeWindow ?? snap.buffer ?? snap.puffer);
+  const policy = object(details.policySnapshot);
+  const policyPermissions = array(policy.permissions).filter((item): item is string => typeof item === "string");
+  const policyProhibitions = array(policy.prohibitions).filter((item): item is string => typeof item === "string");
+  const predecessors = array(snap.predecessors ?? snap.predecessor ?? snap.vorgaenger ?? snap["vorgänger"]);
+  const successors = array(snap.successors ?? snap.successor ?? snap.nachfolger);
+  const dependencies = [
+    ...predecessors.map((item) => ({ value: item, label: "Vorgänger" })),
+    ...successors.map((item) => ({ value: item, label: "Nachfolger" })),
+  ];
+  const projectName = values(project.name, snap.projectName, details.project.name);
+  const projectDescription = values(project.description, snap.projectDescription);
+  const place = values(location.name, location.address, location.description, snap.projectLocation, details.project.location);
+  const serviceName = values(service.name, service.title, snap.kurzbezeichnung, snap.workPackage, snap.taktBezeichnung, details.takt.kurzbezeichnung, details.takt.taktBezeichnung);
+  const serviceDescription = values(service.description, snap.requiredOutput, snap.description);
+  const start = values(timeWindow.start, snap.plannedStart, details.plannedStart);
+  const end = values(timeWindow.end, snap.plannedEnd, details.plannedEnd);
+  const earliest = values(buffer.earliestStart, buffer.start, snap.earliestStart);
+  const latest = values(buffer.latestEnd, buffer.end, snap.latestEnd);
 
-const STEPS = [
-  { id: 1, label: 'Datenfreigabe', shortLabel: 'Policy' },
-  { id: 2, label: 'Leistungsdaten',     shortLabel: 'Daten' },
-  { id: 3, label: 'Ressourcen',    shortLabel: 'Ressourcen' },
-  { id: 4, label: 'Verfügbarkeit', shortLabel: 'Verfügb.' },
-  { id: 5, label: 'Antwort',       shortLabel: 'Antwort' },
-];
-
-function StepIndicator({ currentStep, completedSteps }: {
-  currentStep: number;
-  completedSteps: Set<number>;
-}) {
   return (
-    <div className="flex items-center gap-0 mb-8">
-      {STEPS.map((step, idx) => {
-        const isDone    = completedSteps.has(step.id);
-        const isCurrent = step.id === currentStep;
-        const isLocked  = step.id > currentStep && !isDone;
-
-        return (
-          <React.Fragment key={step.id}>
-            {/* Step node */}
-            <div className="flex flex-col items-center gap-1 flex-shrink-0">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
-                  isDone    ? 'bg-emerald-500 border-emerald-500 text-white' :
-                  isCurrent ? 'bg-primary border-primary text-primary-foreground' :
-                              'bg-muted border-border text-muted-foreground'
-                }`}
-              >
-                {isDone ? <CheckCircle2 className="w-4 h-4" /> : step.id}
-              </div>
-              <span className={`text-[10px] font-medium text-center leading-tight hidden sm:block ${
-                isLocked ? 'text-muted-foreground/50' : isCurrent ? 'text-primary' : isDone ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
-              }`}>
-                {step.shortLabel}
-              </span>
-            </div>
-
-            {/* Connector */}
-            {idx < STEPS.length - 1 && (
-              <div
-                className={`flex-1 h-0.5 mx-1 transition-colors ${
-                  completedSteps.has(step.id) ? 'bg-emerald-500' : 'bg-border'
-                }`}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Section wrapper ────────────────────────────────────────────────────────────
-
-function StepSection({
-  step, currentStep, completedSteps, locked, children,
-}: {
-  step: number;
-  currentStep: number;
-  completedSteps: Set<number>;
-  locked?: boolean;
-  children?: React.ReactNode;
-}) {
-  const isDone    = completedSteps.has(step);
-  const isCurrent = step === currentStep;
-
-  if (locked) {
-    return (
-      <div className="relative rounded-xl border border-border/50 bg-muted/20 p-5 opacity-50">
-        <div className="flex items-center gap-2 mb-1">
-          <Lock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-muted-foreground">
-            Schritt {step} — {STEPS[step - 1]?.label}
-          </span>
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-border bg-background/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Projekt</p>
+          <p data-testid="snapshot-project" className="mt-2 font-semibold">{projectName}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{projectDescription}</p>
+          <p className="mt-3 flex items-start gap-2 text-sm"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />{place}</p>
         </div>
-        <p className="text-xs text-muted-foreground">Bitte schließen Sie die vorherigen Schritte ab.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`rounded-xl border transition-all ${
-      isCurrent ? 'border-primary/40 bg-primary/5' : isDone ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border'
-    }`}>
-      {children}
-    </div>
-  );
-}
-
-// ── Policy-gate error view ─────────────────────────────────────────────────────
-
-interface PolicyGateProps {
-  pubId?: string;
-  offerRef?: string;
-  onBack: () => void;
-}
-
-function PolicyGateView({ pubId, offerRef, onBack }: PolicyGateProps) {
-  return (
-    <div className="space-y-6">
-      {/* Step 1 — needs action */}
-      <div className="rounded-xl border border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20 p-5 space-y-4">
-        <div className="flex items-start gap-3">
-          <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div>
-            <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              Schritt 1 — Datenfreigabe: Policy-Annahme erforderlich
-            </p>
-            <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-              Um die Leistungsdetails einsehen zu können, müssen Sie zunächst die Nutzungs-Policy
-              des zugehörigen Datenraum-Angebots akzeptieren.
-            </p>
-          </div>
+        <div className="rounded-xl border border-border bg-background/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Leistung</p>
+          <p data-testid="snapshot-service" className="mt-2 font-semibold">{serviceName}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{serviceDescription}</p>
+          <p className="mt-3 text-sm"><span className="text-muted-foreground">Gewerk / Zone: </span>{values(snap.gewerk, snap.trade, details.takt.gewerk)} / {values(location.zone, snap.zone, details.takt.zone)}</p>
         </div>
-        {pubId && offerRef ? (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            Die erforderliche Policy-Annahme ist im technischen Datenraum-Bereich verfügbar.
-          </p>
-        ) : (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            Wenden Sie sich an den Auftraggeber – für diese Leistungsanfrage wurden noch keine
-            Leistungsinformationen veröffentlicht.
-          </p>
-        )}
       </div>
-
-      {/* Steps 2–5 locked */}
-      {[2, 3, 4, 5].map(s => (
-        <StepSection key={s} step={s} currentStep={1} completedSteps={new Set()} locked />
-      ))}
+      {(Object.keys(policy).length > 0) && <div className="rounded-xl border border-primary/15 bg-primary/5 p-4"><div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" />Freigegebene Nutzungsrichtlinie</div><p className="mt-2 text-sm">{values(policy.name, policy.title)}</p>{typeof policy.purpose === "string" && <p className="mt-1 text-xs text-muted-foreground">{policy.purpose}</p>}{policyPermissions.length > 0 && <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">Erlaubt:</span> {policyPermissions.join(", ")}</p>}{policyProhibitions.length > 0 && <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">Nicht erlaubt:</span> {policyProhibitions.join(", ")}</p>}</div>}
+      <div className="rounded-xl border border-border bg-background/60 p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4 text-primary" />Zeitfenster und Puffer</div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div><p className="text-xs text-muted-foreground">Geplantes Fenster</p><p className="mt-1 text-sm font-medium">{dateText(start)} – {dateText(end)}</p></div>
+          <div><p className="text-xs text-muted-foreground">Veröffentlichter Puffer</p><p className="mt-1 text-sm font-medium">{earliest === EMPTY && latest === EMPTY ? EMPTY : `${dateText(earliest)} – ${dateText(latest)}`}</p></div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-dashed border-border/80 p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold"><ArrowRight className="h-4 w-4 text-primary" />Vorgänger und Nachfolger</div>
+        {dependencies.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Keine Vorgänger oder Nachfolger veröffentlicht.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2">{dependencies.map((item, index) => { const dep = object(item.value); const nested = object(dep.predecessor ?? dep.successor ?? dep.vorgaenger ?? dep.nachfolger); const label = read(nested, "name", "title", "taktBezeichnung", "reference", "id") !== EMPTY ? read(nested, "name", "title", "taktBezeichnung", "reference", "id") : read(dep, "name", "title", "taktBezeichnung", "reference", "id"); return <div data-testid={`dependency-${index}`} key={`${label}-${index}`} className="rounded-lg bg-muted/60 px-3 py-2 text-sm">{label}<span className="ml-2 text-xs text-muted-foreground">{item.label}</span></div>; })}</div>}
+      </div>
     </div>
   );
 }
 
-// ── Alternative row ────────────────────────────────────────────────────────────
+function ResourceSection({ id, requirements, canEdit, defaultStart, defaultEnd, loadError }: { id: string; requirements: AnLeistungsanfrageResourceRequirement[]; canEdit: boolean; defaultStart: string; defaultEnd: string; loadError?: boolean }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [resourceTypeId, setResourceTypeId] = useState("");
+  const [capacity, setCapacity] = useState("");
+  const [utilization, setUtilization] = useState("100");
+  const [qualification, setQualification] = useState("");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [notes, setNotes] = useState("");
+  const { toast } = useToast();
+  const client = useQueryClient();
+  const typeQuery = useListResourceTypes();
+  const create = useCreateLeistungsanfrageResourceRequirement();
+  const remove = useDeleteLeistungsanfrageResourceRequirement();
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(id) });
+    void client.invalidateQueries({ queryKey: getGetAnLeistungsanfrageDetailsQueryKey(id) });
+  };
+  const add = () => {
+    if (!resourceTypeId || !capacity || !(periodStart || defaultStart) || !(periodEnd || defaultEnd)) {
+      toast({ title: "Angaben fehlen", description: "Ressourcentyp, Kapazität und Zeitraum sind erforderlich.", variant: "destructive" });
+      return;
+    }
+    create.mutate({ leistungsanfrageId: id, data: { resourceTypeId, requiredCapacity: Number(capacity), utilizationPercent: Number(utilization), requiredQualification: qualification || null, periodStart: periodStart || defaultStart, periodEnd: periodEnd || defaultEnd, notes: notes || null } }, {
+      onSuccess: () => { toast({ title: "Ressourcenbedarf gespeichert" }); setShowAdd(false); setResourceTypeId(""); setCapacity(""); setQualification(""); setPeriodStart(""); setPeriodEnd(""); setNotes(""); refresh(); },
+      onError: () => toast({ title: "Ressourcenbedarf konnte nicht gespeichert werden", description: "Bitte prüfen Sie die Angaben.", variant: "destructive" }),
+    });
+  };
+  const removeRow = (requirementId: string) => {
+    if (!window.confirm("Ressourcenbedarf wirklich entfernen?")) return;
+    remove.mutate({ leistungsanfrageId: id, reqId: requirementId }, { onSuccess: () => { toast({ title: "Ressourcenbedarf entfernt" }); refresh(); }, onError: () => toast({ title: "Ressourcenbedarf konnte nicht entfernt werden", variant: "destructive" }) });
+  };
+  return (
+    <div>
+      {loadError && <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Ressourcenbedarf konnte nicht aktualisiert werden. Bereits veröffentlichte Angaben bleiben sichtbar.</p>}
+      {requirements.length === 0 ? <div className="rounded-xl border border-dashed border-border/80 p-5 text-sm text-muted-foreground">Für diese Leistungsanfrage ist noch kein Ressourcenbedarf erfasst. Wenn Sie für die Prüfung Bedarf benötigen, ergänzen Sie ihn hier.</div> : <div className="space-y-2">{requirements.map((req) => <div data-testid={`resource-row-${req.id}`} key={req.id} className="flex items-start gap-3 rounded-xl border border-border bg-background/70 p-3"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{values(req.resourceTypeName, req.resourceTypeCode, req.resourceTypeId)}</p><p className="mt-1 text-xs text-muted-foreground">{String(req.requiredCapacity ?? EMPTY)} {req.capacityUnit ?? ""} · {req.utilizationPercent ? `${req.utilizationPercent}% Auslastung` : "Auslastung nicht veröffentlicht"} · {dateText(req.periodStart)} – {dateText(req.periodEnd)}</p>{req.requiredQualification && <p className="mt-1 text-xs text-muted-foreground">Qualifikation: {req.requiredQualification}</p>}{req.notes && <p className="mt-1 text-xs text-muted-foreground">{req.notes}</p>}</div>{canEdit && <Button data-testid={`button-delete-resource-${req.id}`} variant="ghost" size="icon" disabled={remove.isPending} onClick={() => removeRow(req.id)} aria-label="Ressourcenbedarf entfernen"><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>}</div>)}</div>}
+      {canEdit && (!showAdd ? <Button data-testid="button-add-resource" className="mt-4" variant="outline" size="sm" onClick={() => setShowAdd(true)}><Plus className="mr-2 h-4 w-4" />Ressourcenbedarf ergänzen</Button> : <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Bedarf ergänzen</p><Button data-testid="button-close-resource" variant="ghost" size="icon" onClick={() => setShowAdd(false)}><X className="h-4 w-4" /></Button></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="sm:col-span-2"><Label>Ressourcentyp</Label><Select value={resourceTypeId} onValueChange={setResourceTypeId}><SelectTrigger data-testid="select-resource-type" className="mt-1"><SelectValue placeholder="Typ auswählen" /></SelectTrigger><SelectContent>{typeQuery.data?.items.filter((item) => item.active).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.code ? ` · ${item.code}` : ""}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="resource-capacity">Kapazität</Label><Input data-testid="input-resource-capacity" id="resource-capacity" className="mt-1" type="number" min="0.01" step="0.01" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="z. B. 2" /></div><div><Label htmlFor="resource-utilization">Auslastung in Prozent</Label><Input data-testid="input-resource-utilization" id="resource-utilization" className="mt-1" type="number" min="1" max="100" value={utilization} onChange={(event) => setUtilization(event.target.value)} /></div><div><Label htmlFor="resource-start">Von</Label><Input data-testid="input-resource-start" id="resource-start" className="mt-1" type="date" value={periodStart || defaultStart} onChange={(event) => setPeriodStart(event.target.value)} /></div><div><Label htmlFor="resource-end">Bis</Label><Input data-testid="input-resource-end" id="resource-end" className="mt-1" type="date" value={periodEnd || defaultEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></div><div className="sm:col-span-2"><Label htmlFor="resource-qualification">Qualifikation</Label><Input data-testid="input-resource-qualification" id="resource-qualification" className="mt-1" value={qualification} onChange={(event) => setQualification(event.target.value)} placeholder="Optional" /></div><div className="sm:col-span-2"><Label htmlFor="resource-notes">Hinweis</Label><Textarea data-testid="input-resource-notes" id="resource-notes" className="mt-1" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optionaler Hinweis zum Bedarf" /></div></div><Button data-testid="button-save-resource" className="mt-4" disabled={create.isPending} onClick={add}>{create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Bedarf speichern</Button></div>)}
+    </div>
+  );
+}
 
-interface AltRow { start: string; end: string; }
+function AvailabilitySection({ id, canRespond, latest, defaultStart, defaultEnd, loadError }: { id: string; canRespond: boolean; latest: any; defaultStart: string; defaultEnd: string; loadError?: boolean }) {
+  const { toast } = useToast();
+  const client = useQueryClient();
+  const run = useRunLeistungsanfrageAvailabilityCheck();
+  const publicResult = latest?.publicResult;
+  const runCheck = () => run.mutate({ leistungsanfrageId: id }, { onSuccess: () => { toast({ title: "Verfügbarkeitsprüfung aktualisiert" }); void client.invalidateQueries({ queryKey: getGetLeistungsanfrageLatestAvailabilityCheckQueryKey(id) }); }, onError: () => toast({ title: "Verfügbarkeitsprüfung konnte nicht gestartet werden", description: "Bitte versuchen Sie es erneut.", variant: "destructive" }) });
+  const outcome = latest?.status === "COMPLETED" ? `Letzte Prüfung: ${publicResult?.result === "FEASIBLE" ? "Machbar" : publicResult?.result === "FEASIBLE_WITH_ALTERNATIVES" ? "Mit Alternativen" : "Nicht machbar"}` : latest?.status === "RUNNING" || latest?.status === "PENDING" ? "Prüfung läuft." : "Noch keine Prüfung für diesen Arbeitsauftrag.";
+  return <div>{loadError && <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Das letzte Prüfergebnis konnte nicht geladen werden. Sie können die Prüfung erneut starten.</p>}<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3"><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${publicResult?.result === "FEASIBLE" ? "bg-emerald-600/10 text-emerald-700" : publicResult ? "bg-accent/30 text-primary" : "bg-muted text-muted-foreground"}`}>{latest?.status === "COMPLETED" ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}</div><div><p className="font-medium">{latest?.status === "COMPLETED" ? (publicResult?.result === "FEASIBLE" ? "Bedarf im Fenster verfügbar" : publicResult?.result === "FEASIBLE_WITH_ALTERNATIVES" ? "Alternativfenster verfügbar" : "Im Fenster nicht verfügbar") : "Prüfung noch nicht ausgeführt"}</p><p className="mt-1 text-sm text-muted-foreground">Nur das veröffentlichte Ergebnis und mögliche Alternativfenster werden hier angezeigt.</p></div></div><Button data-testid="button-run-availability" variant="outline" disabled={run.isPending || !canRespond} onClick={runCheck}>{run.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}{latest ? "Erneut prüfen" : "Prüfung starten"}</Button></div>{publicResult?.alternatives?.length > 0 && <div className="mt-4 space-y-2"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Veröffentlichte Alternativen</p>{publicResult.alternatives.map((item: any) => <div key={item.alternativeId} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm"><span>Rang {item.rank}</span><span className="font-medium">{dateText(item.timeWindow?.start ?? defaultStart)} – {dateText(item.timeWindow?.end ?? defaultEnd)}</span></div>)}</div>}<p className="mt-4 text-xs font-medium text-muted-foreground">{outcome}</p></div>;
+}
 
-// ── Main component ─────────────────────────────────────────────────────────────
+function ResponseForm({ id, canRespond, defaultStart, defaultEnd }: { id: string; canRespond: boolean; defaultStart: string; defaultEnd: string }) {
+  const { toast } = useToast();
+  const client = useQueryClient();
+  const submit = useSubmitLeistungsanfrageResponse();
+  const [decision, setDecision] = useState<"" | "ACCEPTED" | "ALTERNATIVES_PROPOSED" | "REJECTED">("");
+  const [acceptStart, setAcceptStart] = useState("");
+  const [acceptEnd, setAcceptEnd] = useState("");
+  const [alternatives, setAlternatives] = useState([{ start: "", end: "" }]);
+  const [reasonCode, setReasonCode] = useState("");
+  const [comment, setComment] = useState("");
+  const send = (event: FormEvent) => {
+    event.preventDefault();
+    if (!decision) return;
+    if (decision === "ACCEPTED" && (!acceptStart || !acceptEnd || acceptEnd < acceptStart)) { toast({ title: "Zeitfenster prüfen", description: "Beginn und Ende des angenommenen Fensters sind erforderlich.", variant: "destructive" }); return; }
+    if (decision === "REJECTED" && !reasonCode) { toast({ title: "Grund auswählen", description: "Bitte wählen Sie einen allgemeinen Ablehnungsgrund.", variant: "destructive" }); return; }
+    if (decision === "ALTERNATIVES_PROPOSED" && alternatives.some((item) => !item.start || !item.end || item.end < item.start)) { toast({ title: "Alternativen prüfen", description: "Jede Alternative benötigt ein gültiges Zeitfenster.", variant: "destructive" }); return; }
+    const payload: NuResponseCreate = { decision: decision as TaktDecision };
+    if (decision === "ACCEPTED") payload.acceptedTimeWindow = { start: acceptStart, end: acceptEnd };
+    if (decision === "ALTERNATIVES_PROPOSED") payload.alternatives = alternatives.map((item, index) => ({ alternativeId: `alternative-${index + 1}`, rank: index + 1, timeWindow: item }));
+    if (decision === "REJECTED") payload.reasonCode = reasonCode as typeof TaktResponseReasonCode[keyof typeof TaktResponseReasonCode];
+    if (comment.trim()) payload.comment = comment.trim();
+    submit.mutate({ leistungsanfrageId: id, data: payload }, { onSuccess: () => { toast({ title: "Antwort übermittelt" }); void client.invalidateQueries({ queryKey: getGetAnLeistungsanfrageDetailsQueryKey(id) }); }, onError: () => toast({ title: "Antwort konnte nicht übermittelt werden", description: "Bitte prüfen Sie die Angaben und versuchen Sie es erneut.", variant: "destructive" }) });
+  };
+  if (!canRespond) return <p className="rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">Die Antwortaktion ist für diesen Status abgeschlossen.</p>;
+  return <form data-testid="response-form" onSubmit={send} className="space-y-4"><div className="grid gap-2 sm:grid-cols-3"><button data-testid="button-decision-accepted" type="button" onClick={() => { setDecision("ACCEPTED"); setAcceptStart(acceptStart || defaultStart); setAcceptEnd(acceptEnd || defaultEnd); }} className={`rounded-xl border p-3 text-left text-sm ${decision === "ACCEPTED" ? "border-emerald-600 bg-emerald-600/10" : "border-border hover:border-primary/40"}`}><CheckCircle2 className="mb-2 h-4 w-4 text-emerald-700" /><span className="font-semibold">Annehmen</span><span className="mt-1 block text-xs text-muted-foreground">Im genannten Fenster</span></button><button data-testid="button-decision-alternative" type="button" onClick={() => setDecision("ALTERNATIVES_PROPOSED")} className={`rounded-xl border p-3 text-left text-sm ${decision === "ALTERNATIVES_PROPOSED" ? "border-amber-600 bg-amber-500/10" : "border-border hover:border-primary/40"}`}><CalendarDays className="mb-2 h-4 w-4 text-amber-700" /><span className="font-semibold">Alternative</span><span className="mt-1 block text-xs text-muted-foreground">Bis zu drei Fenster</span></button><button data-testid="button-decision-rejected" type="button" onClick={() => setDecision("REJECTED")} className={`rounded-xl border p-3 text-left text-sm ${decision === "REJECTED" ? "border-destructive bg-destructive/10" : "border-border hover:border-primary/40"}`}><X className="mb-2 h-4 w-4 text-destructive" /><span className="font-semibold">Ablehnen</span><span className="mt-1 block text-xs text-muted-foreground">Mit allgemeinem Grund</span></button></div>{decision === "ACCEPTED" && <div className="grid gap-3 rounded-xl border border-border bg-muted/40 p-4 sm:grid-cols-2"><div><Label htmlFor="accepted-start">Beginn</Label><Input data-testid="input-accepted-start" id="accepted-start" className="mt-1" type="date" value={acceptStart} onChange={(event) => setAcceptStart(event.target.value)} /></div><div><Label htmlFor="accepted-end">Ende</Label><Input data-testid="input-accepted-end" id="accepted-end" className="mt-1" type="date" value={acceptEnd} onChange={(event) => setAcceptEnd(event.target.value)} /></div></div>}{decision === "ALTERNATIVES_PROPOSED" && <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-4"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Alternative Zeitfenster</p>{alternatives.length < 3 && <Button data-testid="button-add-alternative" type="button" size="sm" variant="outline" onClick={() => setAlternatives([...alternatives, { start: "", end: "" }])}><Plus className="mr-1 h-3.5 w-3.5" />Alternative</Button>}</div>{alternatives.map((item, index) => <div key={index} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><div><Label htmlFor={`alternative-start-${index}`}>Beginn {index + 1}</Label><Input data-testid={`input-alternative-start-${index}`} id={`alternative-start-${index}`} className="mt-1" type="date" value={item.start} onChange={(event) => setAlternatives(alternatives.map((row, rowIndex) => rowIndex === index ? { ...row, start: event.target.value } : row))} /></div><div><Label htmlFor={`alternative-end-${index}`}>Ende {index + 1}</Label><Input data-testid={`input-alternative-end-${index}`} id={`alternative-end-${index}`} className="mt-1" type="date" value={item.end} onChange={(event) => setAlternatives(alternatives.map((row, rowIndex) => rowIndex === index ? { ...row, end: event.target.value } : row))} /></div>{alternatives.length > 1 && <Button data-testid={`button-remove-alternative-${index}`} type="button" variant="ghost" size="icon" className="self-end" onClick={() => setAlternatives(alternatives.filter((_, rowIndex) => rowIndex !== index))}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>}{decision === "REJECTED" && <div className="rounded-xl border border-border bg-muted/40 p-4"><Label>Ablehnungsgrund</Label><Select value={reasonCode} onValueChange={setReasonCode}><SelectTrigger data-testid="select-reason-code" className="mt-1"><SelectValue placeholder="Allgemeinen Grund auswählen" /></SelectTrigger><SelectContent><SelectItem value={TaktResponseReasonCode.RESOURCE_CONFLICT}>Ressourcenkonflikt</SelectItem><SelectItem value={TaktResponseReasonCode.NO_CAPACITY}>Keine Kapazität</SelectItem><SelectItem value={TaktResponseReasonCode.EQUIPMENT_UNAVAILABLE}>Gerät nicht verfügbar</SelectItem><SelectItem value={TaktResponseReasonCode.QUALIFICATION_MISSING}>Qualifikation fehlt</SelectItem><SelectItem value={TaktResponseReasonCode.TIME_WINDOW_TOO_SHORT}>Zeitfenster zu kurz</SelectItem><SelectItem value={TaktResponseReasonCode.OUTSIDE_PLANNING_HORIZON}>Außerhalb des Planungshorizonts</SelectItem><SelectItem value={TaktResponseReasonCode.OTHER}>Sonstiger allgemeiner Grund</SelectItem></SelectContent></Select></div>}<div><Label htmlFor="response-comment">Kommentar <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea data-testid="input-response-comment" id="response-comment" className="mt-1" maxLength={2000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Nur veröffentlichbare Hinweise" /></div><div className="flex justify-end"><Button data-testid="button-submit-response" type="submit" disabled={submit.isPending || !decision}>{submit.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Antwort übermitteln</Button></div></form>;
+}
+
+function TerminalNotice({ status }: { status: string }) {
+  const copy: Record<string, [string, string]> = {
+    RESPONDED: ["Antwort bereits übermittelt", "Diese Leistungsanfrage ist beantwortet. Eine erneute Antwort ist nicht möglich."],
+    CONFIRMED: ["Leistung bestätigt", "Der Auftraggeber hat die Abstimmung bestätigt. Diese Anfrage ist abgeschlossen."],
+    CANCELLED: ["Anfrage storniert", "Der Auftraggeber hat diese Leistungsanfrage beendet. Es ist keine Aktion erforderlich."],
+    SUPERSEDED: ["Anfrage ersetzt", "Diese Leistungsanfrage wurde durch eine neuere Koordinationsrunde ersetzt."],
+    EXPIRED: ["Antwortfrist abgelaufen", "Die veröffentlichte Antwortfrist ist abgelaufen. Es ist keine reguläre Antwort mehr möglich."],
+  };
+  const [title, description] = copy[status] ?? ["Anfrage abgeschlossen", "Für diese Anfrage ist derzeit keine Antwortaktion möglich."];
+  return <div data-testid="terminal-notice" className="flex items-start gap-3 rounded-2xl border border-border bg-muted/50 p-5"><FileCheck2 className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" /><div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p></div></div>;
+}
 
 export default function LeistungsanfrageDetailPage() {
-  const { requestId }  = useParams<{ requestId: string }>();
+  const { requestId } = useParams<{ requestId: string }>();
   const [, setLocation] = useLocation();
-  const { toast }      = useToast();
-  const queryClient    = useQueryClient();
+  const id = requestId ?? "";
+  const detailQuery = useGetAnLeistungsanfrageDetails(id, { query: { enabled: !!id, queryKey: getGetAnLeistungsanfrageDetailsQueryKey(id) } });
+  const requirementQuery = useListLeistungsanfrageResourceRequirements(id, { query: { enabled: !!id, queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(id) } });
+  const availabilityQuery = useGetLeistungsanfrageLatestAvailabilityCheck(id, { query: { enabled: !!id, queryKey: getGetLeistungsanfrageLatestAvailabilityCheckQueryKey(id) } });
+  const details = detailQuery.data;
+  if (detailQuery.isLoading) return <main className="mx-auto max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-8 w-32" /><Skeleton className="h-28 w-full" /><div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-4"><Skeleton className="h-64 w-full" /><Skeleton className="h-64 w-full" /></div><Skeleton className="h-80 w-full" /></div></main>;
+  if (detailQuery.isError || !details) return <main className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Leistungsanfrage nicht verfügbar</h1><p className="text-sm text-muted-foreground">Die Anfrage konnte nicht geöffnet werden oder ist nicht mehr verfügbar.</p><div className="flex gap-2"><Button data-testid="button-back-error" variant="outline" onClick={() => setLocation("/leistungsanfragen")}><ArrowLeft className="mr-2 h-4 w-4" />Zur Inbox</Button><Button data-testid="button-retry-detail" variant="secondary" onClick={() => void detailQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div></main>;
 
-  // Form state for Step 5
-  const [decision, setDecision]       = useState('');
-  const [acceptStart, setAcceptStart] = useState('');
-  const [acceptEnd, setAcceptEnd]     = useState('');
-  const [alternatives, setAlternatives] = useState<AltRow[]>([{ start: '', end: '' }]);
-  const [reasonCode, setReasonCode]   = useState('');
-  const [comment, setComment]         = useState('');
-
-  // Step 3 form state
-  const [newReqTypeId, setNewReqTypeId]               = useState('');
-  const [newReqCapacity, setNewReqCapacity]           = useState('');
-  const [newReqUtil, setNewReqUtil]                   = useState('100');
-  const [newReqQual, setNewReqQual]                   = useState('');
-  const [newReqStart, setNewReqStart]                 = useState('');
-  const [newReqEnd, setNewReqEnd]                     = useState('');
-  const [showReqForm, setShowReqForm]                 = useState(false);
-  const [confirmDeleteReq, setConfirmDeleteReq]       = useState<string | null>(null);
-
-  // Data queries
-  const {
-    data: details, isLoading, isError, error, refetch,
-  } = useGetTaktRequestDetails(requestId!, {
-    query: { enabled: !!requestId, queryKey: getGetTaktRequestDetailsQueryKey(requestId!) },
-  });
-
-  const { data: requirements = [], isLoading: reqLoading } = useListResourceRequirements(
-    requestId!,
-  );
-
-  const { data: latestCheck } = useGetLatestAvailabilityCheck(requestId!, {
-    query: {
-      enabled: !!requestId && !isError,
-      queryKey: getGetLatestAvailabilityCheckQueryKey(requestId!),
-    },
-  });
-
-  const { data: resourceTypesResult } = useListResourceTypes();
-  const resourceTypes = resourceTypesResult?.items ?? [];
-
-  const runCheck       = useRunAvailabilityCheck();
-  const addRequirement = useAddResourceRequirement();
-  const deleteReq      = useDeleteResourceRequirement();
-  const submitResponse = useSubmitNuResponse();
-
-  // ── Policy-gate 403 ───────────────────────────────────────────────────────
-  if (isError) {
-    const errData = (error as any)?.data as Record<string, unknown> | undefined;
-    const errCode = errData?.error as string | undefined;
-
-    if (errCode === 'POLICY_ACCEPTANCE_REQUIRED') {
-      const pubId    = errData?.dataPublicationId as string | undefined;
-      const offerRef = errData?.dataOfferRef      as string | undefined;
-      return (
-        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
-            onClick={() => setLocation('/leistungsanfragen')}>
-            <ArrowLeft className="w-4 h-4" /> Zurück
-          </Button>
-          <StepIndicator currentStep={1} completedSteps={new Set()} />
-          <PolicyGateView
-            pubId={pubId}
-            offerRef={offerRef}
-            onBack={() => setLocation('/leistungsanfragen')}
-          />
-        </div>
-      );
-    }
-
-    if (errCode === 'DATA_PUBLICATION_INACTIVE') {
-      return (
-        <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
-          <AlertTriangle className="w-10 h-10 text-amber-500" />
-          <p className="font-medium">Datenveröffentlichung nicht mehr aktiv</p>
-          <p className="text-sm text-muted-foreground text-center max-w-md">
-            Die mit dieser Leistungsanfrage verknüpfte Datenveröffentlichung wurde zurückgezogen.
-          </p>
-          <Button variant="outline" onClick={() => setLocation('/leistungsanfragen')}>
-            Zurück zur Übersicht
-          </Button>
-        </div>
-      );
-    }
-
-    // 409: request is in a terminal status the NU cannot directly view
-    const currentStatus = errData?.currentStatus as string | undefined;
-    if (currentStatus === 'SUPERSEDED') {
-      return (
-        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
-            onClick={() => setLocation('/leistungsanfragen')}>
-            <ArrowLeft className="w-4 h-4" /> Zurück zu Anfragen
-          </Button>
-          <div className="rounded-xl border border-muted bg-muted/30 p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <RefreshCw className="w-5 h-5 shrink-0" />
-              <p className="font-semibold text-foreground">Diese Anfrage wurde ersetzt</p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Der Auftraggeber hat eine neue Koordinierungsrunde gestartet. Diese Anfrage ist
-              abgeschlossen und wurde durch eine neue Leistungsanfrage ersetzt. Bitte prüfen Sie
-              Ihren Posteingang.
-            </p>
-            <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/leistungsanfragen')}>
-              Zum Posteingang
-            </Button>
-          </div>
-        </div>
-      );
-    }
-    if (currentStatus === 'CANCELLED') {
-      return (
-        <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
-            onClick={() => setLocation('/leistungsanfragen')}>
-            <ArrowLeft className="w-4 h-4" /> Zurück zu Anfragen
-          </Button>
-          <div className="rounded-xl border border-muted bg-muted/30 p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 shrink-0 text-muted-foreground" />
-              <p className="font-semibold text-foreground">Anfrage wurde storniert</p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Diese Leistungsanfrage wurde vom Auftraggeber ohne Einigung abgeschlossen.
-            </p>
-            <Button variant="outline" size="sm" className="self-start" onClick={() => setLocation('/leistungsanfragen')}>
-              Zurück zur Übersicht
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
-        <AlertTriangle className="w-10 h-10 text-destructive" />
-        <p className="text-muted-foreground">Anfrage konnte nicht geladen werden</p>
-        <Button variant="outline" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4 mr-2" />Erneut versuchen
-        </Button>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="p-6 max-w-3xl mx-auto flex items-center gap-3 py-20">
-        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-        <span className="text-muted-foreground">Lade Anfrage…</span>
-      </div>
-    );
-  }
-
-  if (!details) {
-    return (
-      <div className="p-6 max-w-3xl mx-auto flex flex-col items-center gap-4 py-20">
-        <AlertTriangle className="w-10 h-10 text-destructive" />
-        <p className="text-muted-foreground">Anfrage nicht gefunden</p>
-        <Button variant="outline" onClick={() => setLocation('/leistungsanfragen')}>Zurück</Button>
-      </div>
-    );
-  }
-
-  // ── Derived state ─────────────────────────────────────────────────────────
-
-  const snap = details.snapshotPayload as Record<string, unknown> | undefined;
-  const timeWindow = snap?.plannedTimeWindow as Record<string, unknown> | undefined;
-  const snapLocation = snap?.location       as Record<string, unknown> | undefined;
-  const snapStart  = ((timeWindow?.start ?? snap?.plannedStart) as string | undefined);
-  const snapEnd    = ((timeWindow?.end   ?? snap?.plannedEnd)   as string | undefined);
-  const snapBez    = ((snap?.workPackage  ?? snap?.taktBezeichnung) as string | undefined);
-  const snapZone   = ((snapLocation?.zone ?? snap?.zone)            as string | undefined);
-  const snapGewerk = ((snap?.trade        ?? snap?.gewerk)          as string | undefined);
-  const snapDesc   = ((snap?.requiredOutput ?? snap?.description)    as string | undefined);
-  const snapProjectLocation    = (snap?.projectLocation    as string | null | undefined) ?? null;
-  const snapProjectDescription = (snap?.projectDescription as string | null | undefined) ?? null;
-  const bufferWindow = snap?.bufferTimeWindow as Record<string, unknown> | undefined;
-  const bufferStart  = bufferWindow?.earliestStart as string | undefined;
-  const bufferEnd    = bufferWindow?.latestEnd     as string | undefined;
-
-  const status       = details.status;
-  const hasResponded = ['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(status);
-  const isExpired    = status === 'EXPIRED';
-  const canAct       = canRespond(status);
-  const detailsGot   = !!details.detailsRetrievedAt;
-
-  // Deadline urgency
-  const deadlineDate = details.responseRequiredBy ? new Date(details.responseRequiredBy) : null;
-  const hoursUntilDeadline = deadlineDate ? differenceInHours(deadlineDate, new Date()) : null;
-  const isUrgent = hoursUntilDeadline !== null && hoursUntilDeadline >= 0 && hoursUntilDeadline < 24;
-
-  // Step completion
-  // Step 1: policy OK = we loaded the data (no 403)
-  const step1Done = true; // if we reached here, policy is OK or no policy required
-  const step2Done = detailsGot;
-  const step3Done = requirements.length > 0;
-  const step4Done = !!latestCheck && latestCheck.status === 'COMPLETED';
-  const step5Done = hasResponded;
-
-  const completedSteps = new Set<number>(
-    [step1Done && 1, step2Done && 2, step3Done && 3, step4Done && 4, step5Done && 5]
-      .filter(Boolean) as number[],
-  );
-
-  const currentStep =
-    !step1Done ? 1 :
-    !step2Done ? 2 :
-    !step3Done ? 3 :
-    !step4Done ? 4 :
-    !step5Done ? 5 : 5;
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleRunCheck = () => {
-    runCheck.mutate({ requestId: requestId! }, {
-      onSuccess: () => {
-        toast({ title: 'Verfügbarkeitsprüfung abgeschlossen' });
-        queryClient.invalidateQueries({ queryKey: getGetLatestAvailabilityCheckQueryKey(requestId!) });
-        queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailsQueryKey(requestId!) });
-      },
-      onError: (err) => toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' }),
-    });
-  };
-
-  const handleAddRequirement = () => {
-    addRequirement.mutate({
-      requestId: requestId!,
-      data: {
-        resourceTypeId:       newReqTypeId || null,
-        requiredCapacity:     newReqCapacity ? parseFloat(newReqCapacity) : null,
-        utilizationPercent:   parseInt(newReqUtil) || 100,
-        requiredQualification: newReqQual || null,
-        periodStart: newReqStart || (snapStart?.substring(0, 10) ?? null),
-        periodEnd:   newReqEnd   || (snapEnd?.substring(0, 10)   ?? null),
-      },
-    }, {
-      onSuccess: () => {
-        toast({ title: 'Ressourcenbedarf gespeichert' });
-        setShowReqForm(false);
-        setNewReqTypeId(''); setNewReqCapacity(''); setNewReqUtil('100');
-        setNewReqQual(''); setNewReqStart(''); setNewReqEnd('');
-      },
-      onError: (err) => toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' }),
-    });
-  };
-
-  const handleDeleteReq = (reqId: string) => {
-    setConfirmDeleteReq(reqId);
-  };
-
-  const doDeleteReq = () => {
-    if (!confirmDeleteReq) return;
-    deleteReq.mutate({ requestId: requestId!, requirementId: confirmDeleteReq }, {
-      onSuccess: () => setConfirmDeleteReq(null),
-      onError: (err) => {
-        toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
-        setConfirmDeleteReq(null);
-      },
-    });
-  };
-
-  // ── Alternative validation ────────────────────────────────────────────────
-  const altRowErrors: Array<{ emptyStart: boolean; emptyEnd: boolean; endBeforeStart: boolean }> =
-    alternatives.map(a => ({
-      emptyStart:     !a.start,
-      emptyEnd:       !a.end,
-      endBeforeStart: !!a.start && !!a.end && a.end < a.start,
-    }));
-  const altDatesInvalid =
-    decision === TaktDecision.ALTERNATIVES_PROPOSED &&
-    altRowErrors.some(e => e.emptyStart || e.emptyEnd || e.endBeforeStart);
-
-  const handleDecisionChange = (val: string) => {
-    setDecision(val);
-    if (val === TaktDecision.ACCEPTED && snapStart && !acceptStart) {
-      setAcceptStart(snapStart.substring(0, 10));
-      setAcceptEnd((snapEnd ?? '').substring(0, 10));
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!decision) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payload: any = { decision };
-    if (decision === TaktDecision.ACCEPTED) {
-      payload.acceptedTimeWindow = { start: acceptStart, end: acceptEnd };
-    } else if (decision === TaktDecision.ALTERNATIVES_PROPOSED) {
-      payload.alternatives = alternatives.map((a, i) => ({
-        alternativeId: `alt-${i + 1}`,
-        rank: i + 1,
-        timeWindow: { start: a.start, end: a.end },
-      }));
-      if (comment) payload.comment = comment;
-    } else if (decision === TaktDecision.REJECTED) {
-      if (reasonCode) payload.reasonCode = reasonCode;
-      if (comment)    payload.comment    = comment;
-    }
-    submitResponse.mutate({ requestId: requestId!, data: payload }, {
-      onSuccess: () => {
-        toast({ title: 'Antwort eingereicht' });
-        queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailsQueryKey(requestId!) });
-        setDecision(''); setAcceptStart(''); setAcceptEnd('');
-        setAlternatives([{ start: '', end: '' }]);
-        setReasonCode(''); setComment('');
-      },
-      onError: (err) => toast({ title: 'Fehler beim Einreichen', description: (err as Error).message, variant: 'destructive' }),
-    });
-  };
-
-  // ── Availability result ────────────────────────────────────────────────────
-
-  const checkResult = latestCheck?.result;
-  const publicResult = (latestCheck as any)?.publicResult;
-  const checkResultMeta = checkResult === 'FEASIBLE'
-    ? { label: 'Machbar', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', decision: TaktDecision.ACCEPTED }
-    : checkResult === 'FEASIBLE_WITH_ALTERNATIVES'
-      ? { label: 'Teilweise machbar', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', decision: TaktDecision.ALTERNATIVES_PROPOSED }
-      : checkResult === 'NOT_FEASIBLE'
-        ? { label: 'Nicht machbar', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10 border-red-500/30', decision: TaktDecision.REJECTED }
-        : null;
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const snap = object(details.snapshotPayload);
+  const service = object(snap.leistung ?? snap.service ?? snap.workPackage);
+  const title = values(service.kurzbezeichnung, snap.kurzbezeichnung, details.takt.kurzbezeichnung, details.takt.taktBezeichnung);
+  const window = object(snap.plannedTimeWindow ?? snap.timeWindow ?? snap.zeitfenster);
+  const defaultStart = typeof window.start === "string" ? window.start.slice(0, 10) : details.plannedStart.slice(0, 10);
+  const defaultEnd = typeof window.end === "string" ? window.end.slice(0, 10) : details.plannedEnd.slice(0, 10);
+  const requirements = (requirementQuery.data ?? details.resourceRequirements) as AnLeistungsanfrageResourceRequirement[];
+  const latest = availabilityQuery.data;
+  const status = details.status;
+  const terminal = ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(status);
+  const canRespond = !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(status);
+  const currentStep = !details.detailsRetrievedAt ? 2 : requirements.length === 0 ? 3 : latest?.status !== "COMPLETED" ? 4 : canRespond ? 5 : 5;
+  const states: StepState[] = [ "done", details.detailsRetrievedAt ? "done" : "current", requirements.length > 0 ? "done" : currentStep === 3 ? "current" : "open", latest?.status === "COMPLETED" ? "done" : currentStep === 4 ? "current" : "open", terminal ? "done" : currentStep === 5 ? "current" : "open" ];
+  const availabilityOutcome = latest?.status === "COMPLETED" ? "Prüfung abgeschlossen" : latest?.status === "RUNNING" ? "Prüfung läuft." : "Noch keine Prüfung für diesen Arbeitsauftrag.";
 
   return (
-    <div className="w-full min-w-0 p-4 sm:p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
-
-      {/* Back navigation */}
-      <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground"
-        onClick={() => setLocation('/leistungsanfragen')}>
-        <ArrowLeft className="w-4 h-4" />
-        Zurück zu Anfragen
-      </Button>
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{snapBez ?? 'Leistungsanfrage'}</h1>
-          <p className="text-muted-foreground font-mono text-sm mt-0.5">{details.requestNumber}</p>
+    <main className="mx-auto w-full max-w-7xl space-y-6 p-5 pb-12 lg:p-8">
+      <Button data-testid="button-back-inbox" variant="ghost" className="-ml-3 gap-2 text-muted-foreground" onClick={() => setLocation("/leistungsanfragen")}><ArrowLeft className="h-4 w-4" />Zurück zur Inbox</Button>
+      <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-3"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">ARBEITSAUFTRAG / {details.requestNumber}</p><StatusBadge status={status} /></div><h1 data-testid="text-detail-title" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Prüfen Sie die freigegebenen Daten, ordnen Sie den eigenen Bedarf ein und senden Sie eine klare Rückmeldung.</p></div><div className="rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-sm"><p className="text-[11px] text-muted-foreground">Antwortfrist</p><p data-testid="detail-deadline" className={`mt-1 font-semibold ${details.responseRequiredBy && new Date(details.responseRequiredBy) < new Date() ? "text-destructive" : ""}`}>{dateText(details.responseRequiredBy, true)}</p></div></header>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-5">
+          {terminal && <TerminalNotice status={status} />}
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm"><div className="mb-4 flex items-center justify-between"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-muted-foreground">Prüfpfad</p><span className="text-xs text-muted-foreground">Schritt {currentStep} von 5</span></div><div className="grid grid-cols-5 gap-1">{states.map((state, index) => <div key={index} className={`h-1.5 rounded-full ${state === "done" ? "bg-emerald-600" : state === "current" ? "bg-accent" : "bg-muted"}`} />)}</div></div>
+          <WorkflowStep number={1} title="Freigegebene Daten" why="Dieser Schritt trennt veröffentlichte Arbeitsgrundlagen von internen Planungsdaten." state={states[0]} outcome="Zugriff auf diesen veröffentlichten Snapshot ist möglich."><div className="flex items-start gap-3 rounded-xl border border-emerald-700/20 bg-emerald-600/10 p-4 text-sm"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-300" /><div><p className="font-medium">Datenfreigabe geprüft</p><p className="mt-1 text-muted-foreground">Schema {details.schemaVersion || EMPTY} · Abgerufen {dateText(details.detailsRetrievedAt, true)}</p></div></div></WorkflowStep>
+          <WorkflowStep number={2} title="Leistungsdaten prüfen" why="Hier sehen Sie die veröffentlichte Grundlage für Ihre Disposition. Nicht veröffentlichte Felder bleiben ausdrücklich leer." state={states[1]} outcome={details.detailsRetrievedAt ? `Snapshot abgerufen am ${dateText(details.detailsRetrievedAt, true)}` : "Snapshot wird nach der Freigabe abgerufen."}><SnapshotGroups details={details} /></WorkflowStep>
+          <WorkflowStep number={3} title="Ressourcenbedarf einordnen" why="Der eigene Bedarf macht die Verfügbarkeitsprüfung nachvollziehbar. Ergänzungen bleiben auf die AN-Seite begrenzt." state={states[2]} outcome={requirements.length > 0 ? `${requirements.length} Bedarf${requirements.length === 1 ? "" : "e"} erfasst` : "Noch kein Ressourcenbedarf erfasst."}><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></WorkflowStep>
+          <WorkflowStep number={4} title="Verfügbarkeit prüfen" why="Die Prüfung verdichtet Ihren erfassten Bedarf zu einer belastbaren Rückmeldung, ohne interne Konfliktdetails zu veröffentlichen." state={states[3]} outcome={availabilityOutcome}><AvailabilitySection id={id} canRespond={canRespond} latest={latest} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={availabilityQuery.isError} /></WorkflowStep>
+          <WorkflowStep number={5} title="Antwort senden" why="Ihre Antwort wird auf die freigegebenen Angaben und einen allgemeinen Entscheidungsgrund begrenzt." state={states[4]} outcome={terminal ? "Antwortaktion abgeschlossen." : "Bitte wählen Sie die passende Rückmeldung."}><ResponseForm id={id} canRespond={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} /></WorkflowStep>
         </div>
-        <Badge variant={isExpired ? 'outline' : hasResponded ? 'secondary' : 'default'}>
-          {STATUS_LABELS[status] ?? status}
-        </Badge>
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <section data-testid="summary-card" className="rounded-2xl border border-border bg-card p-5 shadow-sm"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Auftrag auf einen Blick</p><h2 className="mt-2 text-lg font-semibold">{title}</h2><dl className="mt-5 space-y-4 text-sm"><div><dt className="text-xs text-muted-foreground">Auftraggeber</dt><dd className="mt-1 font-medium">{details.guOrgId || EMPTY}</dd></div><div><dt className="text-xs text-muted-foreground">Projekt</dt><dd className="mt-1 font-medium">{details.project.name || EMPTY}</dd><dd className="mt-1 text-xs text-muted-foreground">{details.project.location || EMPTY}</dd></div><div><dt className="text-xs text-muted-foreground">Arbeitsfenster</dt><dd className="mt-1 font-medium">{dateText(details.plannedStart)} – {dateText(details.plannedEnd)}</dd></div><div><dt className="text-xs text-muted-foreground">Version</dt><dd className="mt-1 font-medium">Leistung {details.leistungVersion ? `v${details.leistungVersion}` : EMPTY} · Takt {details.taktVersion ? `v${details.taktVersion}` : EMPTY}</dd></div></dl></section>
+          <section className="rounded-2xl border border-primary/15 bg-primary/5 p-5"><div className="flex items-start gap-3"><Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-sm font-semibold">Datenhoheit</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Diese Ansicht zeigt nur den unveränderlichen Snapshot und die AN-eigenen Prüfschritte. Interne AG-Planungsdaten sind nicht Bestandteil dieses Arbeitsauftrags.</p></div></div></section>
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Zeitstempel</p><dl className="mt-4 space-y-3 text-xs"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Eingegangen</dt><dd className="text-right font-medium">{dateText(details.receivedAt, true)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Details abgerufen</dt><dd className="text-right font-medium">{dateText(details.detailsRetrievedAt, true)}</dd></div></dl></section>
+        </aside>
       </div>
-
-      <CurrentActionCard requestId={requestId!} onFocus={() => {
-        const nextAction = (details as typeof details & { nextAction?: string }).nextAction;
-        const target = nextAction === 'ANSWER_CLARIFICATION'
-          ? 'clarifications'
-          : nextAction === 'RESOLVE_CONSTRAINT'
-            ? 'constraints'
-            : nextAction === 'CONFIRM_READINESS'
-              ? 'readiness'
-              : 'own-response';
-        document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' });
-      }} />
-
-      {/* Revision-requested banner — shown when GU has sent REQUEST_REVISION */}
-      {status === 'REVISION_REQUIRED' && (
-        <div className="rounded-xl border border-amber-400/50 bg-amber-50/60 dark:bg-amber-950/20 p-4 flex items-start gap-3">
-          <RefreshCw className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div className="space-y-1">
-            <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              Überarbeitung angefordert
-            </p>
-            <p className="text-sm text-amber-800 dark:text-amber-300">
-              Der Auftraggeber hat eine Überarbeitung Ihrer Antwort angefordert. Bitte reichen
-              Sie in Schritt&nbsp;5 eine überarbeitete Antwort ein — Ihre bisherige Antwort
-              bleibt im Koordinierungsverlauf erhalten.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Deadline banner */}
-      {details.responseRequiredBy ? (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-sm ${
-          isExpired
-            ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400'
-            : isUrgent
-              ? 'border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-300'
-              : 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800/40 dark:text-slate-300'
-        }`}>
-          <Clock className={`w-4 h-4 shrink-0 ${isExpired ? 'text-red-500' : isUrgent ? 'text-amber-500' : 'text-slate-400'}`} />
-          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 flex-1">
-            <span>
-              {isExpired ? (
-                <>Antwortfrist <strong>abgelaufen</strong> –&nbsp;</>
-              ) : (
-                <>Antwortfrist: </>
-              )}
-              <strong>{fmtDateTime(details.responseRequiredBy)}</strong>
-            </span>
-            {deadlineDate && !isExpired && (
-              <span className={`text-xs ${isUrgent ? 'font-semibold' : 'opacity-70'}`}>
-                (noch {formatDistanceToNow(deadlineDate, { locale: de, addSuffix: false })})
-              </span>
-            )}
-          </div>
-          {isUrgent && (
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border/40 bg-muted/20 text-sm text-muted-foreground">
-          <Clock className="w-4 h-4 shrink-0 opacity-40" />
-          <span>Keine Frist gesetzt</span>
-        </div>
-      )}
-
-      <CoordinationSummary details={details} />
-      <ProposalActions requestId={requestId!} />
-      <ServiceCoordinationTools requestId={requestId!} role="AN" />
-
-      {/* Step indicator */}
-      <div id="own-response"><StepIndicator currentStep={currentStep} completedSteps={completedSteps} /></div>
-
-      {/* ── Step 1: Datenfreigabe ─────────────────────────────────────────── */}
-      <StepSection step={1} currentStep={currentStep} completedSteps={completedSteps}>
-        <CardHeader className="pb-2 px-5 pt-5">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 1 — Datenfreigabe
-            </CardTitle>
-            {step1Done && (
-              <Badge variant="secondary" className="ml-auto text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
-                <CheckCircle2 className="w-3 h-3 mr-1" />Akzeptiert
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <div>
-              <div className="text-xs text-muted-foreground mb-0.5">Status</div>
-              <div className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <Unlock className="w-3.5 h-3.5" />
-                Policy akzeptiert
-              </div>
-            </div>
-            {details.detailsRetrievedAt && (
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Leistungsdaten abgerufen am</div>
-                <div className="font-medium">{fmtDateTime(details.detailsRetrievedAt)}</div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </StepSection>
-
-      {/* ── Step 2: Leistungsdaten ─────────────────────────────────────────────── */}
-      <StepSection step={2} currentStep={currentStep} completedSteps={completedSteps} locked={!step1Done}>
-        <CardHeader className="pb-2 px-5 pt-5">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 2 — Leistungsdaten
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5 space-y-4">
-          {!detailsGot && canAct ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                Rufen Sie die Leistungsdaten ab, um alle Details einzusehen. Dieser Schritt bestätigt
-                den Empfang der Anfrage beim Auftraggeber.
-              </p>
-              <Button variant="outline" onClick={() => refetch()} disabled={isLoading} className="w-fit gap-2">
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Leistungsdaten abrufen
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              {/* ── Projektinformationen ──────────────────────────────────── */}
-              {(snapProjectLocation || snapProjectDescription) && (
-                <div className="sm:col-span-2 pb-2 border-b border-border mb-1">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Projektinformationen
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                    {snapProjectLocation && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">Standort</div>
-                        <div className="font-medium">{snapProjectLocation}</div>
-                      </div>
-                    )}
-                    {snapProjectDescription && (
-                      <div className={snapProjectLocation ? '' : 'sm:col-span-2'}>
-                        <div className="text-xs text-muted-foreground mb-0.5">Projektbeschreibung</div>
-                        <div className="text-foreground/80">{snapProjectDescription}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Leistungsbezeichnung</div>
-                <div className="font-medium">{snapBez ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Gewerk</div>
-                <div className="font-medium">{snapGewerk ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Zone</div>
-                <div className="font-medium">{snapZone ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Leistungsversion</div>
-                <div className="font-medium">v{details.taktVersion}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Geplanter Start</div>
-                <div className="font-medium flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(snapStart)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-0.5">Geplantes Ende</div>
-                <div className="font-medium flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(snapEnd)}
-                </div>
-              </div>
-              {/* ── Fristen ─────────────────────────────────────────────── */}
-              {(details.responseRequiredBy || bufferStart || bufferEnd) && (
-                <div className="sm:col-span-2 pt-2 border-t border-border mt-1">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Fristen
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                    {details.responseRequiredBy && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">Antwortfrist</div>
-                        <div className={`font-medium flex items-center gap-1.5 ${
-                          isExpired ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'
-                        }`}>
-                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                          {fmtDateTime(details.responseRequiredBy)}
-                          {isExpired && <span className="text-xs">(abgelaufen)</span>}
-                        </div>
-                      </div>
-                    )}
-                    {bufferStart && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">Frühester Beginn (Puffer)</div>
-                        <div className="font-medium flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(bufferStart)}
-                        </div>
-                      </div>
-                    )}
-                    {bufferEnd && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">Spätestes Ende (Puffer)</div>
-                        <div className="font-medium flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 opacity-50" />{fmtDate(bufferEnd)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {snapDesc && (
-                <div className="sm:col-span-2">
-                  <div className="text-xs text-muted-foreground mb-0.5">Beschreibung</div>
-                  <div className="text-sm text-foreground/80">{snapDesc}</div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </StepSection>
-
-      {/* ── Step 3: Ressourcenbedarf ─────────────────────────────────────── */}
-      <StepSection step={3} currentStep={currentStep} completedSteps={completedSteps} locked={!step2Done && !step1Done}>
-        <CardHeader className="pb-2 px-5 pt-5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-primary" />
-              <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Schritt 3 — Ressourcenbedarf
-              </CardTitle>
-            </div>
-            {!hasResponded && (
-              <Button variant="ghost" size="sm" onClick={() => setShowReqForm(v => !v)} className="gap-1 text-xs">
-                <Plus className="w-3.5 h-3.5" />Hinzufügen
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5 space-y-3">
-          {/* Existing requirements */}
-          {reqLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />Lade Bedarfe…
-            </div>
-          ) : requirements.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Noch kein Ressourcenbedarf erfasst. Fügen Sie mindestens einen Ressourcentyp hinzu.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {requirements.map((req: any) => (
-                <div key={req.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">
-                      {req.resourceTypeName ?? 'Ressourcentyp nicht angegeben'}
-                    </div>
-                    <div className="text-xs text-muted-foreground flex flex-wrap gap-3 mt-0.5">
-                      {req.requiredCapacity && (
-                        <span>Kapazität: {req.requiredCapacity}</span>
-                      )}
-                      <span>Auslastung: {req.utilizationPercent}%</span>
-                      {req.periodStart && (
-                        <span>{fmtDate(req.periodStart)} – {fmtDate(req.periodEnd)}</span>
-                      )}
-                      {req.requiredQualification && (
-                        <span>Qual.: {req.requiredQualification}</span>
-                      )}
-                    </div>
-                  </div>
-                  {!hasResponded && (
-                    <Button variant="ghost" size="icon"
-                      className="shrink-0 text-muted-foreground hover:text-red-500"
-                      onClick={() => handleDeleteReq(req.id)}
-                      disabled={deleteReq.isPending}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add form */}
-          {showReqForm && !hasResponded && (
-            <div className="p-4 rounded-lg border border-border bg-muted/20 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-xs">Ressourcentyp</Label>
-                  <Select value={newReqTypeId} onValueChange={setNewReqTypeId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Typ wählen…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(resourceTypes as any[]).map((rt: any) => (
-                        <SelectItem key={rt.id} value={rt.id}>
-                          {rt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Benötigte Kapazität</Label>
-                  <Input type="number" min="0" step="0.5"
-                    value={newReqCapacity} onChange={e => setNewReqCapacity(e.target.value)}
-                    placeholder="z.B. 2" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Auslastung %</Label>
-                  <Input type="number" min="1" max="100"
-                    value={newReqUtil} onChange={e => setNewReqUtil(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Zeitraum Start</Label>
-                  <DatePicker
-                    value={newReqStart || (snapStart?.substring(0, 10) ?? '')}
-                    onChange={setNewReqStart}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Zeitraum Ende</Label>
-                  <DatePicker
-                    value={newReqEnd || (snapEnd?.substring(0, 10) ?? '')}
-                    onChange={setNewReqEnd}
-                  />
-                </div>
-                <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-xs">Erforderliche Qualifikation (optional)</Label>
-                  <Input value={newReqQual} onChange={e => setNewReqQual(e.target.value)}
-                    placeholder="z.B. Kranführerschein" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddRequirement} disabled={addRequirement.isPending} className="gap-1">
-                  {addRequirement.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                  Speichern
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowReqForm(false)}>Abbrechen</Button>
-              </div>
-            </div>
-          )}
-
-          {requirements.length > 0 && !hasResponded && (
-            <p className="text-xs text-muted-foreground">
-              {requirements.length} Ressourcenbedarf{requirements.length !== 1 ? 'e' : ''} erfasst.
-              Starten Sie nach der Erfassung die Verfügbarkeitsprüfung.
-            </p>
-          )}
-        </CardContent>
-      </StepSection>
-
-      {/* ── Step 4: Verfügbarkeit ──────────────────────────────────────────── */}
-      <StepSection step={4} currentStep={currentStep} completedSteps={completedSteps}
-        locked={!step2Done}>
-        <CardHeader className="pb-2 px-5 pt-5">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 4 — Verfügbarkeitsprüfung
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5 space-y-3">
-          {canAct && !hasResponded && (
-            <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={handleRunCheck}
-                disabled={runCheck.isPending} className="gap-2">
-                {runCheck.isPending
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />Prüfung läuft…</>
-                  : <><RefreshCw className="w-4 h-4" />{step4Done ? 'Erneut prüfen' : 'Verfügbarkeit prüfen'}</>}
-              </Button>
-              {step4Done && (
-                <Button variant="ghost" size="sm" asChild>
-                  <a href={`/availability-checks?requestId=${requestId}`} className="gap-1 text-xs text-muted-foreground">
-                    Prüfdetails <ExternalLink className="w-3 h-3" />
-                  </a>
-                </Button>
-              )}
-            </div>
-          )}
-
-          {latestCheck && (
-            <div className={`rounded-lg border p-4 space-y-2 ${checkResultMeta?.bg ?? 'bg-muted/30 border-border'}`}>
-              <div className="flex items-center gap-2">
-                {checkResult === 'FEASIBLE' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                {checkResult === 'FEASIBLE_WITH_ALTERNATIVES' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-                {checkResult === 'NOT_FEASIBLE' && <AlertTriangle className="w-4 h-4 text-red-500" />}
-                <span className={`font-semibold text-sm ${checkResultMeta?.color ?? ''}`}>
-                  {checkResultMeta?.label ?? latestCheck.result ?? latestCheck.status}
-                </span>
-                {latestCheck.checkedAt && (
-                  <span className="text-xs text-muted-foreground ml-auto">
-                    {fmtDateTime(latestCheck.checkedAt)}
-                  </span>
-                )}
-              </div>
-
-              {publicResult?.reasonCode && publicResult.reasonCode !== 'FEASIBLE' && (
-                <p className="text-xs text-muted-foreground">Code: {publicResult.reasonCode}</p>
-              )}
-
-              {publicResult?.alternatives && publicResult.alternatives.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <p className="text-xs font-medium text-muted-foreground">Mögliche Alternativen:</p>
-                  {publicResult.alternatives.map((alt: any) => (
-                    <div key={alt.alternativeId} className="text-xs bg-background/60 rounded px-2 py-1.5 flex items-center justify-between gap-2">
-                      <span className="font-medium">Alt. {alt.rank}</span>
-                      <span>{fmtDate(alt.timeWindow?.start)} – {fmtDate(alt.timeWindow?.end)}</span>
-                      {alt.crewSize && <span>{alt.crewSize} Pers.</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {!latestCheck && !canAct && (
-            <p className="text-sm text-muted-foreground">Keine Verfügbarkeitsprüfung vorhanden.</p>
-          )}
-          {!latestCheck && canAct && !runCheck.isPending && (
-            <p className="text-sm text-muted-foreground">
-              Noch keine Prüfung durchgeführt. Klicken Sie auf „Verfügbarkeit prüfen".
-            </p>
-          )}
-        </CardContent>
-      </StepSection>
-
-      {/* ── Step 5: Antwort ───────────────────────────────────────────────── */}
-      <StepSection step={5} currentStep={currentStep} completedSteps={completedSteps}
-        locked={!canAct && !hasResponded}>
-        <CardHeader className="pb-2 px-5 pt-5">
-          <div className="flex items-center gap-2">
-            <Send className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 5 — Antwort einreichen
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-
-          {hasResponded ? (
-            <div className="flex flex-col items-center gap-3 text-center py-6">
-              <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-              <p className="font-semibold">Antwort bereits eingereicht</p>
-              <p className="text-sm text-muted-foreground">
-                Status: <strong>{STATUS_LABELS[status]}</strong>
-              </p>
-            </div>
-          ) : isExpired ? (
-            <div className="flex flex-col items-center gap-3 text-center py-6">
-              <AlertTriangle className="w-10 h-10 text-red-500" />
-              <p className="font-semibold text-red-600 dark:text-red-400">Antwortfrist abgelaufen</p>
-            </div>
-          ) : !canAct ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              Status: {STATUS_LABELS[status] ?? status}
-            </p>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Pre-fill hint from availability check */}
-              {step4Done && checkResultMeta && !decision && (
-                <div className={`text-xs px-3 py-2 rounded border ${checkResultMeta.bg} ${checkResultMeta.color}`}>
-                  Empfehlung auf Basis der Prüfung: <strong>{checkResultMeta.label}</strong>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>Entscheidung</Label>
-                <Select value={decision} onValueChange={handleDecisionChange} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Entscheidung wählen…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={TaktDecision.ACCEPTED}>Termin annehmen</SelectItem>
-                    <SelectItem value={TaktDecision.ALTERNATIVES_PROPOSED}>Gegenvorschlag einreichen</SelectItem>
-                    <SelectItem value={TaktDecision.REJECTED}>Ablehnen</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {decision === TaktDecision.ACCEPTED && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Bestätigter Start</Label>
-                    <DatePicker value={acceptStart}
-                      onChange={setAcceptStart} required />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Bestätigtes Ende</Label>
-                    <DatePicker value={acceptEnd}
-                      onChange={setAcceptEnd} required />
-                  </div>
-                </div>
-              )}
-
-              {decision === TaktDecision.ALTERNATIVES_PROPOSED && (
-                <div className="space-y-3 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Alternativtermine (bis zu 3)</span>
-                    {alternatives.length < 3 && (
-                      <Button type="button" variant="ghost" size="sm"
-                        onClick={() => setAlternatives(prev => [...prev, { start: '', end: '' }])}>
-                        <Plus className="w-3.5 h-3.5 mr-1" />Hinzufügen
-                      </Button>
-                    )}
-                  </div>
-                  {alternatives.map((alt, idx) => {
-                    const rowErr = altRowErrors[idx];
-                    return (
-                      <div key={idx} className="space-y-1">
-                        <div className="flex items-end gap-2">
-                          <div className="flex-1 space-y-1">
-                            <Label className="text-xs">Alternative {idx + 1} — Start</Label>
-                            <DatePicker value={alt.start}
-                              className={rowErr?.emptyStart ? 'border-destructive' : ''}
-                              onChange={value => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, start: value } : a))}
-                              required />
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <Label className="text-xs">Ende</Label>
-                            <DatePicker value={alt.end}
-                              className={(rowErr?.emptyEnd || rowErr?.endBeforeStart) ? 'border-destructive' : ''}
-                              onChange={value => setAlternatives(prev => prev.map((a, i) => i === idx ? { ...a, end: value } : a))}
-                              required />
-                          </div>
-                          {alternatives.length > 1 && (
-                            <Button type="button" variant="ghost" size="icon"
-                              className="shrink-0 text-muted-foreground hover:text-red-500"
-                              onClick={() => setAlternatives(prev => prev.filter((_, i) => i !== idx))}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                        {rowErr?.endBeforeStart && (
-                          <p className="flex items-center gap-1.5 text-xs text-destructive">
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            Ende-Datum muss nach dem Start-Datum liegen.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="space-y-1.5 pt-2 border-t border-blue-500/20">
-                    <Label className="text-xs">Kommentar zum Gegenvorschlag (optional)</Label>
-                    <Textarea
-                      value={comment}
-                      onChange={e => setComment(e.target.value)}
-                      placeholder="Hinweis zum vorgeschlagenen Zeitraum"
-                      className="h-20 resize-none"
-                      maxLength={2000}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {decision === TaktDecision.REJECTED && (
-                <div className="space-y-3 p-4 rounded-lg bg-red-500/5 border border-red-500/20">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Ablehnungsgrund (optional)</Label>
-                    <Select value={reasonCode} onValueChange={setReasonCode}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Grund wählen…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {REASON_CODES.map(r => (
-                          <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Kommentar (optional, intern)</Label>
-                    <Textarea value={comment} onChange={e => setComment(e.target.value)}
-                      placeholder="Interner Hinweis (wird nicht übermittelt)"
-                      className="h-20 resize-none" maxLength={500} />
-                  </div>
-                </div>
-              )}
-
-              {decision && (
-                <Button type="submit" className="w-full gap-2"
-                  disabled={submitResponse.isPending || altDatesInvalid}>
-                  {submitResponse.isPending
-                    ? <><Loader2 className="w-4 h-4 animate-spin" />Einreichen…</>
-                    : <><Send className="w-4 h-4" />Antwort einreichen</>}
-                </Button>
-              )}
-            </form>
-          )}
-        </CardContent>
-      </StepSection>
-
-      {/* ── Bestätigungsdialog: Ressourcenbedarf löschen ─────────────────── */}
-      <AlertDialog open={!!confirmDeleteReq} onOpenChange={(o) => !o && setConfirmDeleteReq(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Ressourcenbedarf entfernen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Dieser Ressourcenbedarf-Eintrag wird aus der Anfrage gelöscht.
-              Sie können ihn anschließend neu erfassen.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={doDeleteReq}
-              disabled={deleteReq.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteReq.isPending ? 'Entfernt…' : 'Entfernen'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </main>
   );
 }
