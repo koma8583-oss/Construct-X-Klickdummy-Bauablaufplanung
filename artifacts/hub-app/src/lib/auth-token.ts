@@ -31,6 +31,7 @@ export async function refreshAccessToken(): Promise<string> {
     const res = await fetch('/auth-service/refresh', {
       method: 'POST',
       credentials: 'include',
+      headers: { 'X-TaktKoord-App': 'HUB' },
     });
     if (!res.ok) {
       _token = null;

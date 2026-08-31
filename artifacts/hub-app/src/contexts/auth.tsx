@@ -34,7 +34,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: 'include', ...init });
+  const headers = new Headers(init?.headers);
+  headers.set('X-TaktKoord-App', 'HUB');
+  const res = await fetch(path, { credentials: 'include', ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);

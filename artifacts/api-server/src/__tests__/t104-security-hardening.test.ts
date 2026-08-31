@@ -20,6 +20,7 @@
  *   [11] Successful registration → user has AG_ADMIN role in JWT
  *   [12] Successful AN registration → user has AN_ADMIN role in JWT
  *   [13] Duplicate e-mail → 409, no partial data
+ *   [17] AG, AN, and Hub refresh cookies stay isolated
  *
  *   Reminder transport status:
  *   [14] Successful transport (real) → reminder status is SENT or DELIVERED, reminderCount incremented
@@ -423,6 +424,95 @@ describe("Transactional registration", () => {
       .set("X-TaktKoord-App", "AG")
       .set("Cookie", finalAgCookie!.split(";")[0]);
     expect(agLogout.status).toBe(200);
+  });
+
+  it("[17] AG, AN, and Hub refresh cookies stay isolated", async () => {
+    const [agLogin, anLogin, hubLogin] = await Promise.all([
+      request(app)
+        .post("/auth-service/login")
+        .set("X-TaktKoord-App", "AG")
+        .send({ email: emailAG, password: "test1234" }),
+      request(app)
+        .post("/auth-service/login")
+        .set("X-TaktKoord-App", "AN")
+        .send({ email: emailAN, password: "test1234" }),
+      request(app)
+        .post("/auth-service/login")
+        .set("X-TaktKoord-App", "HUB")
+        .send({ email: emailAG, password: "test1234" }),
+    ]);
+
+    expect(agLogin.status).toBe(200);
+    expect(anLogin.status).toBe(200);
+    expect(hubLogin.status).toBe(200);
+
+    const agCookie = findSetCookie(agLogin.headers, "tk_refresh_ag=");
+    const anCookie = findSetCookie(anLogin.headers, "tk_refresh_an=");
+    const hubCookie = findSetCookie(hubLogin.headers, "tk_refresh_hub=");
+    expect(agCookie).toBeDefined();
+    expect(anCookie).toBeDefined();
+    expect(hubCookie).toBeDefined();
+
+    const cookies = {
+      AG: agCookie!.split(";")[0],
+      AN: anCookie!.split(";")[0],
+      HUB: hubCookie!.split(";")[0],
+    } as const;
+    const contexts = ["AG", "AN", "HUB"] as const;
+
+    for (const source of contexts) {
+      for (const destination of contexts) {
+        if (source === destination) continue;
+        const crossContext = await request(app)
+          .post("/auth-service/refresh")
+          .set("X-TaktKoord-App", destination)
+          .set("Cookie", cookies[source]);
+        expect(crossContext.status, `${source} cookie used by ${destination}`).toBe(401);
+      }
+    }
+
+    const refreshed = {} as Record<(typeof contexts)[number], string>;
+    for (const context of contexts) {
+      const refresh = await request(app)
+        .post("/auth-service/refresh")
+        .set("X-TaktKoord-App", context)
+        .set("Cookie", cookies[context]);
+      expect(refresh.status).toBe(200);
+      expect(refresh.body.accessToken).toEqual(expect.any(String));
+      const cookie = findSetCookie(refresh.headers, `tk_refresh_${context.toLowerCase()}=`);
+      expect(cookie).toBeDefined();
+      refreshed[context] = cookie!.split(";")[0];
+    }
+
+    const hubLogout = await request(app)
+      .post("/auth-service/logout")
+      .set("X-TaktKoord-App", "HUB")
+      .set("Cookie", refreshed.HUB);
+    expect(hubLogout.status).toBe(200);
+
+    for (const context of ["AG", "AN"] as const) {
+      const refresh = await request(app)
+        .post("/auth-service/refresh")
+        .set("X-TaktKoord-App", context)
+        .set("Cookie", refreshed[context]);
+      expect(refresh.status, `${context} session after Hub logout`).toBe(200);
+      const cookie = findSetCookie(refresh.headers, `tk_refresh_${context.toLowerCase()}=`);
+      expect(cookie).toBeDefined();
+      refreshed[context] = cookie!.split(";")[0];
+    }
+
+    const hubAfterLogout = await request(app)
+      .post("/auth-service/refresh")
+      .set("X-TaktKoord-App", "HUB")
+      .set("Cookie", refreshed.HUB);
+    expect(hubAfterLogout.status).toBe(401);
+
+    for (const context of ["AG", "AN"] as const) {
+      await request(app)
+        .post("/auth-service/logout")
+        .set("X-TaktKoord-App", context)
+        .set("Cookie", refreshed[context]);
+    }
   });
 });
 

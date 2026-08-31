@@ -32,6 +32,7 @@ const LEGACY_REFRESH_COOKIE_NAME = "tk_refresh";
 const REFRESH_COOKIE_NAMES = {
   AG: "tk_refresh_ag",
   AN: "tk_refresh_an",
+  HUB: "tk_refresh_hub",
 } as const;
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const REFRESH_TOKEN_EXPIRY_MS =
@@ -73,7 +74,7 @@ async function createRefreshToken(userId: string): Promise<string> {
 function getRefreshCookieName(req: { headers: Record<string, string | string[] | undefined> }): string {
   const header = req.headers["x-taktkoord-app"];
   const app = Array.isArray(header) ? header[0] : header;
-  if (app === "AG" || app === "AN") return REFRESH_COOKIE_NAMES[app];
+  if (app === "AG" || app === "AN" || app === "HUB") return REFRESH_COOKIE_NAMES[app];
   return LEGACY_REFRESH_COOKIE_NAME;
 }
 
