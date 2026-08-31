@@ -96,6 +96,23 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     ]));
   });
 
+  it("rendert lokale AN-Projektionen ohne optionale Koordinationsfelder", async () => {
+    setAuthTokenGetter(() => "authenticated-an-test-token");
+    const { scheduleDelta: _scheduleDelta, ...localProjectionRequest } = request;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/takt-requests")) return json([localProjectionRequest]);
+      if (url === "/api/an/project-invitations") return json([]);
+      return json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderInbox();
+
+    expect(await screen.findByText("Leistungsanfrage")).toBeInTheDocument();
+    expect(screen.getByText("Keine")).toBeInTheDocument();
+  });
+
   it("applies service-request filters without treating invitations as service requests", async () => {
     const mixedInbox: InboxItem[] = [
       {

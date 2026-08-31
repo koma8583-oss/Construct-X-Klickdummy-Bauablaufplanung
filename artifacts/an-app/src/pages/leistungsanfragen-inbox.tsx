@@ -108,6 +108,27 @@ function canRespond(item: TaktRequestListItem): boolean {
   return ['DELIVERED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'REVISION_REQUIRED'].includes(s);
 }
 
+type ScheduleDelta = {
+  startDays: number;
+  endDays: number;
+  durationDays: number;
+  hasChange: boolean;
+};
+
+const NO_SCHEDULE_DELTA: ScheduleDelta = {
+  startDays: 0,
+  endDays: 0,
+  durationDays: 0,
+  hasChange: false,
+};
+
+function getScheduleDelta(item: TaktRequestListItem): ScheduleDelta {
+  // AN-local projections may intentionally omit AG-side coordination fields.
+  // Treat an absent delta as unchanged rather than crashing the inbox.
+  const scheduleDelta = (item as unknown as { scheduleDelta?: ScheduleDelta }).scheduleDelta;
+  return scheduleDelta ?? NO_SCHEDULE_DELTA;
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
@@ -252,8 +273,9 @@ export function filterInboxItems(
     if (proposalFilter === 'NONE' && request.openProposal) return false;
     if (actionOwnerFilter === 'NONE' && request.nextActionOwner) return false;
     if (actionOwnerFilter !== 'ALL' && actionOwnerFilter !== 'NONE' && request.nextActionOwner !== actionOwnerFilter) return false;
-    if (scheduleFilter === 'CHANGED' && !request.scheduleDelta.hasChange) return false;
-    if (scheduleFilter === 'UNCHANGED' && request.scheduleDelta.hasChange) return false;
+    const scheduleDelta = getScheduleDelta(request);
+    if (scheduleFilter === 'CHANGED' && !scheduleDelta.hasChange) return false;
+    if (scheduleFilter === 'UNCHANGED' && scheduleDelta.hasChange) return false;
     return true;
   });
 }
@@ -670,6 +692,7 @@ export default function LeistungsanfragenInboxPage() {
             const agOrgName = (request as any).agOrgName as string | null | undefined;
             const zone = (request as any).zone as string | null | undefined;
             const gewerk = (request as any).gewerk as string | null | undefined;
+            const scheduleDelta = getScheduleDelta(request);
 
             return (
               <article
@@ -733,10 +756,10 @@ export default function LeistungsanfragenInboxPage() {
                         ? `${format(new Date(request.currentAgreement.start), 'dd.MM.yy')}–${format(new Date(request.currentAgreement.end), 'dd.MM.yy')}`
                         : 'Noch keine'}
                     </p>
-                    {request.scheduleDelta.hasChange && (
+                    {scheduleDelta.hasChange && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Δ {request.scheduleDelta.startDays > 0 ? '+' : ''}{request.scheduleDelta.startDays}/
-                        {request.scheduleDelta.endDays > 0 ? '+' : ''}{request.scheduleDelta.endDays} Tage
+                        Δ {scheduleDelta.startDays > 0 ? '+' : ''}{scheduleDelta.startDays}/
+                        {scheduleDelta.endDays > 0 ? '+' : ''}{scheduleDelta.endDays} Tage
                       </p>
                     )}
                   </div>
