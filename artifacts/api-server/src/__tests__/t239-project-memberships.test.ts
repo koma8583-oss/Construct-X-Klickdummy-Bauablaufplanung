@@ -322,6 +322,38 @@ describe("invitation decisions", () => {
     expect(response.status).toBe(201);
     expect(response.body.status).toBe("INVITED");
 
+    const [outbound] = await hubDb.select({ payload: messageOutboxTable.payload })
+      .from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, `project-invitation-${response.body.invitationId}`));
+    const payload = outbound.payload as {
+      policySnapshot: {
+        templateId: string;
+        templateVersion: number;
+        code: string;
+        purpose: string;
+      };
+      policy: {
+        usagePurpose: string;
+        templateId?: string;
+        templateVersion?: number;
+        templateCode?: string;
+        purpose?: string;
+      };
+    };
+    expect(payload.policySnapshot).toMatchObject({
+      templateId: "tk-policy-project-membership",
+      templateVersion: 1,
+      code: "PROJECT_MEMBERSHIP",
+      purpose: "PROJECT_MEMBERSHIP",
+    });
+    expect(payload.policy).toMatchObject({
+      usagePurpose: "PROJECT_MEMBERSHIP",
+      templateId: payload.policySnapshot.templateId,
+      templateVersion: payload.policySnapshot.templateVersion,
+      templateCode: payload.policySnapshot.code,
+      purpose: payload.policySnapshot.purpose,
+    });
+
     const pending = await request(app).get("/api/an/project-invitations")
       .set("Authorization", `Bearer ${anToken}`);
     expect(pending.status).toBe(200);

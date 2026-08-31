@@ -310,11 +310,11 @@ export async function inviteParticipant(input: {
   const messageId = `project-invitation-${invitationId}`;
   const now = new Date();
   const policySnapshot = createPolicySnapshot({
-    templateId: "SCHEDULE_COORDINATION",
+    templateId: "PROJECT_MEMBERSHIP",
     providerContext: { organizationId: input.agOrgId, organizationType: "AG" },
     overrides: {
       recipientOrganizationId: anOrgId,
-      purpose: "PROJECT_COLLABORATION",
+      purpose: "PROJECT_MEMBERSHIP",
       projectReference: project.id,
       ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
     },
