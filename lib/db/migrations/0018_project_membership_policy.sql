@@ -40,3 +40,12 @@ ON CONFLICT (code) DO UPDATE SET
   validity_rule = EXCLUDED.validity_rule,
   retention_rule = EXCLUDED.retention_rule,
   active = EXCLUDED.active;
+
+UPDATE project_contractors AS pc
+SET
+  coordination_policy_template_id = pt.id,
+  coordination_policy_version = 4
+FROM policy_templates AS pt
+WHERE pt.code = 'SCHEDULE_COORDINATION'
+  AND pt.active = true
+  AND pc.coordination_policy_template_id IS NULL;

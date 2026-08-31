@@ -7,4 +7,4 @@ The API Zod barrel export must be kept compatible with Orval's generated schema/
 
 **Why:** The codegen command cleans and regenerates the api-zod output directory before running the library typecheck.
 
-**How to apply:** Treat the generator configuration/template or a post-generation non-generated export step as the durable fix; do not rely only on editing the generated index after codegen.
+**How to apply:** Keep non-generated transport exports in the repository's post-generation fix step; do not rely only on editing the generated index after codegen.

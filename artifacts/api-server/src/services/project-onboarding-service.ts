@@ -176,7 +176,7 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
           ...(project.location ? { location: project.location } : {}),
         },
         requestedRole: "CONTRACTOR",
-       purpose: "PROJECT_MEMBERSHIP",
+       purpose: "PROJECT_COLLABORATION",
         ...(input.invitationMessage ? { invitationMessage: input.invitationMessage } : {}),
         ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
         policy: {
