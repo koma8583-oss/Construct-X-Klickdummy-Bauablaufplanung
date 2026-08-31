@@ -120,10 +120,7 @@ vi.mock("@/components/DataPublicationWizard", () => ({
   DataPublicationWizard: () => null,
 }));
 
-vi.mock("@workspace/api-client-react", async () => {
-  const actual = await vi.importActual<typeof import("@workspace/api-client-react")>(
-    "@workspace/api-client-react",
-  );
+vi.mock("@workspace/api-client-react", () => {
   const queryResult = (data: unknown = []) => ({ data, isLoading: false });
   const mutation = (onMutate?: (variables: any) => void) => ({
     isPending: false,
@@ -133,7 +130,6 @@ vi.mock("@workspace/api-client-react", async () => {
     }),
   });
   return {
-    ...actual,
     useGetAgProjectOverview: () => queryResult({
       project: {
         id: "project-1",
@@ -180,10 +176,16 @@ vi.mock("@workspace/api-client-react", async () => {
     useGetProject: () => queryResult({}),
     useGetProjectCalendar: () => queryResult(undefined),
      useGetProjectDataPublications: () => queryResult(dataPublications),
+    useCreateProjectInvitationPackage: () => mutation(),
+    getProjectCoordinationBoard: vi.fn(async () => []),
+    useGetPolicyTemplateRegistry: () => queryResult([]),
     useCreateTakt: () => mutation(),
     useUpdateTakt: () => mutation(),
     useDeleteTakt: () => mutation(),
+    useCreateDataPublication: () => mutation(),
+    usePublishDataPublication: () => mutation(),
     useCreateTaktRequestWithSnapshot: () => mutation(),
+    useCreateTaktRequestBatchWithSnapshot: () => mutation(),
     useSendTaktRequest: () => mutation(),
     useCreateGuDecision: () => mutation(),
     useCreateTaktDependency: () => mutation(),
@@ -222,6 +224,74 @@ vi.mock("@workspace/api-client-react", async () => {
     getListTaktDependenciesQueryKey: () => [],
     getListProjectSubcontractorsQueryKey: () => [],
     getGetTaktRequestDetailQueryKey: () => [],
+    FIELD_GROUPS: {
+      TAKT_INFORMATION_PACKAGE: [
+        {
+          label: "Projektdaten",
+          fields: ["projectName", "projectStatus", "startDate", "endDate", "projectLocation", "projectDescription", "projectReference"],
+        },
+        {
+          label: "Leistungsdaten",
+          fields: ["kurzbezeichnung", "workPackage", "trade"],
+        },
+        {
+          label: "Zeitplanung",
+          fields: ["plannedTimeWindow", "bufferTimeWindow"],
+        },
+        {
+          label: "Ausführung",
+          fields: ["location", "executionNotes"],
+        },
+        {
+          label: "Anordnungsbeziehungen",
+          fields: ["predecessors", "successors"],
+        },
+        {
+          label: "Ressourcen & Logistik",
+          fields: ["resourceRequirements"],
+        },
+      ],
+    },
+    FIELD_LABELS: {
+      projectReference: "Projektreferenz (ID)",
+      projectName: "Projektname",
+      projectStatus: "Projektstatus",
+      startDate: "Projektbeginn",
+      endDate: "Projektende",
+      projectLocation: "Projektstandort / Bauvorhaben",
+      projectDescription: "Projektbeschreibung",
+      kurzbezeichnung: "Leistungsbezeichnung",
+      workPackage: "Arbeitspaket",
+      trade: "Gewerk",
+      plannedTimeWindow: "Geplantes Zeitfenster",
+      bufferTimeWindow: "Puffer (Frühest / Spätest)",
+      location: "Ausführungsort / Zone",
+      executionNotes: "Hinweise zur Ausführung",
+      predecessors: "Vorgänger-Leistungen",
+      successors: "Nachfolger-Leistungen",
+      resourceRequirements: "Ressourcenbedarf / Logistik",
+    },
+    FIELD_WHITELISTS: {
+      TAKT_INFORMATION_PACKAGE: [
+        "projectReference",
+        "projectName",
+        "projectStatus",
+        "startDate",
+        "endDate",
+        "projectLocation",
+        "projectDescription",
+        "kurzbezeichnung",
+        "workPackage",
+        "trade",
+        "plannedTimeWindow",
+        "bufferTimeWindow",
+        "location",
+        "executionNotes",
+        "predecessors",
+        "successors",
+        "resourceRequirements",
+      ],
+    },
   };
 });
 
