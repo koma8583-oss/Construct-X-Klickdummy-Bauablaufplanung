@@ -14,6 +14,7 @@ import app from "../app";
 import { agDb as db, anDb, hubDb } from "@workspace/db";
 import { deliverLocalProjectInvitation } from "../services/dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation } from "../services/dataspace/external-contracts";
+import { FIELD_WHITELISTS } from "../services/data-publication-service";
 import {
   organizationsTable,
   usersTable,
@@ -57,6 +58,19 @@ const RETRY_MESSAGE_ID = `project-invitation-${RETRY_INVITATION_ID}`;
 const RETRY_CORRELATION_ID = `${PREFIX}-retry-correlation`;
 const T239_MESSAGE_PREFIX = "project-invitation-t239-";
 const CONCURRENT_RETRY_MESSAGE_ID = `${T239_MESSAGE_PREFIX}concurrent-retry`;
+const PROJECT_ADMISSION_FIELDS = [
+  "projectReference",
+  "projectName",
+  "projectStatus",
+  "projectLocation",
+] as const;
+const FORBIDDEN_PROJECT_ADMISSION_FIELDS = [
+  ...new Set(
+    Object.values(FIELD_WHITELISTS)
+      .flat()
+      .filter((field) => !PROJECT_ADMISSION_FIELDS.includes(field as typeof PROJECT_ADMISSION_FIELDS[number])),
+  ),
+];
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function token(userId: string, orgId: string, orgType: "AG" | "AN", roles?: string[]) {
@@ -268,6 +282,38 @@ async function findAnInvitationId(invitationId: string, authToken = anToken) {
   const invitation = pending.body.find((row: { invitationId: string }) => row.invitationId === invitationId);
   expect(invitation).toBeDefined();
   return invitation.id as string;
+}
+
+async function readAdmissionSideEffects() {
+  const memberships = await db.select({ id: projectMembershipsTable.id })
+    .from(projectMembershipsTable)
+    .where(eq(projectMembershipsTable.projectId, PROJECT_ID));
+  const publications = await db.select({ id: dataPublicationsTable.id })
+    .from(dataPublicationsTable)
+    .where(eq(dataPublicationsTable.projectId, PROJECT_ID));
+  const recipients = await db.select({ id: dataPublicationRecipientsTable.id })
+    .from(dataPublicationRecipientsTable)
+    .where(eq(dataPublicationRecipientsTable.anOrgId, AN_ID));
+  const outbox = await hubDb.select({
+    messageId: messageOutboxTable.messageId,
+    messageType: messageOutboxTable.messageType,
+  }).from(messageOutboxTable).where(and(
+    eq(messageOutboxTable.senderOrgId, AG_ID),
+    eq(messageOutboxTable.recipientOrgId, AN_ID),
+  ));
+  const exchanges = await hubDb.select({ id: dataspaceExchangesTable.id })
+    .from(dataspaceExchangesTable)
+    .where(and(
+      eq(dataspaceExchangesTable.senderOrgId, AG_ID),
+      eq(dataspaceExchangesTable.receiverOrgId, AN_ID),
+    ));
+  return {
+    memberships: memberships.map(({ id }) => id).sort(),
+    publications: publications.map(({ id }) => id).sort(),
+    recipients: recipients.map(({ id }) => id).sort(),
+    outbox: outbox.map(({ messageId, messageType }) => `${messageId}:${messageType}`).sort(),
+    exchanges: exchanges.map(({ id }) => id).sort(),
+  };
 }
 
 describe("invitation decisions", () => {
@@ -605,6 +651,79 @@ describe("project invitation delivery retries", () => {
 });
 
 describe("membership gates and legacy compatibility", () => {
+  it("rejects every non-membership field without creating invitation or delivery state", async () => {
+    expect(FIELD_WHITELISTS.PROJECT_MEMBERSHIP).toEqual(PROJECT_ADMISSION_FIELDS);
+    const before = await readAdmissionSideEffects();
+
+    for (const field of FORBIDDEN_PROJECT_ADMISSION_FIELDS) {
+      const response = await request(app)
+        .post(`/api/projects/${PROJECT_ID}/invitation-packages`)
+        .set("Authorization", `Bearer ${agToken}`)
+        .send({
+          participantIds: [`local:${AN_ID}`],
+          policyTemplateId: "PROJECT_MEMBERSHIP",
+          policyTemplateVersion: 1,
+          selectedFields: [field],
+          title: `Rejected field ${field}`,
+        });
+
+      expect(response.status, field).toBe(400);
+      expect(response.body.code, field).toBe("PROJECT_INVITATION_FIELDS_NOT_ALLOWED");
+      expect(await readAdmissionSideEffects(), field).toEqual(before);
+    }
+  });
+
+  it("rejects SCHEDULE_COORDINATION on the canonical invitation endpoint without side effects", async () => {
+    const before = await readAdmissionSideEffects();
+    const response = await request(app)
+      .post(`/api/projects/${PROJECT_ID}/invitation-packages`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: "SCHEDULE_COORDINATION",
+        policyTemplateVersion: 4,
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
+        title: "Rejected schedule coordination invitation",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("PROJECT_INVITATION_POLICY_NOT_ALLOWED");
+    expect(await readAdmissionSideEffects()).toEqual(before);
+  });
+
+  it("keeps the legacy alias on the same field and policy restrictions", async () => {
+    const before = await readAdmissionSideEffects();
+    const forbiddenFieldResponse = await request(app)
+      .post(`/api/projects/${PROJECT_ID}/invitations-with-data`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: "PROJECT_MEMBERSHIP",
+        policyTemplateVersion: 1,
+        selectedFields: ["resourceRequirements"],
+        title: "Rejected legacy resource invitation",
+      });
+
+    expect(forbiddenFieldResponse.status).toBe(400);
+    expect(forbiddenFieldResponse.body.code).toBe("PROJECT_INVITATION_FIELDS_NOT_ALLOWED");
+    expect(await readAdmissionSideEffects()).toEqual(before);
+
+    const forbiddenPolicyResponse = await request(app)
+      .post(`/api/projects/${PROJECT_ID}/invitations-with-data`)
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        participantIds: [`local:${AN_ID}`],
+        policyTemplateId: "SCHEDULE_COORDINATION",
+        policyTemplateVersion: 4,
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
+        title: "Rejected legacy schedule invitation",
+      });
+
+    expect(forbiddenPolicyResponse.status).toBe(400);
+    expect(forbiddenPolicyResponse.body.code).toBe("PROJECT_INVITATION_POLICY_NOT_ALLOWED");
+    expect(await readAdmissionSideEffects()).toEqual(before);
+  });
+
   it("reopens a revoked relationship with a delivered invitation package on both sides", async () => {
     const [policy] = await db.select({
       id: policyTemplatesTable.id,
@@ -621,7 +740,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.code,
         policyTemplateVersion: 1,
-        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -690,7 +809,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.code,
         policyTemplateVersion: 1,
-        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -704,7 +823,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.code,
         policyTemplateVersion: 2,
-        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
         title: "Task 239 re-invitation",
         idempotencyKey: `${PREFIX}-reinvite-package`,
       });
@@ -725,7 +844,7 @@ describe("membership gates and legacy compatibility", () => {
         participantIds: [`local:${AN_ID}`],
         policyTemplateId: policy.id,
         policyTemplateVersion: 1,
-        selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
+        selectedFields: [...PROJECT_ADMISSION_FIELDS],
         title: "Task 239 coupled retry",
         idempotencyKey: `${PREFIX}-coupled-retry-package`,
       });
