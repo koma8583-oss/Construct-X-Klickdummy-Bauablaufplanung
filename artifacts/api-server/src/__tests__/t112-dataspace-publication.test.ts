@@ -140,6 +140,18 @@ beforeAll(async () => {
     .where(eq(policyTemplatesTable.code, "SCHEDULE_COORDINATION"))
     .limit(1);
   policyTemplateId = pt.id;
+  await db.insert(policyTemplatesTable).values({
+    id: "tk-policy-performance-coordination",
+    code: "PERFORMANCE_COORDINATION",
+    name: "Leistungsfreigabe",
+    description: "Leistungsbezogene Freigabe für die Taktkoordination.",
+    purpose: "performanceCoordination",
+    permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    prohibitions: ["REDISTRIBUTE", "SHARE_OUTSIDE_PROJECT_TEAM", "COMMERCIAL_REUSE", "AI_TRAINING"],
+    validityRule: "Gilt für die konkret vergebene Leistung.",
+    retentionRule: "Nur so lange speichern, wie die Leistungskoordination dies erfordert.",
+    active: true,
+  }).onConflictDoNothing();
   const [nonCatalogPolicy] = await db.insert(policyTemplatesTable).values({
     code: `T112_NON_CATALOG_POLICY_${crypto.randomUUID()}`,
     name: "T112 non-catalog policy",
@@ -236,17 +248,21 @@ describe("GET /api/policy-templates", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(1);
+    expect(res.body.length).toBe(2);
     const codes = res.body.map((p: { code: string }) => p.code);
-    expect(codes).toEqual(["SCHEDULE_COORDINATION"]);
+    expect(codes).toEqual(["SCHEDULE_COORDINATION", "PERFORMANCE_COORDINATION"]);
     expect(res.body[0].name).toBe("Abstimmung von Rahmenterminen");
     expect(res.body[0].templateVersion).toBe(4);
     expect(res.body[0].retentionRule).toBeNull();
     expect(res.body[0].allowedPublicationFields).not.toContain("resourceRequirements");
-    for (const policy of res.body) {
-      expect(policy.registryTemplateId).toMatch(/^tk-policy-/);
-      expect(policy.availableTemplateVersions).toEqual([4]);
-    }
+    expect(res.body[1].templateVersion).toBe(1);
+    expect(res.body[1].allowedPublicationFields).toEqual(
+      expect.arrayContaining(["kurzbezeichnung", "workPackage", "predecessors", "successors"]),
+    );
+    expect(res.body[0].registryTemplateId).toMatch(/^tk-policy-/);
+    expect(res.body[0].availableTemplateVersions).toEqual([4]);
+    expect(res.body[1].registryTemplateId).toMatch(/^tk-policy-/);
+    expect(res.body[1].availableTemplateVersions).toEqual([1]);
   });
 
   it("rejects AN token (wrong role)", async () => {
@@ -274,6 +290,18 @@ describe("POST /api/projects/:projectId/data-publications", () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
+  });
+
+  it("creates a performance publication with dependency fields", async () => {
+    const res = await createDraftPublication({
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      policyTemplateId: "tk-policy-performance-coordination",
+      selectedFields: ["workPackage", "predecessors", "successors"],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.dataProductType).toBe("TAKT_INFORMATION_PACKAGE");
+    expect(res.body.policyTemplateId).toBe("tk-policy-performance-coordination");
+    expect(res.body.selectedFields).toEqual(["workPackage", "predecessors", "successors"]);
   });
 
   it("rejects unknown field names for the chosen data product type", async () => {

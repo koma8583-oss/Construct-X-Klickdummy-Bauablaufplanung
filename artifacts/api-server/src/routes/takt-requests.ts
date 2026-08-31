@@ -25,6 +25,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  projectMembershipsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -1047,8 +1048,15 @@ router.get(
 
     if (isAddressedNu && request.dataPublicationId) {
       const [gatePub] = await db
-        .select({ status: dataPublicationsTable.status })
+        .select({
+          status: dataPublicationsTable.status,
+          policyCode: policyTemplatesTable.code,
+        })
         .from(dataPublicationsTable)
+        .leftJoin(
+          policyTemplatesTable,
+          eq(dataPublicationsTable.policyTemplateId, policyTemplatesTable.id),
+        )
         .where(eq(dataPublicationsTable.id, request.dataPublicationId))
         .limit(1);
 
@@ -1097,6 +1105,38 @@ router.get(
           recipientStatus: gateRecipient?.status ?? "OFFERED",
         });
         return;
+      }
+
+      if (gatePub.policyCode === "PERFORMANCE_COORDINATION") {
+        // A performance publication never replaces project membership. The AN
+        // must still be an active member when released Takt details are read.
+        const [taktProject] = await db
+          .select({ projectId: takteTable.projectId })
+          .from(takteTable)
+          .where(eq(takteTable.id, request.taktId))
+          .limit(1);
+        const [activeMembership] = taktProject
+          ? await db
+            .select({ id: projectMembershipsTable.id })
+            .from(projectMembershipsTable)
+            .where(
+              and(
+                eq(projectMembershipsTable.projectId, taktProject.projectId),
+                eq(projectMembershipsTable.anOrgId, callerOrgId!),
+                eq(projectMembershipsTable.status, "ACTIVE"),
+              ),
+            )
+            .limit(1)
+          : [];
+
+        if (!activeMembership) {
+          res.status(403).json({
+            error: "PROJECT_MEMBERSHIP_REQUIRED",
+            message: "Eine aktive Projektmitgliedschaft ist für den Zugriff auf die Leistungsdaten erforderlich.",
+            dataPublicationId: request.dataPublicationId,
+          });
+          return;
+        }
       }
     }
 

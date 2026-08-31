@@ -6,7 +6,8 @@ import {
   useGetProject, useListTakte, getGetProjectQueryKey, getListTakteQueryKey,
   useUpdateTakt, useListProjectSubcontractors, getListProjectSubcontractorsQueryKey,
   useListProjectMemberships, getListProjectMembershipsQueryKey,
-  useGetProjectDataPublications, useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
+  useCreateDataPublication, usePublishDataPublication,
+  useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
   useListTaktRequests, useDeleteTakt,
   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
   useGetPolicyTemplateRegistry,
@@ -50,11 +51,6 @@ export default function TaktDetail() {
     query: { enabled: !!projectId, queryKey: getListProjectMembershipsQueryKey(projectId) },
   });
   const {
-    data: publications,
-    isLoading: publicationsLoading,
-    isError: publicationsError,
-  } = useGetProjectDataPublications(projectId);
-  const {
     data: dataspaceParticipants,
     isLoading: participantsLoading,
     isError: participantsError,
@@ -79,6 +75,8 @@ export default function TaktDetail() {
     isError: policiesError,
   } = useGetPolicyTemplateRegistry();
   const updateTakt = useUpdateTakt();
+  const createDataPublication = useCreateDataPublication(projectId);
+  const publishDataPublication = usePublishDataPublication();
   const createRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendRequest = useSendTaktRequest();
   const deleteTakt = useDeleteTakt();
@@ -182,12 +180,22 @@ export default function TaktDetail() {
     if (!takt) return;
     setSavingAssignment(true);
     try {
+      const publication = await createDataPublication.mutateAsync({
+        dataProductType: 'TAKT_INFORMATION_PACKAGE',
+        title: `Leistungsfreigabe – ${takt.kurzbezeichnung || takt.taktBezeichnung}`,
+        description: values.message,
+        policyTemplateId: values.policyTemplateId,
+        selectedFields: values.selectedFields,
+        selectedTaktIds: [takt.id],
+        recipientAnOrgIds: values.nuOrgIds,
+      });
+      await publishDataPublication.mutateAsync(publication.id);
       const created = await createRequestBatch.mutateAsync({
         data: {
           taktId: takt.id,
           nuOrgIds: values.nuOrgIds,
           message: values.message,
-          dataPublicationId: values.dataPublicationId,
+          dataPublicationId: publication.id,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
@@ -394,13 +402,9 @@ export default function TaktDetail() {
       <LeistungVergabeDialog
         open={assignOpen}
         onOpenChange={setAssignOpen}
-        taktId={takt.id}
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        publications={publications}
-        publicationsLoading={publicationsLoading}
-        publicationsError={publicationsError}
         policies={policyRegistry}
         policiesLoading={policiesLoading}
         policiesError={policiesError}

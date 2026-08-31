@@ -108,6 +108,8 @@ import {
   getListProjectSubcontractorsQueryKey,
   useGetPolicyTemplateRegistry,
   useGetProjectDataPublications,
+  useCreateDataPublication,
+  usePublishDataPublication,
   useRetryDataPublicationDelivery,
   useSuspendDataPublication,
   useWithdrawDataPublication,
@@ -715,6 +717,8 @@ export default function ProjectDetail() {
   const deleteTakt = useDeleteTakt();
   const createTaktRequestBatch = useCreateTaktRequestBatchWithSnapshot();
   const sendTaktRequest = useSendTaktRequest();
+  const createDataPublication = useCreateDataPublication(projectId);
+  const publishDataPublication = usePublishDataPublication();
   const closeRequest = useCreateGuDecision();
   const revokeMembership = useRevokeProjectMembership();
   const retryInvitationDelivery = useRetryProjectInvitationDelivery();
@@ -1275,12 +1279,22 @@ export default function ProjectDetail() {
     if (!selectedTakt || isDelegating) return;
     setIsDelegating(true);
     try {
+      const publication = await createDataPublication.mutateAsync({
+        dataProductType: 'TAKT_INFORMATION_PACKAGE',
+        title: `Leistungsfreigabe – ${selectedTakt.kurzbezeichnung || selectedTakt.taktBezeichnung}`,
+        description: values.message,
+        policyTemplateId: values.policyTemplateId,
+        selectedFields: values.selectedFields,
+        selectedTaktIds: [selectedTakt.id],
+        recipientAnOrgIds: values.nuOrgIds,
+      });
+      await publishDataPublication.mutateAsync(publication.id);
       const created = await createTaktRequestBatch.mutateAsync({
         data: {
           taktId: selectedTakt.id,
           nuOrgIds: values.nuOrgIds,
           message: values.message,
-          dataPublicationId: values.dataPublicationId,
+          dataPublicationId: publication.id,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
@@ -2852,19 +2866,14 @@ export default function ProjectDetail() {
       <LeistungVergabeDialog
         open={isVergabeOpen}
         onOpenChange={setIsVergabeOpen}
-        taktId={selectedTakt?.id ?? ''}
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        publications={dataPublications}
-        publicationsLoading={dataPublicationsLoading}
-        publicationsError={dataPublicationsError}
         policies={policyRegistry}
         policiesLoading={policiesLoading}
         policiesError={policiesError}
         isSubmitting={isDelegating}
         onSubmit={handleDelegateTakt}
-        onCreatePublication={() => setIsDataspaceOpen(true)}
       />
 
       {/* ── Edit Takt Dialog ─────────────────────────────────────────────────── */}

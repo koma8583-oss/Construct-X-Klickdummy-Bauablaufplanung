@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getPolicyTemplateRegistryEntry,
+  listPublicationPolicyTemplates,
   listPolicyTemplateRegistry,
 } from "../lib/policy-template-registry";
 import {
@@ -17,7 +18,7 @@ const providerContext = {
 describe("policy template registry", () => {
   it("looks up stable templates by id/code and exposes parallel versions", () => {
     const templates = listPolicyTemplateRegistry();
-    expect(templates).toHaveLength(8);
+    expect(templates).toHaveLength(9);
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 1)?.version).toBe(1);
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 2)?.version).toBe(2);
     expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION", 1)?.templateId)
@@ -33,6 +34,20 @@ describe("policy template registry", () => {
     expect(getPolicyTemplateRegistryEntry("tk-policy-performance-coordination")?.code)
       .toBe("PERFORMANCE_COORDINATION");
     expect(getPolicyTemplateRegistryEntry("missing-template")).toBeNull();
+  });
+
+  it("exposes a separate performance publication policy with dependency fields", () => {
+    const publication = listPublicationPolicyTemplates().find(
+      (template) => template.code === "PERFORMANCE_COORDINATION",
+    );
+    expect(publication).toMatchObject({
+      templateId: "tk-policy-performance-coordination",
+      version: 1,
+    });
+    expect(publication?.allowedPublicationFields).toEqual(
+      expect.arrayContaining(["kurzbezeichnung", "workPackage", "predecessors", "successors"]),
+    );
+    expect(publication?.allowedPublicationFields).not.toContain("internalNote");
   });
 
   it("rejects mutation of registry metadata", () => {

@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Info, Send, Users } from 'lucide-react';
-import type { DataPublication } from '@workspace/api-client-react';
-import type { PolicyTemplateRegistryEntry } from '@workspace/api-client-react';
+import {
+  FIELD_GROUPS,
+  FIELD_LABELS,
+  FIELD_WHITELISTS,
+  type PolicyTemplateRegistryEntry,
+} from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/date-picker';
@@ -9,11 +13,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { getEligibleVergabePublications, type VergabePartner } from '@/lib/vergabe';
+import type { VergabePartner } from '@/lib/vergabe';
 
 export type LeistungVergabeSubmitValues = {
   nuOrgIds: string[];
-  dataPublicationId: string;
+  policyTemplateId: string;
+  selectedFields: string[];
   message?: string;
   responseRequiredBy?: string;
 };
@@ -21,108 +26,90 @@ export type LeistungVergabeSubmitValues = {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  taktId: string;
   partners: VergabePartner[];
   partnersLoading?: boolean;
   partnersError?: boolean;
-  publications?: DataPublication[];
-  publicationsLoading?: boolean;
-  publicationsError?: boolean;
   policies?: PolicyTemplateRegistryEntry[];
   policiesLoading?: boolean;
   policiesError?: boolean;
   isSubmitting?: boolean;
   onSubmit: (values: LeistungVergabeSubmitValues) => Promise<void> | void;
-  onCreatePublication?: () => void;
 };
-
-function resetDateValue() {
-  return '';
-}
 
 export function LeistungVergabeDialog({
   open,
   onOpenChange,
-  taktId,
   partners,
   partnersLoading = false,
   partnersError = false,
-  publications = [],
-  publicationsLoading = false,
-  publicationsError = false,
   policies = [],
   policiesLoading = false,
   policiesError = false,
   isSubmitting = false,
   onSubmit,
-  onCreatePublication,
 }: Props) {
   const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
   const [selectedPolicyKey, setSelectedPolicyKey] = useState('');
-  const [publicationId, setPublicationId] = useState('');
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [responseRequiredByError, setResponseRequiredByError] = useState('');
+  const previousPolicyKey = useRef('');
 
-  const schedulePolicies = useMemo(
+  const performancePolicies = useMemo(
     () => policies
-      .filter((policy) => policy.code === 'SCHEDULE_COORDINATION')
+      .filter((policy) => policy.code === 'PERFORMANCE_COORDINATION')
       .sort((a, b) => b.version - a.version),
     [policies],
   );
-  const selectedPolicy = schedulePolicies.find(
+  const selectedPolicy = performancePolicies.find(
     (policy) => `${policy.code}:${policy.version}` === selectedPolicyKey,
   );
-  const eligiblePublications = useMemo(
-    () => getEligibleVergabePublications(
-      publications,
-      taktId,
-      selectedNuIds,
-      selectedPolicy
-        ? {
-            templateId: selectedPolicy.templateId,
-            code: selectedPolicy.code,
-            version: selectedPolicy.version,
-          }
-        : undefined,
-    ),
-    [publications, selectedNuIds, selectedPolicy, taktId],
+  const allowedFields = selectedPolicy?.allowedPublicationFields
+    ?? FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE;
+  const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
+  const visibleFieldGroups = useMemo(
+    () => (FIELD_GROUPS.TAKT_INFORMATION_PACKAGE ?? [])
+      .map((group) => ({
+        ...group,
+        fields: group.fields.filter((field) => allowedFieldSet.has(field)),
+      }))
+      .filter((group) => group.fields.length > 0),
+    [allowedFieldSet],
   );
 
   useEffect(() => {
     if (!open) {
       setSelectedNuIds([]);
       setSelectedPolicyKey('');
-      setPublicationId('');
+      setSelectedFields([]);
+      previousPolicyKey.current = '';
       setMessage('');
-      setResponseRequiredBy(resetDateValue());
+      setResponseRequiredBy('');
       setResponseRequiredByError('');
       return;
     }
-    if (schedulePolicies[0] && (!selectedPolicyKey || !selectedPolicy)) {
-      setSelectedPolicyKey(`${schedulePolicies[0].code}:${schedulePolicies[0].version}`);
+    if (performancePolicies[0] && (!selectedPolicyKey || !selectedPolicy)) {
+      setSelectedPolicyKey(`${performancePolicies[0].code}:${performancePolicies[0].version}`);
     }
-  }, [open, schedulePolicies, selectedPolicy, selectedPolicyKey]);
-
-  useEffect(() => {
-    if (publicationId && !eligiblePublications.some((publication) => publication.id === publicationId)) {
-      setPublicationId('');
+    if (selectedPolicy && previousPolicyKey.current !== selectedPolicyKey) {
+      setSelectedFields([...allowedFields]);
+      previousPolicyKey.current = selectedPolicyKey;
     }
-  }, [eligiblePublications, publicationId]);
+  }, [open, performancePolicies, selectedPolicy, selectedPolicyKey, allowedFields, allowedFieldSet]);
 
   const toggleNu = (anOrgId: string) => {
     setSelectedNuIds((current) => {
       const next = current.includes(anOrgId)
         ? current.filter((id) => id !== anOrgId)
         : [...current, anOrgId];
-      setPublicationId('');
       return next;
     });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (selectedNuIds.length === 0 || !selectedPolicy || !publicationId) return;
+    if (selectedNuIds.length === 0 || !selectedPolicy || selectedFields.length === 0) return;
     if (responseRequiredBy) {
       const deadline = new Date(responseRequiredBy);
       const minimum = new Date(Date.now() + 60 * 60 * 1000);
@@ -133,7 +120,8 @@ export function LeistungVergabeDialog({
     }
     await onSubmit({
       nuOrgIds: selectedNuIds,
-      dataPublicationId: publicationId,
+      policyTemplateId: selectedPolicy.templateId,
+      selectedFields,
       message: message.trim() || undefined,
       responseRequiredBy: responseRequiredBy || undefined,
     });
@@ -151,16 +139,6 @@ export function LeistungVergabeDialog({
         : '',
     );
   };
-
-  const publicationMessage = selectedNuIds.length === 0
-    ? 'Wählen Sie zuerst mindestens einen Nachunternehmer aus.'
-    : publicationsLoading
-      ? 'Veröffentlichungen werden geladen…'
-      : publicationsError
-        ? 'Die Veröffentlichungen konnten nicht geladen werden. Bitte versuchen Sie es erneut.'
-        : eligiblePublications.length === 0
-          ? 'Keine veröffentlichte Leistungsinformation passt zu allen ausgewählten Nachunternehmen und der ausgewählten Policy.'
-          : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,30 +183,29 @@ export function LeistungVergabeDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Rahmentermin-Policy *</Label>
+             <Label>Leistungsfreigabe-Policy *</Label>
             {policiesLoading ? (
               <p className="text-sm text-muted-foreground">Policies werden geladen…</p>
             ) : policiesError ? (
               <p className="flex items-start gap-2 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                Die Rahmentermin-Policies konnten nicht geladen werden.
+                 Die Leistungsfreigabe-Policies konnten nicht geladen werden.
               </p>
-            ) : schedulePolicies.length === 0 ? (
-              <p className="text-sm text-destructive">Keine gültige Rahmentermin-Policy ist verfügbar.</p>
+            ) : performancePolicies.length === 0 ? (
+             <p className="text-sm text-destructive">Keine gültige Leistungsfreigabe-Policy ist verfügbar.</p>
             ) : (
               <>
                 <Select
                   value={selectedPolicyKey}
                   onValueChange={(value) => {
                     setSelectedPolicyKey(value);
-                    setPublicationId('');
                   }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Policy auswählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {schedulePolicies.map((policy) => (
+                     {performancePolicies.map((policy) => (
                       <SelectItem key={`${policy.code}-${policy.version}`} value={`${policy.code}:${policy.version}`}>
                         {policy.name} · v{policy.version}
                       </SelectItem>
@@ -237,40 +214,60 @@ export function LeistungVergabeDialog({
                 </Select>
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                  Nur Veröffentlichungen mit dieser Rahmentermin-Policy und Version werden angeboten.
+                   Diese Policy ergänzt die akzeptierte Projektmitgliedschafts-Policy und gilt nur für die konkret vergebene Leistung.
                 </p>
               </>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>Veröffentlichte Leistungsinformationen *</Label>
-            {publicationMessage ? (
-              <div className="space-y-2">
-                <p className="rounded-md border border-border/60 bg-muted/20 p-2.5 text-xs text-muted-foreground">
-                  {publicationMessage}
-                </p>
-                {selectedNuIds.length > 0 && !publicationsLoading && !publicationsError &&
-                  eligiblePublications.length === 0 && onCreatePublication && (
-                    <Button type="button" variant="outline" size="sm" onClick={onCreatePublication}>
-                      Datenraum-Veröffentlichung erstellen
-                    </Button>
-                  )}
-              </div>
-            ) : (
-              <Select value={publicationId} onValueChange={setPublicationId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Veröffentlichung auswählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {eligiblePublications.map((publication) => (
-                    <SelectItem key={publication.id} value={publication.id}>
-                      {publication.title} · Version {publication.version}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+             <div className="flex items-center justify-between">
+             <Label>Freizugebende Leistungsdaten *</Label>
+               <button
+                 type="button"
+                 className="text-xs text-primary hover:underline"
+                 onClick={() => setSelectedFields(
+                   selectedFields.length === allowedFields.length ? [] : [...allowedFields],
+                 )}
+               >
+                 {selectedFields.length === allowedFields.length ? 'Alle abwählen' : 'Alle wählen'}
+               </button>
+             </div>
+             <p className="text-xs text-muted-foreground">
+               Die Auswahl betrifft nur die Leistungsfreigabe. Interne Angaben wie Kosten, Risiko, Priorität und Notizen bleiben immer ausgeschlossen.
+             </p>
+             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+               {visibleFieldGroups.map((group) => (
+                 <div key={group.label} className="rounded-md border overflow-hidden">
+                   <div className="flex items-center justify-between bg-muted/30 px-3 py-2">
+                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</span>
+                     <span className="text-[10px] text-primary">
+                       {group.fields.filter((field) => selectedFields.includes(field)).length}/{group.fields.length}
+                     </span>
+                   </div>
+                   <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
+                     {group.fields.map((field) => (
+                       <label key={field} className="flex items-center gap-2 py-1 text-sm">
+                         <Checkbox
+                           checked={selectedFields.includes(field)}
+                           onCheckedChange={(checked) => setSelectedFields((current) => (
+                             checked
+                               ? [...new Set([...current, field])]
+                               : current.filter((item) => item !== field)
+                           ))}
+                         />
+                         <span>{FIELD_LABELS[field] ?? field}</span>
+                       </label>
+                     ))}
+                   </div>
+                 </div>
+               ))}
+             </div>
+             {selectedFields.length === 0 && (
+               <p className="flex items-center gap-1 text-xs text-destructive">
+                 <AlertCircle className="h-3 w-3" /> Mindestens ein Datenfeld muss freigegeben werden.
+               </p>
+             )}
           </div>
 
           <Textarea
@@ -301,7 +298,7 @@ export function LeistungVergabeDialog({
           <Button
             type="submit"
             form="leistung-vergabe-form"
-            disabled={isSubmitting || selectedNuIds.length === 0 || !selectedPolicy || !publicationId || !!responseRequiredByError}
+             disabled={isSubmitting || selectedNuIds.length === 0 || !selectedPolicy || selectedFields.length === 0 || !!responseRequiredByError}
           >
             <Send className="mr-2 h-4 w-4" />
             {isSubmitting ? 'Vergabe läuft…' : 'Vergeben'}

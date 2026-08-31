@@ -55,6 +55,11 @@ const RAHMENTERMIN_PUBLICATION_FIELDS = [
   "successors",
 ] as const;
 
+const LEISTUNGSFREIGABE_PUBLICATION_FIELDS = [
+  ...RAHMENTERMIN_PUBLICATION_FIELDS,
+  "resourceRequirements",
+] as const;
+
 const PROJECT_MEMBERSHIP_FIELDS = [
   "projectReference",
   "projectName",
@@ -85,6 +90,25 @@ const PUBLICATION_ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
     ],
     validityRule: "Ausschließlich für die Rahmentermin-Abstimmung im konkreten Projekt.",
     retentionRule: null,
+  },
+  {
+    templateId: "tk-policy-performance-coordination",
+    version: 1,
+    code: "PERFORMANCE_COORDINATION",
+    name: "Leistungsfreigabe",
+    description:
+      "Leistungsbezogene Freigabe der wesentlichen Informationen zu einer konkret vergebenen Leistung einschließlich ihrer Vor- und Nachfolger.",
+    purpose: "performanceCoordination",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference", "workPackageReference"],
+    allowedOverrides: [
+      "recipientOrganizationId", "purpose", "projectReference",
+      "workPackageReference", "validFrom", "validUntil",
+    ],
+    allowedPublicationFields: LEISTUNGSFREIGABE_PUBLICATION_FIELDS,
+    permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    prohibitions: ["REDISTRIBUTE", "SHARE_OUTSIDE_PROJECT_TEAM", "COMMERCIAL_REUSE", "AI_TRAINING"],
+    validityRule: "Gilt nur für die konkret vergebene Leistung im konkreten Projekt.",
+    retentionRule: "Nur so lange speichern, wie die Leistungskoordination dies erfordert.",
   },
 ];
 
