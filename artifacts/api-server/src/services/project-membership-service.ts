@@ -422,6 +422,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       "Für eine Projekteinladung darf ausschließlich die Policy Projektaufnahme verwendet werden.",
     );
   }
+  const policyTemplateId = policy.id;
   const registryPolicy = getPolicyTemplateRegistryEntry(
     policy.code,
     input.policyTemplateVersion,
@@ -492,7 +493,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     const sameFields = JSON.stringify([...existingPublication[0].selectedFields].sort()) ===
       JSON.stringify([...input.selectedFields].sort());
     if (!sameParticipants || !sameFields ||
-        existingPublication[0].policyTemplateId !== input.policyTemplateId ||
+        existingPublication[0].policyTemplateId !== policyTemplateId ||
         existingPolicyVersion !== requestedPolicyVersion ||
         existingPublication[0].title !== input.title) {
       throw new ProjectMembershipError(
@@ -558,7 +559,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       version: 1,
       schemaVersion: "1.0",
       status: "PUBLISHED",
-      policyTemplateId: input.policyTemplateId,
+       policyTemplateId,
       selectedFields: invitationFields,
       selectedTaktIds: null,
       contentSnapshot: snapshot,

@@ -606,7 +606,10 @@ describe("project invitation delivery retries", () => {
 
 describe("membership gates and legacy compatibility", () => {
   it("reopens a revoked relationship with a delivered invitation package on both sides", async () => {
-    const [policy] = await db.select({ id: policyTemplatesTable.id })
+    const [policy] = await db.select({
+      id: policyTemplatesTable.id,
+      code: policyTemplatesTable.code,
+    })
       .from(policyTemplatesTable)
       .where(eq(policyTemplatesTable.code, "PROJECT_MEMBERSHIP"))
       .limit(1);
@@ -616,7 +619,7 @@ describe("membership gates and legacy compatibility", () => {
       .set("Authorization", `Bearer ${agToken}`)
       .send({
         participantIds: [`local:${AN_ID}`],
-        policyTemplateId: policy.id,
+        policyTemplateId: policy.code,
         policyTemplateVersion: 1,
         selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
@@ -685,7 +688,7 @@ describe("membership gates and legacy compatibility", () => {
       .set("Authorization", `Bearer ${agToken}`)
       .send({
         participantIds: [`local:${AN_ID}`],
-        policyTemplateId: policy.id,
+        policyTemplateId: policy.code,
         policyTemplateVersion: 1,
         selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
@@ -699,7 +702,7 @@ describe("membership gates and legacy compatibility", () => {
       .set("Authorization", `Bearer ${agToken}`)
       .send({
         participantIds: [`local:${AN_ID}`],
-        policyTemplateId: policy.id,
+        policyTemplateId: policy.code,
         policyTemplateVersion: 2,
         selectedFields: ["projectReference", "projectName", "projectStatus", "projectLocation"],
         title: "Task 239 re-invitation",
