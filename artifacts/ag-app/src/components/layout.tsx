@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Globe,
+  CircleHelp,
 } from 'lucide-react';
 
 interface NavItem {
@@ -43,6 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: t('nav.projects'), href: '/projects', icon: Briefcase },
     { name: 'Anfragen', href: '/leistungsanfragen', icon: Send, badge: pendingProposalsTotal },
     { name: 'Datenraum', href: '/data-room', icon: Globe },
+    { name: 'Hilfe', href: '/hilfe', icon: CircleHelp },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
 
@@ -109,7 +111,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             const isActive = location === item.href || (item.href !== '/' && location.startsWith(item.href));
             const hasBadge = (item.badge ?? 0) > 0;
             return (
-              <Link key={item.name} href={item.href} onClick={closeMobile}>
+              <Link key={item.name} href={item.href} onClick={closeMobile} data-testid={`link-nav-${item.href === '/' ? 'dashboard' : item.href.slice(1).replaceAll('/', '-')}`}>
                 <div
                   title={collapsed ? item.name : undefined}
                   className={[

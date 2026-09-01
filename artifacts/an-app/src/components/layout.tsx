@@ -17,6 +17,7 @@ import {
   FolderOpen,
   ShieldCheck,
   Globe,
+  HelpCircle,
 } from "lucide-react";
 
 interface NavItem {
@@ -41,6 +42,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { href: "/local-projects", icon: FolderOpen, label: "Ressourcen" },
     { href: "/data-room", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
+    { href: "/hilfe", icon: HelpCircle, label: "Hilfe" },
   ];
 
   const closeMobile = () => setMobileOpen(false);
@@ -112,6 +114,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 key={item.href}
                 href={item.href}
                 onClick={closeMobile}
+                data-testid={`link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replaceAll("/", "-")}`}
                 title={collapsed ? item.label : undefined}
                 className={[
                   "flex items-center gap-3 rounded-md text-sm font-medium transition-colors",

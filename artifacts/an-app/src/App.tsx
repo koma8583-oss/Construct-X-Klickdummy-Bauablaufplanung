@@ -26,6 +26,7 @@ import AvailabilityChecks from '@/pages/availability-checks';
 import Reports from '@/pages/reports';
 import DataOffers from '@/pages/data-offers';
 import PolicyLibrary from '@/pages/policy-library';
+import Help from '@/pages/help';
 
 const queryClient = new QueryClient();
 
@@ -99,6 +100,7 @@ function AuthRoutedApp() {
           <Redirect to="/local-projects/resources" />
         </Route>
         <Route path="/settings" component={Settings} />
+        <Route path="/hilfe" component={Help} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
