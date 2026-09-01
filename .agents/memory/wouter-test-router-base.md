@@ -7,4 +7,4 @@ Use an empty base in component tests when asserting root-relative links such as 
 
 **Why:** Wouter concatenates the configured base and target path literally, so a slash base plus a slash-prefixed target is not normalized in the test DOM.
 
-**How to apply:** Prefer `Router base=""` for isolated root-path link assertions; keep the production app's configured artifact base unchanged.
+**How to apply:** Prefer `Router base=""` for isolated root-path link assertions; keep the production app's configured artifact base unchanged. For pages using `useParams`, mount them through a matching dynamic `Route` so the parameter context exists.
