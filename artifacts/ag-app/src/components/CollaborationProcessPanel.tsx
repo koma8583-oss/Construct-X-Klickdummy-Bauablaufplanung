@@ -7,7 +7,11 @@ import {
   UserPlus,
   XCircle,
 } from "lucide-react";
-import type { DataPublication, ProjectMembership } from "@workspace/api-client-react";
+import type {
+  DataPublication,
+  ProjectMembership,
+  PublicationRecipientSummary,
+} from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +23,7 @@ interface Props {
   publications: DataPublication[];
   getPartnerName: (anOrgId: string) => string;
   onInvite: () => void;
-  onReleaseData: (anOrgId: string) => void;
+  onReleaseData: (anOrgId: string, draftPublicationId?: string) => void;
 }
 
 type StepState = "complete" | "current" | "locked" | "rejected";
@@ -31,16 +35,49 @@ const STATE_STYLES: Record<StepState, string> = {
   rejected: "border-destructive/30 bg-destructive/5",
 };
 
-function publicationForPartner(publications: DataPublication[], anOrgId: string) {
-  return [...publications]
-    .filter((publication) =>
-      publication.recipients?.some((recipient) => recipient.anOrgId === anOrgId),
-    )
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+type EffectivePublicationState = {
+  publishedPublication?: DataPublication;
+  publishedRecipient?: PublicationRecipientSummary;
+  draftPublication?: DataPublication;
+};
+
+function publicationTimestamp(publication: DataPublication): number {
+  return Date.parse(publication.publishedAt ?? publication.createdAt) || 0;
 }
 
-function recipientForPartner(publication: DataPublication | undefined, anOrgId: string) {
-  return publication?.recipients?.find((recipient) => recipient.anOrgId === anOrgId);
+function newestPublication(publications: DataPublication[]): DataPublication | undefined {
+  return [...publications].sort((a, b) => {
+    const timestampDifference = publicationTimestamp(b) - publicationTimestamp(a);
+    return timestampDifference !== 0 ? timestampDifference : b.id.localeCompare(a.id);
+  })[0];
+}
+
+/**
+ * A draft is not allowed to hide an already published offer. The published
+ * version is the effective access state; a draft is only an additional hint
+ * that a newer release is being prepared.
+ */
+export function getEffectivePublicationState(
+  publications: DataPublication[],
+  anOrgId: string,
+): EffectivePublicationState {
+  const partnerPublications = publications.filter((publication) =>
+    publication.recipients?.some((recipient) => recipient.anOrgId === anOrgId),
+  );
+  const publishedPublication = newestPublication(
+    partnerPublications.filter((publication) => publication.status === "PUBLISHED"),
+  );
+  const draftPublication = newestPublication(
+    partnerPublications.filter((publication) => publication.status === "DRAFT"),
+  );
+
+  return {
+    publishedPublication,
+    publishedRecipient: publishedPublication?.recipients?.find(
+      (recipient) => recipient.anOrgId === anOrgId,
+    ),
+    draftPublication,
+  };
 }
 
 function StepIcon({ state }: { state: StepState }) {
@@ -116,33 +153,55 @@ function PartnerProcess({
   membership: ProcessMembership;
   publications: DataPublication[];
   partnerName: string;
-  onReleaseData: (anOrgId: string) => void;
+  onReleaseData: (anOrgId: string, draftPublicationId?: string) => void;
 }) {
   const isActive = membership.status === "ACTIVE";
   const isRejected = membership.status === "REJECTED";
-  const publication = publicationForPartner(publications, membership.anOrgId);
-  const recipient = recipientForPartner(publication, membership.anOrgId);
-  const isPublished = publication?.status === "PUBLISHED";
-  const isAccepted = isPublished && recipient?.status === "ACCEPTED";
-  const isOfferRejected = isPublished && recipient?.status === "REJECTED";
+  const isRevoked = membership.status === "REVOKED";
+  const invitationSent = isActive || isRejected || isRevoked || membership.status === "INVITED";
+  const {
+    publishedPublication,
+    publishedRecipient,
+    draftPublication,
+  } = getEffectivePublicationState(publications, membership.anOrgId);
+  const isPublished = !!publishedPublication;
+  const recipientStatus = publishedRecipient?.status;
 
   const publicationDetail = !isActive
     ? "Gesperrt · erst nach aktiver Projektmitgliedschaft"
     : isPublished
-      ? "Datenfreigabe veröffentlicht"
-      : publication?.status === "DRAFT"
-        ? "Datenfreigabe als Entwurf vorhanden"
+      ? draftPublication
+        ? "Datenfreigabe veröffentlicht · neuer Entwurf vorhanden"
+        : "Datenfreigabe veröffentlicht"
+      : draftPublication
+        ? "Datenfreigabe als Entwurf gespeichert · erneut veröffentlichbar"
         : "Noch keine Datenfreigabe veröffentlicht";
 
   const accessDetail = !isActive
     ? "Gesperrt · erst nach Datenfreigabe"
     : !isPublished
       ? "Gesperrt · erst nach veröffentlichter Datenfreigabe"
-      : isAccepted
-        ? "Datenzugriff akzeptiert"
-        : isOfferRejected
-          ? "Datenangebot vom AN abgelehnt"
-          : "Datenangebot offen · AN muss die Nutzungsrichtlinie prüfen";
+      : recipientStatus === "OFFERED"
+        ? "Datenangebot wartet auf Prüfung/Akzeptanz durch AN"
+        : recipientStatus === "ACCEPTED"
+          ? "Datenzugriff aktiv · abgeschlossen"
+          : recipientStatus === "REJECTED"
+            ? "Datenangebot abgelehnt"
+            : recipientStatus === "REVOKED"
+              ? "Datenzugriff widerrufen"
+              : recipientStatus === "EXPIRED"
+                ? "Datenfreigabe abgelaufen"
+                : "Empfängerstatus nicht verfügbar";
+
+  const accessState: StepState = !isActive || !isPublished
+    ? "locked"
+    : recipientStatus === "ACCEPTED"
+      ? "complete"
+      : recipientStatus === "REJECTED" ||
+          recipientStatus === "REVOKED" ||
+          recipientStatus === "EXPIRED"
+        ? "rejected"
+        : "current";
 
   return (
     <div
@@ -153,14 +212,26 @@ function PartnerProcess({
         <div className="min-w-0">
           <p className="truncate font-semibold">{partnerName} · Datenraumprozess</p>
           <p className="text-xs text-muted-foreground">
-            {isActive ? "Aktive Projektmitgliedschaft" : membership.status === "INVITED" ? "Einladung gesendet" : "Projektaufnahme abgelehnt"}
+            {isActive
+              ? "Aktive Projektmitgliedschaft"
+              : membership.status === "INVITED"
+                ? "Einladung gesendet"
+                : membership.status === "REVOKED"
+                  ? "Projektmitgliedschaft widerrufen"
+                  : "Projektaufnahme abgelehnt"}
           </p>
         </div>
         <Badge
-          variant={isActive ? "default" : isRejected ? "destructive" : "outline"}
+          variant={isActive ? "default" : isRejected || isRevoked ? "destructive" : "outline"}
           className="shrink-0"
         >
-          {isActive ? "Mitgliedschaft aktiv" : isRejected ? "Abgelehnt" : "Einladung offen"}
+          {isActive
+            ? "Mitgliedschaft aktiv"
+            : isRejected
+              ? "Abgelehnt"
+              : isRevoked
+                ? "Widerrufen"
+                : "Einladung offen"}
         </Badge>
       </div>
 
@@ -169,13 +240,15 @@ function PartnerProcess({
           number={1}
           label="Einladung"
           detail={
-            isRejected
+            !invitationSent
+              ? "Noch nicht gesendet"
+              : isRejected
               ? "Einladung abgelehnt"
-              : isActive
-                ? "Abgeschlossen"
-                : "Gesendet · Warten auf Annahme durch AN"
+                : isRevoked
+                  ? "Einladung gesendet"
+                  : "Gesendet"
           }
-          state={isRejected ? "rejected" : isActive ? "complete" : "current"}
+          state={isRejected || isRevoked || invitationSent ? "complete" : "current"}
         />
         <ProcessStep
           number={2}
@@ -183,25 +256,31 @@ function PartnerProcess({
           detail={
             isRejected
               ? "Projektaufnahme abgelehnt"
+              : isRevoked
+                ? "Projektmitgliedschaft widerrufen"
               : isActive
                 ? "Aktiv"
                 : "Warten auf Annahme durch AN"
           }
-          state={isRejected ? "rejected" : isActive ? "complete" : "current"}
+          state={isRejected || isRevoked ? "rejected" : isActive ? "complete" : "current"}
         />
         <ProcessStep
           number={3}
           label="Datenfreigabe"
           detail={publicationDetail}
-          state={isRejected ? "locked" : isPublished ? "complete" : isActive ? "current" : "locked"}
-          action={isActive && !isPublished ? "Daten für AN freigeben" : undefined}
-          onAction={isActive && !isPublished ? () => onReleaseData(membership.anOrgId) : undefined}
+          state={isRejected || isRevoked ? "locked" : isPublished ? "complete" : isActive ? "current" : "locked"}
+          action={isActive && !isPublished ? (draftPublication ? "Entwurf veröffentlichen" : "Daten für AN freigeben") : undefined}
+          onAction={
+            isActive && !isPublished
+              ? () => onReleaseData(membership.anOrgId, draftPublication?.id)
+              : undefined
+          }
         />
         <ProcessStep
           number={4}
           label="Datenzugriff"
           detail={accessDetail}
-          state={isRejected ? "locked" : isAccepted ? "complete" : isPublished ? "current" : "locked"}
+          state={isRejected ? "locked" : accessState}
         />
       </div>
     </div>

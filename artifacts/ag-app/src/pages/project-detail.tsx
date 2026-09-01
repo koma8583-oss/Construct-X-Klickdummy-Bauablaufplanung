@@ -813,6 +813,7 @@ export default function ProjectDetail() {
   // Dataspace publication wizard
   const [isDataspaceOpen, setIsDataspaceOpen] = useState(false);
   const [dataPublicationRecipientIds, setDataPublicationRecipientIds] = useState<string[]>([]);
+  const [dataPublicationDraftId, setDataPublicationDraftId] = useState<string>();
   const [isInvitationPackageOpen, setIsInvitationPackageOpen] = useState(false);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
@@ -1342,7 +1343,7 @@ export default function ProjectDetail() {
     }
   };
 
-  const openDataPublicationFor = (anOrgId?: string) => {
+  const openDataPublicationFor = (anOrgId?: string, draftPublicationId?: string) => {
     if (anOrgId && !(memberships ?? []).some((membership) => membership.anOrgId === anOrgId && membership.status === 'ACTIVE')) {
       toast({
         title: 'Datenfreigabe noch nicht möglich',
@@ -1352,6 +1353,7 @@ export default function ProjectDetail() {
       return;
     }
     setDataPublicationRecipientIds(anOrgId ? [anOrgId] : []);
+    setDataPublicationDraftId(draftPublicationId);
     setIsDataspaceOpen(true);
   };
 
@@ -3995,6 +3997,9 @@ export default function ProjectDetail() {
           projectName={project.projectName ?? ''}
           contractors={publicationRecipients}
           initialRecipientIds={dataPublicationRecipientIds}
+          draftPublication={dataPublicationDraftId
+            ? dataPublications?.find((publication) => publication.id === dataPublicationDraftId)
+            : undefined}
         />
       )}
 

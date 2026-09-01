@@ -30,6 +30,7 @@ import {
   FIELD_LABELS,
   FIELD_GROUPS,
   type DataProductType,
+  type DataPublication,
   type PolicyTemplate,
 } from '@workspace/api-client-react';
 import {
@@ -189,6 +190,8 @@ interface Props {
   projectName: string;
   contractors: ContractorOption[];
   initialRecipientIds?: string[];
+  /** Reopen an existing draft instead of creating another publication. */
+  draftPublication?: DataPublication;
 }
 
 // The only product type is TAKT_INFORMATION_PACKAGE — no selection step needed.
@@ -199,6 +202,13 @@ const STEP_LABELS = ['Empfänger', 'Policy', 'Daten auswählen', 'Freigabe prüf
 const PRODUCT_TYPE: DataProductType = 'TAKT_INFORMATION_PACKAGE';
 const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
 
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function DataPublicationWizard({
@@ -208,6 +218,7 @@ export function DataPublicationWizard({
   projectName,
   contractors,
   initialRecipientIds = [],
+  draftPublication,
 }: Props) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -222,6 +233,8 @@ export function DataPublicationWizard({
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [policyViewOpen, setPolicyViewOpen] = useState(false);
+  const [draftIdForRetry, setDraftIdForRetry] = useState<string>();
+  const [draftSavedForRetry, setDraftSavedForRetry] = useState(false);
 
   const { data: policyTemplates } = useGetPolicyTemplates();
   const createDataPublication = useCreateDataPublication(projectId);
@@ -242,10 +255,27 @@ export function DataPublicationWizard({
   );
 
   useEffect(() => {
-    if (open) {
-      setSelectedRecipients(new Set(initialRecipientIds));
+    if (!open) return;
+    if (
+      draftIdForRetry &&
+      (!draftPublication || draftPublication.id === draftIdForRetry)
+    ) {
+      return;
     }
-  }, [open, initialRecipientIds]);
+
+    const draftRecipients = draftPublication?.recipients?.map((recipient) => recipient.anOrgId);
+    setSelectedRecipients(new Set(draftRecipients?.length ? draftRecipients : initialRecipientIds));
+    setSelectedFields(new Set(draftPublication?.selectedFields ?? ALL_FIELDS));
+    setPolicyTemplateId(draftPublication?.policyTemplateId ?? '');
+    setPolicyTemplateVersion(draftPublication?.policyTemplateVersion ?? undefined);
+    setTitle(draftPublication?.title ?? '');
+    setDescription(draftPublication?.description ?? '');
+    setValidFrom(toDateInputValue(draftPublication?.validFrom));
+    setValidUntil(toDateInputValue(draftPublication?.validUntil));
+    setDraftIdForRetry(draftPublication?.id);
+    setDraftSavedForRetry(false);
+    setStep(0);
+  }, [open, initialRecipientIds, draftPublication?.id, draftIdForRetry]);
 
   useEffect(() => {
     if (!selectedPolicy?.allowedPublicationFields) return;
@@ -271,6 +301,8 @@ export function DataPublicationWizard({
       setDescription('');
       setValidFrom('');
       setValidUntil('');
+      setDraftIdForRetry(undefined);
+      setDraftSavedForRetry(false);
     }
     onOpenChange(v);
   };
@@ -295,22 +327,36 @@ export function DataPublicationWizard({
 
   const handlePublish = async () => {
     if (!policyTemplateId) return;
+    let publicationId = draftPublication?.id ?? draftIdForRetry;
     try {
-      const publication = await createDataPublication.mutateAsync({
-        dataProductType: PRODUCT_TYPE,
-        title: title.trim() || autoTitle,
-        description: description.trim() || undefined,
-        policyTemplateId,
-        selectedFields: Array.from(selectedFields),
-        recipientAnOrgIds: Array.from(selectedRecipients),
-        validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
-        validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
-      });
-      await publishDataPublication.mutateAsync(publication.id);
+      if (!publicationId) {
+        const publication = await createDataPublication.mutateAsync({
+          dataProductType: PRODUCT_TYPE,
+          title: title.trim() || autoTitle,
+          description: description.trim() || undefined,
+          policyTemplateId,
+          selectedFields: Array.from(selectedFields),
+          recipientAnOrgIds: Array.from(selectedRecipients),
+          validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
+          validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
+        });
+        publicationId = publication.id;
+        setDraftIdForRetry(publication.id);
+      }
+      await publishDataPublication.mutateAsync(publicationId);
       toast({ title: 'Datenfreigabe veröffentlicht', description: 'Die Datenfreigabe wurde separat für aktive Projektmitglieder bereitgestellt.' });
       handleOpenChange(false);
     } catch (err) {
-      toast({ title: 'Fehler bei der Datenfreigabe', description: (err as Error).message, variant: 'destructive' });
+      if (publicationId) {
+        setDraftSavedForRetry(true);
+        toast({
+          title: 'Datenfreigabe als Entwurf gespeichert',
+          description: 'Die Veröffentlichung ist fehlgeschlagen. Der Entwurf bleibt erhalten und kann erneut veröffentlicht werden.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Fehler bei der Datenfreigabe', description: (err as Error).message, variant: 'destructive' });
+      }
     }
   };
 
@@ -336,6 +382,14 @@ export function DataPublicationWizard({
               <span>Detailinformationen zu einer konkreten Leistung sind erst zugänglich, wenn der Empfänger die Nutzungsrichtlinie akzeptiert hat <em>und</em> ihm diese Leistung explizit zugeordnet wurde.</span>
             </p>
           </div>
+          {draftSavedForRetry && (
+            <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+              <p className="font-medium">Entwurf gespeichert</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Die Datenfreigabe wurde als Entwurf gespeichert. Sie können die Veröffentlichung erneut versuchen, ohne einen zweiten Entwurf zu erzeugen.
+              </p>
+            </div>
+          )}
         </DialogHeader>
 
         {/* Step indicator */}
