@@ -16,6 +16,7 @@ import Requests from '@/pages/requests';
 import RequestDetail from '@/pages/request-detail';
 import LeistungsanfragenInboxPage from '@/pages/leistungsanfragen-inbox';
 import LeistungsanfrageDetailPage from '@/pages/leistungsanfrage-detail';
+import MessagesPage from '@/pages/messages';
 import GanttPage from '@/pages/gantt';
 import Resources from '@/pages/resources';
 import Settings from '@/pages/settings';
@@ -62,6 +63,7 @@ function AuthRoutedApp() {
         {/* ── Canonical Leistungsanfragen routes ────────────────────────── */}
         <Route path="/leistungsanfragen" component={LeistungsanfragenInboxPage} />
         <Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} />
+        <Route path="/messages" component={MessagesPage} />
 
         {/* ── Legacy /takt-requests → canonical redirects ───────────────── */}
         <Route path="/takt-requests/:requestId">

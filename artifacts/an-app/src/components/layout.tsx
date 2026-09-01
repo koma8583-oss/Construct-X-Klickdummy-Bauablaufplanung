@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
   Inbox,
+  Mail,
   CalendarClock,
   Settings,
   LogOut,
@@ -35,6 +36,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
     { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
+    { href: "/messages", icon: Mail, label: "Nachrichten" },
     { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
     { href: "/local-projects", icon: FolderOpen, label: "Ressourcen" },
     { href: "/data-room", icon: Globe, label: "Datenraum" },
