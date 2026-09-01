@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { format, differenceInHours } from "date-fns";
 import { de } from "date-fns/locale";
 import {
@@ -312,8 +312,14 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
 }
 
 export default function LeistungsanfragenInboxPage() {
+  const [location] = useLocation();
+  const categoryFromUrl = new URLSearchParams(location.split("?")[1] ?? "").get("category");
   const [view, setView] = useState<ViewFilter>("OPEN");
-  const [category, setCategory] = useState<CategoryFilter>("ALL");
+  const [category, setCategory] = useState<CategoryFilter>(
+    categoryFromUrl === "INVITATIONS" || categoryFromUrl === "REQUESTS"
+      ? categoryFromUrl
+      : "ALL",
+  );
   const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
   const requestQuery = useListAnLeistungsanfragen(
     status === "ALL" ? undefined : { status },

@@ -1,11 +1,16 @@
 import { useTranslation } from "react-i18next";
-import { useGetAnDashboard } from "@workspace/api-client-react";
+import {
+  getListAnProjectInvitationsQueryKey,
+  useGetAnDashboard,
+  useListAnProjectInvitations,
+} from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Loader2,
   Inbox,
+  Mail,
   AlertTriangle,
   Clock,
   Shield,
@@ -79,8 +84,15 @@ export default function Dashboard() {
   const { data: dashboard, isLoading, isError, refetch } = useGetAnDashboard({
     query: { queryKey: ["an-dashboard"], refetchInterval: 30_000 },
   });
+  const invitationQuery = useListAnProjectInvitations({
+    query: {
+      queryKey: getListAnProjectInvitationsQueryKey(),
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+  });
 
-  if (isLoading) {
+  if (isLoading || invitationQuery.isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -107,6 +119,8 @@ export default function Dashboard() {
   const activeBookings     = d.activeBookingsCount ?? 0;
   const nextActions        = (d.nextActions        as any[]) ?? [];
   const upcomingDeadlines  = (d.upcomingDeadlines  as any[]) ?? [];
+  const pendingInvitations = (Array.isArray(invitationQuery.data) ? invitationQuery.data : [])
+    .filter((invitation) => invitation.status === "PENDING");
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -128,6 +142,65 @@ export default function Dashboard() {
             </div>
           </div>
       )}
+
+      <Card data-testid="card-project-invitations" className="border-primary/25 bg-primary/5">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Mail className="h-4 w-4 text-primary" />
+              Projekteinladungen
+            </CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Projektbeitritte werden unabhängig von späteren Datenfreigaben angenommen oder abgelehnt.
+            </p>
+          </div>
+          <Badge variant={pendingInvitations.length > 0 ? "default" : "secondary"}>
+            {pendingInvitations.length > 0
+              ? `${pendingInvitations.length} offen`
+              : "Keine offen"}
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {invitationQuery.isError ? (
+            <p className="text-sm text-destructive">
+              Projekteinladungen konnten nicht geladen werden.
+            </p>
+          ) : pendingInvitations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aktuell liegen keine offenen Projekteinladungen vor.
+            </p>
+          ) : (
+            pendingInvitations.slice(0, 3).map((invitation) => (
+              <Link
+                key={invitation.id}
+                href={`/leistungsanfragen?category=INVITATIONS`}
+                className="flex items-center gap-3 rounded-lg border border-primary/20 bg-background/70 px-3 py-2.5 transition-colors hover:bg-background"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-sm font-medium">
+                    {invitation.projectName || "Projektname nicht veröffentlicht"}
+                  </span>
+                  <span className="mt-0.5 block break-words text-xs text-muted-foreground">
+                    Von {invitation.senderAgOrgName || "Auftraggebername nicht veröffentlicht"}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </Link>
+            ))
+          )}
+          {pendingInvitations.length > 3 && (
+            <p className="text-xs text-muted-foreground">
+              + {pendingInvitations.length - 3} weitere offene Einladungen
+            </p>
+          )}
+          <Link href="/leistungsanfragen?category=INVITATIONS">
+            <Button variant="outline" size="sm" className="w-full gap-1.5">
+              Alle Projekteinladungen öffnen
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
