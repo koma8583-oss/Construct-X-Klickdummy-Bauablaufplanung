@@ -394,11 +394,13 @@ const router = Router();
 router.use(requireJwt, (req, res, next) => {
   const resourceRequirementsPath =
     /^\/leistungsanfragen\/[^/]+\/resource-requirements(?:\/|$)/.test(req.path);
+  const bilateralCoordinationPath =
+    /^\/leistungsanfragen\/[^/]+\/(?:coordination|change-proposals)(?:\/|$)/.test(req.path);
   const canonicalAgPath = (
     req.path.startsWith("/leistungsanfragen") ||
     /^\/projects\/[^/]+\/leistungen(?:\/|$)/.test(req.path) ||
     /^\/projects\/[^/]+\/leistungsabhaengigkeiten(?:\/|$)/.test(req.path)
-  ) && !resourceRequirementsPath;
+  ) && !resourceRequirementsPath && !bilateralCoordinationPath;
   if (req.user?.orgType === "AN" && canonicalAgPath) {
     res.status(403).json({ error: "AN Leistungsanfragen are available only through /api/an local projections" });
     return;

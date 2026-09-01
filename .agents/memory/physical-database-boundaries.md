@@ -28,3 +28,16 @@ physical run would hide the same deployment error.
 **How to apply:** Set all three role URLs for the dedicated suite; keep the
 normal suite on the explicit non-production shared-PoC flag when no role URLs
 are available.
+
+Bilateral coordination endpoints are a deliberate exception to the canonical
+AG planning-path guard: proposal history and actions are public coordination
+data owned by the AG-side coordination service, while ordinary Leistungsanfrage
+planning paths must remain AG-only and AN users must use local projections.
+
+**Why:** Coordination needs both parties to exercise proposal/counter/decision
+authorization against the shared AG-owned coordination record without exposing
+private AN planning data.
+
+**How to apply:** When tightening the canonical route guard, keep only
+`coordination` and `change-proposals` paths in this exception; do not broaden it
+to general requests, Leistung data, or dependencies.

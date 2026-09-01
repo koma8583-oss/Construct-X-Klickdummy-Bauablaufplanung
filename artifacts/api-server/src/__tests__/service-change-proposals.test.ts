@@ -39,6 +39,7 @@ const NU_USER = "t212-nu-user";
 const OTHER_USER = "t212-other-user";
 const PROJECT = "t212-project";
 const LEISTUNG = "t212-leistung";
+const ROUNDTRIP_REQUEST = "t212-request-roundtrip";
 const REQUEST_IDS = [
   "t212-request-initial",
   "t212-request-counter",
@@ -47,6 +48,7 @@ const REQUEST_IDS = [
   "t212-request-mismatch",
   "t212-request-concurrent",
   "t212-request-published-labels",
+  ROUNDTRIP_REQUEST,
 ];
 
 const publishedSnapshot = {
@@ -70,8 +72,6 @@ const publishedSnapshot = {
   documentReferences: { lvReference: null, bimReference: null },
 } as const;
 
-const anProjectionIds: string[] = [];
-
 function token(userId: string, orgId: string, orgType: "AG" | "AN") {
   return jwt.sign(
     { userId, orgId, orgType, hubAdmin: false, roles: [orgType === "AG" ? "AG_ADMIN" : "AN_ADMIN"] },
@@ -90,6 +90,28 @@ function createAgChangeProposal(input: Parameters<typeof createChangeProposal>[0
 
 const originalStart = new Date("2026-09-01T08:00:00.000Z");
 const originalEnd = new Date("2026-09-05T17:00:00.000Z");
+
+async function cleanupFixtures() {
+  // Keep reruns independent from a previous interrupted Vitest process. The
+  // AN projection is filtered by its fixture organisation because schedule
+  // change projections use generated proposal IDs rather than request IDs.
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG))
+    .catch(() => {});
+  await db.delete(serviceChangeProposalsTable)
+    .where(inArray(serviceChangeProposalsTable.leistungsanfrageId, REQUEST_IDS))
+    .catch(() => {});
+  await db.delete(leistungsanfrageSnapshotsTable)
+    .where(inArray(leistungsanfrageSnapshotsTable.leistungsanfrageId, REQUEST_IDS))
+    .catch(() => {});
+  await db.delete(leistungsanfragenTable)
+    .where(inArray(leistungsanfragenTable.id, REQUEST_IDS))
+    .catch(() => {});
+  await db.delete(leistungenTable).where(eq(leistungenTable.id, LEISTUNG)).catch(() => {});
+  await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
+  await db.delete(usersTable).where(inArray(usersTable.id, [GU_USER, NU_USER, OTHER_USER])).catch(() => {});
+  await db.delete(organizationsTable).where(inArray(organizationsTable.id, [GU_ORG, NU_ORG, OTHER_ORG])).catch(() => {});
+}
 
 async function insertRequest(id: string, suffix: string, agreed = true, status: "UNDER_REVIEW" | "EXPIRED" = "UNDER_REVIEW") {
   await db.insert(leistungsanfragenTable).values({
@@ -111,6 +133,7 @@ async function insertRequest(id: string, suffix: string, agreed = true, status: 
 }
 
 beforeAll(async () => {
+  await cleanupFixtures();
   await db.insert(organizationsTable).values({ id: GU_ORG, name: "Published T212 Auftraggeber", type: "AG" })
     .onConflictDoUpdate({ target: organizationsTable.id, set: { name: "Published T212 Auftraggeber" } });
   await db.insert(organizationsTable).values([
@@ -140,6 +163,7 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[4], "MISMATCH");
   await insertRequest(REQUEST_IDS[5], "CONCURRENT");
   await insertRequest(REQUEST_IDS[6], "PUBLISHED-LABELS");
+  await insertRequest(ROUNDTRIP_REQUEST, "ROUNDTRIP");
   await db.insert(leistungsanfrageSnapshotsTable).values({
     leistungsanfrageId: REQUEST_IDS[6],
     schemaVersion: publishedSnapshot.schemaVersion,
@@ -148,23 +172,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Proposals must be removed before request/organization fixtures. This is
-  // intentionally explicit even though the request FK currently cascades.
-  await db.delete(serviceChangeProposalsTable)
-    .where(inArray(serviceChangeProposalsTable.leistungsanfrageId, REQUEST_IDS))
-    .catch(() => {});
-  await db.delete(leistungsanfragenTable)
-    .where(inArray(leistungsanfragenTable.id, REQUEST_IDS))
-    .catch(() => {});
-  for (const projectionId of anProjectionIds) {
-    await anDb.delete(anLeistungsanfragenTable)
-      .where(eq(anLeistungsanfragenTable.id, projectionId))
-      .catch(() => {});
-  }
-  await db.delete(leistungenTable).where(eq(leistungenTable.id, LEISTUNG)).catch(() => {});
-  await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
-  await db.delete(usersTable).where(inArray(usersTable.id, [GU_USER, NU_USER, OTHER_USER])).catch(() => {});
-  await db.delete(organizationsTable).where(inArray(organizationsTable.id, [GU_ORG, NU_ORG, OTHER_ORG])).catch(() => {});
+  await cleanupFixtures();
 });
 
 describe("bilateral change proposals", () => {
@@ -210,7 +218,7 @@ describe("bilateral change proposals", () => {
   });
 
   it("accepts a proposal only through the local Dataspace roundtrip", async () => {
-    const requestId = REQUEST_IDS[1];
+    const requestId = ROUNDTRIP_REQUEST;
     const [openProposal] = await db.select().from(serviceChangeProposalsTable)
       .where(and(
         eq(serviceChangeProposalsTable.leistungsanfrageId, requestId),
@@ -253,8 +261,6 @@ describe("bilateral change proposals", () => {
       start: new Date("2026-09-03T08:00:00Z"),
       end: new Date("2026-09-07T17:00:00Z"),
     });
-    anProjectionIds.push(proposal.id);
-
     const result = await runWithDatabaseRole("ag", () => resolveChangeProposal({
       requestId,
       proposalId: proposal.id,
