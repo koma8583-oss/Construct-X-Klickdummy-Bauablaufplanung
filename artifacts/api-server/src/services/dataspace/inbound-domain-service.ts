@@ -8,6 +8,7 @@ import {
   projectMembershipsTable,
   resourceTypesTable,
   resourceBookingsTable,
+  leistungsanfragenTable,
   taktRequestsTable,
 } from "@workspace/db";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
@@ -25,6 +26,7 @@ import { storeIncomingProjectInvitation } from "../an-project-invitation-service
 import { createAnServiceResponse } from "../nu-response-service";
 import { runAnAvailabilityCheck } from "../an-leistungsanfrage-service";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
+import { applyIncomingAnScheduleChangeProposalOnAg } from "../service-change-proposal-service";
 
 /**
  * Domain boundary for Dataspace deliveries. Transport code only validates the
@@ -33,11 +35,30 @@ import { createDataspaceExchange } from "./dataspace-exchange-factory";
 export async function processIncomingServiceRequest(
   payload: ExternalServiceRequest,
   dispatchResponse?: (payload: ExternalServiceResponse) => Promise<unknown>,
+  options: { automaticResponse?: boolean } = {},
 ): Promise<void> {
   const { metadata } = payload;
   assertPolicySnapshotParticipants(payload);
   if (!metadata.senderOrgId || !metadata.receiverOrgId || metadata.senderOrgId === metadata.receiverOrgId) {
     throw new Error("Inbound service request organisations conflict");
+  }
+
+  // An AN-originated schedule change is delivered to the AG side of the
+  // Dataspace. Keep it out of the AN inbound projection path: an AN route must
+  // never create a self-addressed projection or write AG proposal tables.
+  if (payload.requestKind === "SCHEDULE_CHANGE" && payload.sourceRequestId) {
+    const [agRequest] = await agDb.select({
+      guOrgId: leistungsanfragenTable.guOrgId,
+      nuOrgId: leistungsanfragenTable.nuOrgId,
+    }).from(leistungsanfragenTable)
+      .where(eq(leistungsanfragenTable.id, payload.sourceRequestId))
+      .limit(1);
+    if (agRequest &&
+        agRequest.guOrgId === metadata.receiverOrgId &&
+        agRequest.nuOrgId === metadata.senderOrgId) {
+      await applyIncomingAnScheduleChangeProposalOnAg(payload);
+      return;
+    }
   }
 
   const canonical = JSON.stringify(payload, (_, value) => {
@@ -138,6 +159,10 @@ export async function processIncomingServiceRequest(
     }
   });
   if (payload.requestKind !== "SCHEDULE_CHANGE" || !projectionId) return;
+  // Interactive AN coordination uses the projection as the user's work item.
+  // Callers that explicitly disable automatic responses can now resolve it
+  // through /api/an instead of racing an availability worker.
+  if (options.automaticResponse === false) return;
 
   const [previousProjection] = payload.sourceRequestId
     ? await anDb.select({ id: anLeistungsanfragenTable.id }).from(anLeistungsanfragenTable).where(and(

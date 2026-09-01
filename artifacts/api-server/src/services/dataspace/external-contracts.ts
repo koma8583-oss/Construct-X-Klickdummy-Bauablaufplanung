@@ -174,9 +174,11 @@ export const externalServiceRequestSchema = z.object({
   requestId: nonEmpty(200),
   requestVersion: z.number().int().min(1),
   senderOrganizationName: nonEmpty(500).optional(),
+  senderUserId: nonEmpty(200).optional(),
   requestKind: z.enum(["INITIAL", "SCHEDULE_CHANGE"]).optional(),
   sourceRequestId: nonEmpty(200).optional(),
   changeProposalId: nonEmpty(200).optional(),
+  comment: z.string().trim().max(2000).nullable().optional(),
   baseTimeWindow: timeWindowSchema.optional(),
   projectReference: nonEmpty(200),
   projectName: nonEmpty(500).optional(),
@@ -528,9 +530,11 @@ export type ExternalServiceRequest = {
   requestId: string;
   requestVersion: number;
   senderOrganizationName?: string;
+  senderUserId?: string;
   requestKind?: "INITIAL" | "SCHEDULE_CHANGE";
   sourceRequestId?: string;
   changeProposalId?: string;
+  comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
   projectReference: string;
   projectName?: string;

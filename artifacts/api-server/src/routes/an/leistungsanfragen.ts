@@ -14,6 +14,9 @@ import {
   listAnLeistungsanfragen,
   runAnAvailabilityCheck,
   updateAnResourceRequirement,
+  getAnCoordination,
+  createAnScheduleChangeProposal,
+  resolveAnScheduleChangeProposal,
 } from "../../services/an-leistungsanfrage-service";
 import {
   InvalidRequirementPeriodError,
@@ -49,6 +52,12 @@ const responseSchema = z.object({
     conditions: z.array(z.string()).optional(),
   })).max(3).optional(),
   nextAvailableDate: z.string().optional(),
+});
+
+const proposalSchema = z.object({
+  start: z.string().min(1),
+  end: z.string().min(1),
+  comment: z.string().max(2000).nullable().optional(),
 });
 
 async function list(req: any, res: any) {
@@ -155,6 +164,110 @@ async function respond(req: any, res: any) {
   }
 }
 
+async function coordination(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const result = await getAnCoordination(req.params.id as string, anOrgId);
+  if (!result) {
+    res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+    return;
+  }
+  res.json(result);
+}
+
+async function propose(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const parsed = proposalSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const result = await createAnScheduleChangeProposal({
+      requestId: req.params.id as string,
+      anOrgId,
+      userId: req.user.userId,
+      start: parsed.data.start,
+      end: parsed.data.end,
+      comment: parsed.data.comment ?? undefined,
+    });
+    if (!result) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.status(201).json(result);
+  } catch (error) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode) {
+      res.status(statusCode).json({ error: error instanceof Error ? error.message : "Coordination action failed" });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function resolveProposal(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const action = req.params.action as string;
+  if (action !== "accept" && action !== "reject" && action !== "counter") {
+    res.status(404).json({ error: "Unknown coordination action" });
+    return;
+  }
+  const parsed = proposalSchema.partial().safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    if (action === "counter") {
+      if (!parsed.data.start || !parsed.data.end) {
+        res.status(400).json({ error: "Counter proposals require start and end" });
+        return;
+      }
+      const result = await createAnScheduleChangeProposal({
+        requestId: req.params.id as string,
+        anOrgId,
+        userId: req.user.userId,
+        start: parsed.data.start,
+        end: parsed.data.end,
+        comment: parsed.data.comment ?? undefined,
+        supersedesProposalId: req.params.proposalId as string,
+      });
+      if (!result) {
+        res.status(404).json({ error: "Coordination proposal was not received in the AN context" });
+        return;
+      }
+      res.status(201).json(result);
+      return;
+    }
+    const result = await resolveAnScheduleChangeProposal({
+      requestId: req.params.id as string,
+      proposalId: req.params.proposalId as string,
+      anOrgId,
+      userId: req.user.userId,
+      decision: action === "accept" ? "ACCEPTED" : "REJECTED",
+      comment: parsed.data.comment ?? undefined,
+    });
+    if (!result) {
+      res.status(404).json({ error: "Coordination proposal was not received in the AN context" });
+      return;
+    }
+    res.status(result.idempotent ? 200 : 201).json(result);
+  } catch (error) {
+    if (error instanceof ResponseConflictError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    if (error instanceof ResponseStatusError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
 function canRunAvailabilityCheck(req: any, res: any): boolean {
   if (!req.user?.roles?.some((role: string) => role === "AN_ADMIN" || role === "AN_DISPATCHER")) {
     res.status(403).json({ error: "AN_ADMIN or AN_DISPATCHER role required" });
@@ -194,6 +307,12 @@ router.patch("/takt-requests/:id/resource-requirements/:reqId", requireJwt, upda
 router.patch("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.post("/takt-requests/:id/responses", requireJwt, respond);
 router.post("/leistungsanfragen/:id/responses", requireJwt, respond);
+router.get("/takt-requests/:id/coordination", requireJwt, coordination);
+router.get("/leistungsanfragen/:id/coordination", requireJwt, coordination);
+router.post("/takt-requests/:id/change-proposals", requireJwt, propose);
+router.post("/leistungsanfragen/:id/change-proposals", requireJwt, propose);
+router.post("/takt-requests/:id/change-proposals/:proposalId/:action", requireJwt, resolveProposal);
+router.post("/leistungsanfragen/:id/change-proposals/:proposalId/:action", requireJwt, resolveProposal);
 router.post("/takt-requests/:id/availability-checks", requireJwt, runAvailability);
 router.post("/leistungsanfragen/:id/availability-checks", requireJwt, runAvailability);
 router.get("/takt-requests/:id/availability-checks/latest", requireJwt, latestAvailability);

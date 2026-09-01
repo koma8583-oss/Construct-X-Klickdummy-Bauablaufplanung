@@ -23,8 +23,8 @@ export function ProposalActions({ requestId }: { requestId: string }) {
   const [start, setStart] = useState(''); const [end, setEnd] = useState('');
   const [comment, setComment] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const { data, refetch } = useQuery({
-    queryKey: ['/api/leistungsanfragen', requestId, 'coordination'],
-    queryFn: () => apiFetch<Coordination>(`/api/leistungsanfragen/${requestId}/coordination`),
+    queryKey: ['/api/an/leistungsanfragen', requestId, 'coordination'],
+    queryFn: () => apiFetch<Coordination>(`/api/an/leistungsanfragen/${requestId}/coordination`),
   });
   const proposal = data?.openProposal; const canAct = !!data?.currentAgreement && (!data?.nextActionOwner || data.nextActionOwner === 'AN');
   const refresh = async () => { await Promise.all([refetch(), queryClient.invalidateQueries({ queryKey: [`/api/takt-requests/${requestId}/details`] }), queryClient.invalidateQueries({ queryKey: [`/api/leistungsanfragen/${requestId}`] })]); };
@@ -35,7 +35,7 @@ export function ProposalActions({ requestId }: { requestId: string }) {
      if ((action === 'counter' || action === 'propose') && end < start) { setError('Das Ende darf nicht vor dem Beginn liegen.'); return; }
     setBusy(true);
     try {
-      const base = `/api/leistungsanfragen/${requestId}/change-proposals`;
+      const base = `/api/an/leistungsanfragen/${requestId}/change-proposals`;
       if (action === 'accept' || action === 'reject') await apiFetch(`${base}/${proposal!.id}/${action}`, { method: 'POST' });
       else await apiFetch(action === 'counter' ? `${base}/${proposal!.id}/counter` : base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start: day(start), end: day(end), comment: comment || null, action: action === 'counter' ? 'COUNTER' : 'PROPOSE', supersedesProposalId: proposal?.id ?? null }) });
       setStart(''); setEnd(''); setComment(''); await refresh();

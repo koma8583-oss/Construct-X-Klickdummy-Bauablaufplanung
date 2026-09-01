@@ -22,8 +22,8 @@ import {
   toExternalServiceRequest,
   publicSnapshotFromRecord,
 } from "./dataspace/external-mappers";
-import { deliverLocalServiceRequest } from "./dataspace/local-dataspace-delivery";
-import type { ExternalServiceResponse } from "./dataspace/external-contracts";
+import { deliverLocalCoordinationDecision, deliverLocalServiceRequest } from "./dataspace/local-dataspace-delivery";
+import type { ExternalCoordinationDecision, ExternalServiceRequest, ExternalServiceResponse } from "./dataspace/external-contracts";
 
 export type CoordinationParty = "AG" | "AN";
 export interface ScheduleDelta { startDays: number; endDays: number; durationDays: number; hasChange: boolean; }
@@ -130,7 +130,7 @@ export async function getCoordination(requestId: string, orgId: string) {
 
 export async function createChangeProposal(input: { requestId: string; orgId: string; userId: string; start: Date; end: Date; reasonCode?: string | null; comment?: string | null; action?: "PROPOSE" | "COUNTER"; supersedesProposalId?: string | null }) {
   if (compareCalendarDates(dateOnly(input.end), dateOnly(input.start)) < 0) throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
-  return agDb.transaction(async (tx) => {
+  const result = await agDb.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.requestId}, 0))`);
     const [request] = await tx.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, input.requestId)).limit(1);
     const party = request && partyForOrg(request, input.orgId);
@@ -144,8 +144,57 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       await tx.update(serviceChangeProposalsTable).set({ status: "SUPERSEDED", resolvedAt: new Date(), resolvedByUserId: input.userId }).where(eq(serviceChangeProposalsTable.id, open.id));
     }
     const [proposal] = await tx.insert(serviceChangeProposalsTable).values({ leistungsanfrageId: input.requestId, proposerOrgId: input.orgId, proposerUserId: input.userId, start: input.start, end: input.end, reasonCode: input.reasonCode ?? null, comment: input.comment ?? null, action: input.action ?? "PROPOSE", supersedesProposalId: input.supersedesProposalId ?? open?.id ?? null }).returning();
-    return proposal;
+    if (!proposal) throw new Error("Vorschlag konnte nicht gespeichert werden");
+
+    // Build the public Dataspace request while the AG transaction still has
+    // the request context, but publish only after the transaction commits.
+    const [service] = await tx.select().from(leistungenTable)
+      .where(eq(leistungenTable.id, request.leistungId)).limit(1);
+    if (!service) throw new Error("Leistungsanfrage unvollständig");
+    const [[project], [senderOrganization]] = await Promise.all([
+      tx.select({ name: projectsTable.name }).from(projectsTable)
+        .where(eq(projectsTable.id, service.projectId)).limit(1),
+      tx.select({ name: organizationsTable.name }).from(organizationsTable)
+        .where(eq(organizationsTable.id, request.guOrgId)).limit(1),
+    ]);
+    const [snapshot] = await tx.select({ snapshotPayload: leistungsanfrageSnapshotsTable.snapshotPayload })
+      .from(leistungsanfrageSnapshotsTable)
+      .where(eq(leistungsanfrageSnapshotsTable.leistungsanfrageId, request.id)).limit(1);
+    const snapshotPayload = snapshot?.snapshotPayload as Record<string, unknown> | undefined;
+    const requirements = toExternalResourceRequirementsFromSnapshot(
+      snapshotPayload?.resourceRequirements,
+      { start: dateOnly(proposal.start), end: dateOnly(proposal.end) },
+    );
+    const payload = toExternalServiceRequest({
+      requestId: proposal.id,
+      requestVersion: 1,
+      requestKind: "SCHEDULE_CHANGE",
+      sourceRequestId: request.id,
+      changeProposalId: proposal.id,
+      baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
+      projectReference: service.projectId,
+      taktReference: service.id,
+      plannedStart: proposal.start.toISOString(),
+      plannedEnd: proposal.end.toISOString(),
+      projectName: project?.name,
+      senderOrganizationName: senderOrganization?.name,
+      senderOrgId: request.guOrgId,
+      receiverOrgId: request.nuOrgId,
+      correlationId: proposal.id,
+      messageId: `schedule-change:${proposal.id}`,
+      resourceRequirements: requirements,
+      ...(snapshotPayload ? { publicSnapshot: publicSnapshotFromRecord(snapshotPayload) } : {}),
+    });
+    return { proposal, payload };
   });
+  const delivery = await deliverLocalServiceRequest(result.payload);
+  const [current] = await agDb.select().from(serviceChangeProposalsTable)
+    .where(eq(serviceChangeProposalsTable.id, result.proposal.id)).limit(1);
+  return {
+    ...(current ?? result.proposal),
+    transportStatus: delivery.status,
+    transportMessageId: result.payload.metadata.messageId,
+  };
 }
 
 export async function resolveChangeProposal(input: { requestId: string; proposalId: string; orgId: string; userId: string; status: "ACCEPTED" | "REJECTED" }) {
@@ -160,39 +209,40 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
     if (input.status === "REJECTED") {
       const [updated] = await tx.update(serviceChangeProposalsTable).set({ status: "REJECTED", resolvedAt: new Date(), resolvedByUserId: input.userId }).where(and(eq(serviceChangeProposalsTable.id, input.proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).returning();
       if (!updated) throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
-      return { proposal: updated, payload: null };
+      return { proposal: updated, payload: null, request };
     }
-    const [service] = await tx.select().from(leistungenTable).where(eq(leistungenTable.id, request.leistungId)).limit(1);
-    if (!service || !request.agreedStart || !request.agreedEnd) throw Object.assign(new Error("Leistungsanfrage unvollständig"), { statusCode: 422 });
-    const [[project], [senderOrganization]] = await Promise.all([
-      tx.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, service.projectId)).limit(1),
-      tx.select({ name: organizationsTable.name }).from(organizationsTable).where(eq(organizationsTable.id, request.guOrgId)).limit(1),
-    ]);
-    const [snapshot] = await tx.select({ snapshotPayload: leistungsanfrageSnapshotsTable.snapshotPayload })
-      .from(leistungsanfrageSnapshotsTable)
-      .where(eq(leistungsanfrageSnapshotsTable.leistungsanfrageId, request.id))
-      .limit(1);
-    const snapshotPayload = snapshot?.snapshotPayload as Record<string, unknown> | undefined;
-    const requirements = toExternalResourceRequirementsFromSnapshot(
-      snapshotPayload?.resourceRequirements,
-      { start: dateOnly(proposal.start), end: dateOnly(proposal.end) },
-    );
-    const payload = toExternalServiceRequest({
-      requestId: proposal.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: request.id, changeProposalId: proposal.id,
-      baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
-      projectReference: service.projectId, taktReference: service.id, plannedStart: proposal.start.toISOString(), plannedEnd: proposal.end.toISOString(),
-      projectName: project?.name,
-      senderOrganizationName: senderOrganization?.name,
-      senderOrgId: request.guOrgId, receiverOrgId: request.nuOrgId, correlationId: proposal.id, messageId: `schedule-change:${proposal.id}`,
-      resourceRequirements: requirements,
-      ...(snapshotPayload ? { publicSnapshot: publicSnapshotFromRecord(snapshotPayload) } : {}),
-    });
-    return { proposal, payload };
+    const [updated] = await tx.update(serviceChangeProposalsTable).set({
+      status: "ACCEPTED",
+      resolvedAt: new Date(),
+      resolvedByUserId: input.userId,
+    }).where(and(
+      eq(serviceChangeProposalsTable.id, input.proposalId),
+      eq(serviceChangeProposalsTable.status, "OPEN"),
+    )).returning();
+    if (!updated) throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
+    return { proposal: updated, payload: null, request };
   });
-  if (!result.payload) return result.proposal;
-  const delivery = await deliverLocalServiceRequest(result.payload);
+  const decision: ExternalCoordinationDecision = {
+    metadata: {
+      messageId: `coordination-decision:${result.proposal.id}:${result.proposal.status}`,
+      correlationId: result.proposal.id,
+      schemaVersion: "1.0",
+      senderOrgId: result.request.guOrgId,
+      receiverOrgId: result.request.nuOrgId,
+      createdAt: new Date().toISOString(),
+    },
+    requestId: result.proposal.id,
+    requestVersion: 1,
+    taktVersion: 1,
+    decisionType: result.proposal.status === "ACCEPTED" ? "CONFIRM_ACCEPTED" : "CLOSE_WITHOUT_AGREEMENT",
+    confirmedTimeWindow: result.proposal.status === "ACCEPTED"
+      ? { start: result.proposal.start.toISOString(), end: result.proposal.end.toISOString() }
+      : null,
+    closedAt: result.proposal.status === "REJECTED" ? new Date().toISOString() : undefined,
+  };
+  const delivery = await deliverLocalCoordinationDecision(decision);
   const [current] = await agDb.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, result.proposal.id)).limit(1);
-  return { ...(current ?? result.proposal), transportStatus: delivery.status, transportMessageId: result.payload.metadata.messageId };
+  return { ...(current ?? result.proposal), transportStatus: delivery.status, transportMessageId: decision.metadata.messageId };
 }
 
 export async function applyIncomingScheduleChangeResponseOnAg(payload: ExternalServiceResponse) {
@@ -218,4 +268,86 @@ export async function applyIncomingScheduleChangeResponseOnAg(payload: ExternalS
     await tx.update(serviceChangeProposalsTable).set({ status: nextStatus, resolvedAt: new Date(), resolvedByUserId: null }).where(and(eq(serviceChangeProposalsTable.id, proposalId), eq(serviceChangeProposalsTable.status, "OPEN")));
   });
   return { idempotent: false, newStatus: nextStatus, payloadHash };
+}
+
+/**
+ * Materialise an AN-originated schedule proposal in the AG coordination
+ * history. The AN request reaches this function through the Dataspace inbound
+ * processor; it never receives an AG database handle from an AN HTTP route.
+ */
+export async function applyIncomingAnScheduleChangeProposalOnAg(
+  payload: ExternalServiceRequest,
+) {
+  const sourceRequestId = payload.sourceRequestId;
+  const proposalId = payload.changeProposalId;
+  if (!sourceRequestId || !proposalId || payload.requestId !== proposalId) {
+    throw new Error("Inbound AN schedule-change proposal is missing its proposal correlation");
+  }
+
+  return agDb.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${sourceRequestId}, 0))`);
+    const [request] = await tx.select().from(leistungsanfragenTable)
+      .where(eq(leistungsanfragenTable.id, sourceRequestId)).limit(1);
+    if (!request ||
+        request.guOrgId !== payload.metadata.receiverOrgId ||
+        request.nuOrgId !== payload.metadata.senderOrgId) {
+      throw new Error("Inbound AN schedule-change proposal organisations do not match the request");
+    }
+    if (!request.agreedStart || !request.agreedEnd) {
+      throw Object.assign(new Error("CHANGE_PROPOSAL_REQUIRES_AGREEMENT"), { statusCode: 422 });
+    }
+    if (dateOnly(payload.baseTimeWindow?.start ?? "") !== dateOnly(request.agreedStart) ||
+        dateOnly(payload.baseTimeWindow?.end ?? "") !== dateOnly(request.agreedEnd)) {
+      throw new Error("Inbound AN schedule-change proposal base window does not match the agreement");
+    }
+    if (compareCalendarDates(dateOnly(payload.plannedEnd), dateOnly(payload.plannedStart)) < 0) {
+      throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
+    }
+
+    const [existingProposal] = await tx.select().from(serviceChangeProposalsTable)
+      .where(eq(serviceChangeProposalsTable.id, proposalId)).limit(1);
+    if (existingProposal) {
+      if (existingProposal.leistungsanfrageId !== sourceRequestId ||
+          existingProposal.proposerOrgId !== request.nuOrgId) {
+        throw new Error("Inbound AN schedule-change proposal conflicts with an existing proposal");
+      }
+      return existingProposal;
+    }
+
+    const [open] = await tx.select().from(serviceChangeProposalsTable).where(and(
+      eq(serviceChangeProposalsTable.leistungsanfrageId, sourceRequestId),
+      eq(serviceChangeProposalsTable.status, "OPEN"),
+    )).limit(1);
+    if (open) {
+      if (open.proposerOrgId !== request.guOrgId) {
+        throw Object.assign(new Error("Es existiert bereits ein offener Vorschlag"), { statusCode: 409 });
+      }
+      await tx.update(serviceChangeProposalsTable).set({
+        status: "SUPERSEDED",
+        resolvedAt: new Date(),
+        // AN users live in the AN database in the physical deployment. Do
+        // not copy that user id into the AG foreign key.
+        resolvedByUserId: null,
+      }).where(eq(serviceChangeProposalsTable.id, open.id));
+    }
+
+    // The AG request owner is the only user id guaranteed to exist in this
+    // database. Sender identity remains authenticated by the Dataspace org
+    // boundary, not by an AG-local user foreign key.
+    const proposerUserId = request.createdByUserId;
+    const [proposal] = await tx.insert(serviceChangeProposalsTable).values({
+      id: proposalId,
+      leistungsanfrageId: sourceRequestId,
+      proposerOrgId: request.nuOrgId,
+      proposerUserId,
+      start: new Date(payload.plannedStart),
+      end: new Date(payload.plannedEnd),
+      reasonCode: null,
+      comment: payload.comment ?? null,
+      action: open ? "COUNTER" : "PROPOSE",
+      supersedesProposalId: open?.id ?? null,
+    }).returning();
+    if (!proposal) throw new Error("Inbound AN schedule-change proposal could not be stored");
+    return proposal;
+  });
 }

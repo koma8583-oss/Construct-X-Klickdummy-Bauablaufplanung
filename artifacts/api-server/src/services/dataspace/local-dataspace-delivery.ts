@@ -42,10 +42,7 @@ export async function deliverLocalServiceRequest(
   if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
     await exchange.receiveServiceRequest(
       payload,
-      (incoming) => processIncomingServiceRequest(
-        incoming,
-        (response) => deliverLocalServiceResponse(response, exchange),
-      ),
+      (incoming) => processIncomingServiceRequest(incoming, undefined, { automaticResponse: false }),
     );
   }
   return delivery;

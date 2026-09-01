@@ -13,6 +13,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { agDb as db, anDb, runWithDatabaseRole } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
   leistungsanfragenTable,
   leistungsanfrageSnapshotsTable,
   leistungenTable,
@@ -49,6 +50,7 @@ const REQUEST_IDS = [
   "t212-request-concurrent",
   "t212-request-published-labels",
   ROUNDTRIP_REQUEST,
+  "t212-request-an-local",
 ];
 
 const publishedSnapshot = {
@@ -164,10 +166,41 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[5], "CONCURRENT");
   await insertRequest(REQUEST_IDS[6], "PUBLISHED-LABELS");
   await insertRequest(ROUNDTRIP_REQUEST, "ROUNDTRIP");
+  await insertRequest("t212-request-an-local", "AN-LOCAL");
   await db.insert(leistungsanfrageSnapshotsTable).values({
     leistungsanfrageId: REQUEST_IDS[6],
     schemaVersion: publishedSnapshot.schemaVersion,
     snapshotPayload: publishedSnapshot as Record<string, unknown>,
+  });
+  const [localProjection] = await anDb.insert(anLeistungsanfragenTable).values({
+    id: "t212-an-local-projection",
+    externalLeistungsanfrageId: "t212-request-an-local",
+    externalRequestVersion: 1,
+    sourceMessageId: "t212-an-local-message",
+    payloadHash: "t212-an-local-hash",
+    correlationId: "t212-request-an-local",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT,
+    leistungReference: LEISTUNG,
+    plannedStart: "2026-09-01",
+    plannedEnd: "2026-09-05",
+    payloadSnapshot: {
+      requestKind: "INITIAL",
+      publicSnapshot: publishedSnapshot,
+    },
+    status: "RESPONDED",
+  }).returning();
+  await anDb.insert(anLeistungsantwortenTable).values({
+    anLeistungsanfrageId: localProjection.id,
+    sourceRequestId: "t212-request-an-local",
+    requestVersion: 1,
+    decision: "ACCEPTED",
+    acceptedStart: originalStart,
+    acceptedEnd: originalEnd,
+    payloadHash: "t212-an-local-response-hash",
+    outboundMessageId: "t212-an-local-response",
+    createdByUserId: NU_USER,
   });
 });
 
@@ -201,20 +234,20 @@ describe("bilateral change proposals", () => {
       .post(`/api/leistungsanfragen/${requestId}/change-proposals/${first.id}/counter`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ start: "2026-09-04T08:00:00.000Z", end: "2026-09-08T17:00:00.000Z", comment: "Mehr Puffer" });
-    expect(counter.status).toBe(201);
-    expect(counter.body.action).toBe("COUNTER");
+    // The AG namespace is no longer an exception path for AN callers.
+    expect(counter.status).toBe(403);
 
     const rows = await db.select().from(serviceChangeProposalsTable)
       .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId));
     expect(rows.filter((row) => row.status === "OPEN")).toHaveLength(1);
-    expect(rows.find((row) => row.id === first.id)?.status).toBe("SUPERSEDED");
+    expect(rows.find((row) => row.id === first.id)?.status).toBe("OPEN");
 
     const coordination = await request(app)
       .get(`/api/leistungsanfragen/${requestId}/coordination`)
       .set("Authorization", `Bearer ${guToken}`);
     expect(coordination.status).toBe(200);
     expect(coordination.body.currentAgreement.start).toContain("2026-09-01");
-    expect(coordination.body.openProposal.start).toContain("2026-09-04");
+    expect(coordination.body.openProposal.start).toContain("2026-09-03");
   });
 
   it("accepts a proposal only through the local Dataspace roundtrip", async () => {
@@ -335,11 +368,10 @@ describe("bilateral change proposals", () => {
     const rejected = await request(app)
       .post(`/api/leistungsanfragen/${requestId}/change-proposals/${proposal.id}/reject`)
       .set("Authorization", `Bearer ${nuToken}`);
-    expect(rejected.status).toBe(200);
-    expect(rejected.body.status).toBe("REJECTED");
+    expect(rejected.status).toBe(403);
     const coordination = await request(app)
       .get(`/api/leistungsanfragen/${requestId}/coordination`)
-      .set("Authorization", `Bearer ${nuToken}`);
+      .set("Authorization", `Bearer ${guToken}`);
     expect(coordination.body.currentAgreement.start).toContain("2026-09-01");
     expect(coordination.body.proposals).toHaveLength(1);
   });
@@ -372,7 +404,7 @@ describe("bilateral change proposals", () => {
 
     const response = await request(app)
       .post(`/api/leistungsanfragen/${REQUEST_IDS[2]}/change-proposals/${proposal.id}/accept`)
-      .set("Authorization", `Bearer ${nuToken}`);
+      .set("Authorization", `Bearer ${guToken}`);
 
     expect(response.status).toBe(404);
     expect(response.body.error).toContain("gehört nicht zu dieser Anfrage");
@@ -380,6 +412,45 @@ describe("bilateral change proposals", () => {
     const rows = await db.select().from(serviceChangeProposalsTable)
       .where(eq(serviceChangeProposalsTable.id, proposal.id));
     expect(rows[0]?.status).toBe("OPEN");
+  });
+
+  it("uses the AN projection for local proposal reads and acceptance", async () => {
+    const requestId = "t212-request-an-local";
+    const proposal = await createAgChangeProposal({
+      requestId,
+      orgId: GU_ORG,
+      userId: GU_USER,
+      start: new Date("2026-09-03T08:00:00Z"),
+      end: new Date("2026-09-07T17:00:00Z"),
+    });
+
+    const localView = await request(app)
+      .get(`/api/an/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(localView.status).toBe(200);
+    expect(localView.body.openProposal.id).toBe(proposal.id);
+    expect(localView.body.currentAgreement.start).toContain("2026-09-01");
+
+    const mismatched = await request(app)
+      .get(`/api/an/leistungsanfragen/${REQUEST_IDS[2]}/coordination`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(mismatched.status).toBe(404);
+
+    const oppositeNamespace = await request(app)
+      .get(`/api/an/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect(oppositeNamespace.status).toBe(403);
+
+    const sharedNamespace = await request(app)
+      .get(`/api/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(sharedNamespace.status).toBe(403);
+
+    const accepted = await request(app)
+      .post(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposal.id}/accept`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect([200, 201]).toContain(accepted.status);
+    expect(accepted.body.decision).toBe("ACCEPTED");
   });
 
   it("leaves at most one open proposal when two submissions race", async () => {

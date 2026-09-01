@@ -100,6 +100,7 @@ export function toExternalServiceRequest(input: {
   requestKind?: ExternalServiceRequest["requestKind"];
   sourceRequestId?: string;
   changeProposalId?: string;
+  comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
   projectReference: string;
   projectName?: string;
@@ -109,6 +110,7 @@ export function toExternalServiceRequest(input: {
   plannedEnd: string;
   senderOrgId: string;
   senderOrganizationName?: string;
+  senderUserId?: string;
   receiverOrgId: string;
   correlationId?: string;
   messageId?: string;
@@ -132,9 +134,11 @@ export function toExternalServiceRequest(input: {
     requestId: input.requestId,
     requestVersion: input.requestVersion,
     senderOrganizationName: input.senderOrganizationName,
+    senderUserId: input.senderUserId,
     requestKind: input.requestKind,
     sourceRequestId: input.sourceRequestId,
     changeProposalId: input.changeProposalId,
+    comment: input.comment,
     baseTimeWindow: input.baseTimeWindow,
     projectReference: input.projectReference,
     projectName: input.projectName,

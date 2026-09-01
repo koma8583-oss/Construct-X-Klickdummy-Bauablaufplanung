@@ -49,6 +49,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ProposalActions } from "@/components/proposal-actions";
 
 const EMPTY = "Nicht veröffentlicht";
 const STATUS_LABELS: Record<string, string> = {
@@ -302,6 +303,7 @@ export default function LeistungsanfrageDetailPage() {
           <WorkflowStep number={3} title="Ressourcenbedarf einordnen" why="Der eigene Bedarf macht die Verfügbarkeitsprüfung nachvollziehbar. Ergänzungen bleiben auf die AN-Seite begrenzt." state={states[2]} outcome={requirements.length > 0 ? `${requirements.length} Bedarf${requirements.length === 1 ? "" : "e"} erfasst` : "Noch kein Ressourcenbedarf erfasst."}><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></WorkflowStep>
           <WorkflowStep number={4} title="Verfügbarkeit prüfen" why="Die Prüfung verdichtet Ihren erfassten Bedarf zu einer belastbaren Rückmeldung, ohne interne Konfliktdetails zu veröffentlichen." state={states[3]} outcome={availabilityOutcome}><AvailabilitySection id={id} canRespond={canRespond} latest={latest} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={availabilityQuery.isError} /></WorkflowStep>
           <WorkflowStep number={5} title="Antwort senden" why="Ihre Antwort wird auf die freigegebenen Angaben und einen allgemeinen Entscheidungsgrund begrenzt." state={states[4]} outcome={terminal ? "Antwortaktion abgeschlossen." : "Bitte wählen Sie die passende Rückmeldung."}><ResponseForm id={id} canRespond={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} /></WorkflowStep>
+           <ProposalActions requestId={id} />
         </div>
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <section data-testid="summary-card" className="rounded-2xl border border-border bg-card p-5 shadow-sm"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Auftrag auf einen Blick</p><h2 className="mt-2 text-lg font-semibold">{title}</h2><dl className="mt-5 space-y-4 text-sm"><div><dt className="text-xs text-muted-foreground">Auftraggeber</dt><dd className="mt-1 font-medium">{details.guOrgName || "Auftraggebername nicht veröffentlicht"}</dd></div><div><dt className="text-xs text-muted-foreground">Projekt</dt><dd className="mt-1 font-medium">{details.project.name || EMPTY}</dd><dd className="mt-1 text-xs text-muted-foreground">{details.project.location || EMPTY}</dd></div><div><dt className="text-xs text-muted-foreground">Arbeitsfenster</dt><dd className="mt-1 font-medium">{dateText(details.plannedStart)} – {dateText(details.plannedEnd)}</dd></div><div><dt className="text-xs text-muted-foreground">Version</dt><dd className="mt-1 font-medium">Leistung {details.leistungVersion ? `v${details.leistungVersion}` : EMPTY} · Takt {details.taktVersion ? `v${details.taktVersion}` : EMPTY}</dd></div></dl></section>
