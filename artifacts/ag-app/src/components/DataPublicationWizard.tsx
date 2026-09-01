@@ -1,8 +1,7 @@
 /**
  * DataPublicationWizard (Task #112).
  *
- * Single coordinated onboarding flow for AG: participants, policy, field
- * whitelist and final review become one invitation plus data-offer message.
+ * Separate AG data-publication flow for active project members.
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import {
@@ -25,7 +24,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
   useGetPolicyTemplates,
-  useInviteParticipantsWithData,
+  useCreateDataPublication,
+  usePublishDataPublication,
   FIELD_WHITELISTS,
   FIELD_LABELS,
   FIELD_GROUPS,
@@ -188,13 +188,14 @@ interface Props {
   projectId: string;
   projectName: string;
   contractors: ContractorOption[];
+  initialRecipientIds?: string[];
 }
 
 // The only product type is TAKT_INFORMATION_PACKAGE — no selection step needed.
 const PRODUCT_LABEL = 'Informationspaket Leistungsvergabe';
 
-// Steps: 0 = Teilnehmer, 1 = Policy, 2 = Datenfelder, 3 = Übersicht
-const STEP_LABELS = ['Teilnehmer', 'Policy', 'Datenfelder', 'Übersicht'];
+// Steps: 0 = Empfänger, 1 = Policy, 2 = Daten auswählen, 3 = Freigabe prüfen
+const STEP_LABELS = ['Empfänger', 'Policy', 'Daten auswählen', 'Freigabe prüfen'];
 const PRODUCT_TYPE: DataProductType = 'TAKT_INFORMATION_PACKAGE';
 const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
 
@@ -206,6 +207,7 @@ export function DataPublicationWizard({
   projectId,
   projectName,
   contractors,
+  initialRecipientIds = [],
 }: Props) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -217,13 +219,13 @@ export function DataPublicationWizard({
   const [policyTemplateVersion, setPolicyTemplateVersion] = useState<number | undefined>();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [invitationMessage, setInvitationMessage] = useState('');
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [policyViewOpen, setPolicyViewOpen] = useState(false);
 
   const { data: policyTemplates } = useGetPolicyTemplates();
-  const inviteWithData = useInviteParticipantsWithData(projectId);
+  const createDataPublication = useCreateDataPublication(projectId);
+  const publishDataPublication = usePublishDataPublication();
 
   const activeContractors = contractors.filter((c) => c.assignmentStatus === 'ACTIVE');
   const selectedPolicy = policyTemplates?.find((p) => p.id === policyTemplateId);
@@ -238,6 +240,12 @@ export function DataPublicationWizard({
       .filter((group) => group.fields.length > 0),
     [allowedFieldSet],
   );
+
+  useEffect(() => {
+    if (open) {
+      setSelectedRecipients(new Set(initialRecipientIds));
+    }
+  }, [open, initialRecipientIds]);
 
   useEffect(() => {
     if (!selectedPolicy?.allowedPublicationFields) return;
@@ -261,7 +269,6 @@ export function DataPublicationWizard({
       setPolicyTemplateVersion(undefined);
       setTitle('');
       setDescription('');
-      setInvitationMessage('');
       setValidFrom('');
       setValidUntil('');
     }
@@ -289,25 +296,25 @@ export function DataPublicationWizard({
   const handlePublish = async () => {
     if (!policyTemplateId) return;
     try {
-      await inviteWithData.mutateAsync({
-        participantIds: Array.from(selectedRecipients),
-        invitationMessage: invitationMessage.trim() || undefined,
+      const publication = await createDataPublication.mutateAsync({
+        dataProductType: PRODUCT_TYPE,
         title: title.trim() || autoTitle,
         description: description.trim() || undefined,
         policyTemplateId,
-        ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
         selectedFields: Array.from(selectedFields),
+        recipientAnOrgIds: Array.from(selectedRecipients),
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
       });
+      await publishDataPublication.mutateAsync(publication.id);
       toast({ title: 'Datenfreigabe veröffentlicht', description: 'Die Datenfreigabe wurde separat für aktive Projektmitglieder bereitgestellt.' });
       handleOpenChange(false);
     } catch (err) {
-      toast({ title: 'Fehler beim Einladen', description: (err as Error).message, variant: 'destructive' });
+      toast({ title: 'Fehler bei der Datenfreigabe', description: (err as Error).message, variant: 'destructive' });
     }
   };
 
-  const isPending = inviteWithData.isPending;
+  const isPending = createDataPublication.isPending || publishDataPublication.isPending;
 
   return (
     <>
@@ -316,13 +323,13 @@ export function DataPublicationWizard({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-             <span>Projekt einladen &amp; Datenraum freigeben</span>
+             <span>Daten für Projektpartner freigeben</span>
           </DialogTitle>
           <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80 space-y-1">
             <p>
-              Dieses Paket stellt <strong>allgemeine Projektdaten</strong> sowie eine
-              strukturierte Übersicht der Leistungsmerkmale bereit — ohne konkrete
-              Terminpositionen oder sensible Kalkulationsdetails.
+               Diese Datenfreigabe ist ein eigener Schritt nach der aktiven
+               Projektmitgliedschaft. Wählen Sie eine Policy und nur die Felder,
+               die der AN sehen darf.
             </p>
             <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-0.5">
               <Lock className="h-3 w-3 shrink-0 mt-0.5" />
@@ -409,7 +416,7 @@ export function DataPublicationWizard({
 
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                  <Lock className="h-3 w-3 shrink-0" />
-                 Diese Policy umfasst nur Projektbasisdaten und die angefragte Leistung. Ressourcen- und Logistikdetails werden nicht freigegeben.
+                   Nicht ausgewählte oder intern geschützte Felder bleiben ausschließlich im AG-System.
               </p>
             </div>
           )}
@@ -418,7 +425,7 @@ export function DataPublicationWizard({
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Wählen Sie die Nachunternehmen, die dieses Informationspaket erhalten sollen. Nur aktive Zuordnungen können ausgewählt werden.
+                   Wählen Sie die aktiven Projektmitglieder, die diese Datenfreigabe erhalten sollen.
               </p>
               {activeContractors.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic py-8 text-center">
@@ -460,12 +467,8 @@ export function DataPublicationWizard({
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={autoTitle} />
               </div>
               <div className="space-y-2">
-                <Label>Beschreibung (optional)</Label>
+                 <Label>Beschreibung der Datenfreigabe (optional)</Label>
                 <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Kurze Beschreibung für die Empfänger…" rows={2} />
-              </div>
-              <div className="space-y-2">
-                <Label>Nachricht zur Einladung (optional)</Label>
-                <Textarea value={invitationMessage} onChange={(e) => setInvitationMessage(e.target.value)} placeholder="Hinweis für die eingeladenen Nachunternehmen…" rows={2} />
               </div>
               <div className="space-y-2">
                 <Label>Nutzungsrichtlinie</Label>
@@ -544,12 +547,25 @@ export function DataPublicationWizard({
                 </div>
                 <div>
                   <div className="text-muted-foreground text-xs uppercase tracking-wider mb-1.5">
-                    Freigegebene Informationen ({selectedFields.size} Felder)
+                    Wird freigegeben ({selectedFields.size} Felder)
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {Array.from(selectedFields).map((f) => (
                       <Badge key={f} variant="secondary" className="text-[10px]">{FIELD_LABELS[f] ?? f}</Badge>
                     ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground text-xs uppercase tracking-wider mb-1.5">
+                    Bleibt intern ({ALL_FIELDS.filter((field) => !selectedFields.has(field)).length} Felder)
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {ALL_FIELDS.filter((field) => !selectedFields.has(field)).map((field) => (
+                      <Badge key={field} variant="outline" className="text-[10px]">{FIELD_LABELS[field] ?? field}</Badge>
+                    ))}
+                    {ALL_FIELDS.every((field) => selectedFields.has(field)) && (
+                      <span className="text-xs text-muted-foreground">Keine weiteren Felder ausgeschlossen.</span>
+                    )}
                   </div>
                 </div>
                 <div>

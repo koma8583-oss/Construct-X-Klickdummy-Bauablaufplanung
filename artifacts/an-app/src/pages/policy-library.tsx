@@ -32,7 +32,7 @@ function DataOfferCard({ offer }: { offer: DataOfferSummary }) {
   const isAccepted = offer.recipientStatus === "ACCEPTED";
 
   return (
-    <Link href="/data-offers">
+    <Link href={`/data-offers?publicationId=${encodeURIComponent(offer.publicationId)}`}>
       <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/20">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">

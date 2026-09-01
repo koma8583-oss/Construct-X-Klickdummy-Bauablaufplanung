@@ -93,7 +93,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     const { container } = renderInbox();
 
     expect(await screen.findByText("Projekteinladung")).toBeInTheDocument();
-    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Leistungsanfragen");
+    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Anfragen & Einladungen");
     expect(screen.getByText("Projekt beitreten")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Trockenbau 2. OG" })).toHaveAttribute(
       "href",
@@ -257,7 +257,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Projekt beitreten" })).not.toBeInTheDocument();
     });
-    expect(screen.getByText("Keine offenen Arbeitsaufträge")).toBeInTheDocument();
+    expect(screen.getByText("Keine offenen Anfragen oder Einladungen")).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
       "/api/an/project-invitations/invitation-2/accept",
     );

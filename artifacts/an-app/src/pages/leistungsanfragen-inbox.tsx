@@ -60,6 +60,7 @@ const STATUS_TONE: Record<AnLeistungsanfrageListItemStatus, string> = {
 };
 
 type ViewFilter = "OPEN" | "ALL" | "DONE";
+type CategoryFilter = "ALL" | "REQUESTS" | "INVITATIONS";
 
 function dateText(value?: string | null, withTime = false) {
   if (!value) return "Nicht veröffentlicht";
@@ -253,7 +254,23 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
             <Button data-testid={`button-reject-invitation-${invitation.id}`} variant="outline" disabled={busy} onClick={() => void decide("reject")}><X className="mr-2 h-4 w-4" />Ablehnen</Button>
           </div>
         </div>
-      ) : <p className="mt-5 text-sm text-muted-foreground">Diese Einladung wurde bereits bearbeitet.</p>}
+      ) : invitation.status === "ACCEPTED" ? (
+        <div className="mt-5 rounded-xl border border-emerald-700/20 bg-emerald-600/10 p-3 text-sm text-emerald-900 dark:text-emerald-200">
+          <p className="font-semibold">Projektmitgliedschaft ist aktiv</p>
+          <p className="mt-1 leading-relaxed">
+            Aktuell ist keine Datenfreigabe erforderlich. Der Auftraggeber kann
+            nun projektbezogene Daten separat freigeben. Neue Freigaben erscheinen
+            im Datenraum.
+          </p>
+          <Link href="/data-room" className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:underline">
+            Datenraum öffnen <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      ) : (
+        <p className="mt-5 text-sm text-muted-foreground">
+          Projektaufnahme abgelehnt. Datenfreigaben bleiben für dieses Projekt gesperrt.
+        </p>
+      )}
     </article>
   );
 }
@@ -296,6 +313,7 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
 
 export default function LeistungsanfragenInboxPage() {
   const [view, setView] = useState<ViewFilter>("OPEN");
+  const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
   const requestQuery = useListAnLeistungsanfragen(
     status === "ALL" ? undefined : { status },
@@ -304,8 +322,12 @@ export default function LeistungsanfragenInboxPage() {
   const invitationQuery = useListAnProjectInvitations({ query: { queryKey: getListAnProjectInvitationsQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false } });
   const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
   const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
-  const shownRequests = useMemo(() => requests.filter((item) => view === "ALL" || (view === "OPEN" ? !isDone(item.status) : isDone(item.status))), [requests, view]);
-  const shownInvitations = view === "DONE" ? invitations.filter((item) => item.status !== "PENDING") : view === "OPEN" ? invitations.filter((item) => item.status === "PENDING") : invitations;
+  const shownRequests = useMemo(() => category !== "INVITATIONS"
+    ? requests.filter((item) => view === "ALL" || (view === "OPEN" ? !isDone(item.status) : isDone(item.status)))
+    : [], [category, requests, view]);
+  const shownInvitations = category !== "REQUESTS"
+    ? view === "DONE" ? invitations.filter((item) => item.status !== "PENDING") : view === "OPEN" ? invitations.filter((item) => item.status === "PENDING") : invitations
+    : [];
   const loading = requestQuery.isLoading || invitationQuery.isLoading;
   const error = requestQuery.isError && invitationQuery.isError;
 
@@ -314,23 +336,45 @@ export default function LeistungsanfragenInboxPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-7 p-5 pb-12 lg:p-8">
-      <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-end md:justify-between">
+       <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">AN / ARBEITSEINGANG</p>
-          <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Leistungsanfragen</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Eingehende Arbeitsaufträge prüfen, Ressourcen einordnen und fristgerecht antworten. Angezeigt werden ausschließlich veröffentlichte Projekt- und Leistungsdaten.</p>
+           <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Anfragen &amp; Einladungen</h1>
+           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Leistungsanfragen und Projekteinladungen getrennt prüfen. Eine Projekteinladung aktiviert nur die Projektmitgliedschaft; veröffentlichte Leistungs- und Projektdaten erscheinen später separat im Datenraum.</p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-emerald-600" />Lokal synchronisiert</div>
       </header>
-      <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
+       <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
+         <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
+           {([
+             ["ALL", "Alle"],
+             ["REQUESTS", "Leistungsanfragen"],
+             ["INVITATIONS", "Projekteinladungen"],
+           ] as const).map(([value, label]) => (
+             <button
+               data-testid={`button-category-${value.toLowerCase()}`}
+               key={value}
+               type="button"
+               onClick={() => setCategory(value)}
+               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+             >
+               {label}
+               <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                 {value === "REQUESTS" ? requests.length : value === "INVITATIONS" ? invitations.length : requests.length + invitations.length}
+               </span>
+             </button>
+           ))}
+         </div>
+         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+         <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
           {(["OPEN", "ALL", "DONE"] as ViewFilter[]).map((value) => <button data-testid={`button-filter-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "OPEN" ? "Offen" : value === "ALL" ? "Alle" : "Erledigt"}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{value === "OPEN" ? shownRequests.length + shownInvitations.length : value === "ALL" ? requests.length + invitations.length : requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length}</span></button>)}
         </div>
         <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" className="w-full sm:w-56"><SelectValue placeholder="Status filtern" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>
+         </div>
       </section>
       {requestQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Leistungsanfragen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-requests" size="sm" variant="ghost" onClick={() => void requestQuery.refetch()}>Erneut laden</Button></div>}
       {invitationQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Projekteinladungen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-invitations" size="sm" variant="ghost" onClick={() => void invitationQuery.refetch()}>Erneut laden</Button></div>}
-      {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Keine offenen Arbeitsaufträge" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
+       {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{category === "INVITATIONS" ? "Keine Projekteinladungen" : category === "REQUESTS" ? (view === "OPEN" ? "Keine offenen Leistungsanfragen" : "Keine Leistungsanfragen in dieser Ansicht") : view === "OPEN" ? "Keine offenen Anfragen oder Einladungen" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen · {shownInvitations.length} Einladungen in dieser Ansicht</p>
     </main>
   );

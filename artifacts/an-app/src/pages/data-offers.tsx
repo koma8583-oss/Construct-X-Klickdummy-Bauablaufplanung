@@ -7,7 +7,7 @@
  * for TAKT_INFORMATION_PACKAGE; technical JSON shown collapsed.
  * Each offer with an associated TaktRequest shows a link to the detail page.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import {
@@ -79,6 +79,14 @@ const PUB_STATUS_BADGE: Record<string, string> = {
   WITHDRAWN: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   DRAFT:     'bg-muted text-muted-foreground',
   EXPIRED:   'bg-muted text-muted-foreground',
+};
+
+const PUB_STATUS_LABEL: Record<string, string> = {
+  PUBLISHED: 'Veröffentlicht',
+  SUSPENDED: 'Pausiert',
+  WITHDRAWN: 'Zurückgezogen',
+  DRAFT: 'Entwurf',
+  EXPIRED: 'Abgelaufen',
 };
 
 const PRODUCT_LABEL: Record<string, string> = {
@@ -409,7 +417,7 @@ function OfferDetailPanel({
       <div className="space-y-1.5">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PUB_STATUS_BADGE[offer.publicationStatus] ?? 'bg-muted text-muted-foreground'}`}>
-            {offer.publicationStatus}
+            {PUB_STATUS_LABEL[offer.publicationStatus] ?? offer.publicationStatus}
           </span>
           <Badge variant={RECIPIENT_STATUS_BADGE[offer.recipientStatus]?.variant ?? 'outline'}>
             {RECIPIENT_STATUS_BADGE[offer.recipientStatus]?.label ?? offer.recipientStatus}
@@ -438,17 +446,19 @@ function OfferDetailPanel({
         <ProjectInfoSection info={offer.projectInfo} />
       )}
 
-      {/* Package assignments — show this AN's allocated work packages */}
-      {offer.assignments.length > 0 && (
+       {/* Package assignments are protected until the policy is accepted. */}
+       {offer.recipientStatus === 'ACCEPTED' && offer.assignments.length > 0 && (
         <PackageAssignmentsSection assignments={offer.assignments} />
       )}
 
-      {/* Access notice — shown when policy not yet accepted */}
-          {offer.projectMembershipId && offer.recipientStatus === 'OFFERED' ? (
-            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
-              Dieses Informationspaket gehört zu einer Projekteinladung. Bitte öffnen Sie <strong>Projekteinladungen</strong>, um die Einladung und Policy gemeinsam zu bestätigen.
-            </div>
-          ) : <AccessNotice recipientStatus={offer.recipientStatus} />}
+       {/* Invitation and data offer are deliberately separate processes. */}
+       {offer.projectName && (
+         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
+           Dieses Datenangebot gehört zum Projekt <strong>{offer.projectName}</strong>.
+           Die Projektmitgliedschaft und diese Datenfreigabe sind getrennte Schritte.
+         </div>
+       )}
+       <AccessNotice recipientStatus={offer.recipientStatus} />
 
       {/* Linked TaktRequest */}
       {linkedTaktRequestId && (
@@ -566,13 +576,13 @@ function OfferDetailPanel({
       {(canAccept || canReject) && (
         <div className="flex gap-2">
           {canAccept && (
-            <Button size="sm" onClick={handleAccept} disabled={accept.isPending || !!offer.projectMembershipId} className="flex-1">
+            <Button size="sm" onClick={handleAccept} disabled={accept.isPending} className="flex-1">
               <CheckCircle2 className="h-4 w-4 mr-1.5" />
               {accept.isPending ? 'Wird akzeptiert…' : 'Richtlinie akzeptieren'}
             </Button>
           )}
           {canReject && (
-            <Button size="sm" variant="outline" onClick={handleReject} disabled={reject.isPending || !!offer.projectMembershipId}>
+            <Button size="sm" variant="outline" onClick={handleReject} disabled={reject.isPending}>
               <XCircle className="h-4 w-4 mr-1.5" />
               Ablehnen
             </Button>
@@ -654,10 +664,18 @@ const REMINDER_LABELS: Record<string, string> = {
 };
 
 export default function DataOffersPage() {
+  const [location] = useLocation();
   const { data: offers, isLoading } = useGetAnDataOffers();
   const { data: reminders } = useGetAnInboxMessages();
-  const [openId, setOpenId] = useState<string | null>(null);
+  const publicationIdFromUrl = new URLSearchParams(location.split("?")[1] ?? "").get("publicationId");
+  const [openId, setOpenId] = useState<string | null>(publicationIdFromUrl);
   const toggleOffer = (id: string) => setOpenId((prev) => (prev === id ? null : id));
+
+  useEffect(() => {
+    if (publicationIdFromUrl && offers?.some((offer) => offer.publicationId === publicationIdFromUrl)) {
+      setOpenId(publicationIdFromUrl);
+    }
+  }, [offers, publicationIdFromUrl]);
 
   const grouped = {
     new: offers?.filter((o) => o.recipientStatus === 'OFFERED' && o.publicationStatus === 'PUBLISHED') ?? [],
@@ -846,6 +864,8 @@ function OfferAccordionItem({
           <div className="text-sm font-medium truncate">{offer.title}</div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className="text-[11px] text-muted-foreground">{offer.agName ?? "Auftraggebername nicht veröffentlicht"}</span>
+            <span className="text-[11px] text-muted-foreground">·</span>
+            <span className="text-[11px] font-medium text-foreground">{offer.projectName ?? "Projektname nicht veröffentlicht"}</span>
             <span className="text-[11px] text-muted-foreground">·</span>
             <span className="text-[11px] text-muted-foreground">
               {PRODUCT_LABEL[offer.dataProductType] ?? offer.dataProductType}

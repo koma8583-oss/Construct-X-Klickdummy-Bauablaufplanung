@@ -122,6 +122,7 @@ import {
   type ProjectCalendar,
 } from '@workspace/api-client-react';
 import { DataPublicationWizard } from '@/components/DataPublicationWizard';
+import { CollaborationProcessPanel } from '@/components/CollaborationProcessPanel';
 import { LeistungVergabeDialog, type LeistungVergabeSubmitValues } from '@/components/LeistungVergabeDialog';
 import { ProjectInvitationWizard } from '@/components/ProjectInvitationWizard';
 import { AlternativeImpactInfo } from '@/components/alternative-impact-info';
@@ -710,6 +711,30 @@ export default function ProjectDetail() {
     () => deduplicateDataPublications(dataPublications ?? []),
     [dataPublications],
   );
+  const publicationRecipients = useMemo(() => {
+    const assignmentNames = new Map<string, { name: string; trade?: string | null }>();
+    for (const assignment of assignments ?? []) {
+      if (!assignmentNames.has(assignment.anOrgId)) {
+        assignmentNames.set(assignment.anOrgId, {
+          name: assignment.anName ?? assignment.anOrgId,
+          trade: assignment.trade,
+        });
+      }
+    }
+    return (memberships ?? [])
+      .filter((membership) => membership.status === 'ACTIVE')
+      .map((membership) => {
+        const participant = allAnOrgs?.find((organization) => organization.id === membership.anOrgId);
+        const assignment = assignmentNames.get(membership.anOrgId);
+        return {
+          id: membership.id,
+          name: participant?.name ?? assignment?.name ?? membership.anOrgId,
+          orgId: membership.anOrgId,
+          assignmentStatus: 'ACTIVE',
+          trade: assignment?.trade,
+        };
+      });
+  }, [allAnOrgs, assignments, memberships]);
 
   // Mutations
   const createTakt = useCreateTakt();
@@ -787,6 +812,7 @@ export default function ProjectDetail() {
 
   // Dataspace publication wizard
   const [isDataspaceOpen, setIsDataspaceOpen] = useState(false);
+  const [dataPublicationRecipientIds, setDataPublicationRecipientIds] = useState<string[]>([]);
   const [isInvitationPackageOpen, setIsInvitationPackageOpen] = useState(false);
   const [anStatusFilter, setAnStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PLANNED' | 'INACTIVE'>('ALL');
 
@@ -1316,6 +1342,19 @@ export default function ProjectDetail() {
     }
   };
 
+  const openDataPublicationFor = (anOrgId?: string) => {
+    if (anOrgId && !(memberships ?? []).some((membership) => membership.anOrgId === anOrgId && membership.status === 'ACTIVE')) {
+      toast({
+        title: 'Datenfreigabe noch nicht möglich',
+        description: 'Die Projektmitgliedschaft muss zuerst aktiv sein.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDataPublicationRecipientIds(anOrgId ? [anOrgId] : []);
+    setIsDataspaceOpen(true);
+  };
+
   const handleDeleteTakt = () => {
     setConfirmDeleteTakt(true);
   };
@@ -1621,7 +1660,7 @@ export default function ProjectDetail() {
           {canManageContractors && (
           <Button onClick={() => setIsInvitationPackageOpen(true)}>
             <Users className="w-4 h-4 mr-2" />
-            Einladung
+             AN zum Projekt einladen
           </Button>
           )}
           {canManageContractors && (
@@ -1682,6 +1721,22 @@ export default function ProjectDetail() {
         </Card>
       </div>
 
+      <CollaborationProcessPanel
+        memberships={(memberships ?? []).map((membership) => ({
+          id: membership.id,
+          anOrgId: membership.anOrgId,
+          status: membership.status,
+        }))}
+        publications={visibleDataPublications}
+        getPartnerName={(anOrgId) =>
+          allAnOrgs?.find((organization) => organization.id === anOrgId)?.name
+            ?? assignments?.find((assignment) => assignment.anOrgId === anOrgId)?.anName
+            ?? anOrgId
+        }
+        onInvite={() => setIsInvitationPackageOpen(true)}
+        onReleaseData={openDataPublicationFor}
+      />
+
       <details className="rounded-xl border border-border bg-card overflow-hidden">
         <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-primary" />Koordination</span>
@@ -1709,6 +1764,23 @@ export default function ProjectDetail() {
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </summary>
         <div className="border-t border-border/60">
+          <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              {publicationRecipients.length > 0
+                ? `${publicationRecipients.length} aktive${publicationRecipients.length === 1 ? 's' : ''} Projektmitglied${publicationRecipients.length === 1 ? '' : 'er'} können Daten erhalten.`
+                : 'Eine Datenfreigabe wird erst nach aktiver Projektmitgliedschaft verfügbar.'}
+            </p>
+            <Button
+              data-testid="button-create-data-publication"
+              size="sm"
+              variant="outline"
+              disabled={publicationRecipients.length === 0}
+              onClick={() => openDataPublicationFor()}
+            >
+              <Globe className="mr-1.5 h-4 w-4" />
+              Datenfreigabe erstellen
+            </Button>
+          </div>
           {dataPublicationsLoading ? (
             <div className="px-4 py-5 text-sm text-muted-foreground" data-testid="project-dataspace-loading">
               Datenraum wird geladen …
@@ -2293,7 +2365,7 @@ export default function ProjectDetail() {
                 </p>
                 <Button size="sm" onClick={() => setIsInvitationPackageOpen(true)}>
                   <Users className="w-4 h-4 mr-1.5" />
-                  Zum Projekt einladen
+                   AN zum Projekt einladen
                 </Button>
                  {(memberships ?? []).some((membership) => membership.status === 'ACTIVE') && (
                    <Button size="sm" variant="outline" onClick={() => setIsCreateAssignmentOpen(true)}>
@@ -2314,7 +2386,7 @@ export default function ProjectDetail() {
                   </p>
                   <Button size="sm" onClick={() => setIsInvitationPackageOpen(true)}>
                     <Users className="w-4 h-4 mr-1.5" />
-                    Zum Projekt einladen
+                     AN zum Projekt einladen
                   </Button>
                 </div>
               ) : (
@@ -3921,13 +3993,8 @@ export default function ProjectDetail() {
           onOpenChange={setIsDataspaceOpen}
           projectId={projectId}
           projectName={project.projectName ?? ''}
-          contractors={(assignments ?? []).map(a => ({
-            id: a.id,
-            name: a.anName ?? a.anOrgId,
-            orgId: a.anOrgId,
-            assignmentStatus: a.assignmentStatus,
-            trade: a.trade,
-          }))}
+          contractors={publicationRecipients}
+          initialRecipientIds={dataPublicationRecipientIds}
         />
       )}
 
