@@ -10,9 +10,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { agDb as db, runWithDatabaseRole } from "@workspace/db";
+import { agDb as db, anDb, runWithDatabaseRole } from "@workspace/db";
 import {
+  anLeistungsanfragenTable,
   leistungsanfragenTable,
+  leistungsanfrageSnapshotsTable,
   leistungenTable,
   organizationsTable,
   projectsTable,
@@ -26,6 +28,7 @@ import {
   createChangeProposal,
   resolveChangeProposal,
 } from "../services/service-change-proposal-service";
+import { getAnLeistungsanfrageDetail } from "../services/an-leistungsanfrage-service";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const GU_ORG = "t212-gu-org";
@@ -43,7 +46,31 @@ const REQUEST_IDS = [
   "t212-request-expired",
   "t212-request-mismatch",
   "t212-request-concurrent",
+  "t212-request-published-labels",
 ];
+
+const publishedSnapshot = {
+  schemaVersion: "1.0",
+  projectReference: PROJECT,
+  projectLocation: "Published T212 site",
+  projectDescription: "Published T212 project description",
+  taktReference: LEISTUNG,
+  taktVersion: 1,
+  trade: "Published T212 trade",
+  workPackage: "Published T212 work package",
+  kurzbezeichnung: "Published T212 service",
+  location: { building: null, storey: null, zone: "Published T212 zone" },
+  plannedTimeWindow: { start: "2026-09-03", end: "2026-09-07" },
+  bufferTimeWindow: null,
+  requiredOutput: "Published T212 output",
+  resourceRequirements: [],
+  constraints: [],
+  predecessors: [],
+  successors: [],
+  documentReferences: { lvReference: null, bimReference: null },
+} as const;
+
+const anProjectionIds: string[] = [];
 
 function token(userId: string, orgId: string, orgType: "AG" | "AN") {
   return jwt.sign(
@@ -84,8 +111,9 @@ async function insertRequest(id: string, suffix: string, agreed = true, status: 
 }
 
 beforeAll(async () => {
+  await db.insert(organizationsTable).values({ id: GU_ORG, name: "Published T212 Auftraggeber", type: "AG" })
+    .onConflictDoUpdate({ target: organizationsTable.id, set: { name: "Published T212 Auftraggeber" } });
   await db.insert(organizationsTable).values([
-    { id: GU_ORG, name: "T212 GU", type: "AG" },
     { id: NU_ORG, name: "T212 NU", type: "AN" },
     { id: OTHER_ORG, name: "T212 Other", type: "AN" },
   ]).onConflictDoNothing();
@@ -94,7 +122,8 @@ beforeAll(async () => {
     { id: NU_USER, name: "T212 NU user", email: "t212-nu@test.invalid", passwordHash: "x" },
     { id: OTHER_USER, name: "T212 other user", email: "t212-other@test.invalid", passwordHash: "x" },
   ]).onConflictDoNothing();
-  await db.insert(projectsTable).values({ id: PROJECT, agOrgId: GU_ORG, name: "T212 project" }).onConflictDoNothing();
+  await db.insert(projectsTable).values({ id: PROJECT, agOrgId: GU_ORG, name: "Published T212 project" })
+    .onConflictDoUpdate({ target: projectsTable.id, set: { name: "Published T212 project" } });
   await db.insert(leistungenTable).values({
     id: LEISTUNG,
     projectId: PROJECT,
@@ -110,6 +139,12 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[3], "EXPIRED", true, "EXPIRED");
   await insertRequest(REQUEST_IDS[4], "MISMATCH");
   await insertRequest(REQUEST_IDS[5], "CONCURRENT");
+  await insertRequest(REQUEST_IDS[6], "PUBLISHED-LABELS");
+  await db.insert(leistungsanfrageSnapshotsTable).values({
+    leistungsanfrageId: REQUEST_IDS[6],
+    schemaVersion: publishedSnapshot.schemaVersion,
+    snapshotPayload: publishedSnapshot as Record<string, unknown>,
+  });
 });
 
 afterAll(async () => {
@@ -121,6 +156,11 @@ afterAll(async () => {
   await db.delete(leistungsanfragenTable)
     .where(inArray(leistungsanfragenTable.id, REQUEST_IDS))
     .catch(() => {});
+  for (const projectionId of anProjectionIds) {
+    await anDb.delete(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.id, projectionId))
+      .catch(() => {});
+  }
   await db.delete(leistungenTable).where(eq(leistungenTable.id, LEISTUNG)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   await db.delete(usersTable).where(inArray(usersTable.id, [GU_USER, NU_USER, OTHER_USER])).catch(() => {});
@@ -202,6 +242,73 @@ describe("bilateral change proposals", () => {
       sql`SELECT count(*)::int AS count FROM resource_bookings WHERE source_reference_id = ${requestId}`,
     );
     expect(afterBookings.rows[0]?.count).toBe(beforeBookings.rows[0]?.count);
+  });
+
+  it("keeps published names and the public snapshot through a schedule-change delivery", async () => {
+    const requestId = REQUEST_IDS[6];
+    const proposal = await createAgChangeProposal({
+      requestId,
+      orgId: GU_ORG,
+      userId: GU_USER,
+      start: new Date("2026-09-03T08:00:00Z"),
+      end: new Date("2026-09-07T17:00:00Z"),
+    });
+    anProjectionIds.push(proposal.id);
+
+    const result = await runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId,
+      proposalId: proposal.id,
+      orgId: NU_ORG,
+      userId: NU_USER,
+      status: "ACCEPTED",
+    }));
+
+    expect(result).toMatchObject({
+      status: "ACCEPTED",
+      transportStatus: "DELIVERED",
+    });
+
+    const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, proposal.id),
+      eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG),
+    ));
+    expect(projection).toBeDefined();
+    expect(projection?.payloadSnapshot).toMatchObject({
+      requestKind: "SCHEDULE_CHANGE",
+      sourceRequestId: requestId,
+      changeProposalId: proposal.id,
+      senderOrganizationName: "Published T212 Auftraggeber",
+      projectName: "Published T212 project",
+      publicSnapshot: expect.objectContaining({
+        projectReference: PROJECT,
+        taktReference: LEISTUNG,
+        workPackage: "Published T212 work package",
+        kurzbezeichnung: "Published T212 service",
+      }),
+    });
+
+    const detail = await getAnLeistungsanfrageDetail(proposal.id, NU_ORG);
+    expect(detail).toMatchObject({
+      guOrgName: "Published T212 Auftraggeber",
+      project: {
+        id: PROJECT,
+        name: "Published T212 project",
+        location: "Published T212 site",
+      },
+      takt: {
+        id: LEISTUNG,
+        taktBezeichnung: "Published T212 work package",
+        kurzbezeichnung: "Published T212 service",
+        gewerk: "Published T212 trade",
+        zone: "Published T212 zone",
+        plannedStart: "2026-09-03",
+        plannedEnd: "2026-09-07",
+      },
+      snapshotPayload: expect.objectContaining({
+        projectReference: PROJECT,
+        kurzbezeichnung: "Published T212 service",
+      }),
+    });
   });
 
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {

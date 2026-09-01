@@ -151,6 +151,19 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
     expect(projection.payloadSnapshot).toEqual(request);
     expect(requirements).toHaveLength(1);
     expect(requirements[0].externalResourceTypeCode).toBe("CREW");
+
+    const detail = await getAnLeistungsanfrageDetail(request.requestId, AN);
+    expect(detail).toMatchObject({
+      guOrgName: null,
+      project: { id: "project-1", name: null, location: null },
+      takt: {
+        id: "leistung-1",
+        taktBezeichnung: null,
+        kurzbezeichnung: null,
+        gewerk: null,
+        zone: null,
+      },
+    });
   });
 
   it("spiegelt lokale Anforderungsänderungen in Detail und Verfügbarkeitsprüfung", async () => {
