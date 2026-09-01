@@ -10,7 +10,6 @@ import type { ProjectMembership } from './projectMembership';
 
 export interface ProjectInvitationPackage {
   projectInvitationId: string;
-  publicationId: string;
   status: ProjectInvitationPackageStatus;
   memberships: ProjectMembership[];
   idempotent: boolean;

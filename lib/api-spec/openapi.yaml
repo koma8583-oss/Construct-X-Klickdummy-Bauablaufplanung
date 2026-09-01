@@ -619,8 +619,8 @@ paths:
   /projects/{projectId}/invitation-packages:
     post:
       operationId: createProjectInvitationPackage
-      tags: [projects, data-publications]
-      summary: Create a project invitation and linked Dataspace offer atomically
+      tags: [projects]
+      summary: Prepare project invitations with a policy preview
       parameters:
         - name: projectId
           in: path
@@ -634,13 +634,13 @@ paths:
               $ref: "#/components/schemas/CreateProjectInvitationPackageRequest"
       responses:
         "201":
-          description: Invitation package prepared and dispatched
+          description: Project invitations prepared and dispatched without a data publication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectInvitationPackage"
         "200":
-          description: Idempotent replay of an existing invitation package
+          description: Idempotent replay of existing project invitations
           content:
             application/json:
               schema:
@@ -3772,7 +3772,7 @@ components:
 
     CreateProjectInvitationPackageRequest:
       type: object
-      required: [participantIds, policyTemplateId, selectedFields, title]
+      required: [participantIds, policyTemplateId, title]
       properties:
         participantIds:
           type: array
@@ -3780,10 +3780,6 @@ components:
           items: { type: string }
         policyTemplateId: { type: string }
         policyTemplateVersion: { type: integer, minimum: 1 }
-        selectedFields:
-          type: array
-          minItems: 1
-          items: { type: string }
         title: { type: string, maxLength: 255 }
         description: { type: string, maxLength: 2000 }
         invitationMessage: { type: string, maxLength: 4000 }
@@ -3793,11 +3789,10 @@ components:
 
     ProjectInvitationPackage:
       type: object
-      required: [projectInvitationId, publicationId, status, memberships, idempotent]
+      required: [projectInvitationId, status, memberships, idempotent]
       properties:
         projectInvitationId: { type: string }
-        publicationId: { type: string }
-        status: { type: string, enum: [PUBLISHED] }
+        status: { type: string, enum: [PREPARED] }
         memberships:
           type: array
           items: { $ref: "#/components/schemas/ProjectMembership" }

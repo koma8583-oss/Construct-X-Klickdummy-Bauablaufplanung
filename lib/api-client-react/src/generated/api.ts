@@ -2175,7 +2175,7 @@ export const getCreateProjectInvitationPackageUrl = (projectId: string,) => {
 }
 
 /**
- * @summary Create a project invitation and linked Dataspace offer atomically
+ * @summary Prepare project invitations with a policy preview
  */
 export const createProjectInvitationPackage = async (projectId: string,
     createProjectInvitationPackageRequest: CreateProjectInvitationPackageRequest, options?: RequestInit): Promise<ProjectInvitationPackage> => {
@@ -2225,7 +2225,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateProjectInvitationPackageMutationError = ErrorType<unknown>
 
     /**
- * @summary Create a project invitation and linked Dataspace offer atomically
+ * @summary Prepare project invitations with a policy preview
  */
 export const useCreateProjectInvitationPackage = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProjectInvitationPackage>>, TError,{projectId: string;data: BodyType<CreateProjectInvitationPackageRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}

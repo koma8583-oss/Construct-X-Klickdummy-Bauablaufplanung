@@ -212,7 +212,7 @@ function PublicationRow({
           <div className="text-sm font-medium">{pub.title}</div>
           <div className="text-xs text-muted-foreground">
             {PRODUCT_TYPE_LABELS[pub.dataProductType] ?? pub.dataProductType}
-            {isCombinedInvitation && <span className="ml-1.5 text-primary">· Einladung &amp; Freigabe</span>}
+             {isCombinedInvitation && <span className="ml-1.5 text-primary">· separate Datenfreigabe</span>}
           </div>
         </td>
 

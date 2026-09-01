@@ -21,13 +21,8 @@ import {
   deliverLocalProjectInvitationResponse,
 } from "./dataspace/local-dataspace-delivery";
 import type { ExternalProjectInvitation, ExternalProjectInvitationResponse } from "./dataspace/external-contracts";
-import {
-  FIELD_WHITELISTS,
-  buildContentSnapshot,
-  computeContentHash,
-} from "./data-publication-service";
 import { createPolicySnapshot } from "./policy-snapshot-service";
-import { toDataOfferPolicy, toInvitationPolicy } from "./policy-contract-adapters";
+import { toInvitationPolicy } from "./policy-contract-adapters";
 import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 
 export class ProjectMembershipError extends Error {
@@ -76,7 +71,7 @@ export async function listProjectParticipants(projectId: string, agOrgId: string
   return participants.map((participant) => ({
     ...participant,
     membershipStatus: participant.localOrgId ? statusByOrg.get(participant.localOrgId) ?? null : null,
-    selectable: participant.identityStatus === "VERIFIED"
+    selectable: participant.identityStatus === "PREPARED"
       && !["INVITED", "ACTIVE"].includes(statusByOrg.get(participant.localOrgId ?? "") ?? ""),
   }));
 }
@@ -386,7 +381,6 @@ export type CreateProjectInvitationPackageInput = {
   participantIds: string[];
   policyTemplateId: string;
   policyTemplateVersion?: number;
-  selectedFields: string[];
   title: string;
   description?: string;
   invitationMessage?: string;
@@ -396,9 +390,12 @@ export type CreateProjectInvitationPackageInput = {
 };
 
 /**
- * Creates the project memberships and their data offer as one business
- * operation. The transaction contains no transport calls. Both invitation
- * messages and data-offer notifications are dispatched only after commit.
+ * Prepares project invitations as a membership-only operation.
+ *
+ * This deliberately does not create a data publication or a data-offer
+ * notification. Project membership is a prerequisite for a later, separate
+ * data-publication flow. The transaction contains no transport calls; local
+ * notification delivery happens only after the invitation rows are committed.
  */
 export async function createProjectInvitationPackage(input: CreateProjectInvitationPackageInput) {
   const [project] = await db.select().from(projectsTable).where(and(
@@ -427,19 +424,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     );
   }
   const policyTemplateId = policy.id;
-  const registryPolicy = getPolicyTemplateRegistryEntry(
-    policy.code,
-    input.policyTemplateVersion,
-  );
-  const invitationFields = [...(registryPolicy?.allowedPublicationFields ?? FIELD_WHITELISTS.PROJECT_MEMBERSHIP)];
-  const requestedFields = [...new Set(input.selectedFields)].sort();
-  const fixedFields = [...new Set(invitationFields)].sort();
-  if (JSON.stringify(requestedFields) !== JSON.stringify(fixedFields)) {
-    throw new ProjectMembershipError(
-      "PROJECT_INVITATION_FIELDS_NOT_ALLOWED",
-      `Eine Projektaufnahme enthält ausschließlich die festen Projektbasisdaten: ${fixedFields.join(", ")}`,
-    );
-  }
   if (input.validFrom && input.validUntil && input.validUntil < input.validFrom) {
     throw new ProjectMembershipError("PROJECT_INVITATION_INVALID_VALIDITY", "Das Ende der Gültigkeit muss nach dem Beginn liegen.");
   }
@@ -453,7 +437,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     participantIds.map((participantId) => resolveDataspaceParticipant(participantId)),
   );
   const resolved = participants.map((participant, index) => {
-    if (!participant || participant.organizationType !== "AN" || participant.identityStatus !== "VERIFIED" ||
+     if (!participant || participant.organizationType !== "AN" || participant.identityStatus !== "PREPARED" ||
         !participant.localOrgId) {
       throw new ProjectMembershipError(
         "PROJECT_PARTICIPANT_NOT_VERIFIED",
@@ -468,49 +452,29 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   }
 
   const idempotencyKey = input.idempotencyKey?.trim() || crypto.randomUUID();
-  const existingPublication = await db.select().from(dataPublicationsTable).where(and(
-    eq(dataPublicationsTable.projectId, input.projectId),
-    eq(dataPublicationsTable.agOrgId, input.agOrgId),
-    eq(dataPublicationsTable.projectInvitationId, idempotencyKey),
-  )).limit(1);
-  if (existingPublication[0]) {
-    const existingMemberships = await db.select().from(projectMembershipsTable).where(
-      eq(projectMembershipsTable.dataPublicationId, existingPublication[0].id),
-    );
-    const existingInvitationMessages = existingMemberships.length > 0
-      ? await db.select({ payload: messageOutboxTable.payload }).from(messageOutboxTable).where(
-          inArray(
-            messageOutboxTable.messageId,
-            existingMemberships.map((membership) => `project-invitation-${membership.invitationId}`),
-          ),
-        )
-      : [];
-    const existingPolicyVersion = (existingInvitationMessages[0]?.payload as {
-      policySnapshot?: { templateVersion?: number };
-    } | undefined)?.policySnapshot?.templateVersion;
-    const requestedPolicyVersion = getPolicyTemplateRegistryEntry(
-      policy.code,
-      input.policyTemplateVersion,
-    )?.version;
-    const sameParticipants = existingMemberships.length === anOrgIds.length &&
-      existingMemberships.every((membership) => anOrgIds.includes(membership.anOrgId));
-    const sameFields = JSON.stringify([...existingPublication[0].selectedFields].sort()) ===
-      JSON.stringify([...input.selectedFields].sort());
-    if (!sameParticipants || !sameFields ||
-        existingPublication[0].policyTemplateId !== policyTemplateId ||
-        existingPolicyVersion !== requestedPolicyVersion ||
-        existingPublication[0].title !== input.title) {
+  const invitationIds = anOrgIds.map((anOrgId) => `${idempotencyKey}:${anOrgId}`);
+  const existingByInvitationId = await db.select().from(projectMembershipsTable).where(
+    inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
+  );
+  if (existingByInvitationId.length > 0) {
+    const sameRequest =
+      existingByInvitationId.length === anOrgIds.length &&
+      existingByInvitationId.every((membership) => anOrgIds.includes(membership.anOrgId)) &&
+      existingByInvitationId.every((membership) => membership.projectId === input.projectId);
+    if (!sameRequest) {
       throw new ProjectMembershipError(
         "PROJECT_INVITATION_IDEMPOTENCY_CONFLICT",
         "Der Idempotenzschlüssel wurde bereits für einen anderen Einladungsauftrag verwendet.",
       );
     }
-    await dispatchProjectInvitationPackage(existingPublication[0].id, input.agOrgId);
+    await dispatchProjectInvitationPackage(
+      existingByInvitationId.map((membership) => membership.invitationId),
+      input.agOrgId,
+    );
     return {
       projectInvitationId: idempotencyKey,
-      publicationId: existingPublication[0].id,
-      status: existingPublication[0].status,
-      memberships: existingMemberships,
+      status: "PREPARED" as const,
+      memberships: existingByInvitationId,
       idempotent: true,
     };
   }
@@ -535,15 +499,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     );
   }
 
-  // Build and hash before opening the write transaction so a snapshot failure
-  // cannot leave behind a half-prepared invitation package.
-  const snapshot = await buildContentSnapshot(
-    "PROJECT_MEMBERSHIP",
-    input.projectId,
-    invitationFields,
-  );
-  const contentHash = computeContentHash(snapshot);
-  const publicationId = crypto.randomUUID();
   const now = new Date();
   const invitationRows: Array<{
     membership: typeof projectMembershipsTable.$inferSelect;
@@ -552,30 +507,9 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
 
   try {
   await db.transaction(async (tx) => {
-    const [publication] = await tx.insert(dataPublicationsTable).values({
-      id: publicationId,
-      agOrgId: input.agOrgId,
-      projectId: input.projectId,
-      projectInvitationId: idempotencyKey,
-      dataProductType: "PROJECT_MEMBERSHIP",
-      title: input.title,
-      description: input.description ?? null,
-      version: 1,
-      schemaVersion: "1.0",
-      status: "PUBLISHED",
-       policyTemplateId,
-      selectedFields: invitationFields,
-      selectedTaktIds: null,
-      contentSnapshot: snapshot,
-      contentHash,
-      validFrom: input.validFrom ?? now,
-      validUntil: input.validUntil ?? null,
-      publishedAt: now,
-    }).returning();
-
     for (const participant of resolved) {
       const anOrgId = participant.localOrgId!;
-      const invitationId = crypto.randomUUID();
+      const invitationId = `${idempotencyKey}:${anOrgId}`;
       const correlationId = `project-membership:${input.projectId}:${anOrgId}:${invitationId}`;
       const messageId = `project-invitation-${invitationId}`;
       const policySnapshot = createPolicySnapshot({
@@ -594,7 +528,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
       const [membership] = previousMembership
         ? await tx.update(projectMembershipsTable).set({
             anParticipantId: participant.participantId,
-            dataPublicationId: publication.id,
             status: "INVITED",
             invitationId,
             correlationId,
@@ -615,7 +548,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
             agOrgId: input.agOrgId,
             anOrgId,
             anParticipantId: participant.participantId,
-            dataPublicationId: publication.id,
             status: "INVITED",
             invitationId,
             correlationId,
@@ -629,34 +561,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           "Die Projektbeziehung wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
         );
       }
-
-      await tx.insert(dataPublicationRecipientsTable).values({
-        publicationId: publication.id,
-        projectMembershipId: membership.id,
-        anOrgId,
-      });
-      const dataOfferMessageId = `dataspace-offer-${publication.id}-${anOrgId}`;
-      await tx.insert(messageOutboxTable).values({
-        messageId: dataOfferMessageId,
-        schemaVersion: "1.0",
-        messageType: "DATA_OFFER_PUBLISHED",
-        senderOrgId: input.agOrgId,
-        recipientOrgId: anOrgId,
-        correlationId: publication.id,
-        payload: {
-          publicationId: publication.id,
-          projectReference: publication.projectId,
-          dataProductType: publication.dataProductType,
-          publicationVersion: publication.version,
-          policyCode: policySnapshot.code,
-          policyTemplateId: policySnapshot.templateId,
-          policyTemplateVersion: policySnapshot.templateVersion,
-          validUntil: publication.validUntil?.toISOString() ?? null,
-          detailsRef: `/api/an/data-offers/${publication.id}`,
-          title: publication.title,
-        },
-        status: "PENDING",
-      });
 
       const invitationPayload: ExternalProjectInvitation = {
         metadata: {
@@ -672,6 +576,8 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         project: {
           projectReference: project.id,
           projectName: project.name,
+          status: project.status,
+          ...(project.description ? { description: project.description } : {}),
           ...(project.location ? { location: project.location } : {}),
         },
         requestedRole: "CONTRACTOR",
@@ -682,14 +588,14 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           ...toInvitationPolicy(policySnapshot, participant.participantId),
         },
         policySnapshot,
-        dataOffer: {
-          publicationId: publication.id,
-          title: publication.title,
-          selectedFields: invitationFields,
-          validFrom: (input.validFrom ?? now).toISOString(),
-          ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
-          policy: toDataOfferPolicy(policySnapshot, policy),
-        },
+         dataspacePreparation: {
+           mode: "LOCAL_PREPARED",
+           participantId: participant.participantId,
+           bpnl: null,
+           did: null,
+           participantDiscovery: "NOT_CONFIGURED",
+           connectorDiscovery: "NOT_CONFIGURED",
+         },
       };
       await tx.insert(messageOutboxTable).values({
         messageId,
@@ -710,21 +616,18 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ??
       (error as { code?: string }).code;
     if (code === "23505") {
-      const [winner] = await db.select().from(dataPublicationsTable).where(and(
-        eq(dataPublicationsTable.projectId, input.projectId),
-        eq(dataPublicationsTable.agOrgId, input.agOrgId),
-        eq(dataPublicationsTable.projectInvitationId, idempotencyKey),
-      )).limit(1);
-      if (winner) {
-        const memberships = await db.select().from(projectMembershipsTable).where(
-          eq(projectMembershipsTable.dataPublicationId, winner.id),
+      const winners = await db.select().from(projectMembershipsTable).where(
+        inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
+      );
+      if (winners.length === anOrgIds.length) {
+        await dispatchProjectInvitationPackage(
+          winners.map((membership) => membership.invitationId),
+          input.agOrgId,
         );
-        await dispatchProjectInvitationPackage(winner.id, input.agOrgId);
         return {
           projectInvitationId: idempotencyKey,
-          publicationId: winner.id,
-          status: winner.status,
-          memberships,
+          status: "PREPARED" as const,
+          memberships: winners,
           idempotent: true,
         };
       }
@@ -732,27 +635,31 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     throw error;
   }
 
-  await dispatchProjectInvitationPackage(publicationId, input.agOrgId, invitationRows);
+  await dispatchProjectInvitationPackage(
+    invitationRows.map(({ membership }) => membership.invitationId),
+    input.agOrgId,
+    invitationRows,
+  );
 
   const memberships = await db.select().from(projectMembershipsTable).where(
-    eq(projectMembershipsTable.dataPublicationId, publicationId),
+    inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
   );
   return {
     projectInvitationId: idempotencyKey,
-    publicationId,
-    status: "PUBLISHED" as const,
+    status: "PREPARED" as const,
     memberships,
     idempotent: false,
   };
 }
 
 async function dispatchProjectInvitationPackage(
-  publicationId: string,
+  invitationIds: string[],
   agOrgId: string,
   preparedRows?: Array<{ membership: typeof projectMembershipsTable.$inferSelect; payload: ExternalProjectInvitation }>,
 ) {
+  const messageIds = invitationIds.map((invitationId) => `project-invitation-${invitationId}`);
   const rows = preparedRows ?? await db.select().from(messageOutboxTable).where(and(
-    eq(messageOutboxTable.correlationId, publicationId),
+    inArray(messageOutboxTable.messageId, messageIds as [string, ...string[]]),
     eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
     eq(messageOutboxTable.senderOrgId, agOrgId),
   )).then((outboxRows) => outboxRows.map((outbox) => ({
@@ -773,8 +680,6 @@ async function dispatchProjectInvitationPackage(
       }
     }
   }
-  const { publishCombinedDataPublicationNotifications } = await import("./data-publication-service");
-  await publishCombinedDataPublicationNotifications(publicationId, agOrgId);
 }
 
 async function resolveInvitation(

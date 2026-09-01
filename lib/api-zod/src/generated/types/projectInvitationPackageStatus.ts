@@ -10,5 +10,5 @@ export type ProjectInvitationPackageStatus = typeof ProjectInvitationPackageStat
 
 
 export const ProjectInvitationPackageStatus = {
-  PUBLISHED: 'PUBLISHED',
+  PREPARED: 'PREPARED',
 } as const;

@@ -20,7 +20,9 @@ export async function resolveDataspaceParticipant(localOrgId: string): Promise<D
     participantId: `local:${org.id}`,
     organizationName: org.name,
     organizationType: org.type,
-    identityStatus: "VERIFIED",
+    // This directory is intentionally local preparation data. It is not a
+    // BPNL/DID-backed Dataspace discovery result.
+    identityStatus: "PREPARED",
     connectorStatus: "UNKNOWN",
   };
 }
@@ -36,7 +38,7 @@ export async function listDataspaceParticipants(
       participantId: `local:${org.id}`,
       organizationName: org.name,
       organizationType: org.type,
-      identityStatus: "VERIFIED" as const,
+    identityStatus: "PREPARED" as const,
       connectorStatus: "UNKNOWN" as const,
     }));
 }

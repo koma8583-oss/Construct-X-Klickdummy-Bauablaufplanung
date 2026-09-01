@@ -115,6 +115,7 @@ export const externalProjectInvitationSchema = z.object({
   project: z.object({
     projectReference: nonEmpty(200),
     projectName: nonEmpty(500),
+    status: z.enum(["ACTIVE", "COMPLETED", "ARCHIVED"]),
     description: z.string().trim().max(4000).optional(),
     location: z.string().trim().max(1000).optional(),
   }).strict(),
@@ -124,6 +125,14 @@ export const externalProjectInvitationSchema = z.object({
   validUntil: externalDate.optional(),
   policy: invitationPolicySchema,
   policySnapshot: policySnapshotSchema.optional(),
+  dataspacePreparation: z.object({
+    mode: z.literal("LOCAL_PREPARED"),
+    participantId: nonEmpty(200),
+    bpnl: z.null(),
+    did: z.null(),
+    participantDiscovery: z.literal("NOT_CONFIGURED"),
+    connectorDiscovery: z.literal("NOT_CONFIGURED"),
+  }).strict().optional(),
   dataOffer: z.object({
     publicationId: nonEmpty(200),
     title: nonEmpty(500),
@@ -317,7 +326,7 @@ export type DataspaceParticipant = {
   participantId: string;
   organizationName: string;
   organizationType: "AG" | "AN";
-  identityStatus: "VERIFIED" | "UNVERIFIED" | "SUSPENDED";
+  identityStatus: "PREPARED" | "VERIFIED" | "UNVERIFIED" | "SUSPENDED";
   connectorEndpoint?: string;
   connectorStatus: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
   capabilities?: string[];
@@ -330,6 +339,7 @@ export type ExternalProjectInvitation = {
   project: {
     projectReference: string;
     projectName: string;
+    status: "ACTIVE" | "COMPLETED" | "ARCHIVED";
     description?: string;
     location?: string;
   };
@@ -349,6 +359,14 @@ export type ExternalProjectInvitation = {
     prohibitions?: string[];
   };
   policySnapshot?: ExternalPolicySnapshot;
+  dataspacePreparation?: {
+    mode: "LOCAL_PREPARED";
+    participantId: string;
+    bpnl: null;
+    did: null;
+    participantDiscovery: "NOT_CONFIGURED";
+    connectorDiscovery: "NOT_CONFIGURED";
+  };
   dataOffer?: {
     publicationId: string;
     title: string;

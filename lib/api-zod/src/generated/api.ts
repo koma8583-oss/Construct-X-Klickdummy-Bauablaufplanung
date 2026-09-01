@@ -710,12 +710,11 @@ export const InviteProjectParticipantResponse = zod.object({
 
 
 /**
- * @summary Create a project invitation and linked Dataspace offer atomically
+ * @summary Prepare project invitations with a policy preview
  */
 export const CreateProjectInvitationPackageParams = zod.object({
   "projectId": zod.coerce.string()
 })
-
 
 
 
@@ -733,7 +732,6 @@ export const CreateProjectInvitationPackageBody = zod.object({
   "participantIds": zod.array(zod.string()).min(1),
   "policyTemplateId": zod.string(),
   "policyTemplateVersion": zod.number().min(1).optional(),
-  "selectedFields": zod.array(zod.string()).min(1),
   "title": zod.string().max(createProjectInvitationPackageBodyTitleMax),
   "description": zod.string().max(createProjectInvitationPackageBodyDescriptionMax).optional(),
   "invitationMessage": zod.string().max(createProjectInvitationPackageBodyInvitationMessageMax).optional(),
@@ -744,8 +742,7 @@ export const CreateProjectInvitationPackageBody = zod.object({
 
 export const CreateProjectInvitationPackageResponse = zod.object({
   "projectInvitationId": zod.string(),
-  "publicationId": zod.string(),
-  "status": zod.enum(['PUBLISHED']),
+  "status": zod.enum(['PREPARED']),
   "memberships": zod.array(zod.object({
   "id": zod.string(),
   "projectId": zod.string(),

@@ -70,8 +70,8 @@ export async function inviteParticipantsWithData(input: CombinedInvitationInput)
 
   const uniqueParticipantIds = [...new Set(input.participantIds)];
   const participants = await Promise.all(uniqueParticipantIds.map((id) => resolveDataspaceParticipant(id)));
-  if (participants.some((participant) => !participant || participant.organizationType !== "AN" || participant.identityStatus !== "VERIFIED")) {
-    throw new ProjectMembershipError("PROJECT_PARTICIPANT_NOT_VERIFIED", "Mindestens ein ausgewählter Teilnehmer ist nicht verifiziert.");
+  if (participants.some((participant) => !participant || participant.organizationType !== "AN" || participant.identityStatus !== "PREPARED")) {
+    throw new ProjectMembershipError("PROJECT_PARTICIPANT_NOT_PREPARED", "Mindestens ein ausgewählter Teilnehmer ist nicht als lokale Identität vorbereitet.");
   }
   const resolved = participants as Array<NonNullable<typeof participants[number]>>;
   if (resolved.some((participant) => !participant.localOrgId || participant.localOrgId === input.agOrgId)) {

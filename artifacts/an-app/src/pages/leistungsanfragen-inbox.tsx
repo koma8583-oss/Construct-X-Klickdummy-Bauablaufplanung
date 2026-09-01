@@ -10,7 +10,6 @@ import {
   Check,
   Clock3,
   Inbox,
-  Eye,
   Lock,
   MapPin,
   RefreshCw,
@@ -26,7 +25,6 @@ import {
   type AnLeistungsanfrageListItemStatus,
   type AnProjectInvitation,
   useAcceptAnProjectInvitation,
-  useGetDataPublicationOdrl,
   useListAnLeistungsanfragen,
   useListAnProjectInvitations,
   useRejectAnProjectInvitation,
@@ -145,14 +143,12 @@ function StatusBadge({ status }: { status: AnLeistungsanfrageListItemStatus }) {
 
 function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
   const [confirmed, setConfirmed] = useState(false);
-  const [showOdrl, setShowOdrl] = useState(false);
   const { toast } = useToast();
   const client = useQueryClient();
   const accept = useAcceptAnProjectInvitation();
   const reject = useRejectAnProjectInvitation();
   const busy = accept.isPending || reject.isPending;
   const policy = (invitation.policySnapshot ?? {}) as Record<string, unknown>;
-  const hasDataOffer = Boolean(invitation.dataPublicationId);
   const policyName = policyText(policy, "name") ?? "Nutzungsrichtlinie";
   const policyPurpose = policyText(policy, "purpose") ?? policyText(policy, "usagePurpose");
   const permissions = policyList(policy, "permissions");
@@ -164,10 +160,6 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
   const policyId = policyText(policy, "policyId");
   const policyValidFrom = policyText(policy, "validFrom");
   const policyValidUntil = policyText(policy, "validUntil") ?? invitation.invitationExpiresAt;
-  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
-    invitation.dataPublicationId ?? "",
-    showOdrl,
-  );
 
   const decide = async (kind: "accept" | "reject") => {
     try {
@@ -175,8 +167,8 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
       else await reject.mutateAsync({ id: invitation.id, data: {} });
       await client.invalidateQueries({ queryKey: getListAnProjectInvitationsQueryKey() });
       toast({
-        title: kind === "accept"
-          ? hasDataOffer ? "Projekt und Datenfreigabe angenommen" : "Projektaufnahme angenommen"
+         title: kind === "accept"
+           ? "Projektaufnahme angenommen"
           : "Einladung abgelehnt",
       });
     } catch {
@@ -216,19 +208,13 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
         {invitation.projectDescription && <p>{invitation.projectDescription}</p>}
       </div>
       {invitation.invitationMessage && <p className="mt-4 rounded-xl bg-muted/60 p-3 text-sm leading-relaxed">{invitation.invitationMessage}</p>}
-      {invitation.dataPublicationTitle && (
-        <div className="mt-4 space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Lock className="h-4 w-4 text-primary" />
-            Datenangebot: {invitation.dataPublicationTitle}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {invitation.selectedFields?.map((field) => (
-              <Badge key={field} variant="secondary" className="text-[10px]">{field}</Badge>
-            ))}
-          </div>
-        </div>
-      )}
+       <div className="mt-4 space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+         <div className="flex items-center gap-2 font-medium">
+           <Lock className="h-4 w-4 text-primary" />
+           Policy-Vorschau
+         </div>
+         <p className="text-muted-foreground">Diese Einladung enthält nur minimale Projektbasisdaten. Sie ist keine Datenfreigabe und erzeugt keinen EDC-Vertrag oder Datentransfer.</p>
+       </div>
       <div className="mt-4 space-y-2 rounded-xl border p-3 text-sm">
         <div className="flex items-center gap-2 font-medium">
           <ShieldCheck className="h-4 w-4 text-primary" />
@@ -255,34 +241,12 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
             {policyValidUntil ? ` bis ${dateText(policyValidUntil)}` : " · ohne festes Enddatum"}
           </p>
         )}
-        {invitation.dataPublicationId && (
-          <>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowOdrl((visible) => !visible)}>
-              <Eye className="mr-2 h-4 w-4" />
-              {showOdrl ? "ODRL ausblenden" : "ODRL anzeigen"}
-            </Button>
-            {showOdrl && (
-              odrlLoading ? (
-                <p className="text-xs text-muted-foreground">ODRL wird geladen…</p>
-              ) : odrl ? (
-                <pre className="max-h-64 overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">{JSON.stringify(odrl, null, 2)}</pre>
-              ) : (
-                <p className="text-xs text-muted-foreground">ODRL konnte nicht geladen werden.</p>
-              )
-            )}
-          </>
-        )}
       </div>
       {invitation.status === "PENDING" ? (
         <div className="mt-5 space-y-4">
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background/60 p-3 text-sm">
             <Checkbox data-testid={`checkbox-policy-${invitation.id}`} checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} />
-            <span>
-              Ich bestätige die angezeigte Nutzungsrichtlinie.{" "}
-              {hasDataOffer
-                ? "Projektmitgliedschaft und Datenzugriff werden erst danach aktiviert."
-                : "Die Projektmitgliedschaft wird erst danach aktiviert. Diese ältere Einladung enthält keine separate Datenfreigabe."}
-            </span>
+             <span>Ich bestätige die angezeigte Policy-Vorschau. Die Projektmitgliedschaft wird erst nach meiner ausdrücklichen Annahme aktiviert. Eine spätere Datenfreigabe ist ein separater Prozess.</span>
           </label>
           <div className="flex flex-wrap gap-2">
             <Button data-testid={`button-accept-invitation-${invitation.id}`} disabled={!confirmed || busy} onClick={() => void decide("accept")}><Check className="mr-2 h-4 w-4" />Projekt beitreten</Button>

@@ -300,7 +300,7 @@ export function DataPublicationWizard({
         validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
         validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
       });
-      toast({ title: 'Einladungen versendet', description: 'Projekt, Policy und Datenangebot wurden gemeinsam bereitgestellt.' });
+      toast({ title: 'Datenfreigabe veröffentlicht', description: 'Die Datenfreigabe wurde separat für aktive Projektmitglieder bereitgestellt.' });
       handleOpenChange(false);
     } catch (err) {
       toast({ title: 'Fehler beim Einladen', description: (err as Error).message, variant: 'destructive' });
@@ -582,7 +582,7 @@ export function DataPublicationWizard({
               </Button>
             ) : (
               <Button type="button" onClick={handlePublish} disabled={isPending || !canNext} className="min-w-36">
-                 {isPending ? 'Wird versendet…' : <><Globe className="h-4 w-4 mr-1.5" /> Einladung &amp; Freigabe versenden</>}
+                {isPending ? 'Wird veröffentlicht…' : <><Globe className="h-4 w-4 mr-1.5" /> Datenfreigabe veröffentlichen</>}
               </Button>
             )}
           </div>

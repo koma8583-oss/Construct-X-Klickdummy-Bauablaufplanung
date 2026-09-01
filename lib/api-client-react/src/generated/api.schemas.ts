@@ -136,8 +136,6 @@ export interface CreateProjectInvitationPackageRequest {
   policyTemplateId: string;
   /** @minimum 1 */
   policyTemplateVersion?: number;
-  /** @minItems 1 */
-  selectedFields: string[];
   /** @maxLength 255 */
   title: string;
   /** @maxLength 2000 */
@@ -154,12 +152,11 @@ export type ProjectInvitationPackageStatus = typeof ProjectInvitationPackageStat
 
 
 export const ProjectInvitationPackageStatus = {
-  PUBLISHED: 'PUBLISHED',
+  PREPARED: 'PREPARED',
 } as const;
 
 export interface ProjectInvitationPackage {
   projectInvitationId: string;
-  publicationId: string;
   status: ProjectInvitationPackageStatus;
   memberships: ProjectMembership[];
   idempotent: boolean;

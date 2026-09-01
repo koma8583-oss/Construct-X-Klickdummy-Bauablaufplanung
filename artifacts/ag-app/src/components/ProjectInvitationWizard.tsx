@@ -41,27 +41,15 @@ type Props = {
   onInvitationSent?: () => void;
 };
 
-const PROJECT_MEMBERSHIP_FIELDS = [
-  "projectReference",
-  "projectName",
-  "projectStatus",
-  "projectLocation",
-] as const;
-const PROJECT_MEMBERSHIP_FIELD_LABELS: Record<string, string> = {
-  projectReference: "Projektreferenz (ID)",
-  projectName: "Projektname",
-  projectStatus: "Projektstatus",
-  projectLocation: "Projektstandort / Bauvorhaben",
-};
 const STEP_LABELS = ["Teilnehmer", "Policy", "Übersicht"];
 
 function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
   return {
     "@context": "http://www.w3.org/ns/odrl.jsonld",
     "@type": "Set",
-    uid: "urn:odrl:data-publication:project-invitation-preview",
+     uid: "urn:taktkoord:project-invitation-policy-preview",
     permission: [{
-      target: "data-publication:project-invitation-preview",
+       target: "taktkoord:project-invitation-policy-preview",
       assigner: "organization:<ag-org-id>",
       assignee: "organization:<nu-org-id>",
       action: "use",
@@ -73,10 +61,10 @@ function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
       ],
     }],
     prohibition: [
-      { target: "data-publication:project-invitation-preview", action: "distribute" },
-      { target: "data-publication:project-invitation-preview", action: "derive" },
-      { target: "data-publication:project-invitation-preview", action: "modify" },
-      { target: "data-publication:project-invitation-preview", action: "commercialize" },
+       { target: "taktkoord:project-invitation-policy-preview", action: "distribute" },
+       { target: "taktkoord:project-invitation-policy-preview", action: "derive" },
+       { target: "taktkoord:project-invitation-policy-preview", action: "modify" },
+       { target: "taktkoord:project-invitation-policy-preview", action: "commercialize" },
     ],
   };
 }
@@ -169,8 +157,7 @@ export function ProjectInvitationWizard({
         data: {
           participantIds: Array.from(selectedParticipants),
           policyTemplateId,
-          ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
-           selectedFields: [...PROJECT_MEMBERSHIP_FIELDS],
+            ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
           title: title.trim() || autoTitle,
           invitationMessage: invitationMessage.trim() || undefined,
           validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
@@ -179,8 +166,8 @@ export function ProjectInvitationWizard({
         },
       });
       toast({
-         title: "Projektaufnahme versendet",
-         description: "Die ausgewählten AN erhalten die Projektaufnahme mit der zu bestätigenden Policy.",
+         title: "Projekteinladung versendet",
+         description: "Die ausgewählten AN erhalten eine reine Projektaufnahme mit Policy-Vorschau. Eine Datenfreigabe ist damit nicht verbunden.",
       });
       onInvitationSent?.();
       close(false);
@@ -200,11 +187,12 @@ export function ProjectInvitationWizard({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            Projekteinladung mit Datenfreigabe
+            Projekteinladung
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-             Die Projektaufnahme enthält nur wenige Projektbasisdaten. Die Projektpartnerschaft entsteht erst nach ausdrücklicher Annahme durch den AN.
-          </p>
+          <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
+            <p><strong>Nur Projektaufnahme:</strong> Der AN erhält minimale Projektbasisdaten und eine Policy-Vorschau. Die Mitgliedschaft entsteht erst nach ausdrücklicher Annahme.</p>
+            <p className="text-xs text-muted-foreground">Aktuell werden kein BPNL/DID ermittelt und kein EDC-Asset, Catalog Offer, Vertrag, Transfer oder Data Plane angelegt. Eine spätere Datenfreigabe startet separat für aktive Projektmitglieder.</p>
+          </div>
         </DialogHeader>
 
         <div className="flex items-center gap-1">
@@ -227,11 +215,11 @@ export function ProjectInvitationWizard({
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Wählen Sie verifizierte Nachunternehmen aus dem Dataspace-Directory. Bereits eingeladene oder aktive Teilnehmer sind nicht erneut auswählbar.
+                 Wählen Sie vorbereitete lokale AN-Identitäten aus der Teilnehmerliste. Sie sind noch keine verifizierten Dataspace-Teilnehmer; BPNL/DID- und Connector-Discovery sind für einen späteren Integrationsschritt reserviert.
               </p>
               {selectableParticipants.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                  Keine verifizierten, noch nicht eingeladenen Teilnehmer verfügbar.
+                   Keine vorbereiteten, noch nicht eingeladenen Teilnehmer verfügbar.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -263,9 +251,9 @@ export function ProjectInvitationWizard({
                           <Checkbox checked={selectedParticipants.has(participant.participantId)} onCheckedChange={() => toggleParticipant(participant.participantId)} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-medium">{participant.name}</span>
-                            <span className="text-xs text-muted-foreground">Verifizierter Dataspace-Teilnehmer</span>
+                            <span className="text-xs text-muted-foreground">Lokale vorbereitete Identität · Dataspace-Discovery ausstehend</span>
                           </span>
-                          <Badge variant="secondary" className="text-[10px]">Verifiziert</Badge>
+                           <Badge variant="secondary" className="text-[10px]">Vorbereitet</Badge>
                         </button>
                       ))}
                     </div>
@@ -281,7 +269,7 @@ export function ProjectInvitationWizard({
                 <Label>Nutzungsrichtlinie</Label>
                 <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
-                   <span className="flex-1">{selectedPolicy?.name ?? "Projektaufnahme"}</span>
+                   <span className="flex-1">{selectedPolicy?.name ?? "Policy-Vorschau"}</span>
                   {selectedPolicy && (
                     <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
                       <Eye className="h-3.5 w-3.5" /> Details &amp; ODRL
@@ -293,7 +281,7 @@ export function ProjectInvitationWizard({
                  </p>
               </div>
               <div className="space-y-2">
-                 <Label>Titel der Projektaufnahme</Label>
+                 <Label>Titel der Projekteinladung</Label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={autoTitle} />
               </div>
               <div className="space-y-2">
@@ -313,8 +301,8 @@ export function ProjectInvitationWizard({
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Projekt</div><div className="font-semibold">{projectName}</div></div>
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="flex flex-wrap gap-1 mt-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
-                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Feste Projektbasisdaten</div><div className="flex flex-wrap gap-1 mt-1">{PROJECT_MEMBERSHIP_FIELDS.map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{PROJECT_MEMBERSHIP_FIELD_LABELS[field]}</Badge>)}</div></div>
-                 <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung und Policy ausdrücklich bestätigt.</p>
+                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Übermittelte Projektbasisdaten</div><p className="mt-1 text-sm">Projektname, Projektstatus, Projektstandort und Projektreferenz</p></div>
+                  <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Diese Policy ist eine Vorschau und kein technisch durchgesetzter EDC-Vertrag. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung ausdrücklich annimmt.</p>
               </div>
             </div>
           )}

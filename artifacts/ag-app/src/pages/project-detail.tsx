@@ -3585,7 +3585,7 @@ export default function ProjectDetail() {
           </div>
 
           <div className="border-t border-border pt-4 text-sm text-muted-foreground">
-            Neue Teilnehmer werden über <strong>Einladung &amp; Freigabe</strong> gemeinsam mit einer Policy und einem Informationspaket eingeladen.
+             Neue Teilnehmer erhalten zunächst eine reine <strong>Projekteinladung</strong> mit Policy-Vorschau. Datenfreigaben werden später separat und nur für aktive Projektmitglieder veröffentlicht.
           </div>
         </DialogContent>
       </Dialog>

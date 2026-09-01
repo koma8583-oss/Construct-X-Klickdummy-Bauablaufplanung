@@ -15,14 +15,13 @@ export {
 export type { TaktRequestSnapshotPayload } from "./taktRequestSnapshotPayload";
 
 export {
-  NotificationHeaderSchema,
-  NotificationEnvelopeSchema,
   CATENA_X_MESSAGE_HEADER_VERSION,
+  NotificationEnvelopeSchema,
+  NotificationHeaderSchema,
   TAKTKOORD_NOTIFICATION_CONTEXTS,
   createNotificationEnvelope,
 } from "./notification-envelope";
 export type {
-  NotificationHeader,
   NotificationEnvelope,
-  TaktKoordNotificationType,
+  NotificationHeader,
 } from "./notification-envelope";
