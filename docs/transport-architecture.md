@@ -255,14 +255,21 @@ The existing 7 delegation-based values are retained unchanged.
 
 ## 8 — EDC / Tractus-X Dataspace Readiness
 
-The `MessageTransport` interface is the single integration point for replacing
-`LocalHubTransport` with an EDC connector implementation. No domain service,
-route handler, or business rule needs to change when that swap is made.
+`DataspaceExchange` is the single domain boundary for external coordination,
+project invitations, and data offers. `LocalHubTransport` remains the active
+REST/Hub PoC. `TractusXEdcExchange` is deliberately an explicit
+`NOT_CONFIGURED` boundary until real participant identities and connector
+phases are configured; it does not fall back to local delivery or simulate
+success.
 
 Every coordination data-exchange operation writes an entry to
 `takt_request_audit_events` (see `lib/db/src/schema/takt-request-audit-events.ts`).
 This table is transport-agnostic: the `EdcTransport` will write the same event
 types, so the coordination history is consistent regardless of transport.
+
+Project invitations and `DATA_OFFER_PUBLISHED` messages are separate exchange
+contracts. Invitation delivery never creates a publication or starts a data
+transfer. Data offers carry separate access and usage policy snapshots.
 
 For the complete asset classification, Provider-Push flow design, contract/policy
 placeholder mapping, and EDC migration checklist, see
@@ -282,7 +289,11 @@ Route handler (`delegations.ts`) → `writeHubMessage` → `hub_messages` insert
 `hub_messages` table (extensible) · hub route org-filtering · `webhook_events` schema pattern (outbox model) · JWT middleware · hub-admin access control
 
 **Target architecture documented:**
-Abstract `MessageTransport` interface → `LocalHubTransport` (PoC) / `EdcTransport` (future) · transactional `message_outbox` · `message_inbox` delivery log · `TaktRequestNotificationService` · `TaktRequestSnapshotService` · minimal notification payload with detailsUrl
+`DataspaceExchange` → `RestDataspaceExchange` (PoC) /
+`TractusXEdcExchange` (explicit NOT_CONFIGURED boundary) · transactional
+`message_outbox` · `message_inbox` delivery log ·
+`TaktRequestNotificationService` · `TaktRequestSnapshotService` · minimal
+notification payload with detailsUrl
 
 **Not implemented in this step:**
 Database schema changes · transport code · new REST endpoints · snapshot endpoint · NU response flow · UI changes · EDC

@@ -3139,142 +3139,50 @@ export const ListWebhookEventsResponse = zod.array(ListWebhookEventsResponseItem
 /**
  * @summary AG dashboard summary
  */
-
-
-
-
-
-
 export const GetAgDashboardResponse = zod.object({
-  "totalProjects": zod.number(),
-  "activeProjects": zod.number(),
-  "pendingDelegations": zod.number(),
-  "confirmedDelegations": zod.number(),
-  "alternativeProposals": zod.number(),
-  "criticalProposals": zod.number().describe('Proposals outside buffer window'),
-  "upcomingTakte": zod.array(zod.object({
+  "kpis": zod.object({
+  "openTasks": zod.number(),
+  "overdueTasks": zod.number(),
+  "openInvitations": zod.number(),
+  "pendingDataOffers": zod.number()
+}),
+  "activeProjectsCount": zod.number(),
+  "nextActions": zod.array(zod.object({
   "id": zod.string(),
-  "projectId": zod.string(),
-  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
-  "kurzbezeichnung": zod.string().min(1),
-  "zone": zod.string().nullish(),
-  "gewerk": zod.string(),
-  "description": zod.string().nullish(),
-  "plannedStart": zod.coerce.date(),
-  "plannedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
-  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
-  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
-  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
-  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
+  "kind": zod.enum(['RESPOND_TO_REQUEST', 'DECIDE_RESPONSE', 'RESPOND_TO_CHANGE_PROPOSAL', 'RESOLVE_CONSTRAINT', 'ANSWER_CLARIFICATION', 'CONFIRM_READINESS', 'REVIEW_PROJECT_INVITATION', 'REVIEW_DATA_OFFER', 'PUBLISH_DATA_OFFER', 'RETRY_INVITATION_DELIVERY', 'RETRY_DATA_OFFER_DELIVERY']),
+  "title": zod.string(),
+  "description": zod.string(),
+  "projectId": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "partnerOrgId": zod.string().nullable(),
+  "partnerName": zod.string().nullable(),
+  "dueAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['OVERDUE', 'DUE_TODAY', 'DUE_SOON', 'OPEN']),
+  "targetUrl": zod.string()
 })),
-  "recentActivity": zod.array(zod.object({
-  "id": zod.string(),
-  "taktId": zod.string(),
-  "projectId": zod.string(),
-  "agOrgId": zod.string(),
-  "anOrgId": zod.string(),
-  "takt": zod.object({
+  "projectCollaborations": zod.array(zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
-  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
-  "kurzbezeichnung": zod.string().min(1),
-  "zone": zod.string().nullish(),
-  "gewerk": zod.string(),
-  "description": zod.string().nullish(),
-  "plannedStart": zod.coerce.date(),
-  "plannedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
-  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
-  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
-  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
-  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
-}).optional(),
-  "project": zod.object({
+  "projectName": zod.string(),
+  "partnerOrgId": zod.string(),
+  "partnerName": zod.string(),
+  "membershipStatus": zod.union([zod.literal('INVITED'),zod.literal('ACTIVE'),zod.literal('REJECTED'),zod.literal('REVOKED'),zod.literal(null)]).nullable(),
+  "membershipLabel": zod.string(),
+  "dataOfferStatus": zod.enum(['NOT_PUBLISHED', 'PENDING_ACCEPTANCE', 'ACCEPTED', 'REJECTED', 'UNAVAILABLE']),
+  "dataOfferLabel": zod.string(),
+  "publicationId": zod.string().nullable(),
+  "targetUrl": zod.string()
+})),
+  "operationalOutlook": zod.array(zod.object({
   "id": zod.string(),
-  "agOrgId": zod.string(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "location": zod.string().nullish(),
-  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
-  "startDate": zod.coerce.date().nullish(),
-  "endDate": zod.coerce.date().nullish(),
-  "createdAt": zod.coerce.date(),
-  "taktCount": zod.number(),
-  "delegationCount": zod.number(),
-  "pendingResponseCount": zod.number()
-}).optional(),
-  "anOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "agOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "requestedStart": zod.coerce.date(),
-  "requestedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "status": zod.enum(['PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED', 'CANCELLED']),
-  "message": zod.string().nullish(),
-  "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "currentAgreement": zod.object({
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date()
-}).nullish(),
-  "openProposal": zod.object({
-  "id": zod.string(),
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date(),
-  "proposerOrgId": zod.string(),
-  "status": zod.string(),
-  "reasonCode": zod.string().nullish(),
-  "comment": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).nullish(),
-  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
-  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
-  "scheduleDelta": zod.object({
-  "startDays": zod.number(),
-  "endDays": zod.number(),
-  "durationDays": zod.number(),
-  "hasChange": zod.boolean()
-}).optional()
+  "title": zod.string(),
+  "description": zod.string(),
+  "projectId": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "partnerName": zod.string().nullable(),
+  "startsAt": zod.coerce.date().nullable(),
+  "dueAt": zod.coerce.date().nullable(),
+  "targetUrl": zod.string()
 }))
 })
 
@@ -3282,243 +3190,67 @@ export const GetAgDashboardResponse = zod.object({
 /**
  * @summary AN dashboard summary
  */
-
-
-export const getAnDashboardResponseResourceUtilizationItemResourceCapacityExclusiveMin = 0;
-
-
-
-
-
 export const GetAnDashboardResponse = zod.object({
-  "pendingRequests": zod.number(),
-  "confirmedWork": zod.number(),
-  "upcomingDeadlines": zod.array(zod.object({
-  "id": zod.string(),
-  "taktId": zod.string(),
-  "projectId": zod.string(),
-  "agOrgId": zod.string(),
-  "anOrgId": zod.string(),
-  "takt": zod.object({
-  "id": zod.string(),
-  "projectId": zod.string(),
-  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
-  "kurzbezeichnung": zod.string().min(1),
-  "zone": zod.string().nullish(),
-  "gewerk": zod.string(),
-  "description": zod.string().nullish(),
-  "plannedStart": zod.coerce.date(),
-  "plannedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
-  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
-  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
-  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
-  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
-}).optional(),
-  "project": zod.object({
-  "id": zod.string(),
-  "agOrgId": zod.string(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "location": zod.string().nullish(),
-  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
-  "startDate": zod.coerce.date().nullish(),
-  "endDate": zod.coerce.date().nullish(),
-  "createdAt": zod.coerce.date(),
-  "taktCount": zod.number(),
-  "delegationCount": zod.number(),
-  "pendingResponseCount": zod.number()
-}).optional(),
-  "anOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "agOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "requestedStart": zod.coerce.date(),
-  "requestedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "status": zod.enum(['PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED', 'CANCELLED']),
-  "message": zod.string().nullish(),
-  "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "currentAgreement": zod.object({
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date()
-}).nullish(),
-  "openProposal": zod.object({
-  "id": zod.string(),
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date(),
-  "proposerOrgId": zod.string(),
-  "status": zod.string(),
-  "reasonCode": zod.string().nullish(),
-  "comment": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).nullish(),
-  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
-  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
-  "scheduleDelta": zod.object({
-  "startDays": zod.number(),
-  "endDays": zod.number(),
-  "durationDays": zod.number(),
-  "hasChange": zod.boolean()
-}).optional()
-})),
-  "resourceUtilization": zod.array(zod.object({
-  "resource": zod.object({
-  "id": zod.string(),
-  "anOrgId": zod.string(),
-  "type": zod.enum(['EMPLOYEE', 'CREW', 'EQUIPMENT', 'MACHINE', 'OTHER']),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish().describe('Link to the AN-owned resource type'),
-  "capacity": zod.number().gt(getAnDashboardResponseResourceUtilizationItemResourceCapacityExclusiveMin).nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "qualification": zod.string().nullish(),
-  "dailyCapacityHours": zod.number().nullish(),
-  "color": zod.string().nullish().describe('Hex color for Gantt display'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "kpis": zod.object({
+  "openInvitations": zod.number(),
+  "newDataOffers": zod.number(),
+  "openRequests": zod.number(),
+  "criticalDeadlines": zod.number()
 }),
-  "utilizationPercent": zod.number()
+  "openInvitations": zod.array(zod.object({
+  "id": zod.string(),
+  "projectName": zod.string(),
+  "agName": zod.string(),
+  "status": zod.enum(['PENDING', 'ACCEPTED', 'REJECTED']),
+  "createdAt": zod.coerce.date(),
+  "targetUrl": zod.string()
 })),
-  "recentRequests": zod.array(zod.object({
+  "newDataOffers": zod.array(zod.object({
+  "publicationId": zod.string(),
+  "title": zod.string(),
+  "projectName": zod.string(),
+  "agName": zod.string(),
+  "publicationStatus": zod.enum(['PUBLISHED', 'SUSPENDED', 'WITHDRAWN', 'EXPIRED']),
+  "recipientStatus": zod.enum(['OFFERED', 'ACCEPTED', 'REJECTED', 'REVOKED', 'EXPIRED']),
+  "policyAcceptedAt": zod.coerce.date().nullable(),
+  "targetUrl": zod.string()
+})),
+  "nextActions": zod.array(zod.object({
   "id": zod.string(),
-  "taktId": zod.string(),
+  "kind": zod.enum(['RESPOND_TO_REQUEST', 'DECIDE_RESPONSE', 'RESPOND_TO_CHANGE_PROPOSAL', 'RESOLVE_CONSTRAINT', 'ANSWER_CLARIFICATION', 'CONFIRM_READINESS', 'REVIEW_PROJECT_INVITATION', 'REVIEW_DATA_OFFER', 'PUBLISH_DATA_OFFER', 'RETRY_INVITATION_DELIVERY', 'RETRY_DATA_OFFER_DELIVERY']),
+  "title": zod.string(),
+  "description": zod.string(),
+  "projectId": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "partnerOrgId": zod.string().nullable(),
+  "partnerName": zod.string().nullable(),
+  "dueAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['OVERDUE', 'DUE_TODAY', 'DUE_SOON', 'OPEN']),
+  "targetUrl": zod.string()
+})),
+  "projectCollaborations": zod.array(zod.object({
+  "id": zod.string(),
   "projectId": zod.string(),
-  "agOrgId": zod.string(),
-  "anOrgId": zod.string(),
-  "takt": zod.object({
+  "projectName": zod.string(),
+  "partnerOrgId": zod.string(),
+  "partnerName": zod.string(),
+  "membershipStatus": zod.union([zod.literal('INVITED'),zod.literal('ACTIVE'),zod.literal('REJECTED'),zod.literal('REVOKED'),zod.literal(null)]).nullable(),
+  "membershipLabel": zod.string(),
+  "dataOfferStatus": zod.enum(['NOT_PUBLISHED', 'PENDING_ACCEPTANCE', 'ACCEPTED', 'REJECTED', 'UNAVAILABLE']),
+  "dataOfferLabel": zod.string(),
+  "publicationId": zod.string().nullable(),
+  "targetUrl": zod.string()
+})),
+  "operationalOutlook": zod.array(zod.object({
   "id": zod.string(),
-  "projectId": zod.string(),
-  "taktBezeichnung": zod.string().describe('Takt-Bezeichnung (frei wählbar, z.B. T1 oder Rohbau-Nord)'),
-  "kurzbezeichnung": zod.string().min(1),
-  "zone": zod.string().nullish(),
-  "gewerk": zod.string(),
-  "description": zod.string().nullish(),
-  "plannedStart": zod.coerce.date(),
-  "plannedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "lvReference": zod.string().nullish().describe('Placeholder for Leistungsverzeichnis reference'),
-  "bimReference": zod.string().nullish().describe('Placeholder for BIM model reference'),
-  "requiredResources": zod.string().nullish().describe('Free-text description of required resources'),
-  "status": zod.enum(['GEPLANT', 'VERGEBEN', 'ALTERNATIV', 'BESTAETIGT', 'ABGELEHNT', 'STORNIERT']).describe('Legacy Takt status (backward-compatible, retained for existing delegation routes). GEPLANT = angelegt, editierbar; VERGEBEN = Delegation verschickt; ALTERNATIV = AN hat Gegenvorschlag; BESTAETIGT = Termin bestätigt; ABGELEHNT = abgelehnt, wieder editierbar; STORNIERT = Vergabe storniert, wieder editierbar.\n'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional().describe('Last-modified timestamp'),
-  "version": zod.number().min(1).optional().describe('Monotonically incrementing version; starts at 1 for all existing Takte'),
-  "lifecycleStatus": zod.enum(['DRAFT', 'PLANNED', 'IN_COORDINATION', 'CONFIRMED', 'CANCELLED']).optional().describe('Dedicated lifecycle status for the Takt itself (Task 2.2). Separated from TaktStatus to decouple the Takt lifecycle from the state of any individual TaktRequest. DRAFT = being edited; PLANNED = ready, no active coordination; IN_COORDINATION = at least one TaktRequest is active; CONFIRMED = a NU response was accepted by the GU; CANCELLED = Takt cancelled.\n')
-}).optional(),
-  "project": zod.object({
-  "id": zod.string(),
-  "agOrgId": zod.string(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "location": zod.string().nullish(),
-  "status": zod.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']),
-  "startDate": zod.coerce.date().nullish(),
-  "endDate": zod.coerce.date().nullish(),
-  "createdAt": zod.coerce.date(),
-  "taktCount": zod.number(),
-  "delegationCount": zod.number(),
-  "pendingResponseCount": zod.number()
-}).optional(),
-  "anOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "agOrganization": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "resourceTypeId": zod.string().nullish(),
-  "capacity": zod.number().nullish(),
-  "capacityUnit": zod.enum(['PERSONS', 'UNITS', 'HOURS_PER_DAY', 'PERCENT']).nullish(),
-  "skills": zod.array(zod.string()).optional(),
-  "qualifications": zod.array(zod.string()).optional(),
-  "calendarId": zod.string().nullish(),
-  "active": zod.boolean().optional(),
-  "type": zod.enum(['AG', 'AN']),
-  "description": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).optional(),
-  "requestedStart": zod.coerce.date(),
-  "requestedEnd": zod.coerce.date(),
-  "earliestStart": zod.coerce.date().nullish(),
-  "latestEnd": zod.coerce.date().nullish(),
-  "status": zod.enum(['PENDING', 'CONFIRMED', 'ALTERNATIVE_PROPOSED', 'REJECTED', 'CANCELLED']),
-  "message": zod.string().nullish(),
-  "isWithinBuffer": zod.boolean().nullish().describe('True if the latest AN proposal is within the buffer window'),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "currentAgreement": zod.object({
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date()
-}).nullish(),
-  "openProposal": zod.object({
-  "id": zod.string(),
-  "start": zod.coerce.date(),
-  "end": zod.coerce.date(),
-  "proposerOrgId": zod.string(),
-  "status": zod.string(),
-  "reasonCode": zod.string().nullish(),
-  "comment": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
-}).nullish(),
-  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
-  "nextActionOwner": zod.enum(['AG', 'AN']).nullish(),
-  "scheduleDelta": zod.object({
-  "startDays": zod.number(),
-  "endDays": zod.number(),
-  "durationDays": zod.number(),
-  "hasChange": zod.boolean()
-}).optional()
+  "title": zod.string(),
+  "description": zod.string(),
+  "projectId": zod.string().nullable(),
+  "projectName": zod.string().nullable(),
+  "partnerName": zod.string().nullable(),
+  "startsAt": zod.coerce.date().nullable(),
+  "dueAt": zod.coerce.date().nullable(),
+  "targetUrl": zod.string()
 }))
 })
 

@@ -178,6 +178,43 @@ export const externalProjectInvitationResponseSchema = z.object({
   }
 });
 
+/**
+ * A data offer is deliberately not a project invitation. It references an
+ * already published immutable snapshot and carries the access and usage
+ * policies that govern that publication. The optional contentSnapshot is only
+ * used by the local PoC loopback; connector payloads must omit it.
+ */
+export const externalDataOfferSchema = z.object({
+  metadata: metadataSchema,
+  publicationId: nonEmpty(200),
+  projectReference: nonEmpty(200),
+  projectName: nonEmpty(500),
+  title: nonEmpty(500),
+  dataProductType: z.enum([
+    "PROJECT_OVERVIEW",
+    "PROJECT_COORDINATION_PACKAGE",
+    "PROJECT_MEMBERSHIP",
+    "TAKT_INFORMATION_PACKAGE",
+  ]),
+  publicationVersion: z.number().int().positive(),
+  status: z.enum(["PUBLISHED", "SUSPENDED", "WITHDRAWN"]),
+  contentHash: nonEmpty(200).optional(),
+  selectedFields: z.array(nonEmpty(200)).min(1).max(100),
+  detailsRef: nonEmpty(1000),
+  validFrom: externalDate,
+  validUntil: externalDate.optional(),
+  accessPolicy: policySnapshotSchema,
+  usagePolicy: dataOfferPolicySnapshotSchema,
+  contentSnapshot: z.record(z.string(), z.unknown()).optional(),
+}).strict().superRefine((value, ctx) => {
+  for (const issue of policySnapshotParticipantIssues({
+    metadata: value.metadata,
+    policySnapshot: value.accessPolicy,
+  })) {
+    ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+  }
+});
+
 export const externalServiceRequestSchema = z.object({
   metadata: metadataSchema,
   requestId: nonEmpty(200),
@@ -522,6 +559,41 @@ export type ExternalProjectInvitationResponse = {
   policyAccepted?: boolean;
   message?: string;
   respondedAt: string;
+};
+
+export type ExternalDataOffer = {
+  metadata: ExchangeMetadata;
+  publicationId: string;
+  projectReference: string;
+  projectName: string;
+  title: string;
+  dataProductType:
+    | "PROJECT_OVERVIEW"
+    | "PROJECT_COORDINATION_PACKAGE"
+    | "PROJECT_MEMBERSHIP"
+    | "TAKT_INFORMATION_PACKAGE";
+  publicationVersion: number;
+  status: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
+  contentHash?: string;
+  selectedFields: string[];
+  detailsRef: string;
+  validFrom: string;
+  validUntil?: string;
+  accessPolicy: ExternalPolicySnapshot;
+  usagePolicy: {
+    id: string;
+    templateId?: string;
+    templateVersion?: number;
+    code: string;
+    name: string;
+    purpose: string;
+    permissions: string[];
+    prohibitions: string[];
+    validityRule: string;
+    retentionRule: string | null;
+  };
+  /** Local REST-PoC enrichment; never sent to an external connector. */
+  contentSnapshot?: Record<string, unknown>;
 };
 
 export type ExternalResourceRequirement = {

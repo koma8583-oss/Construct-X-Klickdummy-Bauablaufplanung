@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { requireJwt } from "../../middlewares/requireJwt";
 import { requireOrganizationType } from "../../middlewares/requireOrganization";
-import { getAnDashboard } from "../../services/an-leistungsanfrage-service";
+import { getAnDashboard } from "../../services/dashboard-service";
 
 const router = Router();
 

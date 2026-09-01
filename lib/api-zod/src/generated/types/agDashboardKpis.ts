@@ -5,9 +5,10 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
-import type { Resource } from './resource';
 
-export type AnDashboardResourceUtilizationItem = {
-  resource: Resource;
-  utilizationPercent: number;
+export type AgDashboardKpis = {
+  openTasks: number;
+  overdueTasks: number;
+  openInvitations: number;
+  pendingDataOffers: number;
 };

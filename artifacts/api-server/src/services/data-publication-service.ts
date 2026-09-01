@@ -32,13 +32,17 @@ import {
   organizationsTable,
 } from "@workspace/db";
 import { eq, and, inArray, asc } from "drizzle-orm";
-import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
 import {
+  deliverLocalDataOffer,
   deliverLocalProjectInvitation,
   isLocalDataspaceTransport,
 } from "./dataspace/local-dataspace-delivery";
-import type { ExternalProjectInvitation } from "./dataspace/external-contracts";
+import type {
+  ExternalDataOffer,
+  ExternalPolicySnapshot,
+  ExternalProjectInvitation,
+} from "./dataspace/external-contracts";
 
 export class PublicationNotFoundError extends Error {
   constructor(id: string) {
@@ -654,7 +658,78 @@ function stableStringify(value: unknown): string {
 
 // ── Publish ───────────────────────────────────────────────────────────────────
 
-const transport = new LocalHubTransport();
+function createPublicationDataOffer(input: {
+  publication: typeof dataPublicationsTable.$inferSelect;
+  policy: typeof policyTemplatesTable.$inferSelect;
+  recipientOrgId: string;
+  projectName: string;
+  senderOrgId: string;
+  createdAt: Date;
+  status?: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
+  contentHash?: string;
+  contentSnapshot?: Record<string, unknown>;
+}): ExternalDataOffer {
+  const { publication, policy, recipientOrgId, projectName, senderOrgId, createdAt } = input;
+  const lifecycleSuffix = input.status && input.status !== "PUBLISHED"
+    ? `-${input.status.toLowerCase()}`
+    : "";
+  const accessPolicy: ExternalPolicySnapshot = {
+    policyId: `publication-access:${publication.id}`,
+    templateId: policy.id,
+    templateVersion: 1,
+    code: policy.code,
+    name: policy.name,
+    description: policy.description ?? policy.purpose,
+    permissions: policy.permissions,
+    prohibitions: policy.prohibitions,
+    provider: { organizationId: senderOrgId, userId: null },
+    recipientOrganizationId: recipientOrgId,
+    purpose: "DATA_PUBLICATION_ACCESS",
+    projectReference: publication.projectId,
+    workPackageReference: null,
+    validFrom: (publication.validFrom ?? createdAt).toISOString(),
+    validUntil: publication.validUntil?.toISOString() ?? null,
+    createdAt: createdAt.toISOString(),
+  };
+  return {
+    metadata: {
+      messageId: `dataspace-offer-${publication.id}-${recipientOrgId}${lifecycleSuffix}`,
+      correlationId: `data-offer:${publication.id}:${recipientOrgId}`,
+      schemaVersion: "1.0",
+      senderOrgId,
+      receiverOrgId: recipientOrgId,
+      createdAt: createdAt.toISOString(),
+    },
+    publicationId: publication.id,
+    projectReference: publication.projectId,
+    projectName,
+    title: publication.title,
+    dataProductType: publication.dataProductType,
+    publicationVersion: publication.version,
+    status: input.status ?? "PUBLISHED",
+    ...((input.contentHash ?? publication.contentHash)
+      ? { contentHash: input.contentHash ?? publication.contentHash! }
+      : {}),
+    selectedFields: (publication.selectedFields as string[]) ?? [],
+    detailsRef: `/api/an/data-offers/${publication.id}`,
+    validFrom: (publication.validFrom ?? createdAt).toISOString(),
+    ...(publication.validUntil ? { validUntil: publication.validUntil.toISOString() } : {}),
+    accessPolicy,
+    usagePolicy: {
+      id: `publication-usage:${publication.id}`,
+      templateId: policy.id,
+      templateVersion: 1,
+      code: policy.code,
+      name: policy.name,
+      purpose: policy.purpose,
+      permissions: policy.permissions,
+      prohibitions: policy.prohibitions,
+      validityRule: policy.validityRule,
+      retentionRule: policy.retentionRule,
+    },
+    ...(input.contentSnapshot ? { contentSnapshot: input.contentSnapshot } : {}),
+  };
+}
 
 /**
  * Publish a DRAFT DataPublication.
@@ -706,6 +781,12 @@ export async function publishDataPublication(
     .where(eq(policyTemplatesTable.id, pub.policyTemplateId))
     .limit(1);
   if (!policy) throw new Error("Policy template not found");
+  const [project] = await db
+    .select({ name: projectsTable.name })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, pub.projectId))
+    .limit(1);
+  if (!project) throw new Error("Publication project not found");
 
   // 2. Build content snapshot
   const snapshot = await buildContentSnapshot(
@@ -734,32 +815,23 @@ export async function publishDataPublication(
 
   // 5. Notify each recipient
   for (const recipient of recipients) {
-    // Notification payload — NO content, only references
-    const notificationPayload = {
-      publicationId,
-      projectReference: pub.projectId,
-      dataProductType: pub.dataProductType,
-      publicationVersion: pub.version,
-      policyCode: policy.code,
-      validUntil: pub.validUntil?.toISOString() ?? null,
-      detailsRef: `/api/an/data-offers/${publicationId}`,
-      title: pub.title,
-    };
-
-    const messageId = `dataspace-offer-${publicationId}-${recipient.anOrgId}`;
-
     try {
-      const delivery = await transport.send({
-        messageId,
-        schemaVersion: "1.0",
-        messageType: "DATA_OFFER_PUBLISHED",
-        senderOrgId: agOrgId,
+      const payload = createPublicationDataOffer({
+        publication: pub,
+        policy,
         recipientOrgId: recipient.anOrgId,
-        correlationId: publicationId,
+        projectName: project.name,
+        senderOrgId: agOrgId,
         createdAt: now,
-        causationId: null,
-        payload: notificationPayload,
+        contentHash,
+        contentSnapshot: snapshot,
       });
+      const exchange = createDataspaceExchange();
+      const delivery = await deliverLocalDataOffer(
+        payload,
+        exchange,
+        isLocalDataspaceTransport() ? snapshot : undefined,
+      );
 
       if (delivery.status === "DELIVERED") {
         await db
@@ -767,106 +839,12 @@ export async function publishDataPublication(
           .set({ notifiedAt: now })
           .where(eq(dataPublicationRecipientsTable.id, recipient.id));
       }
-
-      // The AN offer view is backed exclusively by Dataspace-delivered local
-      // projections. Standalone publications do not have the combined
-      // invitation dispatcher, so the local transport needs the same inbound
-      // package to create the AN-side offer and policy snapshot.
-      if (isLocalDataspaceTransport()) {
-        const [project] = await db.select({
-          id: projectsTable.id,
-          name: projectsTable.name,
-          description: projectsTable.description,
-          location: projectsTable.location,
-        }).from(projectsTable).where(eq(projectsTable.id, pub.projectId)).limit(1);
-        const [membership] = await db.select({
-          invitationId: projectMembershipsTable.invitationId,
-          correlationId: projectMembershipsTable.correlationId,
-          anParticipantId: projectMembershipsTable.anParticipantId,
-        }).from(projectMembershipsTable).where(and(
-          eq(projectMembershipsTable.projectId, pub.projectId),
-          eq(projectMembershipsTable.agOrgId, agOrgId),
-          eq(projectMembershipsTable.anOrgId, recipient.anOrgId),
-          eq(projectMembershipsTable.status, "ACTIVE"),
-        )).limit(1);
-        if (project) {
-          const policySnapshot = {
-            policyId: `publication-policy:${publicationId}`,
-            templateId: policy.id,
-            templateVersion: 1,
-            code: policy.code,
-            name: policy.name,
-            description: policy.description ?? policy.purpose,
-            permissions: policy.permissions,
-            prohibitions: policy.prohibitions,
-            provider: { organizationId: agOrgId, userId: null },
-            recipientOrganizationId: recipient.anOrgId,
-            purpose: policy.purpose,
-            projectReference: pub.projectId,
-            workPackageReference: null,
-            validFrom: (pub.validFrom ?? now).toISOString(),
-            validUntil: pub.validUntil?.toISOString() ?? null,
-            createdAt: now.toISOString(),
-          };
-          const invitationPayload: ExternalProjectInvitation = {
-            metadata: {
-              messageId: `data-offer-invitation-${publicationId}-${recipient.anOrgId}`,
-              correlationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
-              schemaVersion: "1.0",
-              senderOrgId: agOrgId,
-              receiverOrgId: recipient.anOrgId,
-              createdAt: now.toISOString(),
-            },
-            invitationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
-            project: {
-              projectReference: project.id,
-              projectName: project.name,
-              ...(project.description ? { description: project.description } : {}),
-              ...(project.location ? { location: project.location } : {}),
-            },
-            requestedRole: "CONTRACTOR",
-            purpose: "PROJECT_COLLABORATION",
-            policy: {
-              usagePurpose: "PROJECT_MEMBERSHIP",
-              allowedConsumerParticipantId: membership?.anParticipantId ?? `local:${recipient.anOrgId}`,
-            },
-            policySnapshot,
-            dataOffer: {
-              publicationId,
-              title: pub.title,
-              dataProductType: pub.dataProductType,
-              publicationVersion: pub.version,
-              status: "PUBLISHED",
-              contentHash,
-              contentSnapshot: snapshot,
-              selectedFields: (pub.selectedFields as string[]) ?? [],
-              validFrom: (pub.validFrom ?? now).toISOString(),
-              ...(pub.validUntil ? { validUntil: pub.validUntil.toISOString() } : {}),
-              policy: {
-                id: policy.id,
-                templateId: policy.id,
-                templateVersion: 1,
-                code: policy.code,
-                name: policy.name,
-                purpose: policy.purpose,
-                permissions: policy.permissions,
-                prohibitions: policy.prohibitions,
-                validityRule: policy.validityRule,
-                retentionRule: policy.retentionRule,
-              },
-            },
-          };
-          const exchange = createDataspaceExchange();
-          const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
-          if (delivery.status === "PENDING" || delivery.status === "FAILED") {
-            const retry = await exchange.retryProjectInvitation(invitationPayload.metadata.messageId);
-            if (retry.status === "DELIVERED") {
-              await deliverLocalProjectInvitation(invitationPayload, exchange);
-            }
-          }
-        }
-      }
-    } catch {
+    } catch (error) {
+      console.warn("[dataspace] data-offer delivery failed", {
+        publicationId,
+        recipientOrgId: recipient.anOrgId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Best-effort — delivery failure must not abort the publish
     }
   }
@@ -893,98 +871,32 @@ export async function syncDataPublicationProjection(
   const [policy] = await db.select().from(policyTemplatesTable)
     .where(eq(policyTemplatesTable.id, pub.policyTemplateId)).limit(1);
   const [project] = await db.select({
-    id: projectsTable.id,
     name: projectsTable.name,
-    description: projectsTable.description,
-    location: projectsTable.location,
   }).from(projectsTable).where(eq(projectsTable.id, pub.projectId)).limit(1);
   if (!policy || !project) return;
 
   const recipients = await db.select().from(dataPublicationRecipientsTable)
     .where(eq(dataPublicationRecipientsTable.publicationId, publicationId));
   for (const recipient of recipients) {
-    const [membership] = await db.select({
-      anParticipantId: projectMembershipsTable.anParticipantId,
-    }).from(projectMembershipsTable).where(and(
-      eq(projectMembershipsTable.projectId, pub.projectId),
-      eq(projectMembershipsTable.agOrgId, agOrgId),
-      eq(projectMembershipsTable.anOrgId, recipient.anOrgId),
-      eq(projectMembershipsTable.status, "ACTIVE"),
-    )).limit(1);
     const now = new Date();
-    const policySnapshot = {
-      policyId: `publication-policy:${publicationId}`,
-      templateId: policy.id,
-      templateVersion: 1,
-      code: policy.code,
-      name: policy.name,
-      description: policy.description ?? policy.purpose,
-      permissions: policy.permissions,
-      prohibitions: policy.prohibitions,
-      provider: { organizationId: agOrgId, userId: null },
-      recipientOrganizationId: recipient.anOrgId,
-      purpose: policy.purpose,
-      projectReference: pub.projectId,
-      workPackageReference: null,
-      validFrom: (pub.validFrom ?? now).toISOString(),
-      validUntil: pub.validUntil?.toISOString() ?? null,
-      createdAt: now.toISOString(),
-    };
-    const payload: ExternalProjectInvitation = {
-      metadata: {
-        messageId: `data-offer-status-${publicationId}-${recipient.anOrgId}-${status}`,
-        correlationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
-        schemaVersion: "1.0",
-        senderOrgId: agOrgId,
-        receiverOrgId: recipient.anOrgId,
-        createdAt: now.toISOString(),
-      },
-      invitationId: `data-offer:${publicationId}:${recipient.anOrgId}`,
-      project: {
-        projectReference: project.id,
-        projectName: project.name,
-        ...(project.description ? { description: project.description } : {}),
-        ...(project.location ? { location: project.location } : {}),
-      },
-      requestedRole: "CONTRACTOR",
-      purpose: "PROJECT_COLLABORATION",
-      policy: {
-        usagePurpose: "PROJECT_MEMBERSHIP",
-        allowedConsumerParticipantId: membership?.anParticipantId ?? `local:${recipient.anOrgId}`,
-      },
-      policySnapshot,
-      dataOffer: {
-        publicationId,
-        title: pub.title,
-        dataProductType: pub.dataProductType,
-        publicationVersion: pub.version,
-        status,
-        contentHash: pub.contentHash ?? undefined,
-        contentSnapshot: pub.contentSnapshot ?? undefined,
-        selectedFields: (pub.selectedFields as string[]) ?? [],
-        validFrom: (pub.validFrom ?? now).toISOString(),
-        ...(pub.validUntil ? { validUntil: pub.validUntil.toISOString() } : {}),
-        policy: {
-          id: policy.id,
-          templateId: policy.id,
-          templateVersion: 1,
-          code: policy.code,
-          name: policy.name,
-          purpose: policy.purpose,
-          permissions: policy.permissions,
-          prohibitions: policy.prohibitions,
-          validityRule: policy.validityRule,
-          retentionRule: policy.retentionRule,
-        },
-      },
-    };
+    const payload = createPublicationDataOffer({
+      publication: pub,
+      policy,
+      recipientOrgId: recipient.anOrgId,
+      projectName: project.name,
+      senderOrgId: agOrgId,
+      createdAt: now,
+      status,
+      contentHash: pub.contentHash ?? undefined,
+      contentSnapshot: pub.contentSnapshot ?? undefined,
+    });
     try {
       const exchange = createDataspaceExchange();
-      const delivery = await deliverLocalProjectInvitation(payload, exchange);
+      const delivery = await deliverLocalDataOffer(payload, exchange);
       if (delivery.status === "PENDING" || delivery.status === "FAILED") {
-        const retry = await exchange.retryProjectInvitation(payload.metadata.messageId);
+        const retry = await exchange.retryDataOffer(payload.metadata.messageId);
         if (retry.status === "DELIVERED") {
-          await deliverLocalProjectInvitation(payload, exchange);
+          await deliverLocalDataOffer(payload, exchange);
         }
       }
     } catch {
@@ -1017,7 +929,7 @@ export async function publishCombinedDataPublicationNotifications(
   for (const outbox of outboxRows) {
     if (!["PENDING", "FAILED"].includes(outbox.status)) continue;
     try {
-      const result = await transport.retry(outbox.messageId);
+      const result = await createDataspaceExchange().retryDataOffer(outbox.messageId);
       if (result.status !== "DELIVERED") continue;
       await db.update(dataPublicationRecipientsTable).set({ notifiedAt: now }).where(
         and(

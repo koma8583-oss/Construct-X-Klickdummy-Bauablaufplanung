@@ -16,32 +16,35 @@ function jsonResponse(body: unknown) {
   });
 }
 
-describe("AN-Dashboard Projekteinladungen", () => {
+describe("AN-Dashboard Arbeitscockpit", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/an/dashboard")) {
+        if (url.includes("/api/dashboard/an")) {
           return jsonResponse({
-            pendingRequests: 0,
-            policyPendingCount: 0,
-            dueSoonCount: 0,
-            activeBookingsCount: 0,
-            nextActions: [],
-            upcomingDeadlines: [],
-          });
-        }
-        if (url.includes("/api/an/project-invitations")) {
-          return jsonResponse([
-            {
-              id: "invitation-1",
-              projectName: "Neubau Halle Nord",
-              senderAgOrgName: "Bauplanung Nord AG",
-              status: "PENDING",
-              createdAt: "2026-09-01T08:00:00.000Z",
+            kpis: {
+              openInvitations: 1,
+              newDataOffers: 0,
+              openRequests: 0,
+              criticalDeadlines: 0,
             },
-          ]);
+            openInvitations: [
+              {
+                id: "invitation-1",
+                projectName: "Neubau Halle Nord",
+                agName: "Bauplanung Nord AG",
+                status: "PENDING",
+                createdAt: "2026-09-01T08:00:00.000Z",
+                targetUrl: "/leistungsanfragen?category=INVITATIONS",
+              },
+            ],
+            newDataOffers: [],
+            nextActions: [],
+            projectCollaborations: [],
+            operationalOutlook: [],
+          });
         }
         return jsonResponse({});
       }),
@@ -72,7 +75,7 @@ describe("AN-Dashboard Projekteinladungen", () => {
       screen.getByRole("link", { name: "Alle Projekteinladungen öffnen" }),
     ).toHaveAttribute("href", "/leistungsanfragen?category=INVITATIONS");
     expect(vi.mocked(fetch).mock.calls.some(([input]) =>
-      String(input).includes("/api/an/project-invitations"),
+      String(input).includes("/api/dashboard/an"),
     )).toBe(true);
   });
 });

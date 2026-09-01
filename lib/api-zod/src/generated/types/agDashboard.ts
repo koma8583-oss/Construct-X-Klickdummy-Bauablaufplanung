@@ -5,17 +5,15 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
-import type { Delegation } from './delegation';
-import type { Takt } from './takt';
+import type { AgDashboardKpis } from './agDashboardKpis';
+import type { DashboardAction } from './dashboardAction';
+import type { DashboardOperationalItem } from './dashboardOperationalItem';
+import type { ProjectCollaboration } from './projectCollaboration';
 
 export interface AgDashboard {
-  totalProjects: number;
-  activeProjects: number;
-  pendingDelegations: number;
-  confirmedDelegations: number;
-  alternativeProposals: number;
-  /** Proposals outside buffer window */
-  criticalProposals: number;
-  upcomingTakte: Takt[];
-  recentActivity: Delegation[];
+  kpis: AgDashboardKpis;
+  activeProjectsCount: number;
+  nextActions: DashboardAction[];
+  projectCollaborations: ProjectCollaboration[];
+  operationalOutlook: DashboardOperationalItem[];
 }

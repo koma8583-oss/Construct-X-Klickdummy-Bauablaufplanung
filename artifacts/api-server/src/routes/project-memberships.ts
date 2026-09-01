@@ -116,7 +116,7 @@ const combinedInvitationSchema = z.object({
   title: z.string().trim().min(1).max(255),
   description: z.string().trim().max(2000).optional(),
   validFrom: z.string().datetime({ offset: true }).optional(),
-});
+}).strict();
 
 const invitationPackageSchema = z.object({
   participantIds: z.array(z.string().min(1)).min(1).max(100),
@@ -128,10 +128,10 @@ const invitationPackageSchema = z.object({
   validFrom: z.string().datetime({ offset: true }).optional(),
   validUntil: z.string().datetime({ offset: true }).optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
-});
+}).strict();
 
-// The invitation-package endpoint is the canonical combined workflow. The
-// legacy invitations-with-data endpoint remains below for existing clients.
+// The invitation-package endpoint is the canonical membership-invitation
+// workflow. A data publication is a separate, later operation.
 router.post("/projects/:projectId/invitation-packages", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
   if (req.user?.orgType !== "AG" || !req.user.orgId) {
     res.status(403).json({ error: "AG organisation required" });

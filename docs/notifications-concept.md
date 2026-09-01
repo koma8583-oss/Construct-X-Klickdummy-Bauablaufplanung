@@ -49,6 +49,28 @@ Damit gelten weiterhin:
    Payload senden.
 5. Inbox-Abfragen strikt auf den adressierten Empfänger begrenzen.
 
+## Projekteinladung und Datenangebot
+
+Eine Projekteinladung ist ausschließlich ein Membership-Vorgang:
+
+```text
+AG → AN: PROJECT_INVITATION
+AN → AG: PROJECT_INVITATION_RESPONSE
+```
+
+Die Einladung enthält keine kombinierte Datenfreigabe. Erst nach aktiver
+Teilnahme des AN veröffentlicht der AG ein ausgewähltes Datenangebot:
+
+```text
+AG → AN: DATA_OFFER_PUBLISHED
+```
+
+Das Datenangebot besitzt einen eigenen Vertrag und einen unveränderlichen
+Policy-Snapshot. Access Policy (wer darf zugreifen) und Usage Policy (was darf
+mit den Daten geschehen) werden getrennt ausgewiesen. `DATA_OFFER_PUBLISHED`
+ist daher weder eine synthetische Einladung noch ein impliziter
+EDC-Transfer.
+
 ## Benutzeroberfläche
 
 AN-Nutzer sehen eingehende Nachrichten in einer eigenen Nachrichtenbox. Dort
@@ -56,6 +78,14 @@ werden nur minimale Payload-Felder dargestellt, Nachrichten können als gelesen
 markiert werden und bekannte Koordinationsnachrichten verlinken in den
 zugehörigen Vorgang. Die bestehende Leistungsanfragen- und Datenraum-Ansicht
 bleibt unverändert.
+
+## Tractus-X-Status
+
+Der lokale REST-/Hub-Adapter ist der einzige aktive PoC-Transport. Der
+Tractus-X-Adapter bleibt bis zur Konfiguration echter Teilnehmeridentitäten,
+Connector-Discovery, Notification API, Contract Negotiation und Transfer
+Phasen bewusst `NOT_CONFIGURED`. Er fällt nicht auf lokalen Transport zurück
+und simuliert keinen Erfolg.
 
 ## Noch bewusst nicht enthalten
 

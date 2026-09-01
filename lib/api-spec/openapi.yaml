@@ -5358,58 +5358,211 @@ components:
       required: [id, subscriptionId, event, payload, status, attempts, createdAt]
 
     # ── Dashboards ──
+    DashboardAction:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - RESPOND_TO_REQUEST
+            - DECIDE_RESPONSE
+            - RESPOND_TO_CHANGE_PROPOSAL
+            - RESOLVE_CONSTRAINT
+            - ANSWER_CLARIFICATION
+            - CONFIRM_READINESS
+            - REVIEW_PROJECT_INVITATION
+            - REVIEW_DATA_OFFER
+            - PUBLISH_DATA_OFFER
+            - RETRY_INVITATION_DELIVERY
+            - RETRY_DATA_OFFER_DELIVERY
+        title:
+          type: string
+        description:
+          type: string
+        projectId:
+          type: [string, "null"]
+        projectName:
+          type: [string, "null"]
+        partnerOrgId:
+          type: [string, "null"]
+        partnerName:
+          type: [string, "null"]
+        dueAt:
+          type: [string, "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [OVERDUE, DUE_TODAY, DUE_SOON, OPEN]
+        targetUrl:
+          type: string
+      required: [id, kind, title, description, projectId, projectName, partnerOrgId, partnerName, dueAt, status, targetUrl]
+
+    ProjectCollaboration:
+      type: object
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        projectName:
+          type: string
+        partnerOrgId:
+          type: string
+        partnerName:
+          type: string
+        membershipStatus:
+          type: [string, "null"]
+          enum: [INVITED, ACTIVE, REJECTED, REVOKED, null]
+        membershipLabel:
+          type: string
+        dataOfferStatus:
+          type: string
+          enum: [NOT_PUBLISHED, PENDING_ACCEPTANCE, ACCEPTED, REJECTED, UNAVAILABLE]
+        dataOfferLabel:
+          type: string
+        publicationId:
+          type: [string, "null"]
+        targetUrl:
+          type: string
+      required: [id, projectId, projectName, partnerOrgId, partnerName, membershipStatus, membershipLabel, dataOfferStatus, dataOfferLabel, publicationId, targetUrl]
+
+    DashboardOperationalItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        projectId:
+          type: [string, "null"]
+        projectName:
+          type: [string, "null"]
+        partnerName:
+          type: [string, "null"]
+        startsAt:
+          type: [string, "null"]
+          format: date-time
+        dueAt:
+          type: [string, "null"]
+          format: date-time
+        targetUrl:
+          type: string
+      required: [id, title, description, projectId, projectName, partnerName, startsAt, dueAt, targetUrl]
+
+    DashboardInvitation:
+      type: object
+      properties:
+        id:
+          type: string
+        projectName:
+          type: string
+        agName:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        createdAt:
+          type: string
+          format: date-time
+        targetUrl:
+          type: string
+      required: [id, projectName, agName, status, createdAt, targetUrl]
+
+    DashboardDataOffer:
+      type: object
+      properties:
+        publicationId:
+          type: string
+        title:
+          type: string
+        projectName:
+          type: string
+        agName:
+          type: string
+        publicationStatus:
+          type: string
+          enum: [PUBLISHED, SUSPENDED, WITHDRAWN, EXPIRED]
+        recipientStatus:
+          type: string
+          enum: [OFFERED, ACCEPTED, REJECTED, REVOKED, EXPIRED]
+        policyAcceptedAt:
+          type: [string, "null"]
+          format: date-time
+        targetUrl:
+          type: string
+      required: [publicationId, title, projectName, agName, publicationStatus, recipientStatus, policyAcceptedAt, targetUrl]
+
     AgDashboard:
       type: object
       properties:
-        totalProjects:
+        kpis:
+          type: object
+          properties:
+            openTasks:
+              type: integer
+            overdueTasks:
+              type: integer
+            openInvitations:
+              type: integer
+            pendingDataOffers:
+              type: integer
+          required: [openTasks, overdueTasks, openInvitations, pendingDataOffers]
+        activeProjectsCount:
           type: integer
-        activeProjects:
-          type: integer
-        pendingDelegations:
-          type: integer
-        confirmedDelegations:
-          type: integer
-        alternativeProposals:
-          type: integer
-        criticalProposals:
-          type: integer
-          description: "Proposals outside buffer window"
-        upcomingTakte:
+        nextActions:
           type: array
           items:
-            $ref: "#/components/schemas/Takt"
-        recentActivity:
+            $ref: "#/components/schemas/DashboardAction"
+        projectCollaborations:
           type: array
           items:
-            $ref: "#/components/schemas/Delegation"
-      required: [totalProjects, activeProjects, pendingDelegations, confirmedDelegations, alternativeProposals, criticalProposals, upcomingTakte, recentActivity]
+            $ref: "#/components/schemas/ProjectCollaboration"
+        operationalOutlook:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardOperationalItem"
+      required: [kpis, activeProjectsCount, nextActions, projectCollaborations, operationalOutlook]
 
     AnDashboard:
       type: object
       properties:
-        pendingRequests:
-          type: integer
-        confirmedWork:
-          type: integer
-        upcomingDeadlines:
+        kpis:
+          type: object
+          properties:
+            openInvitations:
+              type: integer
+            newDataOffers:
+              type: integer
+            openRequests:
+              type: integer
+            criticalDeadlines:
+              type: integer
+          required: [openInvitations, newDataOffers, openRequests, criticalDeadlines]
+        openInvitations:
           type: array
           items:
-            $ref: "#/components/schemas/Delegation"
-        resourceUtilization:
+            $ref: "#/components/schemas/DashboardInvitation"
+        newDataOffers:
           type: array
           items:
-            type: object
-            properties:
-              resource:
-                $ref: "#/components/schemas/Resource"
-              utilizationPercent:
-                type: number
-            required: [resource, utilizationPercent]
-        recentRequests:
+            $ref: "#/components/schemas/DashboardDataOffer"
+        nextActions:
           type: array
           items:
-            $ref: "#/components/schemas/Delegation"
-      required: [pendingRequests, confirmedWork, upcomingDeadlines, resourceUtilization, recentRequests]
+            $ref: "#/components/schemas/DashboardAction"
+        projectCollaborations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectCollaboration"
+        operationalOutlook:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardOperationalItem"
+      required: [kpis, openInvitations, newDataOffers, nextActions, projectCollaborations, operationalOutlook]
 
     # ── Dataspace message envelope (Tasks 1.4 + 1.5) ──
 

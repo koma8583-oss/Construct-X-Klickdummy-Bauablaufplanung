@@ -1434,29 +1434,189 @@ export interface WebhookEvent {
   createdAt: string;
 }
 
-export interface AgDashboard {
-  totalProjects: number;
-  activeProjects: number;
-  pendingDelegations: number;
-  confirmedDelegations: number;
-  alternativeProposals: number;
-  /** Proposals outside buffer window */
-  criticalProposals: number;
-  upcomingTakte: Takt[];
-  recentActivity: Delegation[];
+export type DashboardActionKind = typeof DashboardActionKind[keyof typeof DashboardActionKind];
+
+
+export const DashboardActionKind = {
+  RESPOND_TO_REQUEST: 'RESPOND_TO_REQUEST',
+  DECIDE_RESPONSE: 'DECIDE_RESPONSE',
+  RESPOND_TO_CHANGE_PROPOSAL: 'RESPOND_TO_CHANGE_PROPOSAL',
+  RESOLVE_CONSTRAINT: 'RESOLVE_CONSTRAINT',
+  ANSWER_CLARIFICATION: 'ANSWER_CLARIFICATION',
+  CONFIRM_READINESS: 'CONFIRM_READINESS',
+  REVIEW_PROJECT_INVITATION: 'REVIEW_PROJECT_INVITATION',
+  REVIEW_DATA_OFFER: 'REVIEW_DATA_OFFER',
+  PUBLISH_DATA_OFFER: 'PUBLISH_DATA_OFFER',
+  RETRY_INVITATION_DELIVERY: 'RETRY_INVITATION_DELIVERY',
+  RETRY_DATA_OFFER_DELIVERY: 'RETRY_DATA_OFFER_DELIVERY',
+} as const;
+
+export type DashboardActionStatus = typeof DashboardActionStatus[keyof typeof DashboardActionStatus];
+
+
+export const DashboardActionStatus = {
+  OVERDUE: 'OVERDUE',
+  DUE_TODAY: 'DUE_TODAY',
+  DUE_SOON: 'DUE_SOON',
+  OPEN: 'OPEN',
+} as const;
+
+export interface DashboardAction {
+  id: string;
+  kind: DashboardActionKind;
+  title: string;
+  description: string;
+  /** @nullable */
+  projectId: string | null;
+  /** @nullable */
+  projectName: string | null;
+  /** @nullable */
+  partnerOrgId: string | null;
+  /** @nullable */
+  partnerName: string | null;
+  /** @nullable */
+  dueAt: string | null;
+  status: DashboardActionStatus;
+  targetUrl: string;
 }
 
-export type AnDashboardResourceUtilizationItem = {
-  resource: Resource;
-  utilizationPercent: number;
+/**
+ * @nullable
+ */
+export type ProjectCollaborationMembershipStatus = typeof ProjectCollaborationMembershipStatus[keyof typeof ProjectCollaborationMembershipStatus] | null;
+
+
+export const ProjectCollaborationMembershipStatus = {
+  INVITED: 'INVITED',
+  ACTIVE: 'ACTIVE',
+  REJECTED: 'REJECTED',
+  REVOKED: 'REVOKED',
+} as const;
+
+export type ProjectCollaborationDataOfferStatus = typeof ProjectCollaborationDataOfferStatus[keyof typeof ProjectCollaborationDataOfferStatus];
+
+
+export const ProjectCollaborationDataOfferStatus = {
+  NOT_PUBLISHED: 'NOT_PUBLISHED',
+  PENDING_ACCEPTANCE: 'PENDING_ACCEPTANCE',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  UNAVAILABLE: 'UNAVAILABLE',
+} as const;
+
+export interface ProjectCollaboration {
+  id: string;
+  projectId: string;
+  projectName: string;
+  partnerOrgId: string;
+  partnerName: string;
+  /** @nullable */
+  membershipStatus: ProjectCollaborationMembershipStatus;
+  membershipLabel: string;
+  dataOfferStatus: ProjectCollaborationDataOfferStatus;
+  dataOfferLabel: string;
+  /** @nullable */
+  publicationId: string | null;
+  targetUrl: string;
+}
+
+export interface DashboardOperationalItem {
+  id: string;
+  title: string;
+  description: string;
+  /** @nullable */
+  projectId: string | null;
+  /** @nullable */
+  projectName: string | null;
+  /** @nullable */
+  partnerName: string | null;
+  /** @nullable */
+  startsAt: string | null;
+  /** @nullable */
+  dueAt: string | null;
+  targetUrl: string;
+}
+
+export type DashboardInvitationStatus = typeof DashboardInvitationStatus[keyof typeof DashboardInvitationStatus];
+
+
+export const DashboardInvitationStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export interface DashboardInvitation {
+  id: string;
+  projectName: string;
+  agName: string;
+  status: DashboardInvitationStatus;
+  createdAt: string;
+  targetUrl: string;
+}
+
+export type DashboardDataOfferPublicationStatus = typeof DashboardDataOfferPublicationStatus[keyof typeof DashboardDataOfferPublicationStatus];
+
+
+export const DashboardDataOfferPublicationStatus = {
+  PUBLISHED: 'PUBLISHED',
+  SUSPENDED: 'SUSPENDED',
+  WITHDRAWN: 'WITHDRAWN',
+  EXPIRED: 'EXPIRED',
+} as const;
+
+export type DashboardDataOfferRecipientStatus = typeof DashboardDataOfferRecipientStatus[keyof typeof DashboardDataOfferRecipientStatus];
+
+
+export const DashboardDataOfferRecipientStatus = {
+  OFFERED: 'OFFERED',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  REVOKED: 'REVOKED',
+  EXPIRED: 'EXPIRED',
+} as const;
+
+export interface DashboardDataOffer {
+  publicationId: string;
+  title: string;
+  projectName: string;
+  agName: string;
+  publicationStatus: DashboardDataOfferPublicationStatus;
+  recipientStatus: DashboardDataOfferRecipientStatus;
+  /** @nullable */
+  policyAcceptedAt: string | null;
+  targetUrl: string;
+}
+
+export type AgDashboardKpis = {
+  openTasks: number;
+  overdueTasks: number;
+  openInvitations: number;
+  pendingDataOffers: number;
+};
+
+export interface AgDashboard {
+  kpis: AgDashboardKpis;
+  activeProjectsCount: number;
+  nextActions: DashboardAction[];
+  projectCollaborations: ProjectCollaboration[];
+  operationalOutlook: DashboardOperationalItem[];
+}
+
+export type AnDashboardKpis = {
+  openInvitations: number;
+  newDataOffers: number;
+  openRequests: number;
+  criticalDeadlines: number;
 };
 
 export interface AnDashboard {
-  pendingRequests: number;
-  confirmedWork: number;
-  upcomingDeadlines: Delegation[];
-  resourceUtilization: AnDashboardResourceUtilizationItem[];
-  recentRequests: Delegation[];
+  kpis: AnDashboardKpis;
+  openInvitations: DashboardInvitation[];
+  newDataOffers: DashboardDataOffer[];
+  nextActions: DashboardAction[];
+  projectCollaborations: ProjectCollaboration[];
+  operationalOutlook: DashboardOperationalItem[];
 }
 
 /**

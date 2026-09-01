@@ -6,6 +6,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import type {
   ExternalProjectInvitation,
+  ExternalDataOffer,
   ExternalProjectInvitationResponse,
 } from "./dataspace/external-contracts";
 
@@ -91,6 +92,56 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
       usagePurpose: payload.policy.usagePurpose,
       allowedConsumerParticipantId: payload.policy.allowedConsumerParticipantId,
     },
+    status: "PENDING",
+  }).returning();
+  return created;
+}
+
+/**
+ * Compatibility projection for the existing AN offer screens. The wire
+ * contract is a data offer, not an invitation; this adapter keeps the current
+ * local decision/content gates working until the AN projection table is
+ * migrated independently.
+ */
+export async function storeIncomingDataOffer(payload: ExternalDataOffer) {
+  if (payload.metadata.senderOrgId === payload.metadata.receiverOrgId) {
+    throw new AnProjectInvitationError("DATA_OFFER_PARTICIPANTS_INVALID", "Absender und Empfänger des Datenangebots dürfen nicht identisch sein.");
+  }
+  const invitationId = `data-offer:${payload.publicationId}:${payload.metadata.receiverOrgId}`;
+  const [existing] = await anDb.select().from(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.dataPublicationId, payload.publicationId))
+    .limit(1);
+  if (existing) {
+    if (
+      existing.senderAgOrgId !== payload.metadata.senderOrgId ||
+      existing.receiverAnOrgId !== payload.metadata.receiverOrgId ||
+      existing.projectReference !== payload.projectReference
+    ) {
+      throw new AnProjectInvitationError("DATA_OFFER_CONFLICT", "Das Datenangebot stimmt nicht mit der vorhandenen Projektion überein.");
+    }
+    const [updated] = await anDb.update(anProjectInvitationsTable).set({
+      dataPublicationTitle: payload.title,
+      selectedFields: payload.selectedFields,
+      dataOfferSnapshot: payload as unknown as Record<string, unknown>,
+      policySnapshot: payload.accessPolicy,
+      invitationExpiresAt: payload.validUntil ? new Date(payload.validUntil) : null,
+      updatedAt: new Date(),
+    }).where(eq(anProjectInvitationsTable.id, existing.id)).returning();
+    return updated ?? existing;
+  }
+  const [created] = await anDb.insert(anProjectInvitationsTable).values({
+    invitationId,
+    correlationId: payload.metadata.correlationId,
+    senderAgOrgId: payload.metadata.senderOrgId,
+    receiverAnOrgId: payload.metadata.receiverOrgId,
+    projectReference: payload.projectReference,
+    projectName: payload.projectName,
+    invitationExpiresAt: payload.validUntil ? new Date(payload.validUntil) : null,
+    dataPublicationId: payload.publicationId,
+    dataPublicationTitle: payload.title,
+    selectedFields: payload.selectedFields,
+    dataOfferSnapshot: payload as unknown as Record<string, unknown>,
+    policySnapshot: payload.accessPolicy,
     status: "PENDING",
   }).returning();
   return created;

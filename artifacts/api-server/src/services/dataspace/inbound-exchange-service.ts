@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import type {
   ExternalCoordinationDecision,
+  ExternalDataOffer,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -10,6 +11,7 @@ import type {
 } from "./external-contracts";
 import {
   externalCoordinationDecisionSchema,
+  externalDataOfferSchema,
   externalProjectInvitationSchema,
   externalProjectInvitationResponseSchema,
   externalServiceRequestSchema,
@@ -39,10 +41,12 @@ function payloadHash(payload: unknown): string {
 }
 
 function validatePayload(
-  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalCoordinationDecision,
+  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer | ExternalCoordinationDecision,
 ): void {
   const result =
-    "invitationId" in payload
+    "publicationId" in payload
+      ? externalDataOfferSchema.safeParse(payload)
+      : "invitationId" in payload
       ? ("decision" in payload
         ? externalProjectInvitationResponseSchema.safeParse(payload)
         : externalProjectInvitationSchema.safeParse(payload))
@@ -52,7 +56,10 @@ function validatePayload(
         ? externalServiceResponseSchema.safeParse(payload)
         : externalServiceRequestSchema.safeParse(payload)));
   if (!result.success) {
-    throw new Error("Invalid external exchange payload");
+    const details = result.error.issues
+      .map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Invalid external exchange payload: ${details}`);
   }
 }
 
@@ -132,9 +139,9 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   return { duplicate: false, status: "PROCESSED" };
 }
 
-async function processIncomingInvitation<T extends ExternalProjectInvitation | ExternalProjectInvitationResponse>(
+async function processIncomingInvitation<T extends ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer>(
   payload: T,
-  messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE",
+  messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE" | "DATA_OFFER_PUBLISHED",
   process?: (payload: T) => Promise<void>,
 ): Promise<InboundProcessResult> {
   validateMetadata(payload);
@@ -146,8 +153,8 @@ async function processIncomingInvitation<T extends ExternalProjectInvitation | E
     correlationId: payload.metadata.correlationId,
     senderOrgId: payload.metadata.senderOrgId,
     receiverOrgId: payload.metadata.receiverOrgId,
-    businessObjectId: payload.invitationId,
-    businessObjectVersion: 1,
+    businessObjectId: "publicationId" in payload ? payload.publicationId : payload.invitationId,
+    businessObjectVersion: "publicationVersion" in payload ? payload.publicationVersion : 1,
     status: "RECEIVED",
   }).onConflictDoNothing().returning();
 
@@ -166,7 +173,8 @@ async function processIncomingInvitation<T extends ExternalProjectInvitation | E
       existing.correlationId !== payload.metadata.correlationId ||
       existing.senderOrgId !== payload.metadata.senderOrgId ||
       existing.receiverOrgId !== payload.metadata.receiverOrgId ||
-      existing.businessObjectId !== payload.invitationId
+      existing.businessObjectId !== ("publicationId" in payload ? payload.publicationId : payload.invitationId) ||
+      existing.businessObjectVersion !== ("publicationVersion" in payload ? payload.publicationVersion : 1)
     ) throw new Error("Inbound messageId conflicts with an existing exchange");
     if (existing.status === "PROCESSED" || existing.status === "RECEIVED") {
       return { duplicate: true, status: "DUPLICATE" };
@@ -233,4 +241,11 @@ export function handleIncomingProjectInvitationResponse(
   process?: (payload: ExternalProjectInvitationResponse) => Promise<void>,
 ) {
   return processIncomingInvitation(payload, "PROJECT_INVITATION_RESPONSE", process);
+}
+
+export function handleIncomingDataOffer(
+  payload: ExternalDataOffer,
+  process?: (payload: ExternalDataOffer) => Promise<void>,
+) {
+  return processIncomingInvitation(payload, "DATA_OFFER_PUBLISHED", process);
 }

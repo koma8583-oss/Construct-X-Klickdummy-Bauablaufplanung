@@ -15,6 +15,7 @@ import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import type {
   ExternalCoordinationDecision,
+  ExternalDataOffer,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -23,6 +24,7 @@ import type {
 import { assertPolicySnapshotParticipants } from "./external-contracts";
 import { applyIncomingServiceResponseOnAg } from "../nu-response-service";
 import { storeIncomingProjectInvitation } from "../an-project-invitation-service";
+import { storeIncomingDataOffer } from "../an-project-invitation-service";
 import { createAnServiceResponse } from "../nu-response-service";
 import { runAnAvailabilityCheck } from "../an-leistungsanfrage-service";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
@@ -285,6 +287,10 @@ export async function processIncomingCoordinationDecision(
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {
   assertPolicySnapshotParticipants(payload);
   await storeIncomingProjectInvitation(payload);
+}
+
+export async function processIncomingDataOffer(payload: ExternalDataOffer): Promise<void> {
+  await storeIncomingDataOffer(payload);
 }
 
 export async function processIncomingProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<void> {

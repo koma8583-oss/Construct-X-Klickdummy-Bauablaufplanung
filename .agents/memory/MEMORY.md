@@ -54,4 +54,5 @@
 - [Role-specific browser sessions](role-session-isolation.md) — AG and AN auth flows need separate refresh-cookie state when both apps share a browser origin.
 - [AG Vitest component mocks](ag-vitest-mocks.md) — large AG page tests need explicit synchronous API-client mocks; async importActual partial mocks can block workers before tests start.
 - [Interactive Dataspace coordination](interactive-dataspace-coordination.md) — publish proposals at creation; local delivery must project them without auto-answering so the recipient can choose an action.
+- [Tractus-X NOT_CONFIGURED boundary](tractusx-not-configured-boundary.md) — no local fallback or simulated success before real participant identities and connector phases are configured.
 - [Wizard draft retry state](wizard-draft-retry-state.md) — after creating a draft, form initialization must not overwrite the active retry state.

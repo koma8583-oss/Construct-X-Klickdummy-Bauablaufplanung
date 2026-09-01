@@ -9,6 +9,7 @@ import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
 import type {
   ExternalCoordinationDecision,
+  ExternalDataOffer,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -20,6 +21,7 @@ import {
   handleIncomingProjectInvitation,
   handleIncomingProjectInvitationResponse,
   handleIncomingCoordinationDecision,
+  handleIncomingDataOffer,
 } from "./inbound-exchange-service";
 
 export class RestDataspaceExchange implements DataspaceExchange {
@@ -145,6 +147,29 @@ export class RestDataspaceExchange implements DataspaceExchange {
     };
   }
 
+  async publishDataOffer(payload: ExternalDataOffer): Promise<ExchangeReference> {
+    const result = await this.transport.send({
+      messageId: payload.metadata.messageId,
+      schemaVersion: payload.metadata.schemaVersion,
+      messageType: DataspaceMessageType.DATA_OFFER_PUBLISHED,
+      senderOrgId: payload.metadata.senderOrgId,
+      recipientOrgId: payload.metadata.receiverOrgId,
+      correlationId: payload.metadata.correlationId,
+      createdAt: new Date(payload.metadata.createdAt),
+      causationId: null,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      status: result.status,
+      sentAt: result.sentAt,
+      deliveredAt: result.deliveredAt,
+      attemptCount: result.attemptCount,
+      error: result.error,
+    };
+  }
+
   publishProjectInvitation(payload: ExternalProjectInvitation) {
     return this.publishInvitation(payload, "PROJECT_INVITATION");
   }
@@ -165,6 +190,13 @@ export class RestDataspaceExchange implements DataspaceExchange {
     process?: (payload: ExternalCoordinationDecision) => Promise<void>,
   ): Promise<import("./inbound-exchange-service").InboundProcessResult> {
     return handleIncomingCoordinationDecision(payload, process);
+  }
+
+  async receiveDataOffer(
+    payload: ExternalDataOffer,
+    process?: (payload: ExternalDataOffer) => Promise<void>,
+  ) {
+    return handleIncomingDataOffer(payload, process);
   }
 
   private requestPayload(payload: ExternalServiceRequest): Record<string, unknown> {

@@ -35,6 +35,23 @@ GU → Hub → NU
   messageType: TAKT_RESPONSE_ACCEPTED  or  TAKT_RESPONSE_REVISION_REQUESTED
 ```
 
+## Project membership and data publication
+
+Project participation is a separate flow from data publication:
+
+```text
+1. AG → AN: PROJECT_INVITATION
+2. AN → AG: PROJECT_INVITATION_RESPONSE
+3. After active acceptance:
+   AG → AN: DATA_OFFER_PUBLISHED
+```
+
+The invitation does not create a `DataPublication`, EDC negotiation, or data
+transfer. The data offer has its own contract and carries separate access and
+usage policy snapshots. The AN-local offer projection may expose the offer
+through the existing compatibility API, but it remains distinct from
+membership.
+
 ---
 
 ## Message envelope fields
@@ -115,14 +132,17 @@ When the local transport is replaced by an Eclipse Dataspace Connector (EDC):
 - `messageId`, `correlationId`, and `causationId` remain unchanged.
 - JSON payload schemas remain unchanged.
 - Digital identities (BPN) and usage-policy enforcement (ODRL) are added at
-  the transport layer only — no domain service changes.
+  the transport boundary only after real connector configuration exists.
 - `EdcTransport` implements the same `MessageTransport` interface as
   `LocalHubTransport`; the swap is a one-line factory change.
 - The audit trail (`takt_request_audit_events`) records identical event types
   regardless of which transport is active.
 
-For the complete EDC asset classification, Provider-Push flow, contract/policy
-placeholder design, and migration checklist, see **`docs/dataspace-readiness.md`**.
+Until then, selecting the Tractus-X adapter fails explicitly with
+`NOT_CONFIGURED`; it never falls back to local delivery or reports a simulated
+success. For the complete EDC asset classification, Provider-Push flow,
+contract/policy placeholder design, and migration checklist, see
+**`docs/dataspace-readiness.md`**.
 
 Step 2 (NU retrieves details) currently uses Consumer-Pull (`GET /details`).
 The EDC equivalent is Provider-Push: the GU connector pushes the snapshot asset

@@ -23,6 +23,7 @@ import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exch
 
 const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
 const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
+const DATA_OFFER_MESSAGE_ID = "data-offer-not-configured-message-1";
 const PROJECT_INVITATION_MESSAGE_IDS = [
   "project-invitation-message-1",
   "project-invitation-serialization-mutation",
@@ -33,6 +34,7 @@ const PROJECT_INVITATION_MESSAGE_IDS = [
 const TEST_MESSAGE_IDS = [
   ...PROJECT_INVITATION_MESSAGE_IDS,
   COORDINATION_DECISION_MESSAGE_ID,
+  DATA_OFFER_MESSAGE_ID,
 ];
 
 async function cleanupMessageFixtures() {
@@ -40,7 +42,7 @@ async function cleanupMessageFixtures() {
     .where(inArray(messageDeliveryAttemptsTable.messageId, TEST_MESSAGE_IDS))
     .catch(() => {});
   await db.delete(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, PROJECT_INVITATION_MESSAGE_IDS))
+    .where(inArray(messageOutboxTable.messageId, [...PROJECT_INVITATION_MESSAGE_IDS, DATA_OFFER_MESSAGE_ID]))
     .catch(() => {});
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
@@ -174,7 +176,7 @@ describe("dataspace exchange boundary", () => {
     else process.env.DATASPACE_TRANSPORT = previous;
   });
 
-  it("routes the EDC setting to the explicit unconfigured adapter", async () => {
+  it("routes the EDC setting to the explicit NOT_CONFIGURED adapter", async () => {
     const previous = process.env.DATASPACE_TRANSPORT;
     process.env.DATASPACE_TRANSPORT = "tractusx-edc";
     const exchange = createDataspaceExchange();
@@ -182,85 +184,36 @@ describe("dataspace exchange boundary", () => {
       requestId: "request-1", requestVersion: 1, projectReference: "project-1",
       plannedStart: "2026-09-01", plannedEnd: "2026-09-03",
       senderOrgId: "ag-1", receiverOrgId: "an-1",
-    }))).rejects.toThrow("Tractus-X EDC adapter not configured");
+    }))).rejects.toThrow(/Tractus-X EDC adapter not configured.*NOT_CONFIGURED/);
     if (previous === undefined) delete process.env.DATASPACE_TRANSPORT;
     else process.env.DATASPACE_TRANSPORT = previous;
   });
 
-  it("preserves a policy snapshot through the Tractus-X outbound payload and validation", async () => {
-    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
-    const connectorFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ messageId: "connector-message-1", externalReference: "connector-reference-1" }),
-    });
-    const policySnapshot = {
-      policyId: "policy-ß/2026",
-      templateId: "SCHEDULE_COORDINATION",
-      templateVersion: 3,
-      code: "SCHEDULE_COORDINATION",
-      name: "Terminabstimmung",
-      description: "Immutable policy snapshot with provider-owned wording.",
-      permissions: ["read:takt", "read:resource-requirements", "coordinate"],
-      prohibitions: ["share-outside-project", "derive-personal-profile"],
-      provider: { organizationId: "ag-42", userId: null },
-      recipientOrganizationId: "an-17",
-      purpose: "Koordination des Bauablaufs / Abschnitt A",
-      projectReference: "project-2026-ß",
-      workPackageReference: "WP-07",
-      validFrom: "2026-08-26T08:00:00.000Z",
-      validUntil: "2026-09-30T18:00:00.000Z",
-      createdAt: "2026-08-26T07:59:59.123Z",
-    };
-    const payload = {
-      metadata: {
-        messageId: "service-request-message-1",
-        correlationId: "service-request-correlation-1",
-        schemaVersion: "1.0" as const,
-        senderOrgId: "ag-42",
-        receiverOrgId: "an-17",
-        createdAt: "2026-08-26T08:00:00.000Z",
-      },
-      requestId: "request-2026-ß",
-      requestVersion: 4,
-      projectReference: "project-2026-ß",
-      taktReference: "takt-A3",
+  it("does not simulate a Tractus-X connector success", async () => {
+    const connectorFetch = vi.fn();
+    vi.stubGlobal("fetch", connectorFetch);
+    const payload = toExternalServiceRequest({
+      requestId: "tractusx-not-configured-request",
+      requestVersion: 1,
+      projectReference: "project-1",
       plannedStart: "2026-09-01",
       plannedEnd: "2026-09-03",
-      resourceRequirements: [],
-      policySnapshot,
-    };
+      senderOrgId: TRACTUSX_TEST_ORG_IDS[0],
+      receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+    });
 
-    vi.stubGlobal("fetch", connectorFetch);
-    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test/";
     try {
-      const result = await new TractusXEdcExchange().publishServiceRequest(payload);
-      expect(result).toMatchObject({
-        exchangeId: "connector-message-1",
-        externalReference: "connector-reference-1",
-        status: "DELIVERED",
-      });
-
-      expect(connectorFetch).toHaveBeenCalledOnce();
-      const [url, requestInit] = connectorFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://connector.example.test/messages");
-      expect(requestInit.method).toBe("POST");
-      const outbound = JSON.parse(String(requestInit.body)) as {
-        messageType: string;
-        payload: unknown;
-      };
-      expect(outbound.messageType).toBe("SERVICE_REQUEST");
-
-      const validatedPayload = externalServiceRequestSchema.parse(outbound.payload);
-      expect(validatedPayload.policySnapshot).toEqual(policySnapshot);
-      expect(JSON.stringify(validatedPayload.policySnapshot)).toBe(JSON.stringify(policySnapshot));
+      await expect(new TractusXEdcExchange().publishServiceRequest(payload))
+        .rejects.toThrow(/NOT_CONFIGURED/);
+      expect(connectorFetch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
-      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
-      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
     }
   });
 
-  it("preserves a project invitation policy snapshot through the serialized Tractus-X payload", async () => {
+  // Replaced by the NOT_CONFIGURED boundary test below. This legacy test
+  // asserted the removed generic /messages connector simulation.
+  it.skip("preserves a project invitation policy snapshot through the serialized Tractus-X payload", async () => {
     const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
     const connectorFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -389,7 +342,9 @@ describe("dataspace exchange boundary", () => {
     }
   });
 
-  it("preserves connector failure history across invitation and response retries", async () => {
+  // Replaced by the persisted-envelope NOT_CONFIGURED test below. The old
+  // test asserted successful retry through the removed generic connector.
+  it.skip("preserves connector failure history across invitation and response retries", async () => {
     const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
     const invitationMessageId = "project-invitation-retry-message-1";
     const responseMessageId = "project-invitation-response-retry-message-1";
@@ -549,7 +504,9 @@ describe("dataspace exchange boundary", () => {
     }
   });
 
-  it("rejects a simultaneous invitation retry without losing the delivery attempt", async () => {
+  // The generic connector retry race is no longer part of the unconfigured
+  // Tractus-X adapter contract.
+  it.skip("rejects a simultaneous invitation retry without losing the delivery attempt", async () => {
     const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
     const messageId = "project-invitation-concurrent-retry-message-1";
     const failureReason = "connector rejected the first invitation attempt";
@@ -646,7 +603,8 @@ describe("dataspace exchange boundary", () => {
     }
   });
 
-  it("persists a failed coordination decision and retries the same public message", async () => {
+  // Replaced by the explicit NOT_CONFIGURED coordination boundary below.
+  it.skip("persists a failed coordination decision and retries the same public message", async () => {
     const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
     const decisionPayload = {
       metadata: {
@@ -711,6 +669,82 @@ describe("dataspace exchange boundary", () => {
       vi.unstubAllGlobals();
       if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
       else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
+    }
+  });
+
+  it("persists a data offer as NOT_CONFIGURED without changing its retry envelope", async () => {
+    const payload = {
+      metadata: {
+        messageId: DATA_OFFER_MESSAGE_ID,
+        correlationId: "data-offer-not-configured-correlation-1",
+        schemaVersion: "1.0" as const,
+        senderOrgId: TRACTUSX_TEST_ORG_IDS[0],
+        receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      publicationId: "publication-not-configured-1",
+      projectReference: "project-not-configured-1",
+      projectName: "NOT_CONFIGURED project",
+      title: "Data offer",
+      dataProductType: "PROJECT_OVERVIEW" as const,
+      publicationVersion: 1,
+      status: "PUBLISHED" as const,
+      selectedFields: ["projectReference"],
+      detailsRef: "/api/an/data-offers/publication-not-configured-1",
+      validFrom: "2026-08-26T08:00:00.000Z",
+      accessPolicy: {
+        policyId: "access-policy-1",
+        templateId: "template-1",
+        templateVersion: 1,
+        code: "PROJECT_OVERVIEW",
+        name: "Project overview access",
+        description: "Access to the published project overview.",
+        permissions: ["read:project"],
+        prohibitions: ["share-outside-project"],
+        provider: { organizationId: TRACTUSX_TEST_ORG_IDS[0], userId: null },
+        recipientOrganizationId: TRACTUSX_TEST_ORG_IDS[1],
+        purpose: "Project coordination",
+        projectReference: "project-not-configured-1",
+        workPackageReference: null,
+        validFrom: "2026-08-26T08:00:00.000Z",
+        validUntil: null,
+        createdAt: "2026-08-26T08:00:00.000Z",
+      },
+      usagePolicy: {
+        id: "usage-policy-1",
+        templateId: "template-1",
+        templateVersion: 1,
+        code: "PROJECT_OVERVIEW",
+        name: "Project overview usage",
+        purpose: "Project coordination",
+        permissions: ["read:project"],
+        prohibitions: ["share-outside-project"],
+        validityRule: "During publication validity",
+        retentionRule: null,
+      },
+    };
+    const connectorFetch = vi.fn();
+    vi.stubGlobal("fetch", connectorFetch);
+    try {
+      await expect(new TractusXEdcExchange().publishDataOffer(payload))
+        .rejects.toThrow(/NOT_CONFIGURED/);
+      const [first] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, DATA_OFFER_MESSAGE_ID));
+      expect(first).toMatchObject({
+        status: "FAILED",
+        messageType: "DATA_OFFER_PUBLISHED",
+        attemptCount: 0,
+        payload,
+      });
+
+      await expect(new TractusXEdcExchange().retryDataOffer(DATA_OFFER_MESSAGE_ID))
+        .rejects.toThrow(/NOT_CONFIGURED/);
+      const [retried] = await db.select().from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, DATA_OFFER_MESSAGE_ID));
+      expect(retried.payload).toEqual(first.payload);
+      expect(connectorFetch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 
