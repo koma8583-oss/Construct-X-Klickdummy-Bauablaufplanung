@@ -15,7 +15,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,36 +46,38 @@ const PROJECT_MEMBERSHIP_FIELDS = [
   "projectStatus",
   "projectLocation",
 ] as const;
+
 const PROJECT_MEMBERSHIP_FIELD_LABELS: Record<string, string> = {
   projectReference: "Projektreferenz (ID)",
   projectName: "Projektname",
   projectStatus: "Projektstatus",
   projectLocation: "Projektstandort / Bauvorhaben",
 };
+
 const STEP_LABELS = ["Teilnehmer", "Policy", "Übersicht"];
 
 function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
   return {
     "@context": "http://www.w3.org/ns/odrl.jsonld",
     "@type": "Set",
-    uid: "urn:odrl:data-publication:project-invitation-preview",
+    uid: "urn:odrl:project-invitation-preview",
     permission: [{
-      target: "data-publication:project-invitation-preview",
+      target: "project-invitation:membership-preview",
       assigner: "organization:<ag-org-id>",
-      assignee: "organization:<nu-org-id>",
+      assignee: "organization:<an-org-id>",
       action: "use",
       constraint: [
-        { leftOperand: "purpose", operator: "eq", rightOperand: policyCode === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : policyCode },
-        { leftOperand: "taktkoord:scope", operator: "eq", rightOperand: "taktkoord:projectSpecific" },
-        { leftOperand: "taktkoord:internalUse", operator: "eq", rightOperand: "taktkoord:restrictedToRecipient" },
-       { leftOperand: "taktkoord:contentScope", operator: "eq", rightOperand: "taktkoord:projectMembershipOnly" },
+        { leftOperand: "purpose", operator: "eq", rightOperand: policyCode },
+        { leftOperand: "constructx:scope", operator: "eq", rightOperand: "constructx:projectSpecific" },
+        { leftOperand: "constructx:internalUse", operator: "eq", rightOperand: "constructx:restrictedToRecipient" },
+        { leftOperand: "constructx:contentScope", operator: "eq", rightOperand: "constructx:projectMembershipOnly" },
       ],
     }],
     prohibition: [
-      { target: "data-publication:project-invitation-preview", action: "distribute" },
-      { target: "data-publication:project-invitation-preview", action: "derive" },
-      { target: "data-publication:project-invitation-preview", action: "modify" },
-      { target: "data-publication:project-invitation-preview", action: "commercialize" },
+      { target: "project-invitation:membership-preview", action: "distribute" },
+      { target: "project-invitation:membership-preview", action: "derive" },
+      { target: "project-invitation:membership-preview", action: "modify" },
+      { target: "project-invitation:membership-preview", action: "commercialize" },
     ],
   };
 }
@@ -113,13 +114,16 @@ export function ProjectInvitationWizard({
         .some((value) => value.toLocaleLowerCase().includes(normalizedSearch)),
     );
   }, [participantSearch, selectableParticipants]);
+
   const invitationPolicies = useMemo(
     () => (policies ?? [])
       .filter((policy) => policy.code === "PROJECT_MEMBERSHIP")
       .sort((a, b) => b.version - a.version),
     [policies],
   );
+
   const selectedPolicy = invitationPolicies[0];
+
   useEffect(() => {
     if (selectedPolicy && policyTemplateId !== selectedPolicy.code) {
       setPolicyTemplateId(selectedPolicy.code);
@@ -128,6 +132,7 @@ export function ProjectInvitationWizard({
       setPolicyTemplateVersion(selectedPolicy.version);
     }
   }, [selectedPolicy, policyTemplateId, policyTemplateVersion]);
+
   const autoTitle = useMemo(
     () => `Projektaufnahme – ${projectName}`,
     [projectName],
@@ -137,7 +142,7 @@ export function ProjectInvitationWizard({
     if (!nextOpen) {
       setStep(0);
       setSelectedParticipants(new Set());
-       setParticipantSearch("");
+      setParticipantSearch("");
       setPolicyTemplateId("");
       setPolicyTemplateVersion(undefined);
       setTitle("");
@@ -156,6 +161,7 @@ export function ProjectInvitationWizard({
       return next;
     });
   };
+
   const canContinue = [
     selectedParticipants.size > 0,
     Boolean(policyTemplateId),
@@ -170,7 +176,7 @@ export function ProjectInvitationWizard({
           participantIds: Array.from(selectedParticipants),
           policyTemplateId,
           ...(policyTemplateVersion ? { policyTemplateVersion } : {}),
-           selectedFields: [...PROJECT_MEMBERSHIP_FIELDS],
+          selectedFields: [...PROJECT_MEMBERSHIP_FIELDS],
           title: title.trim() || autoTitle,
           invitationMessage: invitationMessage.trim() || undefined,
           validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
@@ -179,8 +185,8 @@ export function ProjectInvitationWizard({
         },
       });
       toast({
-         title: "Projektaufnahme versendet",
-         description: "Die ausgewählten AN erhalten die Projektaufnahme mit der zu bestätigenden Policy.",
+        title: "Projekteinladung lokal versendet",
+        description: "Die Einladung wurde im Mock-Transport zugestellt. Projektdaten sind noch nicht veröffentlicht; eine spätere Freigabe erfolgt separat nach Annahme.",
       });
       onInvitationSent?.();
       close(false);
@@ -196,176 +202,187 @@ export function ProjectInvitationWizard({
   return (
     <>
       <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            Projekteinladung mit Datenfreigabe
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-             Die Projektaufnahme enthält nur wenige Projektbasisdaten. Die Projektpartnerschaft entsteht erst nach ausdrücklicher Annahme durch den AN.
-          </p>
-        </DialogHeader>
-
-        <div className="flex items-center gap-1">
-          {STEP_LABELS.map((label, index) => (
-            <React.Fragment key={label}>
-              <div className="flex items-center gap-1.5">
-                <span className={`grid h-6 w-6 place-content-center rounded-full text-[11px] font-bold ${
-                  index < step ? "bg-primary text-primary-foreground" :
-                  index === step ? "border border-primary bg-primary/10 text-primary" :
-                  "bg-muted text-muted-foreground"
-                }`}>{index < step ? "✓" : index + 1}</span>
-                <span className={`hidden text-xs sm:block ${index === step ? "font-medium" : "text-muted-foreground"}`}>{label}</span>
-              </div>
-              {index < STEP_LABELS.length - 1 && <div className={`h-px flex-1 ${index < step ? "bg-primary" : "bg-border"}`} />}
-            </React.Fragment>
-          ))}
-        </div>
-
-        <div className="min-h-[320px] py-2">
-          {step === 0 && (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Wählen Sie verifizierte Nachunternehmen aus dem Dataspace-Directory. Bereits eingeladene oder aktive Teilnehmer sind nicht erneut auswählbar.
-              </p>
-              {selectableParticipants.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                  Keine verifizierten, noch nicht eingeladenen Teilnehmer verfügbar.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={participantSearch}
-                      onChange={(event) => setParticipantSearch(event.target.value)}
-                      placeholder="Teilnehmer suchen …"
-                      aria-label="Teilnehmer suchen"
-                      className="pl-9"
-                    />
-                  </div>
-                  {filteredParticipants.length === 0 ? (
-                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                      Keine Teilnehmer für „{participantSearch}“ gefunden.
-                    </div>
-                  ) : (
-                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                      {filteredParticipants.map((participant) => (
-                        <button
-                          type="button"
-                          key={participant.participantId}
-                          onClick={() => toggleParticipant(participant.participantId)}
-                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ${
-                            selectedParticipants.has(participant.participantId) ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-                          }`}
-                        >
-                          <Checkbox checked={selectedParticipants.has(participant.participantId)} onCheckedChange={() => toggleParticipant(participant.participantId)} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{participant.name}</span>
-                            <span className="text-xs text-muted-foreground">Verifizierter Dataspace-Teilnehmer</span>
-                          </span>
-                          <Badge variant="secondary" className="text-[10px]">Verifiziert</Badge>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nutzungsrichtlinie</Label>
-                <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
-                   <span className="flex-1">{selectedPolicy?.name ?? "Projektaufnahme"}</span>
-                  {selectedPolicy && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
-                      <Eye className="h-3.5 w-3.5" /> Details &amp; ODRL
-                    </Button>
-                  )}
-                </div>
-                 <p className="text-xs text-muted-foreground">
-                   Feste Registry-Version: v{selectedPolicy?.version ?? "—"}
-                 </p>
-              </div>
-              <div className="space-y-2">
-                 <Label>Titel der Projektaufnahme</Label>
-                <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={autoTitle} />
-              </div>
-              <div className="space-y-2">
-                <Label>Nachricht an die Teilnehmer (optional)</Label>
-                <Textarea value={invitationMessage} onChange={(event) => setInvitationMessage(event.target.value)} rows={2} placeholder="Kurze Erläuterung zur Einladung…" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Gültig ab</Label><DatePicker value={validFrom} onChange={setValidFrom} /></div>
-                <div className="space-y-2"><Label>Gültig bis</Label><DatePicker value={validUntil} onChange={setValidUntil} /></div>
-              </div>
-            </div>
-          )}
-
-           {step === 2 && (
-            <div className="space-y-4">
-              <div className="rounded-xl border bg-card p-4 space-y-3">
-                <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Projekt</div><div className="font-semibold">{projectName}</div></div>
-                <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="flex flex-wrap gap-1 mt-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
-                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
-                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Feste Projektbasisdaten</div><div className="flex flex-wrap gap-1 mt-1">{PROJECT_MEMBERSHIP_FIELDS.map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{PROJECT_MEMBERSHIP_FIELD_LABELS[field]}</Badge>)}</div></div>
-                 <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung und Policy ausdrücklich bestätigt.</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          {step > 0 && <Button type="button" variant="outline" onClick={() => setStep((current) => current - 1)} disabled={createPackage.isPending}><ChevronLeft className="mr-1 h-4 w-4" />Zurück</Button>}
-           {step < 2 ? (
-            <Button type="button" onClick={() => setStep((current) => current + 1)} disabled={!canContinue}>Weiter<ChevronRight className="ml-1 h-4 w-4" /></Button>
-          ) : (
-            <Button type="button" onClick={() => void send()} disabled={createPackage.isPending}><Send className="mr-1.5 h-4 w-4" />{createPackage.isPending ? "Wird versendet…" : "Einladung versenden"}</Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-      </Dialog>
-      {selectedPolicy && (
-      <Dialog open={policyViewOpen} onOpenChange={setPolicyViewOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{selectedPolicy.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Projekteinladung vorbereiten
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Die Projektaufnahme wird im Klickdummy lokal als Dataspace-Notification vorbereitet. Es werden dabei noch keine Projektdaten veröffentlicht und keine Connector-Verhandlung ausgeführt.
+            </p>
           </DialogHeader>
-          <Tabs defaultValue="details">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="details">Policy-Details</TabsTrigger>
-              <TabsTrigger value="odrl">ODRL / JSON-LD</TabsTrigger>
-            </TabsList>
-            <TabsContent value="details" className="max-h-[440px] space-y-3 overflow-y-auto py-3 text-sm">
-              {selectedPolicy.description && <p>{selectedPolicy.description}</p>}
-              <p className="text-muted-foreground">{selectedPolicy.purpose}</p>
-              <div>
-                <strong>Erlaubt:</strong>
-                <ul className="ml-5 list-disc">{selectedPolicy.permissions.map((value) => <li key={value}>{value}</li>)}</ul>
+
+          <div className="flex items-center gap-1">
+            {STEP_LABELS.map((label, index) => (
+              <React.Fragment key={label}>
+                <div className="flex items-center gap-1.5">
+                  <span className={`grid h-6 w-6 place-content-center rounded-full text-[11px] font-bold ${
+                    index < step ? "bg-primary text-primary-foreground" :
+                    index === step ? "border border-primary bg-primary/10 text-primary" :
+                    "bg-muted text-muted-foreground"
+                  }`}>{index < step ? "✓" : index + 1}</span>
+                  <span className={`hidden text-xs sm:block ${index === step ? "font-medium" : "text-muted-foreground"}`}>{label}</span>
+                </div>
+                {index < STEP_LABELS.length - 1 && <div className={`h-px flex-1 ${index < step ? "bg-primary" : "bg-border"}`} />}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <strong className="text-foreground">Vorbereitung ohne realen Datenraum:</strong>{" "}
+            Versand, Identitätsauflösung und Policy-Prüfung laufen lokal. BPNL/DID-Discovery, Notification-Asset, Catalog, Contract Negotiation und Data Plane sind als spätere Tractus-X-Adapterpunkte vorgesehen.
+          </div>
+
+          <div className="min-h-[320px] py-2">
+            {step === 0 && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Wählen Sie vorbereitete Dataspace-Identitäten der Nachunternehmen aus. Im Klickdummy stehen dafür lokale Teilnehmer-IDs; später werden diese über BPNL/DID und Discovery aufgelöst. Bereits eingeladene oder aktive Teilnehmer sind nicht erneut auswählbar.
+                </p>
+                {selectableParticipants.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    Keine vorbereiteten, noch nicht eingeladenen Teilnehmer verfügbar.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={participantSearch}
+                        onChange={(event) => setParticipantSearch(event.target.value)}
+                        placeholder="Teilnehmer suchen …"
+                        aria-label="Teilnehmer suchen"
+                        className="pl-9"
+                      />
+                    </div>
+                    {filteredParticipants.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        Keine Teilnehmer für „{participantSearch}“ gefunden.
+                      </div>
+                    ) : (
+                      <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                        {filteredParticipants.map((participant) => (
+                          <button
+                            type="button"
+                            key={participant.participantId}
+                            onClick={() => toggleParticipant(participant.participantId)}
+                            className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ${
+                              selectedParticipants.has(participant.participantId) ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                            }`}
+                          >
+                            <Checkbox checked={selectedParticipants.has(participant.participantId)} onCheckedChange={() => toggleParticipant(participant.participantId)} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">{participant.name}</span>
+                              <span className="text-xs text-muted-foreground">Vorbereitete Dataspace-Identität</span>
+                            </span>
+                            <Badge variant="secondary" className="text-[10px]">Mock-Identität</Badge>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div>
-                <strong>Nicht erlaubt:</strong>
-                <ul className="ml-5 list-disc">{selectedPolicy.prohibitions.map((value) => <li key={value}>{value}</li>)}</ul>
+            )}
+
+            {step === 1 && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Policy-Vorschau</Label>
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="flex-1">{selectedPolicy?.name ?? "Projektaufnahme"}</span>
+                    {selectedPolicy && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPolicyViewOpen(true)} className="shrink-0 gap-1.5">
+                        <Eye className="h-3.5 w-3.5" /> Details &amp; ODRL
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Feste Registry-Version: v{selectedPolicy?.version ?? "—"} · im Klickdummy dokumentiert, noch nicht durch einen EDC erzwungen
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Titel der Projektaufnahme</Label>
+                  <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={autoTitle} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nachricht an die Teilnehmer (optional)</Label>
+                  <Textarea value={invitationMessage} onChange={(event) => setInvitationMessage(event.target.value)} rows={2} placeholder="Kurze Erläuterung zur Einladung…" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label>Gültig ab</Label><DatePicker value={validFrom} onChange={setValidFrom} /></div>
+                  <div className="space-y-2"><Label>Gültig bis</Label><DatePicker value={validUntil} onChange={setValidUntil} /></div>
+                </div>
               </div>
-              <p><strong>Gültigkeit:</strong> {selectedPolicy.validityRule}</p>
-              {selectedPolicy.retentionRule && <p><strong>Aufbewahrung:</strong> {selectedPolicy.retentionRule}</p>}
-            </TabsContent>
-            <TabsContent value="odrl" className="py-3">
-              <pre className="max-h-[440px] overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">
-                {JSON.stringify(buildInvitationOdrl(selectedPolicy.code), null, 2)}
-              </pre>
-            </TabsContent>
-          </Tabs>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-4">
+                <div className="space-y-3 rounded-xl border bg-card p-4">
+                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Projekt</div><div className="font-semibold">{projectName}</div></div>
+                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="mt-1 flex flex-wrap gap-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
+                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy-Vorschau</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
+                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Feste Projektbasisdaten</div><div className="mt-1 flex flex-wrap gap-1">{PROJECT_MEMBERSHIP_FIELDS.map((field) => <Badge key={field} variant="secondary" className="text-[10px]">{PROJECT_MEMBERSHIP_FIELD_LABELS[field]}</Badge>)}</div></div>
+                  <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">
+                    Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Die Einladung erzeugt kein EDC-Asset, kein Catalog-Angebot und keine Contract Negotiation. Erst nach ausdrücklicher Annahme durch den AN wird die Projektmitgliedschaft aktiv; danach kann der AG Daten separat freigeben.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPolicyViewOpen(false)}>Schließen</Button>
+            {step > 0 && <Button type="button" variant="outline" onClick={() => setStep((current) => current - 1)} disabled={createPackage.isPending}><ChevronLeft className="mr-1 h-4 w-4" />Zurück</Button>}
+            {step < 2 ? (
+              <Button type="button" onClick={() => setStep((current) => current + 1)} disabled={!canContinue}>Weiter<ChevronRight className="ml-1 h-4 w-4" /></Button>
+            ) : (
+              <Button type="button" onClick={() => void send()} disabled={createPackage.isPending}><Send className="mr-1.5 h-4 w-4" />{createPackage.isPending ? "Wird versendet…" : "Einladung versenden"}</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {selectedPolicy && (
+        <Dialog open={policyViewOpen} onOpenChange={setPolicyViewOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{selectedPolicy.name}</DialogTitle>
+            </DialogHeader>
+            <Tabs defaultValue="details">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="details">Policy-Details</TabsTrigger>
+                <TabsTrigger value="odrl">ODRL / JSON-LD</TabsTrigger>
+              </TabsList>
+              <TabsContent value="details" className="max-h-[440px] space-y-3 overflow-y-auto py-3 text-sm">
+                {selectedPolicy.description && <p>{selectedPolicy.description}</p>}
+                <p className="text-muted-foreground">{selectedPolicy.purpose}</p>
+                <p className="rounded-md border border-dashed bg-muted/30 p-2 text-xs text-muted-foreground">
+                  Diese Policy ist im Klickdummy eine fachliche Vorschau. Ein realer Connector würde sie später in Access-/Usage-Policies und die Contract Negotiation überführen.
+                </p>
+                <div>
+                  <strong>Erlaubt:</strong>
+                  <ul className="ml-5 list-disc">{selectedPolicy.permissions.map((value) => <li key={value}>{value}</li>)}</ul>
+                </div>
+                <div>
+                  <strong>Nicht erlaubt:</strong>
+                  <ul className="ml-5 list-disc">{selectedPolicy.prohibitions.map((value) => <li key={value}>{value}</li>)}</ul>
+                </div>
+                <p><strong>Gültigkeit:</strong> {selectedPolicy.validityRule}</p>
+                {selectedPolicy.retentionRule && <p><strong>Aufbewahrung:</strong> {selectedPolicy.retentionRule}</p>}
+              </TabsContent>
+              <TabsContent value="odrl" className="py-3">
+                <pre className="max-h-[440px] overflow-y-auto rounded bg-muted/50 p-3 text-[11px]">
+                  {JSON.stringify(buildInvitationOdrl(selectedPolicy.code), null, 2)}
+                </pre>
+              </TabsContent>
+            </Tabs>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPolicyViewOpen(false)}>Schließen</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
