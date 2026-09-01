@@ -108,7 +108,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     ]));
   });
 
-  it("zeigt bei älteren Einladungen Projektaufnahme, vollständige Policy und keinen Datenzugriff an", async () => {
+  it("zeigt reine Projekteinladungen mit Policy-Vorschau und ohne Datenzugriff an", async () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -152,7 +152,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     expect(within(card).queryByText("P-LEGACY-1")).not.toBeInTheDocument();
     expect(within(card).getByText("READ, USE_AS_PROJECT_PARTNER")).toBeInTheDocument();
     expect(within(card).getByText("REDISTRIBUTE, AI_TRAINING")).toBeInTheDocument();
-    expect(within(card).getByText(/keine separate Datenfreigabe/i)).toBeInTheDocument();
+    expect(within(card).getByText(/keine Datenfreigabe und erzeugt keinen EDC-Vertrag/i)).toBeInTheDocument();
     expect(within(card).queryByText("Datenangebot:")).not.toBeInTheDocument();
   });
 

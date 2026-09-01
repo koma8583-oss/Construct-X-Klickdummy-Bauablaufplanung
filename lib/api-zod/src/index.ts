@@ -24,4 +24,5 @@ export {
 export type {
   NotificationEnvelope,
   NotificationHeader,
+  TaktKoordNotificationType,
 } from "./notification-envelope";

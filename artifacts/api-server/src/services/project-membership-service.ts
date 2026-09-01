@@ -452,15 +452,32 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   }
 
   const idempotencyKey = input.idempotencyKey?.trim() || crypto.randomUUID();
+  const requestedPolicyVersion = getPolicyTemplateRegistryEntry(
+    policy.code,
+    input.policyTemplateVersion,
+  )?.version;
   const invitationIds = anOrgIds.map((anOrgId) => `${idempotencyKey}:${anOrgId}`);
   const existingByInvitationId = await db.select().from(projectMembershipsTable).where(
     inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
   );
   if (existingByInvitationId.length > 0) {
+    const existingMessages = await db.select({ payload: messageOutboxTable.payload })
+      .from(messageOutboxTable)
+      .where(inArray(
+        messageOutboxTable.messageId,
+        invitationIds.map((invitationId) => `project-invitation-${invitationId}`) as [string, ...string[]],
+      ));
+    const samePolicy = existingMessages.length === anOrgIds.length &&
+      existingMessages.every((message) => {
+        const payload = message.payload as { policySnapshot?: { templateVersion?: number; templateId?: string } };
+        return payload.policySnapshot?.templateVersion === requestedPolicyVersion &&
+          payload.policySnapshot?.templateId === policy.code;
+      });
     const sameRequest =
       existingByInvitationId.length === anOrgIds.length &&
       existingByInvitationId.every((membership) => anOrgIds.includes(membership.anOrgId)) &&
-      existingByInvitationId.every((membership) => membership.projectId === input.projectId);
+      existingByInvitationId.every((membership) => membership.projectId === input.projectId) &&
+      samePolicy;
     if (!sameRequest) {
       throw new ProjectMembershipError(
         "PROJECT_INVITATION_IDEMPOTENCY_CONFLICT",

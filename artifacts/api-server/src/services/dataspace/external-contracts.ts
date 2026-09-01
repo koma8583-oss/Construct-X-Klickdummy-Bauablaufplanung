@@ -115,7 +115,7 @@ export const externalProjectInvitationSchema = z.object({
   project: z.object({
     projectReference: nonEmpty(200),
     projectName: nonEmpty(500),
-    status: z.enum(["ACTIVE", "COMPLETED", "ARCHIVED"]),
+    status: z.enum(["ACTIVE", "COMPLETED", "ARCHIVED"]).optional(),
     description: z.string().trim().max(4000).optional(),
     location: z.string().trim().max(1000).optional(),
   }).strict(),
@@ -339,7 +339,7 @@ export type ExternalProjectInvitation = {
   project: {
     projectReference: string;
     projectName: string;
-    status: "ACTIVE" | "COMPLETED" | "ARCHIVED";
+    status?: "ACTIVE" | "COMPLETED" | "ARCHIVED";
     description?: string;
     location?: string;
   };
