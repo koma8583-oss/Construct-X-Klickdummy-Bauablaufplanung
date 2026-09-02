@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe("gemeinsame AN-Anfragen-Inbox", () => {
-  it("zeigt lokale Projekteinladungen und Leistungsanfragen gemeinsam", async () => {
+  it("zeigt standardmäßig nur Leistungsanfragen und trennt Projekteinladungen", async () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -92,16 +92,17 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     const { container } = renderInbox();
 
-    expect(await screen.findByText("Projekteinladung")).toBeInTheDocument();
-    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Anfragen & Einladungen");
-    expect(screen.getByText("Projekt beitreten")).toBeInTheDocument();
+    expect(await screen.findByTestId("text-request-title-request-1")).toBeInTheDocument();
+    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Leistungsanfragen");
+    expect(screen.queryByText("Projekteinladung")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Trockenbau 2. OG" })).toHaveAttribute(
       "href",
       expect.stringContaining("/leistungsanfragen/request-1"),
     );
-    expect(container.textContent?.indexOf("Neubau Bochum")).toBeLessThan(
-      container.textContent?.indexOf("Trockenbau 2. OG") ?? -1,
-    );
+    await userEvent.click(await screen.findByTestId("button-category-invitations"));
+    expect(await screen.findByText("Projekteinladung")).toBeInTheDocument();
+    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Projekteinladungen");
+    expect(screen.queryByRole("link", { name: "Trockenbau 2. OG" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
       "/api/an/leistungsanfragen",
       "/api/an/project-invitations",
@@ -146,6 +147,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
+    await userEvent.click(await screen.findByTestId("button-category-invitations"));
     await screen.findByTestId("card-invitation-legacy-invitation");
     const card = screen.getByTestId("card-invitation-legacy-invitation");
     expect(within(card).getAllByText("Projektaufnahme").length).toBeGreaterThan(0);
@@ -249,6 +251,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
+    await user.click(await screen.findByTestId("button-category-invitations"));
     await screen.findByTestId("card-invitation-invitation-2");
     const card = screen.getByTestId("card-invitation-invitation-2");
     await user.click(within(card).getByRole("checkbox"));
@@ -257,7 +260,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Projekt beitreten" })).not.toBeInTheDocument();
     });
-    expect(screen.getByText("Keine offenen Anfragen oder Einladungen")).toBeInTheDocument();
+    expect(screen.getByText("Keine Projekteinladungen")).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
       "/api/an/project-invitations/invitation-2/accept",
     );

@@ -14,7 +14,6 @@ import {
   MapPin,
   RefreshCw,
   ShieldCheck,
-  Timer,
   UserRound,
   X,
 } from "lucide-react";
@@ -295,9 +294,7 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
           <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 break-words font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 break-words font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
           <div className="flex min-w-0 items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 break-words font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
-          <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Arbeitsbereich</p><p className="mt-0.5 break-words font-medium">{item.takt.taktBezeichnung || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistungsfenster</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
-          <div className="flex items-start gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Version</p><p className="mt-0.5 font-medium">Leistung {item.leistungVersion ? `v${item.leistungVersion}` : "nicht angegeben"} · Anfrage {item.taktVersion ? `v${item.taktVersion}` : "nicht angegeben"}</p></div></div>
         </div>
         <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />{due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
         <div className="mt-auto flex items-center justify-between gap-3 pt-5">
@@ -318,7 +315,7 @@ export default function LeistungsanfragenInboxPage() {
   const [category, setCategory] = useState<CategoryFilter>(
     categoryFromUrl === "INVITATIONS" || categoryFromUrl === "REQUESTS"
       ? categoryFromUrl
-      : "ALL",
+      : "REQUESTS",
   );
   const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
   const requestQuery = useListAnLeistungsanfragen(
@@ -344,9 +341,17 @@ export default function LeistungsanfragenInboxPage() {
     <main className="mx-auto w-full max-w-7xl space-y-7 p-5 pb-12 lg:p-8">
        <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">AN / ARBEITSEINGANG</p>
-           <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Anfragen &amp; Einladungen</h1>
-           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Leistungsanfragen und Projekteinladungen getrennt prüfen. Eine Projekteinladung aktiviert nur die Projektmitgliedschaft; veröffentlichte Leistungs- und Projektdaten erscheinen später separat im Datenraum.</p>
+           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">AN / LEISTUNGSANFRAGEN</p>
+           <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+             {category === "INVITATIONS" ? "Projekteinladungen" : category === "REQUESTS" ? "Leistungsanfragen" : "Anfragen &amp; Einladungen"}
+           </h1>
+           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+             {category === "INVITATIONS"
+               ? "Prüfen Sie Einladungen zur Projektmitgliedschaft. Eine Annahme öffnet noch keine Leistungen."
+               : category === "REQUESTS"
+                 ? "Prüfen Sie veröffentlichte Leistungsanfragen und senden Sie dem Auftraggeber eine klare Rückmeldung."
+                 : "Leistungsanfragen und Projekteinladungen bleiben getrennt prüfbar. Wählen Sie die passende Ansicht."}
+           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-emerald-600" />Lokal synchronisiert</div>
       </header>
@@ -371,16 +376,29 @@ export default function LeistungsanfragenInboxPage() {
              </button>
            ))}
          </div>
-         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-         <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
-          {(["OPEN", "ALL", "DONE"] as ViewFilter[]).map((value) => <button data-testid={`button-filter-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "OPEN" ? "Offen" : value === "ALL" ? "Alle" : "Erledigt"}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{value === "OPEN" ? shownRequests.length + shownInvitations.length : value === "ALL" ? requests.length + invitations.length : requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length}</span></button>)}
-        </div>
-        <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" className="w-full sm:w-56"><SelectValue placeholder="Status filtern" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>
-         </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
+              {(["OPEN", "ALL", "DONE"] as ViewFilter[]).map((value) => <button data-testid={`button-filter-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "OPEN" ? "Offen" : value === "ALL" ? "Alle" : "Erledigt"}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{value === "OPEN" ? shownRequests.length + shownInvitations.length : value === "ALL" ? requests.length + invitations.length : requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length}</span></button>)}
+            </div>
+            {category !== "INVITATIONS" && <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" className="w-full sm:w-56"><SelectValue placeholder="Status filtern" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>}
+          </div>
       </section>
       {requestQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Leistungsanfragen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-requests" size="sm" variant="ghost" onClick={() => void requestQuery.refetch()}>Erneut laden</Button></div>}
       {invitationQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Projekteinladungen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-invitations" size="sm" variant="ghost" onClick={() => void invitationQuery.refetch()}>Erneut laden</Button></div>}
-       {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{category === "INVITATIONS" ? "Keine Projekteinladungen" : category === "REQUESTS" ? (view === "OPEN" ? "Keine offenen Leistungsanfragen" : "Keine Leistungsanfragen in dieser Ansicht") : view === "OPEN" ? "Keine offenen Anfragen oder Einladungen" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
+        {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{category === "INVITATIONS" ? "Keine Projekteinladungen" : category === "REQUESTS" ? (view === "OPEN" ? "Keine offenen Leistungsanfragen" : "Keine Leistungsanfragen in dieser Ansicht") : view === "OPEN" ? "Keine offenen Anfragen oder Einladungen" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="space-y-7">
+          {shownRequests.length > 0 && (
+            <section aria-labelledby="requests-section-title">
+              {category === "ALL" && <div className="mb-3 flex items-center justify-between"><h2 id="requests-section-title" className="text-sm font-semibold">Leistungsanfragen</h2><span className="text-xs text-muted-foreground">{shownRequests.length} in dieser Ansicht</span></div>}
+              <div className="grid gap-5 lg:grid-cols-2">{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>
+            </section>
+          )}
+          {shownInvitations.length > 0 && (
+            <section aria-labelledby="invitations-section-title">
+              {category === "ALL" && <div className="mb-3 flex items-center justify-between"><h2 id="invitations-section-title" className="text-sm font-semibold">Projekteinladungen</h2><span className="text-xs text-muted-foreground">{shownInvitations.length} in dieser Ansicht</span></div>}
+              <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}</div>
+            </section>
+          )}
+        </div>}
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen · {shownInvitations.length} Einladungen in dieser Ansicht</p>
     </main>
   );
