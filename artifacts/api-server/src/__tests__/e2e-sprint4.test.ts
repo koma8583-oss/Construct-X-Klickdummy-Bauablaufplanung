@@ -54,6 +54,10 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import app from "../app";
+import {
+  evaluateResourceRequirements,
+  shiftRequirementsToWindow,
+} from "../services/resource-availability-service";
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 
@@ -81,6 +85,16 @@ const TAKT    = "t49-takt";
 const CREW_1  = "t49-crew-1";   // fully booked in window (causes conflict)
 const CREW_2  = "t49-crew-2";   // available (triggers FEASIBLE_WITH_ALTERNATIVES)
 const REQUIRED_CREW_CAPACITY = 8; // two four-person resources; one is blocked in the original window
+
+const MIXED_REQUEST_ID = "t49-mixed-crew-equipment-request";
+const MIXED_PROJECTION_ID = "t49-mixed-crew-equipment-projection";
+const MIXED_CREW_TYPE = "t49-mixed-crew-type";
+const MIXED_EQUIPMENT_TYPE = "t49-mixed-equipment-type";
+const MIXED_CREW_RESOURCE = "t49-mixed-crew-resource";
+const MIXED_EQUIPMENT_RESOURCE = "t49-mixed-equipment-resource";
+const MIXED_BOOKING_ID = "t49-mixed-crew-booking";
+const MIXED_RESOURCE_IDS = [MIXED_CREW_RESOURCE, MIXED_EQUIPMENT_RESOURCE] as const;
+const MIXED_RESOURCE_TYPE_IDS = [MIXED_CREW_TYPE, MIXED_EQUIPMENT_TYPE] as const;
 
 let guToken:  string;
 let nuToken:  string;
@@ -157,6 +171,15 @@ async function seedAnProjection(
 beforeAll(async () => {
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
+  await anDb.delete(resourceBookingsTable).where(
+    eq(resourceBookingsTable.id, MIXED_BOOKING_ID),
+  );
+  await anDb.delete(resourcesTable).where(
+    inArray(resourcesTable.id, [...MIXED_RESOURCE_IDS]),
+  );
+  await anDb.delete(resourceTypesTable).where(
+    inArray(resourceTypesTable.id, [...MIXED_RESOURCE_TYPE_IDS]),
+  );
   await anDb.delete(resourceBookingsTable).where(or(
     eq(resourceBookingsTable.nuOrgId, NU_ORG),
     inArray(resourceBookingsTable.resourceId, [CREW_1, CREW_2]),
@@ -332,6 +355,11 @@ afterAll(async () => {
   // 8. resources
   await db.delete(resourcesTable)
     .where(eq(resourcesTable.anOrgId, NU_ORG));
+  await db.delete(resourceTypesTable)
+    .where(and(
+      eq(resourceTypesTable.anOrgId, NU_ORG),
+      inArray(resourceTypesTable.id, [...MIXED_RESOURCE_TYPE_IDS]),
+    ));
 
   // 9. project fixtures
   await db.delete(projectContractorsTable)
@@ -346,6 +374,194 @@ afterAll(async () => {
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER));
   await db.delete(organizationsTable).where(inArray(organizationsTable.id, testOrgIds));
+});
+
+// ── Mixed DTC requirements: CREW + EQUIPMENT ─────────────────────────────────
+
+describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () => {
+  it("generates windows feasible for every requirement without exposing resource IDs", async () => {
+    const plannedStart = "2026-12-01";
+    const plannedEnd = "2026-12-02";
+
+    await anDb.insert(resourceTypesTable).values([
+      {
+        id: MIXED_CREW_TYPE,
+        anOrgId: NU_ORG,
+        name: "T49 Mixed Crew",
+        category: "CREW",
+        code: "MIXED-CREW",
+      },
+      {
+        id: MIXED_EQUIPMENT_TYPE,
+        anOrgId: NU_ORG,
+        name: "T49 Mixed Equipment",
+        category: "EQUIPMENT",
+        code: "MIXED-EQUIPMENT",
+      },
+    ]);
+    await anDb.insert(resourcesTable).values([
+      {
+        id: MIXED_CREW_RESOURCE,
+        anOrgId: NU_ORG,
+        type: "CREW",
+        resourceTypeId: MIXED_CREW_TYPE,
+        name: "T49 Mixed Crew Resource",
+        capacity: 2,
+        capacityUnit: "PERSONS",
+        active: true,
+      },
+      {
+        id: MIXED_EQUIPMENT_RESOURCE,
+        anOrgId: NU_ORG,
+        type: "EQUIPMENT",
+        resourceTypeId: MIXED_EQUIPMENT_TYPE,
+        name: "T49 Mixed Equipment Resource",
+        capacity: 1,
+        capacityUnit: "UNITS",
+        active: true,
+      },
+    ]);
+    await anDb.insert(resourceBookingsTable).values({
+      id: MIXED_BOOKING_ID,
+      nuOrgId: NU_ORG,
+      resourceId: MIXED_CREW_RESOURCE,
+      resourceTypeId: MIXED_CREW_TYPE,
+      sourceType: "MANUAL_BLOCK",
+      sourceReferenceId: MIXED_BOOKING_ID,
+      startAt: new Date("2026-12-01T00:00:00Z"),
+      endAt: new Date("2026-12-02T00:00:00Z"),
+      utilizationPercent: 100,
+      quantity: 2,
+      status: "CONFIRMED",
+    });
+    await anDb.insert(anLeistungsanfragenTable).values({
+      id: MIXED_PROJECTION_ID,
+      externalLeistungsanfrageId: MIXED_REQUEST_ID,
+      externalRequestVersion: 1,
+      sourceMessageId: `t49-source-${MIXED_REQUEST_ID}`,
+      payloadHash: `t49-hash-${MIXED_REQUEST_ID}`,
+      correlationId: MIXED_REQUEST_ID,
+      senderAgOrgId: GU_ORG,
+      receiverAnOrgId: NU_ORG,
+      projectReference: PROJECT,
+      leistungReference: TAKT,
+      plannedStart,
+      plannedEnd,
+      policySnapshot: { recipientOrganizationId: NU_ORG },
+      payloadSnapshot: {
+        requestId: MIXED_REQUEST_ID,
+        requestVersion: 1,
+        plannedTimeWindow: { start: plannedStart, end: plannedEnd },
+        resourceRequirements: [
+          { resourceTypeCode: "CREW", requiredCapacity: 2, capacityUnit: "PERSONS" },
+          { resourceTypeCode: "EQUIPMENT", requiredCapacity: 1, capacityUnit: "UNITS" },
+        ],
+      },
+      status: "DETAILS_RETRIEVED",
+    });
+    const mixedRequirements = await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values([
+      {
+        id: "t49-mixed-crew-requirement",
+        anLeistungsanfrageId: MIXED_PROJECTION_ID,
+        externalResourceTypeCode: "CREW",
+        externalResourceTypeName: "Crew",
+        localResourceTypeId: MIXED_CREW_TYPE,
+        requiredCapacity: "2",
+        capacityUnit: "PERSONS",
+        utilizationPercent: 100,
+        periodStart: plannedStart,
+        periodEnd: plannedEnd,
+      },
+      {
+        id: "t49-mixed-equipment-requirement",
+        anLeistungsanfrageId: MIXED_PROJECTION_ID,
+        externalResourceTypeCode: "EQUIPMENT",
+        externalResourceTypeName: "Equipment",
+        localResourceTypeId: MIXED_EQUIPMENT_TYPE,
+        requiredCapacity: "1",
+        capacityUnit: "UNITS",
+        utilizationPercent: 100,
+        periodStart: plannedStart,
+        periodEnd: plannedEnd,
+      },
+    ]).returning();
+
+    const checkRes = await request(app)
+      .post(`/api/an/leistungsanfragen/${MIXED_REQUEST_ID}/availability-checks`)
+      .set("Authorization", `Bearer ${nuToken}`);
+
+    expect(checkRes.status).toBe(201);
+    expect(checkRes.body.result).toBe("FEASIBLE_WITH_ALTERNATIVES");
+    const publicResult = checkRes.body.publicResult as {
+      alternatives: Array<{
+        alternativeId: string;
+        rank: number;
+        timeWindow: { start: string; end: string };
+        crewSize: number | null;
+        conditions: string | null;
+      }>;
+    };
+    expect(publicResult.alternatives.length).toBeGreaterThan(0);
+    expect(publicResult.alternatives.length).toBeLessThanOrEqual(3);
+
+    const mixedResources = await anDb.select({
+      id: resourcesTable.id,
+      type: resourcesTable.type,
+      name: resourcesTable.name,
+      capacity: resourcesTable.capacity,
+      qualifications: resourcesTable.qualifications,
+      resourceTypeId: resourcesTable.resourceTypeId,
+    }).from(resourcesTable).where(
+      inArray(resourcesTable.id, [...MIXED_RESOURCE_IDS]),
+    );
+    const mixedBookings = await anDb.select({
+      id: resourceBookingsTable.id,
+      resourceId: resourceBookingsTable.resourceId,
+      resourceTypeId: resourceBookingsTable.resourceTypeId,
+      quantity: resourceBookingsTable.quantity,
+      startAt: resourceBookingsTable.startAt,
+      endAt: resourceBookingsTable.endAt,
+      status: resourceBookingsTable.status,
+      utilizationPercent: resourceBookingsTable.utilizationPercent,
+    }).from(resourceBookingsTable).where(
+      eq(resourceBookingsTable.id, MIXED_BOOKING_ID),
+    );
+    const originalStart = new Date(`${plannedStart}T00:00:00Z`);
+
+    for (const alternative of publicResult.alternatives) {
+      const candidateStart = new Date(`${alternative.timeWindow.start}T00:00:00Z`);
+      const candidateEnd = new Date(`${alternative.timeWindow.end}T00:00:00Z`);
+      candidateEnd.setUTCDate(candidateEnd.getUTCDate() + 1);
+      const shiftedRequirements = shiftRequirementsToWindow(
+        mixedRequirements,
+        originalStart,
+        candidateStart,
+      ).map((requirement) => ({
+        resourceTypeId: requirement.localResourceTypeId,
+        requiredCapacity: requirement.requiredCapacity,
+        utilizationPercent: requirement.utilizationPercent,
+        requiredQualification: requirement.requiredQualification,
+        periodStart: requirement.periodStart,
+        periodEnd: requirement.periodEnd,
+      }));
+      const feasibility = evaluateResourceRequirements({
+        requirements: shiftedRequirements,
+        resources: mixedResources,
+        bookings: mixedBookings,
+        windowStart: candidateStart,
+        windowEnd: candidateEnd,
+      });
+      expect(feasibility.conflicts, `${alternative.alternativeId} must satisfy crew and equipment`).toEqual([]);
+    }
+
+    const publicPayload = JSON.stringify(checkRes.body.publicResult);
+    for (const field of ["resourceId", "localProjectId", "resourceName", "employeeId"]) {
+      expect(publicPayload).not.toContain(`"${field}"`);
+    }
+    for (const resourceId of MIXED_RESOURCE_IDS) {
+      expect(publicPayload).not.toContain(resourceId);
+    }
+  });
 });
 
 // ── Full E2E flow: Scenario B (Alternatives) ──────────────────────────────────
