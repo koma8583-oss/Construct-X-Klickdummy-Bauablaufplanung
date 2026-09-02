@@ -113,12 +113,12 @@ afterEach(() => {
 });
 
 describe("AN Leistungsanfrage detail", () => {
-  it("führt durch genau drei Phasen und hält Zusatzinformationen sekundär", async () => {
+  it("zeigt nur die aktuelle Phase groß und hält abgeschlossene Phasen kompakt", async () => {
     renderDetail();
-    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Anfrage prüfen");
+    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Machbarkeit prüfen");
     expect(screen.getByTestId("phase-1")).toBeInTheDocument();
     expect(screen.getByTestId("phase-2")).toBeInTheDocument();
-    expect(screen.getByTestId("phase-3")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-3-preview")).toHaveTextContent("Rückmeldung senden");
     expect(screen.getByTestId("secondary-request-details")).not.toHaveAttribute("open");
     expect(screen.getByTestId("overview-service")).toHaveTextContent("Trockenbau 2. OG");
     expect(screen.getByTestId("overview-period")).toHaveTextContent("01.09.2026 – 10.09.2026");
@@ -127,6 +127,7 @@ describe("AN Leistungsanfrage detail", () => {
   it("bestätigt ohne erneute Datumseingabe exakt das angefragte Zeitfenster", async () => {
     const fetchMock = renderDetail();
     const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-continue-without-availability"));
     await user.click(await screen.findByTestId("button-decision-accepted"));
     expect(screen.queryByLabelText("Beginn 1")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("button-submit-response"));
@@ -141,6 +142,7 @@ describe("AN Leistungsanfrage detail", () => {
     renderDetail();
     const user = userEvent.setup();
     expect(screen.queryByTestId("input-alternative-start-0")).not.toBeInTheDocument();
+    await user.click(await screen.findByTestId("button-continue-without-availability"));
     await user.click(await screen.findByTestId("button-decision-alternative"));
     expect(screen.getByTestId("input-alternative-start-0")).toBeInTheDocument();
     expect(screen.getByTestId("input-alternative-end-0")).toBeInTheDocument();
@@ -168,6 +170,29 @@ describe("AN Leistungsanfrage detail", () => {
     renderDetail(proposalFromAn);
     await screen.findByTestId("text-detail-title");
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument());
+  });
+
+  it("übernimmt Empfehlungen der Verfügbarkeitsprüfung direkt in die Rückmeldung", async () => {
+    const fetchMock = renderDetail();
+    const user = userEvent.setup();
+    cleanup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const recommendationFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detail);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) return jsonResponse({ ...initialCoordination(), openProposal: null });
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) return jsonResponse([]);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({ status: "COMPLETED", result: "FEASIBLE", publicResultPayload: { recommendedDecision: "ACCEPTED", alternatives: [] } });
+      if (init?.method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/responses`)) return jsonResponse({ responseId: "response-1" }, 201);
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", recommendationFetch);
+    window.history.pushState({}, "", `/leistungsanfragen/${requestId}`);
+    render(<QueryClientProvider client={client}><Router base="/"><Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} /></Router></QueryClientProvider>);
+    await user.click(await screen.findByTestId("button-use-availability-recommendation"));
+    expect(screen.getByTestId("current-phase")).toHaveTextContent("3 · Rückmeldung senden");
+    expect(screen.getByTestId("button-decision-accepted")).toHaveAttribute("aria-pressed", "true");
+    expect(fetchMock).toBeDefined();
   });
 
   it("sendet Gegenentscheidungen über den AN-lokalen Pfad", async () => {

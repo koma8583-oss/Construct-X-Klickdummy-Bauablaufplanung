@@ -5,6 +5,10 @@
  * TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.1.0
  */
+import type { AnLeistungsanfrageListItemCoordinationState } from './anLeistungsanfrageListItemCoordinationState';
+import type { AnLeistungsanfrageListItemNextAction } from './anLeistungsanfrageListItemNextAction';
+import type { AnLeistungsanfrageListItemNextActionOwner } from './anLeistungsanfrageListItemNextActionOwner';
+import type { AnLeistungsanfrageListItemOpenProposal } from './anLeistungsanfrageListItemOpenProposal';
 import type { AnLeistungsanfrageListItemPolicySnapshot } from './anLeistungsanfrageListItemPolicySnapshot';
 import type { AnLeistungsanfrageListItemStatus } from './anLeistungsanfrageListItemStatus';
 import type { AnLeistungsanfrageProject } from './anLeistungsanfrageProject';
@@ -41,6 +45,12 @@ export interface AnLeistungsanfrageListItem {
   policySnapshot?: AnLeistungsanfrageListItemPolicySnapshot;
   /** @minimum 0 */
   resourceRequirementCount?: number;
+  /** @nullable */
+  nextActionOwner?: AnLeistungsanfrageListItemNextActionOwner;
+  nextAction?: AnLeistungsanfrageListItemNextAction;
+  coordinationState?: AnLeistungsanfrageListItemCoordinationState;
+  /** @nullable */
+  openProposal?: AnLeistungsanfrageListItemOpenProposal;
   createdAt: Date;
   updatedAt: Date;
   takt: AnLeistungsanfrageTakt;

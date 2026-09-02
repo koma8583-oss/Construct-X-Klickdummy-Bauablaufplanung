@@ -17,11 +17,9 @@ export {
   CATENA_X_MESSAGE_HEADER_VERSION,
   TAKTKOORD_NOTIFICATION_CONTEXTS,
   NotificationEnvelopeSchema,
-  NotificationHeaderSchema,
   createNotificationEnvelope,
 } from "./notification-envelope";
 export type {
   NotificationEnvelope,
-  NotificationHeader,
   TaktKoordNotificationType,
 } from "./notification-envelope";

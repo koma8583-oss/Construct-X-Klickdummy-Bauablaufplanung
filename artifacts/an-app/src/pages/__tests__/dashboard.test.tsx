@@ -37,7 +37,7 @@ describe("AN-Dashboard Arbeitscockpit", () => {
                 agName: "Bauplanung Nord AG",
                 status: "PENDING",
                 createdAt: "2026-09-01T08:00:00.000Z",
-                targetUrl: "/leistungsanfragen?category=INVITATIONS",
+                 targetUrl: "/project-invitations",
               },
             ],
             newDataOffers: [],
@@ -73,7 +73,7 @@ describe("AN-Dashboard Arbeitscockpit", () => {
     expect(screen.getByText("1 offen")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Alle Projekteinladungen öffnen" }),
-    ).toHaveAttribute("href", "/leistungsanfragen?category=INVITATIONS");
+    ).toHaveAttribute("href", "/project-invitations");
     expect(vi.mocked(fetch).mock.calls.some(([input]) =>
       String(input).includes("/api/dashboard/an"),
     )).toBe(true);

@@ -476,7 +476,7 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">+ {invitations.length - 3} weitere Einladungen</p>
             )}
             <Link
-              href="/leistungsanfragen?category=INVITATIONS"
+                href="/project-invitations"
               data-testid="link-all-invitations"
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-background"
             >

@@ -954,6 +954,16 @@ export const ListAnLeistungsanfragenResponseItem = zod.object({
   "detailsRetrievedAt": zod.coerce.date().nullish(),
   "policySnapshot": zod.record(zod.string(), zod.unknown()).nullish(),
   "resourceRequirementCount": zod.number().min(listAnLeistungsanfragenResponseResourceRequirementCountMin).optional(),
+  "nextActionOwner": zod.union([zod.literal('AG'),zod.literal('AN'),zod.literal(null)]).nullish(),
+  "nextAction": zod.enum(['RESPOND_TO_REQUEST', 'DECIDE_RESPONSE', 'RESPOND_TO_CHANGE_PROPOSAL', 'NO_ACTION']).optional(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerRole": zod.enum(['AG', 'AN']),
+  "comment": zod.string().nullish()
+}).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "takt": zod.object({
@@ -1008,6 +1018,16 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
   "detailsRetrievedAt": zod.coerce.date().nullish(),
   "policySnapshot": zod.record(zod.string(), zod.unknown()).nullish(),
   "resourceRequirementCount": zod.number().min(getAnLeistungsanfrageDetailsResponseOneResourceRequirementCountMin).optional(),
+  "nextActionOwner": zod.union([zod.literal('AG'),zod.literal('AN'),zod.literal(null)]).nullish(),
+  "nextAction": zod.enum(['RESPOND_TO_REQUEST', 'DECIDE_RESPONSE', 'RESPOND_TO_CHANGE_PROPOSAL', 'NO_ACTION']).optional(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerRole": zod.enum(['AG', 'AN']),
+  "comment": zod.string().nullish()
+}).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "takt": zod.object({

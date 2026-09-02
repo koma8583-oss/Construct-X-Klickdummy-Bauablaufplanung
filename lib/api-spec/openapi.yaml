@@ -3903,6 +3903,18 @@ components:
         detailsRetrievedAt: { type: ["string", "null"], format: date-time }
         policySnapshot: { type: ["object", "null"], additionalProperties: true }
         resourceRequirementCount: { type: integer, minimum: 0 }
+        nextActionOwner: { type: ["string", "null"], enum: [AG, AN, null] }
+        nextAction: { type: string, enum: [RESPOND_TO_REQUEST, DECIDE_RESPONSE, RESPOND_TO_CHANGE_PROPOSAL, NO_ACTION] }
+        coordinationState: { type: string, enum: [AGREED, AG_ACTION_REQUIRED, AN_ACTION_REQUIRED, NO_AGREEMENT] }
+        openProposal:
+          type: ["object", "null"]
+          required: [id, start, end, proposerRole]
+          properties:
+            id: { type: string }
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+            proposerRole: { type: string, enum: [AG, AN] }
+            comment: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         takt: { $ref: "#/components/schemas/AnLeistungsanfrageTakt" }

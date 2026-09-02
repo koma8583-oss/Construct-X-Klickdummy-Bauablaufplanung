@@ -23,6 +23,20 @@ const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "RE
 
 type Projection = typeof anLeistungsanfragenTable.$inferSelect;
 type PayloadSnapshot = Record<string, unknown>;
+type WorkflowAction = "RESPOND_TO_REQUEST" | "DECIDE_RESPONSE" | "RESPOND_TO_CHANGE_PROPOSAL" | "NO_ACTION";
+type WorkflowOwner = "AG" | "AN";
+type WorkflowView = {
+  nextActionOwner: WorkflowOwner | null;
+  nextAction: WorkflowAction;
+  coordinationState: "AGREED" | "AG_ACTION_REQUIRED" | "AN_ACTION_REQUIRED" | "NO_AGREEMENT";
+  openProposal: {
+    id: string;
+    start: string;
+    end: string;
+    proposerRole: WorkflowOwner;
+    comment: string | null;
+  } | null;
+};
 
 function snapshotOf(projection: Projection): PayloadSnapshot {
   return projection.payloadSnapshot as PayloadSnapshot;
@@ -32,7 +46,7 @@ function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
   return snapshot[key] ?? (snapshot.request as Record<string, unknown> | undefined)?.[key];
 }
 
-function toRequestView(projection: Projection, requirementCount = 0) {
+function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView) {
   const snapshot = snapshotOf(projection);
   const releasedSnapshot = snapshotValue(snapshot, "publicSnapshot");
   const displaySnapshot = Object.keys(objectRecord(releasedSnapshot)).length > 0
@@ -72,6 +86,10 @@ function toRequestView(projection: Projection, requirementCount = 0) {
     updatedAt: projection.updatedAt.toISOString(),
     policySnapshot: projection.policySnapshot,
     resourceRequirementCount: requirementCount,
+    nextActionOwner: workflow?.nextActionOwner ?? null,
+    nextAction: workflow?.nextAction ?? "NO_ACTION",
+    coordinationState: workflow?.coordinationState ?? "NO_AGREEMENT",
+    openProposal: workflow?.openProposal ?? null,
     takt: {
       id: projection.leistungReference,
       taktBezeichnung: typeof workPackage === "string" ? workPackage : null,
@@ -116,7 +134,36 @@ export async function listAnLeistungsanfragen(
   for (const requirement of requirements) {
     counts.set(requirement.requestId, (counts.get(requirement.requestId) ?? 0) + 1);
   }
-  return projections.map((projection) => toRequestView(projection, counts.get(projection.id) ?? 0));
+  const requestIds = [...new Set(projections.map((projection) =>
+    coordinationRequestKind(projection) === "SCHEDULE_CHANGE"
+      ? coordinationSourceRequestId(projection)
+      : projection.externalLeistungsanfrageId,
+  ).filter((id): id is string => !!id))];
+  const workflows = new Map<string, WorkflowView>();
+  await Promise.all(requestIds.map(async (requestId) => {
+    const coordination = await getAnCoordination(requestId, anOrgId);
+    if (!coordination) return;
+    workflows.set(requestId, {
+      nextActionOwner: coordination.nextActionOwner,
+      nextAction: coordination.nextAction,
+      coordinationState: coordination.coordinationState as WorkflowView["coordinationState"],
+      openProposal: coordination.openProposal
+        ? {
+            id: coordination.openProposal.id,
+            start: coordination.openProposal.start,
+            end: coordination.openProposal.end,
+            proposerRole: coordination.openProposal.proposer === "AG" ? "AG" : "AN",
+            comment: null,
+          }
+        : null,
+    });
+  }));
+  return projections.map((projection) => {
+    const requestId = coordinationRequestKind(projection) === "SCHEDULE_CHANGE"
+      ? coordinationSourceRequestId(projection)
+      : projection.externalLeistungsanfrageId;
+    return toRequestView(projection, counts.get(projection.id) ?? 0, requestId ? workflows.get(requestId) : undefined);
+  });
 }
 
 export async function getAnLeistungsanfrageDetail(
@@ -601,13 +648,34 @@ export async function getAnCoordination(
           : null;
       })()
       : null;
+  const nextActionOwner: WorkflowOwner | null = openProposal
+    ? openProposal.canAct ? "AN" : "AG"
+    : root.status === "RESPONDED"
+      ? "AG"
+      : actionableStatuses.includes(root.status as typeof actionableStatuses[number])
+        ? "AN"
+        : null;
+  const nextAction: WorkflowAction = nextActionOwner === "AN"
+    ? openProposal ? "RESPOND_TO_CHANGE_PROPOSAL" : "RESPOND_TO_REQUEST"
+    : nextActionOwner === "AG"
+      ? openProposal ? "NO_ACTION" : "DECIDE_RESPONSE"
+      : "NO_ACTION";
+  const coordinationState = nextActionOwner === "AN"
+    ? "AN_ACTION_REQUIRED"
+    : nextActionOwner === "AG"
+      ? "AG_ACTION_REQUIRED"
+      : root.status === "CONFIRMED"
+        ? "AGREED"
+        : "NO_AGREEMENT";
 
   return {
     requestId,
     currentAgreement,
     openProposal,
     proposals: scheduleProposals,
-    nextActionOwner: openProposal?.canAct ? "AN" : null,
+    nextActionOwner,
+    nextAction,
+    coordinationState,
   };
 }
 

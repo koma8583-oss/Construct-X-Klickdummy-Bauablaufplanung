@@ -28,6 +28,7 @@ import DataOffers from '@/pages/data-offers';
 import Leistungen from '@/pages/leistungen';
 import PolicyLibrary from '@/pages/policy-library';
 import Help from '@/pages/help';
+import ProjectInvitations from '@/pages/project-invitations';
 
 const queryClient = new QueryClient();
 
@@ -94,7 +95,7 @@ function AuthRoutedApp() {
         <Route path="/data-room/policies" component={PolicyLibrary} />
         <Route path="/data-room" component={PolicyLibrary} />
         <Route path="/project-invitations">
-          <Redirect to="/leistungsanfragen" />
+          <ProjectInvitations />
         </Route>
         <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />

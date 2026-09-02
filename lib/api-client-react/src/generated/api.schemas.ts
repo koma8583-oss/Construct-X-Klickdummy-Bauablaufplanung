@@ -288,6 +288,57 @@ export const AnLeistungsanfrageListItemStatus = {
  */
 export type AnLeistungsanfrageListItemPolicySnapshot = { [key: string]: unknown } | null;
 
+/**
+ * @nullable
+ */
+export type AnLeistungsanfrageListItemNextActionOwner = typeof AnLeistungsanfrageListItemNextActionOwner[keyof typeof AnLeistungsanfrageListItemNextActionOwner] | null;
+
+
+export const AnLeistungsanfrageListItemNextActionOwner = {
+  AG: 'AG',
+  AN: 'AN',
+} as const;
+
+export type AnLeistungsanfrageListItemNextAction = typeof AnLeistungsanfrageListItemNextAction[keyof typeof AnLeistungsanfrageListItemNextAction];
+
+
+export const AnLeistungsanfrageListItemNextAction = {
+  RESPOND_TO_REQUEST: 'RESPOND_TO_REQUEST',
+  DECIDE_RESPONSE: 'DECIDE_RESPONSE',
+  RESPOND_TO_CHANGE_PROPOSAL: 'RESPOND_TO_CHANGE_PROPOSAL',
+  NO_ACTION: 'NO_ACTION',
+} as const;
+
+export type AnLeistungsanfrageListItemCoordinationState = typeof AnLeistungsanfrageListItemCoordinationState[keyof typeof AnLeistungsanfrageListItemCoordinationState];
+
+
+export const AnLeistungsanfrageListItemCoordinationState = {
+  AGREED: 'AGREED',
+  AG_ACTION_REQUIRED: 'AG_ACTION_REQUIRED',
+  AN_ACTION_REQUIRED: 'AN_ACTION_REQUIRED',
+  NO_AGREEMENT: 'NO_AGREEMENT',
+} as const;
+
+export type AnLeistungsanfrageListItemOpenProposalProposerRole = typeof AnLeistungsanfrageListItemOpenProposalProposerRole[keyof typeof AnLeistungsanfrageListItemOpenProposalProposerRole];
+
+
+export const AnLeistungsanfrageListItemOpenProposalProposerRole = {
+  AG: 'AG',
+  AN: 'AN',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AnLeistungsanfrageListItemOpenProposal = {
+  id: string;
+  start: string;
+  end: string;
+  proposerRole: AnLeistungsanfrageListItemOpenProposalProposerRole;
+  /** @nullable */
+  comment?: string | null;
+} | null;
+
 export interface AnLeistungsanfrageTakt {
   id: string;
   /** @nullable */
@@ -341,6 +392,12 @@ export interface AnLeistungsanfrageListItem {
   policySnapshot?: AnLeistungsanfrageListItemPolicySnapshot;
   /** @minimum 0 */
   resourceRequirementCount?: number;
+  /** @nullable */
+  nextActionOwner?: AnLeistungsanfrageListItemNextActionOwner;
+  nextAction?: AnLeistungsanfrageListItemNextAction;
+  coordinationState?: AnLeistungsanfrageListItemCoordinationState;
+  /** @nullable */
+  openProposal?: AnLeistungsanfrageListItemOpenProposal;
   createdAt: string;
   updatedAt: string;
   takt: AnLeistungsanfrageTakt;
