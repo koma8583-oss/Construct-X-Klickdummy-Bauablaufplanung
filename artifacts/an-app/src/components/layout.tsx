@@ -36,10 +36,11 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
+    { href: "/local-projects", icon: FolderOpen, label: "Projekte" },
+    { href: "/leistungen", icon: CalendarClock, label: "Leistungen" },
+    { href: "/leistungsanfragen", icon: Inbox, label: "Leistungsanfragen" },
+    { href: "/gantt", icon: CalendarClock, label: "Ressourcen" },
     { href: "/messages", icon: Mail, label: "Nachrichten" },
-    { href: "/gantt", icon: CalendarClock, label: "Terminübersicht" },
-    { href: "/local-projects", icon: FolderOpen, label: "Ressourcen" },
     { href: "/data-room", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
     { href: "/hilfe", icon: HelpCircle, label: "Hilfe" },

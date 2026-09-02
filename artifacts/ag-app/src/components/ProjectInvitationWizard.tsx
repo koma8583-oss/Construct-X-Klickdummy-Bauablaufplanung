@@ -167,7 +167,7 @@ export function ProjectInvitationWizard({
       });
       toast({
          title: "Projekteinladung versendet",
-         description: "Die ausgewählten AN erhalten eine reine Projektaufnahme mit Policy-Vorschau. Eine Datenfreigabe ist damit nicht verbunden.",
+         description: "Die ausgewählten AN erhalten eine reine Projektaufnahme mit Policy-Vorschau. Eine Leistungsfreigabe ist damit nicht verbunden.",
       });
       onInvitationSent?.();
       close(false);
@@ -191,7 +191,7 @@ export function ProjectInvitationWizard({
           </DialogTitle>
           <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
             <p><strong>Nur Projektaufnahme:</strong> Der AN erhält minimale Projektbasisdaten und eine Policy-Vorschau. Die Mitgliedschaft entsteht erst nach ausdrücklicher Annahme.</p>
-            <p className="text-xs text-muted-foreground">Aktuell werden kein BPNL/DID ermittelt und kein EDC-Asset, Catalog Offer, Vertrag, Transfer oder Data Plane angelegt. Eine spätere Datenfreigabe startet separat für aktive Projektmitglieder.</p>
+            <p className="text-xs text-muted-foreground">Aktuell werden kein BPNL/DID ermittelt und kein EDC-Asset, Catalog Offer, Vertrag, Transfer oder Data Plane angelegt. Eine spätere Leistungsfreigabe startet separat für aktive Projektmitglieder.</p>
           </div>
         </DialogHeader>
 
@@ -302,7 +302,7 @@ export function ProjectInvitationWizard({
                 <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Teilnehmer ({selectedParticipants.size})</div><div className="flex flex-wrap gap-1 mt-1">{participants.filter((p) => selectedParticipants.has(p.participantId)).map((p) => <Badge key={p.participantId} variant="secondary">{p.name}</Badge>)}</div></div>
                  <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Policy</div><div className="font-medium">{selectedPolicy?.name ?? "—"}{policyTemplateVersion ? ` · v${policyTemplateVersion}` : ""}</div></div>
                   <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Übermittelte Projektbasisdaten</div><p className="mt-1 text-sm">Projektname, Projektstatus, Projektstandort und Projektreferenz</p></div>
-                  <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Takt-, Ablauf-, Ressourcen- oder Logistikdaten. Diese Policy ist eine Vorschau und kein technisch durchgesetzter EDC-Vertrag. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung ausdrücklich annimmt.</p>
+                  <p className="rounded-md bg-primary/5 p-3 text-xs text-foreground/80">Keine Leistungs-, Ablauf-, Ressourcen- oder Logistikdaten. Diese Policy ist eine Vorschau und kein technisch durchgesetzter EDC-Vertrag. Zugriff und aktive Projektpartnerschaft entstehen erst, wenn der AN die Einladung ausdrücklich annimmt.</p>
               </div>
             </div>
           )}

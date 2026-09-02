@@ -1,11 +1,8 @@
 /**
- * AN-App – Datenraum-Angebote (Task #112, enhanced in Task #118).
+ * AN-App – Leistungsfreigaben im Datenraum.
  *
- * Shows the list of data-space offers addressed to this AN.
- * Clicking an offer opens a detail panel with the policy acceptance flow.
- * After acceptance the AN can view the content snapshot — fachliche Ansicht
- * for TAKT_INFORMATION_PACKAGE; technical JSON shown collapsed.
- * Each offer with an associated TaktRequest shows a link to the detail page.
+ * Shows Leistungsfreigaben addressed to this AN.
+ * After acceptance the AN can view the immutable content snapshot.
  */
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -376,17 +373,17 @@ function OfferDetailPanel({
   const handleAccept = async () => {
     try {
       await accept.mutateAsync(offerSummary.publicationId);
-      toast({ title: 'Nutzungsrichtlinie akzeptiert', description: 'Sie können jetzt auf den Inhalt zugreifen.' });
+      toast({ title: 'Leistungsfreigabe akzeptiert', description: 'Sie können jetzt auf die freigegebenen Leistungen zugreifen.' });
     } catch (err) {
       toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
     }
   };
 
   const handleReject = async () => {
-    if (!confirm('Möchten Sie dieses Angebot wirklich ablehnen?')) return;
+    if (!confirm('Möchten Sie diese Leistungsfreigabe wirklich ablehnen?')) return;
     try {
       await reject.mutateAsync(offerSummary.publicationId);
-      toast({ title: 'Angebot abgelehnt' });
+      toast({ title: 'Leistungsfreigabe abgelehnt' });
     } catch (err) {
       toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
     }
@@ -402,7 +399,7 @@ function OfferDetailPanel({
     );
   }
 
-  if (!offer) return <div className="py-4 text-muted-foreground">Angebot nicht gefunden.</div>;
+  if (!offer) return <div className="py-4 text-muted-foreground">Leistungsfreigabe nicht gefunden.</div>;
 
   const canAccept = offer.recipientStatus === 'OFFERED' && offer.publicationStatus === 'PUBLISHED';
   const canReject = ['OFFERED', 'ACCEPTED'].includes(offer.recipientStatus) && offer.publicationStatus === 'PUBLISHED';
@@ -454,8 +451,8 @@ function OfferDetailPanel({
        {/* Invitation and data offer are deliberately separate processes. */}
        {offer.projectName && (
          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80">
-           Dieses Datenangebot gehört zum Projekt <strong>{offer.projectName}</strong>.
-           Die Projektmitgliedschaft und diese Datenfreigabe sind getrennte Schritte.
+           Diese Leistungsfreigabe gehört zum Projekt <strong>{offer.projectName}</strong>.
+            Die Projektmitgliedschaft und die Leistungsfreigabe sind getrennte Schritte.
          </div>
        )}
        <AccessNotice recipientStatus={offer.recipientStatus} />
@@ -690,9 +687,9 @@ export default function DataOffersPage() {
       <div className="flex items-center gap-3">
         <Globe className="h-6 w-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Datenraum</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Leistungsfreigaben</h1>
           <p className="text-sm text-muted-foreground">
-            Von Auftraggebern bereitgestellte Projektdaten und Angebote
+            Vom Auftraggeber veröffentlichte Leistungen und Nutzungsbedingungen
           </p>
         </div>
       </div>
@@ -708,9 +705,9 @@ export default function DataOffersPage() {
       {!isLoading && offers?.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Globe className="h-12 w-12 text-muted-foreground/30 mb-4" />
-          <h3 className="font-medium text-lg text-muted-foreground">Keine Angebote vorhanden</h3>
+          <h3 className="font-medium text-lg text-muted-foreground">Keine Leistungsfreigaben vorhanden</h3>
           <p className="text-sm text-muted-foreground/70 mt-1 max-w-sm">
-            Sobald ein Auftraggeber Projektdaten für Ihr Unternehmen bereitstellt, erscheinen sie hier.
+            Sobald ein Auftraggeber Leistungen für Ihr Unternehmen freigibt, erscheinen sie hier.
           </p>
         </div>
       )}
@@ -797,7 +794,7 @@ export default function DataOffersPage() {
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-primary" />
-            Neue Angebote ({grouped.new.length})
+             Neue Leistungsfreigaben ({grouped.new.length})
           </h2>
           <div className="space-y-2">
             {grouped.new.map((o) => (
@@ -810,7 +807,7 @@ export default function DataOffersPage() {
       {grouped.accepted.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Akzeptiert ({grouped.accepted.length})
+             Akzeptiert ({grouped.accepted.length})
           </h2>
           <div className="space-y-2">
             {grouped.accepted.map((o) => (
@@ -823,7 +820,7 @@ export default function DataOffersPage() {
       {grouped.other.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Weitere ({grouped.other.length})
+             Weitere Leistungsfreigaben ({grouped.other.length})
           </h2>
           <div className="space-y-2">
             {grouped.other.map((o) => (

@@ -377,7 +377,7 @@ export default function Dashboard() {
       <header className="flex flex-col justify-between gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end">
         <div>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-            TaktKoord · Arbeitscockpit
+            Arbeitscockpit
           </p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("nav.dashboard")}</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -399,9 +399,9 @@ export default function Dashboard() {
           tone={d.kpis.openInvitations > 0 ? "warning" : "default"}
         />
         <KpiTile
-          label="Neue Datenfreigaben"
+          label="Neue Leistungsfreigaben"
           value={d.kpis.newDataOffers}
-          detail="Neue Angebote im Datenraum"
+          detail="Neue Freigaben im Datenraum"
           icon={Database}
           tone={d.kpis.newDataOffers > 0 ? "accent" : "default"}
         />
@@ -457,7 +457,7 @@ export default function Dashboard() {
                 <Mail className="h-4 w-4 text-primary" /> Projekteinladungen
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Projektbeitritt unabhängig von späteren Datenfreigaben beantworten.
+                Projektbeitritt unabhängig von späteren Leistungsfreigaben beantworten.
               </p>
             </div>
             <Badge variant={invitations.length > 0 ? "default" : "secondary"}>
@@ -489,7 +489,7 @@ export default function Dashboard() {
           <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Database className="h-4 w-4 text-primary" /> Neue Datenfreigaben
+                <Database className="h-4 w-4 text-primary" /> Neue Leistungsfreigaben
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
                 Policy prüfen und freigegebene Projektdaten abrufen.
@@ -503,17 +503,17 @@ export default function Dashboard() {
             {offers.length > 0 ? (
               offers.slice(0, 3).map((offer) => <DataOfferCard key={offer.publicationId} offer={offer} />)
             ) : (
-              <EmptyMini icon={Database} text="Aktuell liegen keine neuen Datenfreigaben vor." />
+              <EmptyMini icon={Database} text="Aktuell liegen keine neuen Leistungsfreigaben vor." />
             )}
             {offers.length > 3 && (
-              <p className="text-xs text-muted-foreground">+ {offers.length - 3} weitere Datenfreigaben</p>
+              <p className="text-xs text-muted-foreground">+ {offers.length - 3} weitere Leistungsfreigaben</p>
             )}
             <Link
               href="/data-offers"
               data-testid="link-all-data-offers"
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-background"
             >
-              Datenfreigaben öffnen <ChevronRight className="h-3.5 w-3.5" />
+              Leistungsfreigaben öffnen <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </CardContent>
         </Card>
@@ -533,7 +533,7 @@ export default function Dashboard() {
                   <ShieldCheck className="mx-auto h-8 w-8 text-muted-foreground/60" />
                   <p className="mt-3 text-sm font-medium">Keine aktive Zusammenarbeit</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Projektbeitritte und Datenfreigaben erscheinen hier im Zusammenhang.
+                    Projektbeitritte und Leistungsfreigaben erscheinen hier im Zusammenhang.
                   </p>
                 </CardContent>
               </Card>

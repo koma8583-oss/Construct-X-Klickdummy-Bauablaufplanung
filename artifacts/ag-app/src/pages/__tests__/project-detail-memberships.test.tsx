@@ -568,7 +568,7 @@ describe("project participant directory membership lifecycle", () => {
     expect(screen.getByText("READ")).toBeInTheDocument();
     expect(screen.getByText("DISTRIBUTE")).toBeInTheDocument();
     expect(screen.getByText("Projektname")).toBeInTheDocument();
-    expect(screen.getByText("Ausgewählte Takte (2):")).toBeInTheDocument();
+    expect(screen.getByText("Ausgewählte Leistungen (2):")).toBeInTheDocument();
     expect(screen.getByText("takt-1, takt-2")).toBeInTheDocument();
     expect(screen.getByTestId("project-dataspace-recipient-an-active")).toHaveTextContent("Aktiver Betrieb");
     expect(screen.getByTestId("project-dataspace-recipient-an-active")).toHaveTextContent("Policy akzeptiert");
@@ -582,7 +582,7 @@ describe("project participant directory membership lifecycle", () => {
       expect.anything(),
     );
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Datenangebot erneut zugestellt",
+      title: "Leistungsfreigabe erneut zugestellt",
     }));
   });
 });

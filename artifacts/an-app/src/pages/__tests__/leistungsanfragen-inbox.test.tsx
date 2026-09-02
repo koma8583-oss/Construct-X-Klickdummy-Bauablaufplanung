@@ -152,7 +152,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     expect(within(card).queryByText("P-LEGACY-1")).not.toBeInTheDocument();
     expect(within(card).getByText("READ, USE_AS_PROJECT_PARTNER")).toBeInTheDocument();
     expect(within(card).getByText("REDISTRIBUTE, AI_TRAINING")).toBeInTheDocument();
-    expect(within(card).getByText(/keine Datenfreigabe und erzeugt keinen EDC-Vertrag/i)).toBeInTheDocument();
+    expect(within(card).getByText(/keine Leistungsfreigabe und erzeugt keinen EDC-Vertrag/i)).toBeInTheDocument();
     expect(within(card).queryByText("Datenangebot:")).not.toBeInTheDocument();
   });
 

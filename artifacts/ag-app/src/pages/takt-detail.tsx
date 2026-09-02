@@ -287,7 +287,7 @@ export default function TaktDetail() {
               <p className="text-sm text-muted-foreground">Leistung an einen oder mehrere Nachunternehmer anfragen.</p>
             </div>
             <Button onClick={() => setAssignOpen(true)} disabled={assignablePartners.length === 0}>
-              <Send className="w-4 h-4 mr-2" />Leistung vergeben
+               <Send className="w-4 h-4 mr-2" />Leistungsfreigabe erstellen
             </Button>
           </div>
           {assignablePartners.length === 0 && (

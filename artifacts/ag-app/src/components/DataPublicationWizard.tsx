@@ -361,12 +361,12 @@ export function DataPublicationWizard({
       if (publicationId) {
         setDraftSavedForRetry(true);
         toast({
-          title: 'Datenfreigabe als Entwurf gespeichert',
+          title: 'Leistungsfreigabe als Entwurf gespeichert',
           description: 'Die Veröffentlichung ist fehlgeschlagen. Der Entwurf bleibt erhalten und kann erneut veröffentlicht werden.',
           variant: 'destructive',
         });
       } else {
-        toast({ title: 'Fehler bei der Datenfreigabe', description: (err as Error).message, variant: 'destructive' });
+        toast({ title: 'Fehler bei der Leistungsfreigabe', description: (err as Error).message, variant: 'destructive' });
       }
     }
   };
@@ -397,7 +397,7 @@ export function DataPublicationWizard({
             <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
               <p className="font-medium">Entwurf gespeichert</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Die Datenfreigabe wurde als Entwurf gespeichert. Sie können die Veröffentlichung erneut versuchen, ohne einen zweiten Entwurf zu erzeugen.
+                Die Leistungsfreigabe wurde als Entwurf gespeichert. Sie können die Veröffentlichung erneut versuchen, ohne einen zweiten Entwurf zu erzeugen.
               </p>
             </div>
           )}
@@ -435,7 +435,7 @@ export function DataPublicationWizard({
                  <div>
                    <p className="text-sm font-medium">Leistungen aus dem Gesamtterminplan</p>
                    <p className="text-sm text-muted-foreground">
-                     Nur die markierten Takte werden in das Freigabepaket aufgenommen.
+                      Nur die markierten Leistungen werden in das Freigabepaket aufgenommen.
                    </p>
                  </div>
                  {selectableTakte.length > 0 && (
@@ -567,7 +567,7 @@ export function DataPublicationWizard({
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                   Wählen Sie die aktiven Projektmitglieder, die diese Datenfreigabe erhalten sollen.
+                   Wählen Sie die aktiven Projektmitglieder, die diese Leistungsfreigabe erhalten sollen.
               </p>
               {activeContractors.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic py-8 text-center">
@@ -608,7 +608,7 @@ export function DataPublicationWizard({
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={autoTitle} />
               </div>
               <div className="space-y-2">
-                 <Label>Beschreibung der Datenfreigabe (optional)</Label>
+                  <Label>Beschreibung der Leistungsfreigabe (optional)</Label>
                 <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Kurze Beschreibung für die Empfänger…" rows={2} />
               </div>
               <div className="space-y-2">

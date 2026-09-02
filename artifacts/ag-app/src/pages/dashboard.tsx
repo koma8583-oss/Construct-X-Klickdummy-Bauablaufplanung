@@ -341,7 +341,7 @@ export default function Dashboard() {
       <header className="flex flex-col justify-between gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end">
         <div>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-            TaktKoord · Leitpult
+            Leitpult
           </p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("dashboard.title")}</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -377,7 +377,7 @@ export default function Dashboard() {
           tone={d.kpis.openInvitations > 0 ? "warning" : "default"}
         />
         <KpiTile
-          label="Datenfreigaben ausstehend"
+          label="Leistungsfreigaben ausstehend"
           value={d.kpis.pendingDataOffers}
           detail="Für Partner noch nicht bestätigt"
           icon={Database}

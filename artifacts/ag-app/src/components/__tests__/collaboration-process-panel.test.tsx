@@ -84,11 +84,11 @@ describe("CollaborationProcessPanel", () => {
   });
 
   it.each([
-    ["OFFERED", "Datenangebot wartet auf Prüfung/Akzeptanz durch AN", "current"],
-    ["ACCEPTED", "Datenzugriff aktiv · abgeschlossen", "complete"],
-    ["REJECTED", "Datenangebot abgelehnt", "rejected"],
-    ["REVOKED", "Datenzugriff widerrufen", "rejected"],
-    ["EXPIRED", "Datenfreigabe abgelaufen", "rejected"],
+    ["OFFERED", "Freigabe wartet auf Prüfung/Akzeptanz durch AN", "current"],
+    ["ACCEPTED", "AN-Zugriff aktiv · abgeschlossen", "complete"],
+    ["REJECTED", "Freigabe abgelehnt", "rejected"],
+    ["REVOKED", "AN-Zugriff widerrufen", "rejected"],
+    ["EXPIRED", "Leistungsfreigabe abgelaufen", "rejected"],
   ] as const)("renders published recipient status %s explicitly", (status, detail, stepState) => {
     renderPanel(
       [{ id: "membership-3", anOrgId: "an-active", status: "ACTIVE" }],

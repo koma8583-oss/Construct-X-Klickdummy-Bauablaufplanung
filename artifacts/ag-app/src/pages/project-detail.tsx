@@ -1346,7 +1346,7 @@ export default function ProjectDetail() {
   const openDataPublicationFor = (anOrgId?: string, draftPublicationId?: string) => {
     if (anOrgId && !(memberships ?? []).some((membership) => membership.anOrgId === anOrgId && membership.status === 'ACTIVE')) {
       toast({
-        title: 'Datenfreigabe noch nicht möglich',
+             title: 'Leistungsfreigabe noch nicht möglich',
         description: 'Die Projektmitgliedschaft muss zuerst aktiv sein.',
         variant: 'destructive',
       });
@@ -1433,17 +1433,17 @@ export default function ProjectDetail() {
       onSuccess: (result) => {
         if (result.status === 'FAILED') {
           toast({
-            title: 'Datenangebot konnte nicht zugestellt werden',
+             title: 'Leistungsfreigabe konnte nicht zugestellt werden',
             description: `${result.error?.message ?? 'Die Zustellung ist fehlgeschlagen.'} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
             variant: 'destructive',
           });
           return;
         }
-        toast({ title: 'Datenangebot erneut zugestellt' });
+         toast({ title: 'Leistungsfreigabe erneut zugestellt' });
       },
       onError: (err) => {
         toast({
-          title: 'Datenangebot konnte nicht erneut zugestellt werden',
+           title: 'Leistungsfreigabe konnte nicht erneut zugestellt werden',
           description: err.message,
           variant: 'destructive',
         });
@@ -1915,7 +1915,7 @@ export default function ProjectDetail() {
                           )}
                           {pub.selectedTaktIds?.length ? (
                             <div className="mt-2 text-xs text-muted-foreground break-words">
-                              <span className="font-medium text-foreground">Ausgewählte Takte ({pub.selectedTaktIds.length}):</span>{' '}
+                               <span className="font-medium text-foreground">Ausgewählte Leistungen ({pub.selectedTaktIds.length}):</span>{' '}
                               {pub.selectedTaktIds.join(', ')}
                             </div>
                           ) : null}
@@ -1947,7 +1947,7 @@ export default function ProjectDetail() {
                                         className={recipient.delivery.status === 'FAILED' ? 'text-red-600' : recipient.delivery.status === 'DELIVERED' ? 'text-emerald-600' : 'text-muted-foreground'}
                                         data-testid={`project-dataspace-delivery-status-${recipient.anOrgId}`}
                                       >
-                                        Datenangebot: {recipient.delivery.status === 'FAILED' ? 'Zustellung fehlgeschlagen' : recipient.delivery.status === 'DELIVERED' ? 'zugestellt' : recipient.delivery.status.toLowerCase()}
+                                         Leistungsfreigabe: {recipient.delivery.status === 'FAILED' ? 'Zustellung fehlgeschlagen' : recipient.delivery.status === 'DELIVERED' ? 'zugestellt' : recipient.delivery.status.toLowerCase()}
                                         {' '}({recipient.delivery.attemptCount}/5 Versuche)
                                       </div>
                                     )}
@@ -2345,7 +2345,7 @@ export default function ProjectDetail() {
            // Show confirmed project partners even before a separate fachliche
            // assignment exists. Membership and assignment are intentionally
            // different domain objects: acceptance creates the former, while
-           // "Leistung vergeben" requires an ACTIVE assignment.
+           // Creating a performance release requires an ACTIVE assignment.
           const seenOrgIds = new Set<string>();
           const uniqueAnOrgs: string[] = [];
           for (const a of (assignments ?? [])) {
@@ -2914,7 +2914,7 @@ export default function ProjectDetail() {
                             >
                               <span className="flex items-center gap-2">
                                 <Send className="w-3.5 h-3.5" />
-                                Leistung vergeben
+                                 Leistungsfreigabe erstellen
                               </span>
                               {isVergabeOpen
                                 ? <ChevronUp className="w-4 h-4" />
@@ -3659,7 +3659,7 @@ export default function ProjectDetail() {
           </div>
 
           <div className="border-t border-border pt-4 text-sm text-muted-foreground">
-             Neue Teilnehmer erhalten zunächst eine reine <strong>Projekteinladung</strong> mit Policy-Vorschau. Datenfreigaben werden später separat und nur für aktive Projektmitglieder veröffentlicht.
+             Neue Teilnehmer erhalten zunächst eine reine <strong>Projekteinladung</strong> mit Policy-Vorschau. Leistungsfreigaben werden später separat und nur für aktive Projektmitglieder veröffentlicht.
           </div>
         </DialogContent>
       </Dialog>

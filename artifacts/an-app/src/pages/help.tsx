@@ -40,7 +40,7 @@ type Faq = {
 const topicGroups = [
   { id: "start", label: "Start & Zugang", icon: BookOpen },
   { id: "projects", label: "Projekte & Daten", icon: ShieldCheck },
-  { id: "coordination", label: "Anfragen & Takt", icon: ClipboardList },
+   { id: "coordination", label: "Leistungsanfragen", icon: ClipboardList },
   { id: "resources", label: "Ressourcen & Termine", icon: Wrench },
   { id: "communication", label: "Nachrichten", icon: MessageSquare },
   { id: "troubleshooting", label: "Klärung & Begriffe", icon: LifeBuoy },
@@ -52,11 +52,11 @@ const articles: HelpArticle[] = [
     group: "start",
     title: "In drei Schritten arbeitsbereit",
     summary:
-      "Nach der Registrierung führt dich TaktKoord von der Einladung bis zur ersten Rückmeldung durch deinen Arbeitsbereich.",
+      "Nach der Registrierung führt dich der Arbeitsbereich von der Einladung bis zur ersten Rückmeldung.",
     steps: [
       "Profil und Zuständigkeit prüfen: Hinterlege die Ansprechperson für dein Nachunternehmen und kontrolliere die Benachrichtigungsadresse.",
       "Einladung öffnen: Prüfe Bauvorhaben, einladende Organisation und Rolle. Erst mit deiner Bestätigung wirst du aktives Mitglied.",
-      "Veröffentlichungen lesen: Öffne anschließend den Datenraum und akzeptiere nur Datenangebote, die du für deine Arbeit brauchst.",
+      "Leistungsfreigaben prüfen: Öffne anschließend den Datenraum und akzeptiere nur Freigaben, die du für deine Arbeit brauchst.",
     ],
     keywords: "registrierung profil arbeitsbereich zugang rolle",
     icon: BookOpen,
@@ -78,15 +78,15 @@ const articles: HelpArticle[] = [
   {
     id: "data-policies",
     group: "projects",
-    title: "Datenangebote und Veröffentlichungsregeln",
+    title: "Leistungsfreigaben und Nutzungsbedingungen",
     summary:
       "Datenhoheit bleibt beim Herausgeber. Du siehst ausschließlich Informationen, die ausdrücklich unter einer von dir akzeptierten Regel veröffentlicht wurden.",
     steps: [
-      "Öffne Datenraum und wähle ein Datenangebot. Lies Umfang, Zweck, Gültigkeit und Einschränkungen der Regel.",
-      "Bestätige das Datenangebot separat, wenn du die Veröffentlichung annehmen möchtest.",
-      "Prüfe danach die sichtbaren Projektdaten. Wird eine Regel zurückgezogen oder läuft sie ab, kann der Zugriff wieder entfallen.",
+      "Öffne den Datenraum und wähle eine Leistungsfreigabe. Lies Umfang, Zweck, Gültigkeit und Einschränkungen der Nutzungsbedingungen.",
+      "Bestätige die Leistungsfreigabe separat, wenn du die Veröffentlichung annehmen möchtest.",
+      "Prüfe danach die freigegebenen Leistungen. Wird eine Freigabe zurückgezogen oder läuft sie ab, entfällt der Zugriff.",
     ],
-    keywords: "datenraum datenangebot policy veröffentlichung sichtbar datenschutz odrl",
+    keywords: "datenraum leistungsfreigabe datenangebot policy veröffentlichung sichtbar datenschutz odrl",
     icon: ShieldCheck,
   },
   {
@@ -94,7 +94,7 @@ const articles: HelpArticle[] = [
     group: "coordination",
     title: "Leistungsanfragen beantworten",
     summary:
-      "Leistungsanfragen bündeln die Angaben, die die Baukoordination für den nächsten Takt von dir braucht.",
+      "Leistungsanfragen bündeln die Angaben, die die Baukoordination für einen abgestimmten Zeitraum von dir braucht.",
     steps: [
       "Öffne eine Anfrage und lies Leistung, Bereich, gewünschtes Zeitfenster und Rückgabefrist.",
       "Trage deine Rückmeldung ein: verfügbar, bedingt verfügbar oder nicht verfügbar. Ergänze einen konkreten Hinweis, wenn etwas abweicht.",
@@ -104,17 +104,17 @@ const articles: HelpArticle[] = [
     icon: ClipboardList,
   },
   {
-    id: "takt",
+    id: "time-window",
     group: "coordination",
-    title: "Taktfenster vorschlagen",
+    title: "Alternativen Zeitraum vorschlagen",
     summary:
-      "Wenn das veröffentlichte Fenster nicht passt, kannst du eine belastbare Alternative mit Begründung vorschlagen.",
+      "Wenn der veröffentlichte Zeitraum nicht passt, kannst du eine belastbare Alternative mit Begründung vorschlagen.",
     steps: [
-      "Wähle in der Anfrage Taktfenster vorschlagen und kontrolliere Start, Ende und betroffenen Bereich.",
+      "Wähle in der Anfrage einen alternativen Zeitraum und kontrolliere Start, Ende und betroffenen Bereich.",
       "Erkläre knapp den Grund: Vorleistung, Personal, Material oder Zugang zur Fläche.",
       "Sende den Vorschlag und beobachte den Status im Anfrageverlauf. Eine Freigabe oder Rückfrage kommt als neue Nachricht.",
     ],
-    keywords: "takt taktfenster vorschlag vorleistung personal material zeitraum",
+    keywords: "alternativer zeitraum vorschlag vorleistung personal material",
     icon: CalendarDays,
   },
   {
@@ -136,13 +136,13 @@ const articles: HelpArticle[] = [
     group: "resources",
     title: "Terminübersicht und Buchungen",
     summary:
-      "Die Terminübersicht zeigt veröffentlichte Takte und deine bestätigten Buchungen an einem Ort.",
+      "Die Terminübersicht zeigt deine bestätigten Buchungen und veröffentlichte Zeiträume an einem Ort.",
     steps: [
       "Filtere nach Projekt oder Zeitraum, um den relevanten Ausschnitt zu öffnen.",
       "Öffne einen Termin, um Bereich, Leistung, Status und beteiligte Ressourcen zu prüfen.",
       "Melde Konflikte früh über die zugehörige Anfrage oder Nachricht. Ändere keine bestätigte Buchung stillschweigend.",
     ],
-    keywords: "terminübersicht buchung kalender konflikt bestätigung takt",
+    keywords: "terminübersicht buchung kalender konflikt bestätigung zeitraum",
     icon: CalendarDays,
   },
   {
@@ -165,23 +165,23 @@ const faqs: Faq[] = [
   {
     id: "invitation-vs-data",
     group: "projects",
-    question: "Ist die Projekt-Einladung dasselbe wie ein Datenangebot?",
+    question: "Ist die Projekt-Einladung dasselbe wie eine Leistungsfreigabe?",
     answer:
-      "Nein. Eine Einladung betrifft deine Mitgliedschaft im Projekt. Ein Datenangebot betrifft eine konkrete Veröffentlichung und ihre Regeln. Du kannst die Einladung annehmen, ohne jedes Datenangebot zu akzeptieren. Als AN siehst du nur Daten, die ausdrücklich unter einer akzeptierten Regel veröffentlicht wurden.",
+      "Nein. Eine Einladung betrifft deine Mitgliedschaft im Projekt. Eine Leistungsfreigabe betrifft konkrete Leistungen und ihre Nutzungsbedingungen. Du kannst die Einladung annehmen, ohne jede Freigabe zu akzeptieren. Du siehst nur Leistungen, die ausdrücklich unter einer akzeptierten Regel veröffentlicht wurden.",
   },
   {
     id: "not-seeing-data",
     group: "projects",
     question: "Warum sehe ich Projektdaten nicht?",
     answer:
-      "Prüfe zuerst, ob du aktives Projektmitglied bist. Öffne danach den Datenraum und kontrolliere, ob für die gesuchten Daten ein Angebot vorliegt und von dir akzeptiert wurde. Fehlt das Angebot oder ist es abgelaufen, kann nur der Herausgeber die Veröffentlichung prüfen oder neu bereitstellen.",
+      "Prüfe zuerst, ob du aktives Projektmitglied bist. Öffne danach den Datenraum und kontrolliere, ob für die gesuchten Leistungen eine Freigabe vorliegt und von dir akzeptiert wurde. Fehlt die Freigabe oder ist sie abgelaufen, kann nur der Herausgeber sie prüfen oder neu bereitstellen.",
   },
   {
     id: "request-status",
     group: "coordination",
     question: "Was bedeuten die Status einer Leistungsanfrage?",
     answer:
-      "Offen bedeutet, dass deine Rückmeldung erwartet wird. Beantwortet zeigt, dass du eine Antwort gesendet hast. In Klärung gibt es eine Rückfrage oder einen Taktvorschlag. Abgeschlossen bedeutet, dass die Koordination die Anfrage beendet hat.",
+      "Offen bedeutet, dass deine Rückmeldung erwartet wird. Beantwortet zeigt, dass du eine Antwort gesendet hast. In Klärung gibt es eine Rückfrage oder einen Alternativvorschlag. Abgeschlossen bedeutet, dass die Koordination die Anfrage beendet hat.",
   },
   {
     id: "change-response",
@@ -243,7 +243,7 @@ export default function Help() {
             Arbeitsleitfaden für Nachunternehmen
           </div>
           <h1 className="max-w-2xl text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Sicher durch den nächsten Takt.
+            Sicher durch die nächste Abstimmung.
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
             Kurze Antworten für die Arbeit im Projekt: von der Einladung über Leistungsanfragen bis zur bestätigten Buchung.
@@ -256,7 +256,7 @@ export default function Help() {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Hilfe durchsuchen, z. B. „Datenangebot“"
+              placeholder="Hilfe durchsuchen, z. B. „Leistungsfreigabe“"
               aria-label="Hilfe durchsuchen"
               data-testid="input-help-search"
               className="h-14 w-full rounded-xl border border-primary/20 bg-background/90 pl-12 pr-12 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
@@ -280,7 +280,7 @@ export default function Help() {
               <p className="mt-1 text-xs leading-5 text-foreground/80">Du wirst aktives Mitglied eines Projekts.</p>
             </div>
             <div className="rounded-lg border border-accent/35 bg-accent/10 px-3 py-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Schritt 2 · Datenangebot</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Schritt 2 · Leistungsfreigabe</p>
               <p className="mt-1 text-xs leading-5 text-foreground/80">Du akzeptierst eine konkrete Veröffentlichung separat.</p>
             </div>
           </div>
@@ -454,7 +454,7 @@ export default function Help() {
               <div>
                 <h2 className="text-sm font-bold">Bereit für den nächsten Schritt?</h2>
                 <p className="mt-1 text-xs leading-5 text-primary-foreground/75">
-                  Öffne direkt deine offenen Rückmeldungen oder prüfe den aktuellen Takt.
+                  Öffne direkt deine offenen Rückmeldungen oder prüfe den aktuellen Abstimmungsstand.
                 </p>
               </div>
             </div>

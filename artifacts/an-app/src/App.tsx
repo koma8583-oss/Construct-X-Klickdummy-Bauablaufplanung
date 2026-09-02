@@ -25,6 +25,7 @@ import ResourceBookings from '@/pages/resource-bookings';
 import AvailabilityChecks from '@/pages/availability-checks';
 import Reports from '@/pages/reports';
 import DataOffers from '@/pages/data-offers';
+import Leistungen from '@/pages/leistungen';
 import PolicyLibrary from '@/pages/policy-library';
 import Help from '@/pages/help';
 
@@ -88,6 +89,7 @@ function AuthRoutedApp() {
         <Route path="/resource-bookings" component={ResourceBookings} />
         <Route path="/availability-checks" component={AvailabilityChecks} />
         <Route path="/data-offers" component={DataOffers} />
+        <Route path="/leistungen" component={Leistungen} />
         <Route path="/data-room/policies/:code" component={PolicyLibrary} />
         <Route path="/data-room/policies" component={PolicyLibrary} />
         <Route path="/data-room" component={PolicyLibrary} />

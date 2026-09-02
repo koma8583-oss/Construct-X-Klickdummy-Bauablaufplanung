@@ -191,9 +191,8 @@ describe("DataPublicationWizard", () => {
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
     await user.selectOptions(screen.getByRole("combobox"), "policy-1");
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
-    await user.click(screen.getByRole("button", { name: /Weiter/ }));
 
-    const publishButton = screen.getByRole("button", { name: /Datenfreigabe veröffentlichen/ });
+    const publishButton = screen.getByRole("button", { name: /Freigabe veröffentlichen/ });
     await user.click(publishButton);
 
     expect(await screen.findByText("Entwurf gespeichert")).toBeInTheDocument();

@@ -34,7 +34,7 @@ const MESSAGE_LABELS: Record<string, string> = {
   TAKT_RESPONSE_REVISION_REQUESTED: "Änderung angefragt",
   TAKT_REQUEST_EXPIRED: "Anfrage abgelaufen",
   TAKT_REQUEST_REMINDER: "Erinnerung",
-  DATA_OFFER_PUBLISHED: "Neues Datenangebot",
+  DATA_OFFER_PUBLISHED: "Neue Leistungsfreigabe",
   PROJECT_INVITATION: "Projekteinladung",
   PROJECT_INVITATION_RESPONSE: "Einladung beantwortet",
 };

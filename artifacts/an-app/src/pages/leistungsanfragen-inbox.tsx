@@ -214,7 +214,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
            <Lock className="h-4 w-4 text-primary" />
            Policy-Vorschau
          </div>
-         <p className="text-muted-foreground">Diese Einladung enthält nur minimale Projektbasisdaten. Sie ist keine Datenfreigabe und erzeugt keinen EDC-Vertrag oder Datentransfer.</p>
+         <p className="text-muted-foreground">Diese Einladung enthält nur minimale Projektbasisdaten. Sie ist keine Leistungsfreigabe und erzeugt keinen EDC-Vertrag oder Datentransfer.</p>
        </div>
       <div className="mt-4 space-y-2 rounded-xl border p-3 text-sm">
         <div className="flex items-center gap-2 font-medium">
@@ -247,7 +247,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
         <div className="mt-5 space-y-4">
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background/60 p-3 text-sm">
             <Checkbox data-testid={`checkbox-policy-${invitation.id}`} checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} />
-             <span>Ich bestätige die angezeigte Policy-Vorschau. Die Projektmitgliedschaft wird erst nach meiner ausdrücklichen Annahme aktiviert. Eine spätere Datenfreigabe ist ein separater Prozess.</span>
+             <span>Ich bestätige die angezeigte Policy-Vorschau. Die Projektmitgliedschaft wird erst nach meiner ausdrücklichen Annahme aktiviert. Eine spätere Leistungsfreigabe ist ein separater Prozess.</span>
           </label>
           <div className="flex flex-wrap gap-2">
             <Button data-testid={`button-accept-invitation-${invitation.id}`} disabled={!confirmed || busy} onClick={() => void decide("accept")}><Check className="mr-2 h-4 w-4" />Projekt beitreten</Button>
@@ -258,8 +258,8 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
         <div className="mt-5 rounded-xl border border-emerald-700/20 bg-emerald-600/10 p-3 text-sm text-emerald-900 dark:text-emerald-200">
           <p className="font-semibold">Projektmitgliedschaft ist aktiv</p>
           <p className="mt-1 leading-relaxed">
-            Aktuell ist keine Datenfreigabe erforderlich. Der Auftraggeber kann
-            nun projektbezogene Daten separat freigeben. Neue Freigaben erscheinen
+            Aktuell ist keine Leistungsfreigabe erforderlich. Der Auftraggeber kann
+            nun projektbezogene Leistungen separat freigeben. Neue Freigaben erscheinen
             im Datenraum.
           </p>
           <Link href="/data-room" className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:underline">
@@ -268,7 +268,7 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
         </div>
       ) : (
         <p className="mt-5 text-sm text-muted-foreground">
-          Projektaufnahme abgelehnt. Datenfreigaben bleiben für dieses Projekt gesperrt.
+          Projektaufnahme abgelehnt. Leistungsfreigaben bleiben für dieses Projekt gesperrt.
         </p>
       )}
     </article>
@@ -297,7 +297,7 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
           <div className="flex min-w-0 items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 break-words font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Arbeitsbereich</p><p className="mt-0.5 break-words font-medium">{item.takt.taktBezeichnung || "Nicht veröffentlicht"}</p></div></div>
           <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistungsfenster</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
-          <div className="flex items-start gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Version</p><p className="mt-0.5 font-medium">Leistung {item.leistungVersion ? `v${item.leistungVersion}` : "nicht angegeben"} · Takt {item.taktVersion ? `v${item.taktVersion}` : "nicht angegeben"}</p></div></div>
+          <div className="flex items-start gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Version</p><p className="mt-0.5 font-medium">Leistung {item.leistungVersion ? `v${item.leistungVersion}` : "nicht angegeben"} · Anfrage {item.taktVersion ? `v${item.taktVersion}` : "nicht angegeben"}</p></div></div>
         </div>
         <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />{due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
         <div className="mt-auto flex items-center justify-between gap-3 pt-5">

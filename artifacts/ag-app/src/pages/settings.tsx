@@ -437,7 +437,7 @@ function WebhookSettings() {
           <form onSubmit={handleCreate} className="space-y-4 max-w-2xl">
             <div className="space-y-2">
               <Label>Payload URL</Label>
-              <Input name="url" type="url" placeholder="https://api.yourcompany.com/webhooks/taktkoord" required />
+              <Input name="url" type="url" placeholder="https://api.yourcompany.com/webhooks/events" required />
             </div>
             <div className="space-y-2">
               <Label>Secret (Optional)</Label>

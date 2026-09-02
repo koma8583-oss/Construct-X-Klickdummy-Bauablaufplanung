@@ -61,7 +61,7 @@ const topics: Topic[] = [
         summary: 'Prüfen Sie zuerst Organisation, Projekte und Ihre Rolle. Danach können Sie Einladungen und Veröffentlichungen sauber trennen.',
         steps: [
           'Öffnen Sie Projekte und wählen Sie das aktive Bauvorhaben.',
-          'Legen Sie Takte und die benötigten Leistungsanfragen an.',
+           'Legen Sie Leistungen und die benötigten Leistungsanfragen an.',
           'Erstellen oder prüfen Sie eine passende Datenraum-Policy.',
         ],
         tags: ['Onboarding', 'Rolle', 'Projekt'],
@@ -81,7 +81,7 @@ const topics: Topic[] = [
   },
   {
     id: 'projects',
-    label: 'Projekte & Takte',
+     label: 'Projekte & Leistungen',
     kicker: 'Arbeitsablauf',
     description: 'Vom Projektüberblick zum konkreten Zeitfenster auf der Baustelle.',
     icon: Layers3,
@@ -89,25 +89,25 @@ const topics: Topic[] = [
     articles: [
       {
         id: 'projects-01',
-        title: 'Projekte und Takte lesen',
-        summary: 'Ein Projekt bündelt die Koordination. Takte teilen den Bauablauf in nachvollziehbare, terminierte Arbeitsfenster.',
+        title: 'Projekte und Leistungen lesen',
+        summary: 'Ein Projekt bündelt die Koordination. Leistungen teilen den Bauablauf in nachvollziehbare, terminierte Arbeitsfenster.',
         steps: [
           'Starten Sie im Projektüberblick und prüfen Sie den aktuellen Status.',
-          'Öffnen Sie einen Takt, um Zeitfenster und beteiligte Gewerke zu sehen.',
-          'Nutzen Sie den Takt als Bezugspunkt für Leistungsanfragen.',
+          'Öffnen Sie eine Leistung, um Zeitfenster und beteiligte Gewerke zu sehen.',
+          'Nutzen Sie die Leistung als Bezugspunkt für Leistungsanfragen.',
         ],
-        tags: ['Projekt', 'Takt', 'Termin'],
+        tags: ['Projekt', 'Leistung', 'Termin'],
       },
       {
         id: 'projects-02',
-        title: 'Ein Takt ist noch keine Veröffentlichung',
-        summary: 'Ein angelegter oder veröffentlichter Takt macht Daten nicht automatisch für alle Beteiligten sichtbar. Sichtbarkeit entsteht erst durch eine explizite Veröffentlichung unter einer Policy.',
+        title: 'Eine Leistung ist noch keine Veröffentlichung',
+        summary: 'Eine angelegte oder veröffentlichte Leistung macht Daten nicht automatisch für alle Beteiligten sichtbar. Sichtbarkeit entsteht erst durch eine explizite Veröffentlichung unter einer Policy.',
         steps: [
           'Prüfen Sie vor dem Teilen, welche Informationen der Empfänger wirklich braucht.',
           'Wählen Sie eine passende Policy im Datenraum.',
-          'Veröffentlichen Sie den ausgewählten Takt oder Inhalt gezielt.',
+          'Veröffentlichen Sie die ausgewählte Leistung oder den Inhalt gezielt.',
         ],
-        tags: ['Sichtbarkeit', 'Policy', 'Takt'],
+        tags: ['Sichtbarkeit', 'Policy', 'Leistung'],
       },
     ],
   },
@@ -125,7 +125,7 @@ const topics: Topic[] = [
         summary: 'Beschreiben Sie Leistung, Rahmenbedingungen und gewünschten Rückmeldezeitpunkt so, dass ein Nachunternehmen belastbar antworten kann.',
         steps: [
           'Öffnen Sie Leistungsanfragen und wählen Sie Neue Anfrage.',
-          'Ordnen Sie die Anfrage einem Projekt und bei Bedarf einem Takt zu.',
+          'Ordnen Sie die Anfrage einem Projekt und bei Bedarf einer Leistung zu.',
           'Ergänzen Sie Umfang, Anforderungen, Termin und Empfänger.',
           'Senden Sie die Anfrage erst ab, wenn alle Pflichtangaben geprüft sind.',
         ],
@@ -155,13 +155,13 @@ const topics: Topic[] = [
       {
         id: 'schedule-01',
         title: 'Mit Alternativvorschlägen arbeiten',
-        summary: 'Wenn ein Nachunternehmen den angefragten Takt nicht bestätigen kann, sehen Sie den Alternativvorschlag direkt am Vorgang.',
+        summary: 'Wenn ein Nachunternehmen den angefragten Zeitraum nicht bestätigen kann, sehen Sie den Alternativvorschlag direkt am Vorgang.',
         steps: [
           'Prüfen Sie den vorgeschlagenen Termin gegen den Projektablauf.',
           'Bewerten Sie Voraussetzungen und Auswirkungen auf andere Gewerke.',
           'Übernehmen Sie den Vorschlag nur, wenn der Ablauf abgestimmt ist.',
         ],
-        tags: ['Vorschlag', 'Takt', 'Konflikt'],
+        tags: ['Vorschlag', 'Leistung', 'Konflikt'],
       },
       {
         id: 'schedule-02',
@@ -230,7 +230,7 @@ const topics: Topic[] = [
       {
         id: 'support-02',
         title: 'Wichtige Begriffe',
-        summary: 'AG ist der Auftraggeber, AN das Nachunternehmen. Eine Leistungsanfrage beschreibt eine benötigte Leistung; ein Takt beschreibt ein koordiniertes Arbeitsfenster.',
+        summary: 'AG ist der Auftraggeber, AN das Nachunternehmen. Eine Leistungsanfrage beschreibt eine benötigte Leistung und ihren koordinierten Zeitraum.',
         steps: [
           'AG: steuert Projekt, Veröffentlichungen und Entscheidungen.',
           'AN: erhält freigegebene Informationen und antwortet auf Anfragen.',
@@ -252,7 +252,7 @@ const faqs: FAQ[] = [
   {
     id: 'faq-policy',
     question: 'Was prüfe ich, wenn ein AN eine Information nicht sieht?',
-    answer: 'Prüfen Sie, ob der AN im richtigen Projekt eingeladen ist, die Policy akzeptiert wurde und der konkrete Inhalt unter dieser Policy veröffentlicht wurde. Takt- oder Projektdaten bleiben intern, bis Sie sie explizit freigeben.',
+     answer: 'Prüfen Sie, ob der AN im richtigen Projekt eingeladen ist, die Policy akzeptiert wurde und der konkrete Inhalt unter dieser Policy veröffentlicht wurde. Leistungs- oder Projektdaten bleiben intern, bis Sie sie explizit freigeben.',
     topic: 'Datenraum & Policies',
   },
   {
@@ -263,9 +263,9 @@ const faqs: FAQ[] = [
   },
   {
     id: 'faq-takt',
-    question: 'Wie hängen Takte und Leistungsanfragen zusammen?',
-    answer: 'Ein Takt beschreibt das koordinierte Zeitfenster. Eine Leistungsanfrage kann diesem Takt zugeordnet werden, damit Leistung, Voraussetzungen und Rückmeldung am richtigen Abschnitt des Bauablaufs zusammenbleiben.',
-    topic: 'Projekte & Takte',
+    question: 'Wie hängen Leistungen und Leistungsanfragen zusammen?',
+    answer: 'Eine Leistung beschreibt den koordinierten Zeitraum. Eine Leistungsanfrage kann dieser Leistung zugeordnet werden, damit Voraussetzungen und Rückmeldung am richtigen Abschnitt des Bauablaufs zusammenbleiben.',
+    topic: 'Projekte & Leistungen',
   },
   {
     id: 'faq-open',
@@ -335,7 +335,7 @@ export default function Hilfe() {
             <span className="block text-primary">Auch wenn es schnell gehen muss.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-            Praktische Antworten für Projektsteuerung, Takte und kontrollierte Datenfreigabe. Suchen Sie nach einem Begriff oder wählen Sie ein Thema.
+             Praktische Antworten für Projektsteuerung, Leistungen und kontrollierte Leistungsfreigaben. Suchen Sie nach einem Begriff oder wählen Sie ein Thema.
           </p>
 
           <div className="relative mt-7 max-w-2xl">
@@ -514,7 +514,7 @@ export default function Hilfe() {
           <section className="mt-10 flex flex-col gap-4 rounded-xl border border-border/80 bg-muted/20 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6" data-testid="help-contact-note">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Mail className="h-4 w-4" /></div>
-              <div><p className="text-sm font-bold text-foreground">Noch nicht weiter?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Halten Sie Projekt, Takt und betroffenen Vorgang bereit, wenn Sie Unterstützung anfragen.</p></div>
+              <div><p className="text-sm font-bold text-foreground">Noch nicht weiter?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Halten Sie Projekt, Leistung und betroffenen Vorgang bereit, wenn Sie Unterstützung anfragen.</p></div>
             </div>
             <Link href="/settings" data-testid="link-help-settings" className="inline-flex shrink-0 items-center gap-2 text-xs font-bold text-primary transition-colors hover:text-primary/80">Profil & Organisation <ArrowRight className="h-3.5 w-3.5" /></Link>
           </section>

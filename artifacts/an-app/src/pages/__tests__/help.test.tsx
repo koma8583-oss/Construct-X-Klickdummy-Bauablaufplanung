@@ -20,7 +20,7 @@ describe('AN-Hilfe', () => {
   it('zeigt AN-spezifische Themen und die getrennten Entscheidungen', () => {
     renderHelp();
 
-    expect(screen.getByRole('heading', { name: /Sicher durch den nächsten Takt/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Sicher durch die nächste Abstimmung/i })).toBeInTheDocument();
     expect(screen.getByTestId('callout-help-separate-decisions')).toBeInTheDocument();
     expect(screen.getByTestId('button-help-topic-projects')).toBeInTheDocument();
   });

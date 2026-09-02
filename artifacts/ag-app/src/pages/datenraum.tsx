@@ -212,7 +212,7 @@ function PublicationRow({
           <div className="text-sm font-medium">{pub.title}</div>
           <div className="text-xs text-muted-foreground">
             {PRODUCT_TYPE_LABELS[pub.dataProductType] ?? pub.dataProductType}
-             {isCombinedInvitation && <span className="ml-1.5 text-primary">· separate Datenfreigabe</span>}
+             {isCombinedInvitation && <span className="ml-1.5 text-primary">· separate Leistungsfreigabe</span>}
           </div>
         </td>
 
@@ -347,7 +347,7 @@ function PublicationRow({
                           className={`text-xs ${r.delivery.status === "FAILED" ? "text-red-600" : r.delivery.status === "DELIVERED" ? "text-emerald-600" : "text-muted-foreground"}`}
                           data-testid={`datenraum-delivery-status-${pub.id}-${r.anOrgId}`}
                         >
-                          Datenangebot: {DELIVERY_STATUS_LABELS[r.delivery.status] ?? r.delivery.status}
+                           Leistungsfreigabe: {DELIVERY_STATUS_LABELS[r.delivery.status] ?? r.delivery.status}
                           {" "}({r.delivery.attemptCount}/5 Versuche)
                         </div>
                       )}
@@ -502,17 +502,17 @@ export default function DatenraumPage() {
       onSuccess: (result) => {
         if (result.status === "FAILED") {
           toast({
-            title: "Datenangebot konnte nicht zugestellt werden",
+             title: "Leistungsfreigabe konnte nicht zugestellt werden",
             description: `${result.error?.message ?? "Die Zustellung ist fehlgeschlagen."} Bitte beheben Sie das externe Problem und versuchen Sie es erneut.`,
             variant: "destructive",
           });
           return;
         }
-        toast({ title: "Datenangebot erneut zugestellt" });
+         toast({ title: "Leistungsfreigabe erneut zugestellt" });
       },
       onError: (err) => {
         toast({
-          title: "Datenangebot konnte nicht erneut zugestellt werden",
+           title: "Leistungsfreigabe konnte nicht erneut zugestellt werden",
           description: err.message,
           variant: "destructive",
         });

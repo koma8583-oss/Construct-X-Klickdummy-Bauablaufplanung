@@ -90,7 +90,7 @@ function fmtDateTime(s?: string | null): string {
 // ── Step indicator ────────────────────────────────────────────────────────────
 
 const STEPS = [
-  { id: 1, label: 'Datenfreigabe', shortLabel: 'Policy' },
+  { id: 1, label: 'Leistungsfreigabe', shortLabel: 'Policy' },
   { id: 2, label: 'Aktivitätsdaten', shortLabel: 'Daten' },
   { id: 3, label: 'Ressourcen',    shortLabel: 'Ressourcen' },
   { id: 4, label: 'Verfügbarkeit', shortLabel: 'Verfügb.' },
@@ -197,11 +197,11 @@ function PolicyGateView({ pubId, offerRef, onBack }: PolicyGateProps) {
           <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <div>
             <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              Schritt 1 — Datenfreigabe: Policy-Annahme erforderlich
+              Schritt 1 — Leistungsfreigabe: Policy-Annahme erforderlich
             </p>
             <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
               Um die Leistungsdetails einsehen zu können, müssen Sie zunächst die Nutzungs-Policy
-              des zugehörigen Datenraum-Angebots akzeptieren.
+              der zugehörigen Leistungsfreigabe akzeptieren.
             </p>
           </div>
         </div>
@@ -656,13 +656,13 @@ export default function TaktRequestDetailPage() {
       {/* Step indicator */}
       <StepIndicator currentStep={currentStep} completedSteps={completedSteps} />
 
-      {/* ── Step 1: Datenfreigabe ─────────────────────────────────────────── */}
+       {/* ── Step 1: Leistungsfreigabe ─────────────────────────────────────── */}
       <StepSection step={1} currentStep={currentStep} completedSteps={completedSteps}>
         <CardHeader className="pb-2 px-5 pt-5">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-primary" />
             <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Schritt 1 — Datenfreigabe
+              Schritt 1 — Leistungsfreigabe
             </CardTitle>
             {step1Done && (
               <Badge variant="secondary" className="ml-auto text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
