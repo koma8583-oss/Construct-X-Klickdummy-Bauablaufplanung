@@ -99,7 +99,7 @@ function AuthRoutedApp() {
         <Route path="/reports" component={Reports} />
         <Route path="/gantt" component={GanttPage} />
         <Route path="/resources">
-          <Redirect to="/local-projects/resources" />
+          <Resources />
         </Route>
         <Route path="/settings" component={Settings} />
         <Route path="/hilfe" component={Help} />

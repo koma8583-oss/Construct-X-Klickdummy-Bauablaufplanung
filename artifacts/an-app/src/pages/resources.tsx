@@ -6,6 +6,7 @@
  * Route: /resources
  */
 import { useState } from "react";
+import { Link } from "wouter";
 import {
   useListResources,
   useCreateResource,
@@ -58,6 +59,8 @@ import {
   HardHat,
   Tag,
   AlertTriangle,
+  CalendarRange,
+  FolderOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -862,10 +865,29 @@ export default function ResourcesPage() {
       <div>
         <h1 className="text-2xl font-bold">Ressourcen</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          Verwalten Sie Ressourcentypen und konkrete Ressourcen Ihrer Organisation.
+          Eigene Projekte, Ressourcenstamm und Belegungsplan an einem Ort.
         </p>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <Link href="/local-projects" className="group rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-primary/5">
+          <FolderOpen className="h-5 w-5 text-primary" />
+          <p className="mt-3 font-semibold">Eigene Projekte</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Interne Arbeitsabschnitte und lokale Planung verwalten.</p>
+        </Link>
+        <a href="#resource-master" className="group rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-primary/5">
+          <Tag className="h-5 w-5 text-primary" />
+          <p className="mt-3 font-semibold">Ressourcenstamm</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Ressourcentypen und konkrete Ressourcen pflegen.</p>
+        </a>
+        <Link href="/resource-bookings" className="group rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-primary/5">
+          <CalendarRange className="h-5 w-5 text-primary" />
+          <p className="mt-3 font-semibold">Belegungsplan</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Gesamtbelegung und Konflikte im Blick behalten.</p>
+        </Link>
+      </div>
+
+      <div id="resource-master">
       <Tabs defaultValue="types">
         <TabsList className="bg-sidebar-accent">
           <TabsTrigger value="types" className="data-[state=active]:bg-card">
@@ -886,6 +908,7 @@ export default function ResourcesPage() {
           <ResourcesTab />
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }

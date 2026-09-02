@@ -53,15 +53,34 @@ describe("authenticated AN Leistungsanfrage actions", () => {
     expect(screen.getByText(/Antwort bis:/)).toBeInTheDocument();
   });
 
-  it("renders ProposalActions at most once for one detail view", async () => {
+  it("zeigt die dauerhafte Zeitraum-Abstimmung nur bei einem offenen Vorschlag", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/coordination")) {
+        return response({
+          nextAction: "RESPOND_TO_CHANGE_PROPOSAL",
+          nextActionOwner: "AN",
+          currentAgreement: { start: "2026-09-01T00:00:00.000Z", end: "2026-09-10T23:59:59.000Z" },
+          openProposal: {
+            id: "proposal-1",
+            start: "2026-09-03T00:00:00.000Z",
+            end: "2026-09-07T23:59:59.000Z",
+            proposerRole: "AG",
+          },
+        });
+      }
+      return response({});
+    }));
     renderAuthenticated(
-      <>
-        <CurrentActionCard requestId="authenticated-request" />
-        <ProposalActions requestId="authenticated-request" />
-      </>,
+      <ProposalActions requestId="authenticated-request" />,
     );
-    expect(await screen.findByText("Leistungsanfrage beantworten")).toBeInTheDocument();
-    expect(screen.getAllByText("Zeitraum abstimmen")).toHaveLength(1);
+    expect(await screen.findByText("Neuer Terminvorschlag")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bestätigen" })).toBeInTheDocument();
+  });
+
+  it("rendert ohne offenen Gegenvorschlag keine dauerhafte Abstimmung", async () => {
+    renderAuthenticated(<ProposalActions requestId="authenticated-request" />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Neuer Terminvorschlag")).not.toBeInTheDocument();
   });
 
   it("does not introduce horizontal overflow at the 390px mobile width", async () => {

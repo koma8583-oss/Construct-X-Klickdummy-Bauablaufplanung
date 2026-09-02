@@ -15,7 +15,7 @@ const detail = {
   leistungsanfrageId: requestId,
   taktRequestId: "takt-request-1",
   localProjectionId: "local-projection-1",
-  requestNumber: "TKR-2026-0001",
+  requestNumber: "LAF-2026-0001",
   status: "UNDER_REVIEW",
   leistungVersion: 1,
   taktVersion: 1,
@@ -26,7 +26,7 @@ const detail = {
   projectId: "project-1",
   plannedStart: "2026-09-01",
   plannedEnd: "2026-09-10",
-  responseRequiredBy: null,
+  responseRequiredBy: "2026-08-30T12:00:00.000Z",
   receivedAt: "2026-08-25T09:00:00.000Z",
   detailsRetrievedAt: "2026-08-25T09:01:00.000Z",
   policySnapshot: null,
@@ -35,10 +35,10 @@ const detail = {
   updatedAt: "2026-08-25T09:01:00.000Z",
   schemaVersion: "1.0",
   snapshotPayload: {
-    kurzbezeichnung: "Trockenbau 2. OG",
+    leistung: { name: "Trockenbau 2. OG", description: "Innenausbau im zweiten Obergeschoss" },
     plannedTimeWindow: {
-      start: "2026-09-01T00:00:00.000Z",
-      end: "2026-09-10T23:59:59.000Z",
+      start: "2026-09-01T07:00:00.000Z",
+      end: "2026-09-10T16:00:00.000Z",
     },
   },
   resourceRequirements: [],
@@ -51,70 +51,41 @@ const detail = {
     plannedStart: "2026-09-01",
     plannedEnd: "2026-09-10",
   },
-  project: {
-    id: "project-1",
-    name: "Neubau Bochum",
-    location: "Baufeld West",
-  },
+  project: { id: "project-1", name: "Neubau Bochum", location: "Baufeld West" },
 };
 
 type CoordinationState = {
   currentAgreement: { start: string; end: string } | null;
   nextActionOwner: "AG" | "AN" | null;
-  openProposal: { id: string; start: string; end: string; comment: string | null } | null;
+  openProposal: { id: string; start: string; end: string; comment: string | null; proposerRole?: "AG" | "AN" } | null;
 };
 
 const initialCoordination = (): CoordinationState => ({
-  currentAgreement: {
-    start: "2026-09-01T00:00:00.000Z",
-    end: "2026-09-10T23:59:59.000Z",
-  },
+  currentAgreement: { start: "2026-09-01T07:00:00.000Z", end: "2026-09-10T16:00:00.000Z" },
   nextActionOwner: "AN",
   openProposal: {
     id: proposalId,
     start: "2026-09-03T00:00:00.000Z",
     end: "2026-09-07T23:59:59.000Z",
     comment: "Bitte um Verschiebung",
+    proposerRole: "AG",
   },
 });
 
 function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderDetail(
-  coordination: CoordinationState = initialCoordination(),
-  options: { detailStatus?: number; coordinationStatus?: number } = {},
-) {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+function renderDetail(coordination: CoordinationState = initialCoordination()) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string"
-      ? input
-      : input instanceof Request
-        ? input.url
-        : input.toString();
-    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) {
-      return jsonResponse(detail, options.detailStatus ?? 200);
-    }
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) {
-      return jsonResponse(coordination, options.coordinationStatus ?? 200);
-    }
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) {
-      return jsonResponse([]);
-    }
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) {
-      return jsonResponse({ error: "No local availability checks found" }, 404);
-    }
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detail);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) return jsonResponse(coordination);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) return jsonResponse([]);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({ error: "No local availability checks found" }, 404);
+    if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/responses`)) return jsonResponse({ responseId: "response-1", decision: "ACCEPTED", requestStatus: "RESPONDED" }, 201);
     if (method === "POST" && url.includes(`/api/an/leistungsanfragen/${requestId}/change-proposals`)) {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith(`/${proposalId}/accept`) || path.endsWith(`/${proposalId}/reject`)) {
@@ -123,41 +94,15 @@ function renderDetail(
         return jsonResponse({ proposalId, decision: path.endsWith("/accept") ? "ACCEPTED" : "REJECTED" });
       }
       const body = JSON.parse(String(init?.body ?? "{}")) as { start: string; end: string };
-      coordination.openProposal = {
-        id: path.endsWith("/counter") ? "counter-proposal-1" : "proposed-1",
-        start: body.start,
-        end: body.end,
-        comment: null,
-      };
-      coordination.nextActionOwner = "AN";
+      coordination.openProposal = { id: "counter-proposal-1", start: body.start, end: body.end, comment: null, proposerRole: "AN" };
       return jsonResponse(coordination.openProposal, 201);
     }
     return jsonResponse([]);
   });
-
   vi.stubGlobal("fetch", fetchMock);
   window.history.pushState({}, "", `/leistungsanfragen/${requestId}`);
-  render(
-    <QueryClientProvider client={client}>
-      <Router base="/">
-        <Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} />
-      </Router>
-    </QueryClientProvider>,
-  );
+  render(<QueryClientProvider client={client}><Router base="/"><Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} /></Router></QueryClientProvider>);
   return fetchMock;
-}
-
-function proposalSection() {
-  const heading = screen.getByRole("heading", { name: "Zeitraum abstimmen" });
-  const section = heading.closest("section");
-  if (!section) throw new Error("Proposal section was not rendered");
-  return within(section);
-}
-
-async function fillProposalDates(user: ReturnType<typeof userEvent.setup>) {
-  fireEvent.change(proposalSection().getByLabelText("Beginn"), { target: { value: "2026-09-12" } });
-  fireEvent.change(proposalSection().getByLabelText("Ende"), { target: { value: "2026-09-16" } });
-  await user.click(proposalSection().getByRole("button", { name: /Zeitraum vorschlagen|Gegenvorschlag senden/ }));
 }
 
 afterEach(() => {
@@ -167,86 +112,82 @@ afterEach(() => {
   window.history.pushState({}, "", "/");
 });
 
-describe("AN Leistungsanfrage detail coordination", () => {
-  it("loads an authenticated AN detail with an open proposal and accepts it via AN-local routes", async () => {
-    setAuthTokenGetter(() => "authenticated-an-test-token");
+describe("AN Leistungsanfrage detail", () => {
+  it("führt durch genau drei Phasen und hält Zusatzinformationen sekundär", async () => {
+    renderDetail();
+    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Anfrage prüfen");
+    expect(screen.getByTestId("phase-1")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-2")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-3")).toBeInTheDocument();
+    expect(screen.getByTestId("secondary-request-details")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("overview-service")).toHaveTextContent("Trockenbau 2. OG");
+    expect(screen.getByTestId("overview-period")).toHaveTextContent("01.09.2026 – 10.09.2026");
+  });
+
+  it("bestätigt ohne erneute Datumseingabe exakt das angefragte Zeitfenster", async () => {
     const fetchMock = renderDetail();
-
-    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Trockenbau 2. OG");
-    expect(await screen.findByText(/Offener Vorschlag:/)).toBeInTheDocument();
-
-    await userEvent.setup().click(proposalSection().getByRole("button", { name: "Annehmen" }));
-
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-decision-accepted"));
+    expect(screen.queryByLabelText("Beginn 1")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("button-submit-response"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      `/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/accept`,
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      `/api/leistungsanfragen/${requestId}/responses`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-09-01T07:00:00.000Z", end: "2026-09-10T16:00:00.000Z" } }) }),
     ));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Zeitraum abstimmen" })).not.toBeInTheDocument());
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
-      `/api/leistungsanfragen/${requestId}/change-proposals/${proposalId}/accept`,
-    );
+    expect(await screen.findByTestId("response-sent")).toHaveTextContent("Antwort gesendet – Auftraggeber ist am Zug.");
   });
 
-  it("rejects an open proposal and refreshes the visible coordination state", async () => {
-    const fetchMock = renderDetail();
-
-    await screen.findByText(/Offener Vorschlag:/);
-    await userEvent.setup().click(proposalSection().getByRole("button", { name: "Ablehnen" }));
-
-    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
-      `/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/reject`,
-    ));
-    await waitFor(() => expect(screen.queryByText(/Offener Vorschlag:/)).not.toBeInTheDocument());
+  it("zeigt Datumsfelder ausschließlich bei einer vorgeschlagenen Alternative", async () => {
+    renderDetail();
+    const user = userEvent.setup();
+    expect(screen.queryByTestId("input-alternative-start-0")).not.toBeInTheDocument();
+    await user.click(await screen.findByTestId("button-decision-alternative"));
+    expect(screen.getByTestId("input-alternative-start-0")).toBeInTheDocument();
+    expect(screen.getByTestId("input-alternative-end-0")).toBeInTheDocument();
+    expect(screen.queryByTestId("select-reason-code")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("button-decision-rejected"));
+    expect(screen.getByTestId("select-reason-code")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-alternative-start-0")).not.toBeInTheDocument();
   });
 
-  it("sends AN-local counter proposals and shows the updated open proposal", async () => {
+  it("zeigt die dauerhafte Zeitraum-Abstimmung nur bei einem offenen Vorschlag des AG", async () => {
+    renderDetail();
+    expect(await screen.findByRole("heading", { name: "Neuer Terminvorschlag" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bestätigen" })).toBeInTheDocument();
+
+    cleanup();
+    const noProposal = initialCoordination();
+    noProposal.openProposal = null;
+    renderDetail(noProposal);
+    await screen.findByTestId("text-detail-title");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument());
+
+    cleanup();
+    const proposalFromAn = initialCoordination();
+    proposalFromAn.openProposal = { ...proposalFromAn.openProposal!, proposerRole: "AN" };
+    renderDetail(proposalFromAn);
+    await screen.findByTestId("text-detail-title");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument());
+  });
+
+  it("sendet Gegenentscheidungen über den AN-lokalen Pfad", async () => {
     const fetchMock = renderDetail();
     const user = userEvent.setup();
-
-    await screen.findByText(/Offener Vorschlag:/);
-    await fillProposalDates(user);
-
-    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
-      `/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/counter`,
-    ));
-    await waitFor(() => expect(screen.getByText(/Offener Vorschlag:/)).toBeInTheDocument());
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
-      `/api/leistungsanfragen/${requestId}/change-proposals/${proposalId}/counter`,
-    );
+    await screen.findByRole("heading", { name: "Neuer Terminvorschlag" });
+    const section = screen.getByRole("heading", { name: "Neuer Terminvorschlag" }).closest("section");
+    if (!section) throw new Error("proposal section missing");
+    fireEvent.change(within(section).getByLabelText("Neuer Beginn"), { target: { value: "2026-09-12" } });
+    fireEvent.change(within(section).getByLabelText("Neues Ende"), { target: { value: "2026-09-16" } });
+    await user.click(within(section).getByRole("button", { name: "Alternative vorschlagen" }));
+    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/counter`));
   });
 
-  it("proposes a new period through the AN-local route when no proposal is open", async () => {
-    const coordination = initialCoordination();
-    coordination.openProposal = null;
-    const fetchMock = renderDetail(coordination);
-    const user = userEvent.setup();
-
-    expect(await screen.findByText("Sie können einen Zeitraum vorschlagen.")).toBeInTheDocument();
-    await fillProposalDates(user);
-
-    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
-      `/api/an/leistungsanfragen/${requestId}/change-proposals`,
-    ));
-    await waitFor(() => expect(screen.getByText(/Offener Vorschlag:/)).toBeInTheDocument());
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
-      `/api/leistungsanfragen/${requestId}/change-proposals`,
-    );
-  });
-
-  it("does not render AN actions for a mismatched request projection", async () => {
-    renderDetail(initialCoordination(), { detailStatus: 404 });
-
+  it("zeigt für eine nicht zugeordnete Projektion keine AN-Aktionen", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/details") ? jsonResponse({}, 404) : jsonResponse([])));
+    window.history.pushState({}, "", `/leistungsanfragen/${requestId}`);
+    render(<QueryClientProvider client={client}><Router base="/"><Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} /></Router></QueryClientProvider>);
     expect(await screen.findByRole("heading", { name: "Leistungsanfrage nicht verfügbar" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Zeitraum abstimmen" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Annehmen" })).not.toBeInTheDocument();
-  });
-
-  it("does not render AN actions when the session is not an AN organisation", async () => {
-    renderDetail(initialCoordination(), { coordinationStatus: 403 });
-
-    expect(await screen.findByTestId("text-detail-title")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Zeitraum abstimmen" })).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Annehmen" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Zeitraum vorschlagen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument();
   });
 });

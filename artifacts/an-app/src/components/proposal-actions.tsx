@@ -5,7 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
 type Proposal = { id: string; start: string; end: string; comment?: string | null } | null;
-type Coordination = { openProposal: Proposal; currentAgreement?: { start: string; end: string } | null; nextActionOwner?: 'AG' | 'AN' | null };
+type Coordination = {
+  openProposal: (Proposal & { proposerRole: 'AG' | 'AN' }) | null;
+  currentAgreement?: { start: string; end: string } | null;
+  nextActionOwner?: 'AG' | 'AN' | null;
+};
 const day = (value: string) => `${value}T00:00:00.000Z`;
 const errorText = (error: unknown) => {
   const e = error as { data?: { error?: string }; message?: string };
@@ -26,7 +30,11 @@ export function ProposalActions({ requestId }: { requestId: string }) {
     queryKey: ['/api/an/leistungsanfragen', requestId, 'coordination'],
     queryFn: () => apiFetch<Coordination>(`/api/an/leistungsanfragen/${requestId}/coordination`),
   });
-  const proposal = data?.openProposal; const canAct = !!data?.currentAgreement && (!data?.nextActionOwner || data.nextActionOwner === 'AN');
+  const proposal = data?.openProposal;
+  const canAct = !!proposal
+    && !!data?.currentAgreement
+    && data?.nextActionOwner === 'AN'
+    && proposal.proposerRole === 'AG';
   const refresh = async () => { await Promise.all([refetch(), queryClient.invalidateQueries({ queryKey: [`/api/takt-requests/${requestId}/details`] }), queryClient.invalidateQueries({ queryKey: [`/api/leistungsanfragen/${requestId}`] })]); };
   const submit = async (action: 'accept' | 'reject' | 'counter' | 'propose') => {
     setError('');
@@ -41,12 +49,40 @@ export function ProposalActions({ requestId }: { requestId: string }) {
       setStart(''); setEnd(''); setComment(''); await refresh();
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   };
-  if (!data || (!proposal && !canAct)) return null;
+  if (!data || !proposal || !canAct) return null;
   return <section className="mt-5 rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-4">
-    <div><h3 className="font-semibold">Zeitraum abstimmen</h3><p className="text-sm text-muted-foreground">{proposal ? `Offener Vorschlag: ${new Date(proposal.start).toLocaleDateString('de-DE')} – ${new Date(proposal.end).toLocaleDateString('de-DE')}` : 'Sie können einen Zeitraum vorschlagen.'}</p></div>
-     {proposal && canAct && <div className="flex flex-col sm:flex-row gap-2"><Button size="sm" className="w-full sm:w-auto" onClick={() => submit('accept')} disabled={busy}><CheckCircle2 className="mr-1.5 h-4 w-4" />Annehmen</Button><Button size="sm" className="w-full sm:w-auto" variant="outline" onClick={() => submit('reject')} disabled={busy}><XCircle className="mr-1.5 h-4 w-4" />Ablehnen</Button></div>}
-     {canAct && <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Beginn<input type="date" value={start} onChange={e => setStart(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" /></label><label className="text-sm">Ende<input type="date" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" /></label><Textarea className="sm:col-span-2" value={comment} onChange={e => setComment(e.target.value)} placeholder="Kommentar (optional)" maxLength={2000} /><Button className="w-full sm:col-span-2" variant="secondary" onClick={() => submit(proposal ? 'counter' : 'propose')} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}{proposal ? 'Gegenvorschlag senden' : 'Zeitraum vorschlagen'}</Button></div>}
-    {proposal && !canAct && <p className="text-sm text-muted-foreground">Der Vorschlag wurde gesendet. Die Gegenseite ist jetzt am Zug.</p>}
+    <div>
+      <h3 className="font-semibold">Neuer Terminvorschlag</h3>
+      <p className="text-sm text-muted-foreground">
+        Der Auftraggeber schlägt einen neuen Zeitraum vor. Bitte prüfen Sie ihn und senden Sie eine Rückmeldung.
+      </p>
+      <p className="mt-2 rounded-md bg-background/70 px-3 py-2 text-sm font-medium">
+        {new Date(proposal.start).toLocaleDateString('de-DE')} – {new Date(proposal.end).toLocaleDateString('de-DE')}
+      </p>
+    </div>
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <Button size="sm" className="w-full sm:w-auto" onClick={() => submit('accept')} disabled={busy}>
+        <CheckCircle2 className="mr-1.5 h-4 w-4" />Bestätigen
+      </Button>
+      <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => submit('reject')} disabled={busy}>
+        <XCircle className="mr-1.5 h-4 w-4" />Ablehnen
+      </Button>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="text-sm">
+        Neuer Beginn
+        <input type="date" value={start} onChange={e => setStart(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" />
+      </label>
+      <label className="text-sm">
+        Neues Ende
+        <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm" />
+      </label>
+      <Textarea className="sm:col-span-2" value={comment} onChange={e => setComment(e.target.value)} placeholder="Hinweis (optional)" maxLength={2000} />
+      <Button className="w-full sm:col-span-2" variant="secondary" onClick={() => submit('counter')} disabled={busy}>
+        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+        Alternative vorschlagen
+      </Button>
+    </div>
     {error && <p className="text-sm text-destructive">{error}</p>}
   </section>;
 }

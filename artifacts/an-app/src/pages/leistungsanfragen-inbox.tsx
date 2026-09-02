@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarDays,
   Check,
+  ChevronDown,
   Clock3,
   Inbox,
   Lock,
@@ -58,8 +59,7 @@ const STATUS_TONE: Record<AnLeistungsanfrageListItemStatus, string> = {
   SUPERSEDED: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-300",
 };
 
-type ViewFilter = "OPEN" | "ALL" | "DONE";
-type CategoryFilter = "ALL" | "REQUESTS" | "INVITATIONS";
+type ViewFilter = "OPEN" | "WAITING" | "DONE";
 
 function dateText(value?: string | null, withTime = false) {
   if (!value) return "Nicht veröffentlicht";
@@ -91,7 +91,15 @@ function deadline(item: AnLeistungsanfrageListItem) {
 }
 
 function isDone(status: AnLeistungsanfrageListItemStatus) {
-  return ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED"].includes(status);
+  return ["CONFIRMED", "CANCELLED", "SUPERSEDED"].includes(status);
+}
+
+function isWaiting(status: AnLeistungsanfrageListItemStatus) {
+  return status === "RESPONDED";
+}
+
+function isTodo(status: AnLeistungsanfrageListItemStatus) {
+  return !isDone(status) && !isWaiting(status);
 }
 
 export type InboxItem =
@@ -99,7 +107,7 @@ export type InboxItem =
   | { kind: "service-request"; data: AnLeistungsanfrageListItem & Record<string, unknown>; receivedAt: string; isOpen: boolean };
 
 export interface InboxFilterState {
-  inboxFilter: "ALL" | "OPEN" | "DONE";
+  inboxFilter: "ALL" | "OPEN" | "WAITING" | "DONE";
   deadlineFilter: "ALL" | "DUE_SOON" | "OVERDUE" | "EXPIRED";
   statusFilter: string;
   coordinationFilter: string;
@@ -111,7 +119,12 @@ export interface InboxFilterState {
 export function filterInboxItems(items: InboxItem[], filters: InboxFilterState) {
   const serviceFilterActive = [filters.deadlineFilter, filters.statusFilter, filters.coordinationFilter, filters.proposalFilter, filters.actionOwnerFilter, filters.scheduleFilter].some((filter) => filter !== "ALL");
   return items.filter((item) => {
-    if (filters.inboxFilter !== "ALL" && (filters.inboxFilter === "OPEN") !== item.isOpen) return false;
+    if (filters.inboxFilter === "OPEN" && item.kind === "service-request" && !isTodo(item.data.status)) return false;
+    if (filters.inboxFilter === "WAITING" && item.kind === "service-request" && !isWaiting(item.data.status)) return false;
+    if (filters.inboxFilter === "DONE" && item.kind === "service-request" && !isDone(item.data.status)) return false;
+    if (filters.inboxFilter === "OPEN" && item.kind === "invitation" && !item.isOpen) return false;
+    if (filters.inboxFilter === "WAITING" && item.kind === "invitation") return false;
+    if (filters.inboxFilter === "DONE" && item.kind === "invitation" && item.isOpen) return false;
     if (item.kind === "invitation") return !serviceFilterActive;
     const request = item.data as Record<string, unknown>;
     if (filters.statusFilter !== "ALL" && request.status !== filters.statusFilter) return false;
@@ -283,24 +296,20 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{item.requestNumber}</p>
-            <h2 data-testid={`text-request-title-${item.id}`} className="mt-1 line-clamp-2 break-words text-lg font-semibold">{title}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Eingegangen {dateText(item.receivedAt, true)}</p>
+             <h2 data-testid={`text-request-title-${item.id}`} className="line-clamp-2 break-words text-lg font-semibold">{title}</h2>
           </div>
           <StatusBadge status={item.status} />
         </div>
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-border/70 py-4 text-sm">
           <div className="col-span-2 flex min-w-0 items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Auftraggeber</p><p className="mt-0.5 break-words font-medium">{item.guOrgName || "Auftraggebername nicht veröffentlicht"}</p></div></div>
           <div className="flex min-w-0 items-start gap-2"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Projekt</p><p className="mt-0.5 break-words font-medium">{item.project.name || "Nicht veröffentlicht"}</p></div></div>
-          <div className="flex min-w-0 items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Gewerk / Zone</p><p className="mt-0.5 break-words font-medium">{item.takt.gewerk || "Nicht veröffentlicht"} <span className="font-normal text-muted-foreground">/ {item.takt.zone || "Nicht veröffentlicht"}</span></p></div></div>
           <div className="flex min-w-0 items-start gap-2"><ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-[11px] text-muted-foreground">Leistung</p><p className="mt-0.5 break-words font-medium">{item.takt.kurzbezeichnung || "Nicht veröffentlicht"}</p></div></div>
-          <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Leistungsfenster</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
+           <div className="col-span-2 flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="text-[11px] text-muted-foreground">Zeitraum</p><p className="mt-0.5 font-medium">{dateText(item.plannedStart)} – {dateText(item.plannedEnd)}</p></div></div>
         </div>
-        <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />{due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
+         <div data-testid={`deadline-request-${item.id}`} className={`mt-4 flex items-center gap-2 text-sm font-medium ${due.tone}`}><Clock3 className="h-4 w-4" />Frist: {due.label}{item.responseRequiredBy && <span className="font-normal text-muted-foreground">({dateText(item.responseRequiredBy, true)})</span>}</div>
         <div className="mt-auto flex items-center justify-between gap-3 pt-5">
-          <p className="text-xs text-muted-foreground">{item.resourceRequirementCount ? `${item.resourceRequirementCount} Ressourcenbedarf${item.resourceRequirementCount === 1 ? "" : "e"} veröffentlicht` : "Kein Ressourcenbedarf veröffentlicht"}</p>
           <Link aria-label={title} data-testid={`link-open-request-${item.id}`} href={`/leistungsanfragen/${item.leistungsanfrageId}`} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
-            {isDone(item.status) ? "Details ansehen" : item.status === "REVISION_REQUIRED" ? "Überarbeiten" : "Prüfen"}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+             Anfrage prüfen<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
       </div>
@@ -309,14 +318,9 @@ function RequestCard({ item }: { item: AnLeistungsanfrageListItem }) {
 }
 
 export default function LeistungsanfragenInboxPage() {
-  const [location] = useLocation();
-  const categoryFromUrl = new URLSearchParams(location.split("?")[1] ?? "").get("category");
+  useLocation();
   const [view, setView] = useState<ViewFilter>("OPEN");
-  const [category, setCategory] = useState<CategoryFilter>(
-    categoryFromUrl === "INVITATIONS" || categoryFromUrl === "REQUESTS"
-      ? categoryFromUrl
-      : "REQUESTS",
-  );
+  const [showFilters, setShowFilters] = useState(false);
   const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
   const requestQuery = useListAnLeistungsanfragen(
     status === "ALL" ? undefined : { status },
@@ -325,12 +329,11 @@ export default function LeistungsanfragenInboxPage() {
   const invitationQuery = useListAnProjectInvitations({ query: { queryKey: getListAnProjectInvitationsQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false } });
   const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
   const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
-  const shownRequests = useMemo(() => category !== "INVITATIONS"
-    ? requests.filter((item) => view === "ALL" || (view === "OPEN" ? !isDone(item.status) : isDone(item.status)))
-    : [], [category, requests, view]);
-  const shownInvitations = category !== "REQUESTS"
-    ? view === "DONE" ? invitations.filter((item) => item.status !== "PENDING") : view === "OPEN" ? invitations.filter((item) => item.status === "PENDING") : invitations
-    : [];
+  const shownRequests = useMemo(() => requests.filter((item) => view === "DONE" ? isDone(item.status) : view === "WAITING" ? isWaiting(item.status) : isTodo(item.status)), [requests, view]);
+  const shownInvitations = view === "OPEN" ? invitations.filter((item) => item.status === "PENDING") : view === "DONE" ? invitations.filter((item) => item.status !== "PENDING") : [];
+  const todoCount = requests.filter((item) => isTodo(item.status)).length + invitations.filter((item) => item.status === "PENDING").length;
+  const waitingCount = requests.filter((item) => isWaiting(item.status)).length;
+  const doneCount = requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length;
   const loading = requestQuery.isLoading || invitationQuery.isLoading;
   const error = requestQuery.isError && invitationQuery.isError;
 
@@ -342,64 +345,41 @@ export default function LeistungsanfragenInboxPage() {
        <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">AN / LEISTUNGSANFRAGEN</p>
-           <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-             {category === "INVITATIONS" ? "Projekteinladungen" : category === "REQUESTS" ? "Leistungsanfragen" : "Anfragen &amp; Einladungen"}
-           </h1>
-           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-             {category === "INVITATIONS"
-               ? "Prüfen Sie Einladungen zur Projektmitgliedschaft. Eine Annahme öffnet noch keine Leistungen."
-               : category === "REQUESTS"
-                 ? "Prüfen Sie veröffentlichte Leistungsanfragen und senden Sie dem Auftraggeber eine klare Rückmeldung."
-                 : "Leistungsanfragen und Projekteinladungen bleiben getrennt prüfbar. Wählen Sie die passende Ansicht."}
-           </p>
+            <h1 data-testid="text-inbox-title" className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Anfragen</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Ihre nächsten Aufgaben zuerst: Leistungsanfragen prüfen, Machbarkeit bewerten und eine klare Rückmeldung senden.</p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-emerald-600" />Lokal synchronisiert</div>
       </header>
-       <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
-         <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
-           {([
-             ["ALL", "Alle"],
-             ["REQUESTS", "Leistungsanfragen"],
-             ["INVITATIONS", "Projekteinladungen"],
-           ] as const).map(([value, label]) => (
-             <button
-               data-testid={`button-category-${value.toLowerCase()}`}
-               key={value}
-               type="button"
-               onClick={() => setCategory(value)}
-               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${category === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-             >
-               {label}
-               <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                 {value === "REQUESTS" ? requests.length : value === "INVITATIONS" ? invitations.length : requests.length + invitations.length}
-               </span>
-             </button>
-           ))}
-         </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1">
-              {(["OPEN", "ALL", "DONE"] as ViewFilter[]).map((value) => <button data-testid={`button-filter-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{value === "OPEN" ? "Offen" : value === "ALL" ? "Alle" : "Erledigt"}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{value === "OPEN" ? shownRequests.length + shownInvitations.length : value === "ALL" ? requests.length + invitations.length : requests.filter((item) => isDone(item.status)).length + invitations.filter((item) => item.status !== "PENDING").length}</span></button>)}
-            </div>
-            {category !== "INVITATIONS" && <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" className="w-full sm:w-56"><SelectValue placeholder="Status filtern" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>}
+        <section className="rounded-2xl border border-border bg-card p-3 shadow-sm">
+          <div role="tablist" aria-label="Anfragen filtern" className="grid grid-cols-3 gap-1 rounded-xl bg-muted/70 p-1">
+            {([
+              ["OPEN", "Zu erledigen", todoCount],
+              ["WAITING", "Wartet auf AG", waitingCount],
+              ["DONE", "Erledigt", doneCount],
+            ] as const).map(([value, label, count]) => <button role="tab" aria-selected={view === value} data-testid={`button-inbox-tab-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-2 py-2.5 text-sm font-medium transition-colors sm:px-3 ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}<span className="ml-1.5 font-mono text-[10px] text-muted-foreground">{count}</span></button>)}
           </div>
+          <div className="mt-3 flex justify-end">
+            <Button data-testid="button-toggle-filters" type="button" variant="ghost" size="sm" onClick={() => setShowFilters((current) => !current)}><ChevronDown className={`mr-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />Detailfilter</Button>
+          </div>
+          {showFilters && <div data-testid="detail-filters" className="grid gap-3 border-t border-border/70 pt-3 sm:grid-cols-2"><div><label className="text-xs font-medium text-muted-foreground" htmlFor="status-filter">Status</label><Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" id="status-filter" className="mt-1 w-full"><SelectValue placeholder="Alle Leistungsstatus" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div><p className="self-end text-xs text-muted-foreground">Weitere Filter erscheinen hier, ohne die drei Hauptansichten zu überladen.</p></div>}
       </section>
       {requestQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Leistungsanfragen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-requests" size="sm" variant="ghost" onClick={() => void requestQuery.refetch()}>Erneut laden</Button></div>}
       {invitationQuery.isError && <div className="flex items-center justify-between rounded-xl border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-sm"><span>Projekteinladungen konnten nicht aktualisiert werden.</span><Button data-testid="button-retry-invitations" size="sm" variant="ghost" onClick={() => void invitationQuery.refetch()}>Erneut laden</Button></div>}
-        {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{category === "INVITATIONS" ? "Keine Projekteinladungen" : category === "REQUESTS" ? (view === "OPEN" ? "Keine offenen Leistungsanfragen" : "Keine Leistungsanfragen in dieser Ansicht") : view === "OPEN" ? "Keine offenen Anfragen oder Einladungen" : "Keine Anfragen in dieser Ansicht"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie die Ansicht oder den Statusfilter an."}</p></div> : <div className="space-y-7">
+         {shownInvitations.length === 0 && shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Nichts zu erledigen" : view === "WAITING" ? "Keine Anfragen warten auf den Auftraggeber" : "Keine erledigten Anfragen"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Projekteinladungen und Leistungsanfragen erscheinen hier, sobald sie für Ihr Unternehmen veröffentlicht wurden." : "Passen Sie den Status im Detailfilter an, wenn Sie eine bestimmte Anfrage suchen."}</p></div> : <div className="space-y-7">
           {shownRequests.length > 0 && (
             <section aria-labelledby="requests-section-title">
-              {category === "ALL" && <div className="mb-3 flex items-center justify-between"><h2 id="requests-section-title" className="text-sm font-semibold">Leistungsanfragen</h2><span className="text-xs text-muted-foreground">{shownRequests.length} in dieser Ansicht</span></div>}
+              {shownInvitations.length > 0 && <div className="mb-3 flex items-center justify-between"><h2 id="requests-section-title" className="text-sm font-semibold">Leistungsanfragen</h2><span className="text-xs text-muted-foreground">{shownRequests.length} in dieser Ansicht</span></div>}
               <div className="grid gap-5 lg:grid-cols-2">{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>
             </section>
           )}
           {shownInvitations.length > 0 && (
             <section aria-labelledby="invitations-section-title">
-              {category === "ALL" && <div className="mb-3 flex items-center justify-between"><h2 id="invitations-section-title" className="text-sm font-semibold">Projekteinladungen</h2><span className="text-xs text-muted-foreground">{shownInvitations.length} in dieser Ansicht</span></div>}
+              <div className="mb-3 flex items-center justify-between"><h2 id="invitations-section-title" className="text-sm font-semibold">Projektaufnahmen</h2><span className="text-xs text-muted-foreground">{shownInvitations.length} in dieser Ansicht</span></div>
               <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((item) => <InvitationCard key={item.id} invitation={item} />)}</div>
             </section>
           )}
         </div>}
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen · {shownInvitations.length} Einladungen in dieser Ansicht</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen · {shownInvitations.length} Projektaufnahmen in dieser Ansicht</p>
     </main>
   );
 }

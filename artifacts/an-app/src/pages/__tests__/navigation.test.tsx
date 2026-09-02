@@ -66,7 +66,7 @@ beforeEach(() => {
 });
 
 describe("AN-Navigation", () => {
-  it("zeigt keinen eigenständigen Ressourcenbelegungs-Eintrag in der Sidebar", () => {
+  it("zeigt die reduzierte Hauptnavigation und gruppiert sekundäre Bereiche", () => {
     render(
       <Router base="/">
         <Layout>
@@ -76,10 +76,16 @@ describe("AN-Navigation", () => {
     );
 
     expect(screen.getByRole("link", { name: "Ressourcen" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Leistungen" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Anfragen" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Nachrichten" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Projekte" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Ressourcenbelegungen" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Datenraum" })).toBeInTheDocument();
+    expect(screen.getByText("Weitere Bereiche")).toBeInTheDocument();
   });
 
   it("verlinkt Ressourcenbelegungen aus den Internen Projekten kontextuell", async () => {

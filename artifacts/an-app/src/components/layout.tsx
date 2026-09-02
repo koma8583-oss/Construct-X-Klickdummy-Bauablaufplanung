@@ -14,7 +14,6 @@ import {
   Hexagon,
   Menu,
   X,
-  FolderOpen,
   ShieldCheck,
   Globe,
   HelpCircle,
@@ -34,13 +33,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems: NavItem[] = [
+  const primaryNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
-    { href: "/local-projects", icon: FolderOpen, label: "Projekte" },
     { href: "/leistungen", icon: CalendarClock, label: "Leistungen" },
-    { href: "/leistungsanfragen", icon: Inbox, label: "Leistungsanfragen" },
-    { href: "/gantt", icon: CalendarClock, label: "Ressourcen" },
+    { href: "/leistungsanfragen", icon: Inbox, label: "Anfragen" },
+    { href: "/resources", icon: CalendarClock, label: "Ressourcen" },
     { href: "/messages", icon: Mail, label: "Nachrichten" },
+  ];
+  const secondaryNavItems: NavItem[] = [
     { href: "/data-room", icon: Globe, label: "Datenraum" },
     { href: "/settings", icon: Settings, label: t("nav.settings") },
     { href: "/hilfe", icon: HelpCircle, label: "Hilfe" },
@@ -107,7 +107,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
         {/* Nav */}
         <nav className={`flex-1 overflow-y-auto px-3 pb-3 ${collapsed ? "sm:px-1.5 sm:py-3" : ""} space-y-0.5`}>
-          {navItems.map((item) => {
+           {primaryNavItems.map((item) => {
             const isActive =
               item.href === "/" ? location === "/" : location.startsWith(item.href);
             return (
@@ -143,6 +143,29 @@ export function Layout({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          <div className="my-3 border-t border-sidebar-border/70 pt-3">
+            <p className={`mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50 ${collapsed ? "sm:hidden" : ""}`}>Weitere Bereiche</p>
+            {secondaryNavItems.map((item) => {
+              const isActive = location.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={closeMobile}
+                  data-testid={`link-nav-${item.href.slice(1).replaceAll("/", "-")}`}
+                  title={collapsed ? item.label : undefined}
+                  className={[
+                    "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                    collapsed ? "sm:justify-center sm:p-2" : "",
+                    isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                  ].join(" ")}
+                >
+                  <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : ""}`} />
+                  <span className={`truncate flex-1 ${collapsed ? "sm:hidden" : ""}`}>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Footer */}

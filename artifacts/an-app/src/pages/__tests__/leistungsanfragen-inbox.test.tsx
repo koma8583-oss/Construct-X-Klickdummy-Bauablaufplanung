@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe("gemeinsame AN-Anfragen-Inbox", () => {
-  it("zeigt standardmäßig nur Leistungsanfragen und trennt Projekteinladungen", async () => {
+  it("zeigt standardmäßig die Aufgabenansicht mit Leistungsanfragen und Projektaufnahmen", async () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -93,16 +93,18 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     const { container } = renderInbox();
 
     expect(await screen.findByTestId("text-request-title-request-1")).toBeInTheDocument();
-    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Leistungsanfragen");
-    expect(screen.queryByText("Projekteinladung")).not.toBeInTheDocument();
+    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Anfragen");
+    expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("Zu erledigen");
+    expect(screen.getByTestId("button-inbox-tab-waiting")).toHaveTextContent("Wartet auf AG");
+    expect(screen.getByTestId("button-inbox-tab-done")).toHaveTextContent("Erledigt");
+    expect(screen.queryByTestId("detail-filters")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("button-toggle-filters"));
+    expect(screen.getByTestId("detail-filters")).toBeInTheDocument();
+    expect(screen.getByText("Projekteinladung")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Trockenbau 2. OG" })).toHaveAttribute(
       "href",
       expect.stringContaining("/leistungsanfragen/request-1"),
     );
-    await userEvent.click(await screen.findByTestId("button-category-invitations"));
-    expect(await screen.findByText("Projekteinladung")).toBeInTheDocument();
-    expect(screen.getByTestId("text-inbox-title")).toHaveTextContent("Projekteinladungen");
-    expect(screen.queryByRole("link", { name: "Trockenbau 2. OG" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
       "/api/an/leistungsanfragen",
       "/api/an/project-invitations",
@@ -147,7 +149,6 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
-    await userEvent.click(await screen.findByTestId("button-category-invitations"));
     await screen.findByTestId("card-invitation-legacy-invitation");
     const card = screen.getByTestId("card-invitation-legacy-invitation");
     expect(within(card).getAllByText("Projektaufnahme").length).toBeGreaterThan(0);
@@ -172,7 +173,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     renderInbox();
 
     expect(await screen.findByTestId("card-request-request-1")).toBeInTheDocument();
-    expect(screen.getByText("Kein Ressourcenbedarf veröffentlicht")).toBeInTheDocument();
+    expect(within(screen.getByTestId("card-request-request-1")).getByTestId("deadline-request-request-1")).toHaveTextContent("Frist:");
   });
 
   it("applies service-request filters without treating invitations as service requests", async () => {
@@ -251,7 +252,6 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
 
     renderInbox();
 
-    await user.click(await screen.findByTestId("button-category-invitations"));
     await screen.findByTestId("card-invitation-invitation-2");
     const card = screen.getByTestId("card-invitation-invitation-2");
     await user.click(within(card).getByRole("checkbox"));
@@ -260,7 +260,7 @@ describe("gemeinsame AN-Anfragen-Inbox", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Projekt beitreten" })).not.toBeInTheDocument();
     });
-    expect(screen.getByText("Keine Projekteinladungen")).toBeInTheDocument();
+    expect(screen.getByText("Nichts zu erledigen")).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
       "/api/an/project-invitations/invitation-2/accept",
     );
