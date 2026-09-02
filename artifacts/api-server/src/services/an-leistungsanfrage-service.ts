@@ -43,6 +43,26 @@ type WorkflowView = {
     proposerRole: WorkflowOwner;
     comment: string | null;
   } | null;
+  currentAgreement?: { start: string; end: string } | null;
+};
+
+type RevisionView = {
+  kind: "REQUEST_REVISION" | "SCHEDULE_CHANGE";
+  revisionNumber?: number;
+  sourceRequestId?: string | null;
+  previousRequestId?: string | null;
+  previousTimeWindow: { start: string; end: string } | null;
+  proposedTimeWindow: { start: string; end: string };
+  dayDelta: { startDays: number; endDays: number; durationDays: number };
+  reasonCode?: string | null;
+  comment?: string | null;
+  history?: Array<{
+    id: string;
+    status: string;
+    start: string;
+    end: string;
+    kind: "REQUEST_REVISION" | "SCHEDULE_CHANGE";
+  }>;
 };
 
 function snapshotOf(projection: Projection): PayloadSnapshot {
@@ -53,7 +73,7 @@ function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
   return snapshot[key] ?? (snapshot.request as Record<string, unknown> | undefined)?.[key];
 }
 
-function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView) {
+function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView, revision?: RevisionView | null) {
   const snapshot = snapshotOf(projection);
   const releasedSnapshot = snapshotValue(snapshot, "publicSnapshot");
   const displaySnapshot = Object.keys(objectRecord(releasedSnapshot)).length > 0
@@ -97,6 +117,7 @@ function toRequestView(projection: Projection, requirementCount = 0, workflow?: 
     nextAction: workflow?.nextAction ?? "NO_ACTION",
     coordinationState: workflow?.coordinationState ?? "NO_AGREEMENT",
     openProposal: workflow?.openProposal ?? null,
+    revision: revision ?? null,
     takt: {
       id: projection.leistungReference,
       taktBezeichnung: typeof workPackage === "string" ? workPackage : null,
@@ -120,6 +141,73 @@ function objectRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function revisionContext(projection: Projection): Record<string, unknown> | null {
+  const value = snapshotValue(snapshotOf(projection), "revisionContext");
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function asWindow(value: unknown): { start: string; end: string } | null {
+  const record = objectRecord(value);
+  return typeof record.start === "string" && typeof record.end === "string"
+    ? { start: record.start, end: record.end }
+    : null;
+}
+
+function dayDelta(previous: { start: string; end: string } | null, next: { start: string; end: string }) {
+  const diff = (left: string, right: string) => {
+    const leftTime = Date.parse(`${left.slice(0, 10)}T00:00:00Z`);
+    const rightTime = Date.parse(`${right.slice(0, 10)}T00:00:00Z`);
+    return Number.isNaN(leftTime) || Number.isNaN(rightTime)
+      ? 0
+      : Math.round((rightTime - leftTime) / 86_400_000);
+  };
+  const startDays = previous ? diff(previous.start, next.start) : 0;
+  const endDays = previous ? diff(previous.end, next.end) : 0;
+  const previousDuration = previous ? diff(previous.start, previous.end) : 0;
+  const nextDuration = diff(next.start, next.end);
+  return { startDays, endDays, durationDays: nextDuration - previousDuration };
+}
+
+function revisionView(projection: Projection, related: Projection[]): RevisionView | null {
+  const context = revisionContext(projection);
+  const scheduleChange = coordinationRequestKind(projection) === "SCHEDULE_CHANGE";
+  if (!context && !scheduleChange) return null;
+  const previousTimeWindow = context
+    ? asWindow(context.previousTimeWindow)
+    : asWindow(snapshotValue(snapshotOf(projection), "baseTimeWindow"));
+  const proposedTimeWindow = {
+    start: projection.plannedStart,
+    end: projection.plannedEnd,
+  };
+  const history = related
+    .filter((row) => revisionContext(row) || coordinationRequestKind(row) === "SCHEDULE_CHANGE")
+    .map((row) => ({
+      id: row.externalLeistungsanfrageId,
+      status: row.status,
+      start: row.plannedStart,
+      end: row.plannedEnd,
+      kind: revisionContext(row) ? "REQUEST_REVISION" as const : "SCHEDULE_CHANGE" as const,
+    }));
+  return {
+    kind: scheduleChange ? "SCHEDULE_CHANGE" : "REQUEST_REVISION",
+    revisionNumber: typeof context?.revisionNumber === "number" ? context.revisionNumber : undefined,
+    sourceRequestId: scheduleChange ? coordinationSourceRequestId(projection) : null,
+    previousRequestId: typeof context?.previousRequestId === "string" ? context.previousRequestId : null,
+    previousTimeWindow,
+    proposedTimeWindow,
+    dayDelta: dayDelta(previousTimeWindow, proposedTimeWindow),
+    reasonCode: typeof context?.reasonCode === "string" ? context.reasonCode : null,
+    comment: typeof context?.comment === "string"
+      ? context.comment
+      : typeof snapshotValue(snapshotOf(projection), "comment") === "string"
+        ? snapshotValue(snapshotOf(projection), "comment") as string
+        : null,
+    history,
+  };
+}
+
 export async function listAnLeistungsanfragen(
   anOrgId: string,
   status?: string,
@@ -128,9 +216,21 @@ export async function listAnLeistungsanfragen(
   if (status) {
     filters.push(eq(anLeistungsanfragenTable.status, status as typeof anLeistungsanfragenTable.status.enumValues[number]));
   }
-  const projections = await anDb.select().from(anLeistungsanfragenTable)
+  const allProjections = await anDb.select().from(anLeistungsanfragenTable)
     .where(and(...filters))
     .orderBy(desc(anLeistungsanfragenTable.receivedAt));
+  const revisionIds = new Set(
+    allProjections
+      .map((projection) => revisionContext(projection)?.previousRequestId)
+      .filter((id): id is string => !!id),
+  );
+  // Schedule-change projections are work data for the existing request, not a
+  // second inbox item. A request revision supersedes its predecessor, so only
+  // the newest item in each chain is presented.
+  const projections = allProjections.filter((projection) =>
+    coordinationRequestKind(projection) !== "SCHEDULE_CHANGE" &&
+    !revisionIds.has(projection.externalLeistungsanfrageId),
+  );
   const ids = projections.map((projection) => projection.id);
   const requirements = ids.length
     ? await anDb.select({ requestId: anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId })
@@ -141,11 +241,7 @@ export async function listAnLeistungsanfragen(
   for (const requirement of requirements) {
     counts.set(requirement.requestId, (counts.get(requirement.requestId) ?? 0) + 1);
   }
-  const requestIds = [...new Set(projections.map((projection) =>
-    coordinationRequestKind(projection) === "SCHEDULE_CHANGE"
-      ? coordinationSourceRequestId(projection)
-      : projection.externalLeistungsanfrageId,
-  ).filter((id): id is string => !!id))];
+  const requestIds = [...new Set(projections.map((projection) => projection.externalLeistungsanfrageId))];
   const workflows = new Map<string, WorkflowView>();
   await Promise.all(requestIds.map(async (requestId) => {
     const coordination = await getAnCoordination(requestId, anOrgId);
@@ -163,13 +259,24 @@ export async function listAnLeistungsanfragen(
             comment: null,
           }
         : null,
+      currentAgreement: coordination.currentAgreement,
     });
   }));
   return projections.map((projection) => {
-    const requestId = coordinationRequestKind(projection) === "SCHEDULE_CHANGE"
-      ? coordinationSourceRequestId(projection)
-      : projection.externalLeistungsanfrageId;
-    return toRequestView(projection, counts.get(projection.id) ?? 0, requestId ? workflows.get(requestId) : undefined);
+    const requestId = projection.externalLeistungsanfrageId;
+    const workflow = workflows.get(requestId);
+    const openProposal = workflow?.openProposal;
+    const revision = openProposal
+      ? {
+          kind: "SCHEDULE_CHANGE" as const,
+          sourceRequestId: requestId,
+          previousTimeWindow: workflow?.currentAgreement ?? null,
+          proposedTimeWindow: { start: openProposal.start, end: openProposal.end },
+          dayDelta: dayDelta(workflow?.currentAgreement ?? null, { start: openProposal.start, end: openProposal.end }),
+          comment: openProposal.comment,
+        }
+      : revisionView(projection, [projection]);
+    return toRequestView(projection, counts.get(projection.id) ?? 0, workflow, revision);
   });
 }
 
@@ -177,11 +284,20 @@ export async function getAnLeistungsanfrageDetail(
   externalLeistungsanfrageId: string,
   anOrgId: string,
 ) {
-  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+  const [rootProjection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
     eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
     eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
   )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
-  if (!projection) return null;
+  if (!rootProjection) return null;
+
+  const related = await coordinationProjections(externalLeistungsanfrageId, anOrgId);
+  const activeSchedule = externalLeistungsanfrageId === rootProjection.externalLeistungsanfrageId
+    ? related.find((row) =>
+        coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
+        actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
+      )
+    : undefined;
+  const projection = activeSchedule ?? rootProjection;
 
   let current = projection;
   if (projection.status === "RECEIVED") {
@@ -218,7 +334,8 @@ export async function getAnLeistungsanfrageDetail(
       requiredQualification: requirement.requiredQualification,
       notes: requirement.notes,
     })),
-    detailsRetrievedNow: projection.status === "RECEIVED",
+     revision: revisionView(projection, related),
+     detailsRetrievedNow: projection.status === "RECEIVED",
   };
 }
 
@@ -237,14 +354,14 @@ export async function updateAnResourceRequirement(
   patch: z.infer<typeof requirementUpdateSchema>,
 ) {
   return anDb.transaction(async (tx) => {
-    const [projection] = await tx.select({ id: anLeistungsanfragenTable.id })
-      .from(anLeistungsanfragenTable)
-      .where(and(
-        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
-        eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
-      ))
-      .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion))
-      .limit(1);
+    const projections = await tx.select().from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
+      .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion));
+    const projection = projections.find((row) =>
+      coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
+      coordinationSourceRequestId(row) === externalLeistungsanfrageId &&
+      actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
+    ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
     if (!projection) return null;
 
     const [existing] = await tx.select()

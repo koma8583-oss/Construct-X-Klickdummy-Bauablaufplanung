@@ -36,6 +36,144 @@ export function maxDate(...values: Array<Date | string | null | undefined>): Dat
 }
 function dateOnly(value: Date | string): string { return (value instanceof Date ? value.toISOString() : value).slice(0, 10); }
 
+function snapshotWindow(snapshot: Record<string, unknown>): { start?: string; end?: string } {
+  const window = snapshot.plannedTimeWindow ?? snapshot.taktWindow ?? snapshot.timeWindow;
+  return window && typeof window === "object" && !Array.isArray(window)
+    ? window as { start?: string; end?: string }
+    : {};
+}
+
+/**
+ * Create the next immutable AG request version for a change to an open
+ * request. The current Leistung and its confirmed date remain untouched until
+ * the AN accepts the new request. This is deliberately separate from
+ * serviceChangeProposals: a proposal is the bilateral negotiation for an
+ * existing agreement, while this operation changes an unagreed request.
+ */
+export async function createLeistungsanfrageRevision(input: {
+  requestId: string;
+  orgId: string;
+  userId: string;
+  start: Date;
+  end: Date;
+  reasonCode?: string | null;
+  comment?: string | null;
+}) {
+  if (input.end <= input.start) {
+    throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
+  }
+
+  return agDb.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.requestId}, 0))`);
+    const [request] = await tx.select().from(leistungsanfragenTable)
+      .where(eq(leistungsanfragenTable.id, input.requestId)).limit(1);
+    if (!request || request.guOrgId !== input.orgId) {
+      throw Object.assign(new Error("Leistungsanfrage nicht gefunden"), { statusCode: 404 });
+    }
+    if (request.agreedStart || request.agreedEnd) {
+      throw Object.assign(new Error("Für eine vereinbarte Leistung bitte einen Änderungsvorschlag verwenden"), { statusCode: 409 });
+    }
+    if (!["DRAFT", "SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(request.status)) {
+      throw Object.assign(new Error("Für diese Anfrage ist keine neue Version mehr möglich"), { statusCode: 409 });
+    }
+
+    const [existingSuccessor] = await tx.select({ id: leistungsanfragenTable.id })
+      .from(leistungsanfragenTable)
+      .where(eq(leistungsanfragenTable.supersedesRequestId, request.id))
+      .limit(1);
+    if (existingSuccessor) {
+      throw Object.assign(new Error("Für diese Anfrage existiert bereits eine neuere Version"), { statusCode: 409 });
+    }
+
+    const [oldSnapshot] = await tx.select().from(leistungsanfrageSnapshotsTable)
+      .where(eq(leistungsanfrageSnapshotsTable.leistungsanfrageId, request.id)).limit(1);
+    if (!oldSnapshot) throw Object.assign(new Error("Die unveränderliche Anfrageversion fehlt"), { statusCode: 422 });
+
+    const oldPayload = (oldSnapshot.snapshotPayload ?? {}) as Record<string, unknown>;
+    const oldWindow = snapshotWindow(oldPayload);
+    if (oldWindow.start && oldWindow.end &&
+        dateOnly(oldWindow.start) === dateOnly(input.start) &&
+        dateOnly(oldWindow.end) === dateOnly(input.end)) {
+      throw Object.assign(new Error("Die neue Version muss einen geänderten Zeitraum enthalten"), { statusCode: 400 });
+    }
+
+    const [service] = await tx.select().from(leistungenTable)
+      .where(eq(leistungenTable.id, request.leistungId)).limit(1);
+    if (!service) throw Object.assign(new Error("Leistung nicht gefunden"), { statusCode: 404 });
+
+    const previousRevision = oldPayload.revisionContext as Record<string, unknown> | undefined;
+    const revisionNumber = typeof previousRevision?.revisionNumber === "number"
+      ? previousRevision.revisionNumber + 1
+      : 1;
+    const now = new Date();
+    const newRequestId = crypto.randomUUID();
+    const newSnapshotPayload: Record<string, unknown> = {
+      ...oldPayload,
+      plannedStart: dateOnly(input.start),
+      plannedEnd: dateOnly(input.end),
+      plannedTimeWindow: { start: dateOnly(input.start), end: dateOnly(input.end) },
+      revisionContext: {
+        revisionNumber,
+        previousRequestId: request.id,
+        previousTimeWindow: {
+          start: oldWindow.start ?? service.plannedStart,
+          end: oldWindow.end ?? service.plannedEnd,
+        },
+        proposedTimeWindow: { start: dateOnly(input.start), end: dateOnly(input.end) },
+        reasonCode: input.reasonCode ?? null,
+        comment: input.comment ?? null,
+        createdAt: now.toISOString(),
+      },
+    };
+    const [newRequest] = await tx.insert(leistungsanfragenTable).values({
+      id: newRequestId,
+      leistungId: request.leistungId,
+      leistungVersion: request.leistungVersion,
+      guOrgId: request.guOrgId,
+      nuOrgId: request.nuOrgId,
+      requestNumber: `${request.requestNumber}-R${revisionNumber}`,
+      selectionGroupId: request.selectionGroupId,
+      status: "DRAFT",
+      responseRequiredBy: request.responseRequiredBy,
+      supersedesRequestId: request.id,
+      createdByUserId: input.userId,
+      dataPublicationId: request.dataPublicationId,
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    if (!newRequest) throw new Error("Neue Leistungsanfrageversion konnte nicht gespeichert werden");
+
+    const [newSnapshot] = await tx.insert(leistungsanfrageSnapshotsTable).values({
+      leistungsanfrageId: newRequest.id,
+      schemaVersion: oldSnapshot.schemaVersion,
+      snapshotPayload: newSnapshotPayload,
+    }).returning();
+    if (!newSnapshot) throw new Error("Snapshot der neuen Leistungsanfrageversion konnte nicht gespeichert werden");
+
+    await tx.update(leistungsanfragenTable).set({
+      status: "SUPERSEDED",
+      updatedAt: now,
+    }).where(eq(leistungsanfragenTable.id, request.id));
+
+    return {
+      id: newRequest.id,
+      requestId: newRequest.id,
+      supersedesRequestId: request.id,
+      requestNumber: newRequest.requestNumber,
+      status: newRequest.status,
+      plannedStart: dateOnly(input.start),
+      plannedEnd: dateOnly(input.end),
+      revisionNumber,
+      previousTimeWindow: {
+        start: oldWindow.start ?? service.plannedStart,
+        end: oldWindow.end ?? service.plannedEnd,
+      },
+      snapshotId: newSnapshot.id,
+      sent: false,
+    };
+  });
+}
+
 export function calculateScheduleDelta(baseStart: Date | string | null | undefined, baseEnd: Date | string | null | undefined, nextStart: Date | string | null | undefined, nextEnd: Date | string | null | undefined): ScheduleDelta {
   const dates = [baseStart, baseEnd, nextStart, nextEnd].map((v) => v ? new Date(v).toISOString().slice(0, 10) : null);
   if (dates.some((v) => !v)) return { startDays: 0, endDays: 0, durationDays: 0, hasChange: false };

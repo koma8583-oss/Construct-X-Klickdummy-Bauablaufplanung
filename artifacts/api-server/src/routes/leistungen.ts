@@ -36,8 +36,9 @@ import {
   projectsTable,
   taktDependenciesTable,
   organizationsTable,
+  leistungsanfragenTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { requireRole } from "../middlewares/requireRole";
 import { rescheduleTakte, wouldCreateCycle } from "../lib/reschedule";
@@ -113,6 +114,7 @@ import {
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
   createChangeProposal,
+  createLeistungsanfrageRevision,
   getCoordination,
   resolveChangeProposal,
 } from "../services/service-change-proposal-service";
@@ -474,6 +476,32 @@ router.post(
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
+    }
+
+    // Once a request exists, its published dates are immutable. A date change
+    // must go through the coordination revision endpoint so the addressed AN
+    // can review the old/new window and respond in the same request chain.
+    const changesDate = parsed.data.plannedStart !== undefined || parsed.data.plannedEnd !== undefined;
+    if (changesDate &&
+        (parsed.data.plannedStart !== undefined && parsed.data.plannedStart !== existing.plannedStart ||
+         parsed.data.plannedEnd !== undefined && parsed.data.plannedEnd !== existing.plannedEnd)) {
+      const [activeRequest] = await db.select({ id: leistungsanfragenTable.id })
+        .from(leistungsanfragenTable)
+        .where(and(
+          eq(leistungsanfragenTable.leistungId, leistungId),
+          // Terminal rows are historical and do not block ordinary planning edits.
+          // An open request must be revised instead of silently changing its snapshot.
+          notInArray(leistungsanfragenTable.status, ["CANCELLED", "EXPIRED", "REJECTED", "SUPERSEDED"]),
+        ))
+        .limit(1);
+      if (activeRequest) {
+        res.status(409).json({
+          error: "LEISTUNGSANFRAGE_REVISION_REQUIRED",
+          message: "Der Zeitraum ist nach Erstellung einer Leistungsanfrage unveränderlich. Erstellen Sie eine neue Anfrageversion.",
+          requestId: activeRequest.id,
+        });
+        return;
+      }
     }
 
     let plannedEnd = parsed.data.plannedEnd;
@@ -1564,6 +1592,46 @@ router.post(
         status: finalRequest?.status ?? "SENT",
         messageId: transportResult.messageId,
       });
+    }
+  },
+);
+
+// ── POST /leistungsanfragen/:id/revisions ─────────────────────────────────────
+// An open request is revised by creating a new immutable request/snapshot
+// pair. The old version remains readable as history and is never edited.
+router.post(
+  "/leistungsanfragen/:id/revisions",
+  requireJwt,
+  requireRole("AG_ADMIN", "GENERAL_PLANNER"),
+  async (req, res): Promise<void> => {
+    const parsed = z.object({
+      start: z.string().min(1),
+      end: z.string().min(1),
+      reasonCode: z.string().max(120).optional().nullable(),
+      comment: z.string().max(2000).optional().nullable(),
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    try {
+      const result = await createLeistungsanfrageRevision({
+        requestId: req.params.id as string,
+        orgId: req.user!.orgId!,
+        userId: req.user!.userId!,
+        start: new Date(parsed.data.start),
+        end: new Date(parsed.data.end),
+        reasonCode: parsed.data.reasonCode,
+        comment: parsed.data.comment,
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode) {
+        res.status(statusCode).json({ error: error instanceof Error ? error.message : "Revision konnte nicht erstellt werden" });
+        return;
+      }
+      throw error;
     }
   },
 );
