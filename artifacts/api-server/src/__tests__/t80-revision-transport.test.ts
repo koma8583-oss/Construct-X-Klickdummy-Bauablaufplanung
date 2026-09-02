@@ -27,6 +27,7 @@ import {
   taktVersionsTable,
   messageInboxTable,
   messageOutboxTable,
+  messageDeliveryAttemptsTable,
   projectContractorsTable,
   projectMembershipsTable,
 } from "@workspace/db";
@@ -384,6 +385,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
 
     // Insert a FAILED outbox row manually
     await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+    await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
     await db.insert(messageOutboxTable).values({
       messageId: msgId,
       schemaVersion: "1.0",
@@ -399,7 +401,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
 
     // Retry should succeed and transition the EXISTING row to DELIVERED
     const result = await transport.retry(msgId);
-    expect(result.status).toBe("FAILED");
+    expect(result.status).toBe("DELIVERED");
     expect(result.messageId).toBe(msgId);
 
     // Verify: still only ONE outbox row for this messageId
@@ -408,11 +410,12 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, msgId));
     expect(outboxRows).toHaveLength(1);
-    expect(outboxRows[0].status).toBe("FAILED");
+    expect(outboxRows[0].status).toBe("DELIVERED");
 
     // Cleanup
     await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
     await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+    await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
     await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG2)).catch(() => {});
     await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG2)).catch(() => {});
   });

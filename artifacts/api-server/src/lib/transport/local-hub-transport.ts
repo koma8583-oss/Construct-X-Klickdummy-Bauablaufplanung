@@ -34,7 +34,7 @@ import {
   messageInboxTable,
   messageDeliveryAttemptsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import type { MessageEnvelope, MessageTransport, TransportResult, InboxMessage, InboxQueryOptions } from "./message-transport";
 import type { DataspaceMessageType } from "@workspace/api-zod";
 import {
@@ -404,7 +404,9 @@ export class LocalHubTransport implements MessageTransport {
   // ── retry ─────────────────────────────────────────────────────────────────
 
   async retry(messageId: string): Promise<TransportResult> {
-    // Find the outbox row
+    // Read the row first so an unknown message and a terminal message get
+    // their specific domain errors. The actual retry claim below is
+    // conditional, so two callers cannot both deliver the same attempt.
     const [outboxRow] = await hubDb
       .select()
       .from(messageOutboxTable)
@@ -422,22 +424,34 @@ export class LocalHubTransport implements MessageTransport {
     }
 
     const now = new Date();
-    const newAttemptCount = outboxRow.attemptCount + 1;
+    const [claimedRow] = await hubDb
+      .update(messageOutboxTable)
+      .set({
+        status: "SENT",
+        attemptCount: sql`${messageOutboxTable.attemptCount} + 1`,
+        lastAttemptAt: now,
+        sentAt: now,
+        failureReason: null,
+      })
+      .where(and(
+        eq(messageOutboxTable.id, outboxRow.id),
+        inArray(messageOutboxTable.status, ["PENDING", "FAILED"]),
+      ))
+      .returning();
+
+    if (!claimedRow) {
+      const [currentRow] = await hubDb
+        .select({ status: messageOutboxTable.status })
+        .from(messageOutboxTable)
+        .where(eq(messageOutboxTable.id, outboxRow.id))
+        .limit(1);
+      throw new NotRetryableError(messageId, currentRow?.status ?? outboxRow.status);
+    }
+
+    const newAttemptCount = claimedRow.attemptCount;
 
     try {
       await hubDb.transaction(async (tx) => {
-        // Update outbox to SENT
-        await tx
-          .update(messageOutboxTable)
-          .set({
-            status: "SENT",
-            attemptCount: newAttemptCount,
-            lastAttemptAt: now,
-            sentAt: now,
-            failureReason: null,
-          })
-          .where(eq(messageOutboxTable.id, outboxRow.id));
-
         // Insert inbox row — skip if already delivered (ON CONFLICT DO NOTHING)
         await tx
           .insert(messageInboxTable)
@@ -457,7 +471,10 @@ export class LocalHubTransport implements MessageTransport {
         await tx
           .update(messageOutboxTable)
           .set({ status: "DELIVERED", deliveredAt: now })
-          .where(eq(messageOutboxTable.id, outboxRow.id));
+          .where(and(
+            eq(messageOutboxTable.id, outboxRow.id),
+            eq(messageOutboxTable.status, "SENT"),
+          ));
 
         await tx.insert(messageDeliveryAttemptsTable).values({
           messageId: outboxRow.messageId,
@@ -486,7 +503,10 @@ export class LocalHubTransport implements MessageTransport {
           attemptCount: newAttemptCount,
           lastAttemptAt: now,
         })
-        .where(eq(messageOutboxTable.id, outboxRow.id))
+        .where(and(
+          eq(messageOutboxTable.id, outboxRow.id),
+          eq(messageOutboxTable.status, "SENT"),
+        ))
         .catch(() => {});
       await hubDb
         .insert(messageDeliveryAttemptsTable)

@@ -357,7 +357,9 @@ export async function getAnLeistungsanfrageDetail(
       notes: requirement.notes,
     })),
      revision: revisionView(current, allRelated),
-     detailsRetrievedNow: projection.status === "RECEIVED",
+     detailsRetrievedNow: Boolean(
+       projection.status === "RECEIVED" && current !== projection,
+     ),
   };
 }
 

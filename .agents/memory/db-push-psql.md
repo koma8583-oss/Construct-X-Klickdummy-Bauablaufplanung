@@ -7,4 +7,4 @@ When post-merge setup runs with stdin closed, do not rely on `drizzle-kit push` 
 
 **Why:** Drizzle can require a TTY confirmation even with `--force` when a populated table is involved, which makes automated post-merge setup fail or could encourage unsafe truncation.
 
-**How to apply:** Keep post-merge scripts fail-fast and non-interactive. Guard table/constraint creation with catalog checks, preserve existing data, and run the workspace library rebuild after the SQL step.
+**How to apply:** Keep post-merge scripts fail-fast and non-interactive. Guard table/constraint creation with catalog checks, preserve existing data, and run the workspace library rebuild after the SQL step. Treat enum values present in code as a migration requirement too; a stale development enum can fail only when a new message path is exercised.
