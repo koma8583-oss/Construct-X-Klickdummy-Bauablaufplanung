@@ -6,7 +6,7 @@
  * inserted directly so each assertion tests the route/service behavior rather
  * than the auth-registration flow.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -58,6 +58,10 @@ const RETRY_MESSAGE_ID = `project-invitation-${RETRY_INVITATION_ID}`;
 const RETRY_CORRELATION_ID = `${PREFIX}-retry-correlation`;
 const T239_MESSAGE_PREFIX = "project-invitation-t239-";
 const CONCURRENT_RETRY_MESSAGE_ID = `${T239_MESSAGE_PREFIX}concurrent-retry`;
+// Never replace the connector with a test double. This coverage is enabled
+// only when the runner provides a real Tractus-X connector endpoint.
+const hasRealTractusXConnector = Boolean(process.env.DATASPACE_CONNECTOR_URL);
+const testWithRealTractusXConnector = hasRealTractusXConnector ? it : it.skip;
 const PROJECT_ADMISSION_FIELDS = [
   "projectReference",
   "projectName",
@@ -568,9 +572,8 @@ describe("project invitation delivery retries", () => {
     expect(exhausted.body.code).toBe("PROJECT_INVITATION_RETRY_EXHAUSTED");
   });
 
-  it.skip("allows only one concurrent HTTP retry to reach the connector", async () => {
+  testWithRealTractusXConnector("allows only one concurrent HTTP retry to reach the connector", async () => {
     const previousTransport = process.env.DATASPACE_TRANSPORT;
-    const previousEndpoint = process.env.DATASPACE_CONNECTOR_URL;
     const initialAttemptAt = new Date("2026-08-28T08:00:00.000Z");
     const payload: ExternalProjectInvitation = {
       metadata: {
@@ -614,21 +617,7 @@ describe("project invitation delivery retries", () => {
       failureReason: "initial connector failure",
     });
 
-    let releaseConnector!: () => void;
-    const connectorReleased = new Promise<void>((resolve) => {
-      releaseConnector = resolve;
-    });
-    const connectorFetch = vi.fn(async () => {
-      await connectorReleased;
-      return {
-        ok: true,
-        json: async () => ({ externalReference: `${PREFIX}-concurrent-retry-reference` }),
-      };
-    });
-
-    vi.stubGlobal("fetch", connectorFetch);
     process.env.DATASPACE_TRANSPORT = "tractusx-edc";
-    process.env.DATASPACE_CONNECTOR_URL = "https://connector.example.test";
     try {
       const retries = [
         request(app)
@@ -638,15 +627,7 @@ describe("project invitation delivery retries", () => {
           .post(`/api/project-invitation-deliveries/${CONCURRENT_RETRY_MESSAGE_ID}/retry`)
           .set("Authorization", `Bearer ${agToken}`),
       ].map((retry) => retry.then((response) => response));
-      const responsesPromise = Promise.all(retries);
-      const firstCompleted = await Promise.race(
-        retries.map((retry, index) => retry.then((response) => ({ index, response }))),
-      );
-      expect(firstCompleted.response.status).toBe(409);
-      expect(firstCompleted.response.body.code).toBe("PROJECT_INVITATION_RETRY_RACE");
-      releaseConnector();
-
-      const responses = await responsesPromise;
+      const responses = await Promise.all(retries);
       expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
       const successfulResponse = responses.find((response) => response.status === 200);
       const losingResponse = responses.find((response) => response.status === 409);
@@ -658,7 +639,6 @@ describe("project invitation delivery retries", () => {
       expect(losingResponse?.body).toMatchObject({
         code: "PROJECT_INVITATION_RETRY_RACE",
       });
-      expect(connectorFetch).toHaveBeenCalledTimes(1);
 
       const history = (await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)))
@@ -676,11 +656,8 @@ describe("project invitation delivery retries", () => {
       expect(outbox.lastAttemptAt).toEqual(history[1].attemptedAt);
       expect(successfulResponse?.body.attemptCount).toBe(outbox.attemptCount);
     } finally {
-      vi.unstubAllGlobals();
       if (previousTransport === undefined) delete process.env.DATASPACE_TRANSPORT;
       else process.env.DATASPACE_TRANSPORT = previousTransport;
-      if (previousEndpoint === undefined) delete process.env.DATASPACE_CONNECTOR_URL;
-      else process.env.DATASPACE_CONNECTOR_URL = previousEndpoint;
     }
   });
 });

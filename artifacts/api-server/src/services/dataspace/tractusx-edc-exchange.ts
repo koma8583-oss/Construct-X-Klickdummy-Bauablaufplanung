@@ -13,6 +13,7 @@ import {
   type ExternalProjectInvitationResponse,
   type ExternalServiceRequest,
   type ExternalServiceResponse,
+  serializeExternalProjectInvitation,
 } from "./external-contracts";
 import {
   handleIncomingServiceRequest,
@@ -28,6 +29,11 @@ type CoordinationDecisionMessageType =
   | "TAKT_RESPONSE_ACCEPTED"
   | "TAKT_RESPONSE_REVISION_REQUESTED"
   | "TAKT_REQUEST_CANCELLED";
+
+type ConnectorMessageResponse = {
+  messageId?: string;
+  externalReference?: string;
+};
 
 export class TractusXEdcExchange implements DataspaceExchange {
   private connectorNotConfiguredError(): Error {
@@ -127,12 +133,71 @@ export class TractusXEdcExchange implements DataspaceExchange {
     const [outboxRow] = await db.select().from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
     if (!outboxRow) throw new Error(`Project invitation delivery not found: ${messageId}`);
-    void payload;
-    void messageType;
     if (outboxRow.status !== expectedStatus) {
       throw new Error(`Message ${messageId} cannot be retried — current status is ${outboxRow.status}`);
     }
-    return this.failOutboxAsNotConfigured(outboxRow);
+    const endpoint = process.env.DATASPACE_CONNECTOR_URL;
+    if (!endpoint) return this.failOutboxAsNotConfigured(outboxRow);
+
+    const now = new Date();
+    const claimed = await this.claimDeliveryAttempt(outboxRow.id, expectedStatus, now);
+    const attemptCount = claimed.attemptCount;
+
+    try {
+      const outboundPayload = messageType === "PROJECT_INVITATION"
+        ? serializeExternalProjectInvitation(payload as unknown as ExternalProjectInvitation)
+        : payload;
+      const response = await fetch(`${endpoint.replace(/\/$/, "")}/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(process.env.DATASPACE_CONNECTOR_TOKEN
+            ? { authorization: `Bearer ${process.env.DATASPACE_CONNECTOR_TOKEN}` }
+            : {}),
+        },
+        body: JSON.stringify({ messageType, payload: outboundPayload }),
+      });
+      if (!response.ok) {
+        throw new Error(`Dataspace connector returned HTTP ${response.status}`);
+      }
+      const body = await response.json().catch(() => ({})) as ConnectorMessageResponse;
+      const deliveredAt = new Date();
+      const [updated] = await db.update(messageOutboxTable).set({
+        status: "DELIVERED",
+        lastAttemptAt: now,
+        deliveredAt,
+        failureReason: null,
+      }).where(eq(messageOutboxTable.id, outboxRow.id)).returning();
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "DELIVERED",
+        attemptedAt: now,
+      }).onConflictDoNothing();
+      return {
+        exchangeId: messageId,
+        externalReference: body.externalReference ?? body.messageId ?? messageId,
+        status: "DELIVERED",
+        sentAt: updated?.sentAt ?? now,
+        deliveredAt: updated?.deliveredAt ?? deliveredAt,
+        attemptCount: updated?.attemptCount ?? attemptCount,
+      };
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message : String(error);
+      await db.update(messageOutboxTable).set({
+        status: "FAILED",
+        lastAttemptAt: now,
+        failureReason,
+      }).where(eq(messageOutboxTable.id, outboxRow.id));
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId,
+        attemptNumber: attemptCount,
+        status: "FAILED",
+        attemptedAt: now,
+        failureReason,
+      }).onConflictDoNothing();
+      throw error;
+    }
   }
 
   publishProjectInvitation(payload: ExternalProjectInvitation) {
@@ -149,7 +214,13 @@ export class TractusXEdcExchange implements DataspaceExchange {
       throw new Error(`Project invitation delivery not found: ${messageId}`);
     }
     if (row.status !== "FAILED") throw new Error(`Message ${messageId} cannot be retried — current status is ${row.status}`);
-    return this.failOutboxAsNotConfigured(row);
+    const messageType = row.messageType as "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE";
+    return this.sendProjectMessage(
+      messageId,
+      messageType,
+      row.payload,
+      "FAILED",
+    );
   }
   async retryDataOffer(messageId: string): Promise<ExchangeReference> {
     const [row] = await db.select().from(messageOutboxTable)
