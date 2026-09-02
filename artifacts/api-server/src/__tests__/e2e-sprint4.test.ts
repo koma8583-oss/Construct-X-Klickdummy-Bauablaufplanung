@@ -35,6 +35,7 @@ import {
   projectMembershipsTable,
   anLeistungsanfragenTable,
   anLeistungsanfrageResourceRequirementsTable,
+  anLeistungsantwortenTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -79,6 +80,7 @@ const PROJECT = "t49-project";
 const TAKT    = "t49-takt";
 const CREW_1  = "t49-crew-1";   // fully booked in window (causes conflict)
 const CREW_2  = "t49-crew-2";   // available (triggers FEASIBLE_WITH_ALTERNATIVES)
+const REQUIRED_CREW_CAPACITY = 8; // two four-person resources; one is blocked in the original window
 
 let guToken:  string;
 let nuToken:  string;
@@ -348,7 +350,7 @@ afterAll(async () => {
 
 // ── Full E2E flow: Scenario B (Alternatives) ──────────────────────────────────
 
-describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
+describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
   it("Step 1: GU creates TaktRequest with snapshot (DRAFT)", async () => {
     const res = await request(app)
       .post("/api/takt-requests")
@@ -371,7 +373,7 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       taktRequestId: requestId,
       anOrgId: NU_ORG,
       resourceTypeId: "t49-crew-type",
-      requiredCapacity: "1",
+      requiredCapacity: REQUIRED_CREW_CAPACITY.toString(),
       utilizationPercent: 100,
       periodStart: "2026-09-15",
       periodEnd: "2026-09-20",
@@ -380,7 +382,7 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       taktRequestId: requestId,
       anOrgId: NU_ORG,
       resourceTypeId: "t49-crew-type",
-      requiredCapacity: "1",
+      requiredCapacity: REQUIRED_CREW_CAPACITY.toString(),
       utilizationPercent: 100,
       periodStart: "2026-09-15",
       periodEnd: "2026-09-20",
@@ -392,7 +394,7 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .set({
         snapshotPayload: {
           ...(snapshot?.snapshotPayload as Record<string, unknown>),
-          resourceRequirements: [{ resourceType: "CREW", quantity: 1, notes: "" }],
+          resourceRequirements: [{ resourceType: "CREW", quantity: REQUIRED_CREW_CAPACITY, notes: "" }],
         },
       })
       .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId));
@@ -414,7 +416,10 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .limit(1);
     if (projection) {
       const updated = await anDb.update(anLeistungsanfrageResourceRequirementsTable)
-        .set({ localResourceTypeId: "t49-crew-type" })
+        .set({
+          localResourceTypeId: "t49-crew-type",
+          requiredCapacity: REQUIRED_CREW_CAPACITY.toString(),
+        })
         .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id))
         .returning({ id: anLeistungsanfrageResourceRequirementsTable.id });
       if (!updated.length) {
@@ -423,7 +428,7 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
           externalResourceTypeCode: "CREW",
           externalResourceTypeName: "Crew",
           localResourceTypeId: "t49-crew-type",
-          requiredCapacity: "1",
+          requiredCapacity: REQUIRED_CREW_CAPACITY.toString(),
           capacityUnit: "PERSONS",
           utilizationPercent: 100,
           periodStart: "2026-09-15",
@@ -504,10 +509,13 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
     // CREW_1 is fully booked, CREW_2 is available → FEASIBLE_WITH_ALTERNATIVES
     expect(res.body.result).toBe("FEASIBLE_WITH_ALTERNATIVES");
 
-    // TaktRequest advanced to UNDER_REVIEW
-    const [req] = await db.select({ status: taktRequestsTable.status })
-      .from(taktRequestsTable)
-      .where(eq(taktRequestsTable.id, requestId));
+    // The AN-local projection is the authority for AN workflow state.
+    const [req] = await anDb.select({ id: anLeistungsanfragenTable.id, status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(and(
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId),
+        eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG),
+      ));
     expect(req?.status).toBe("UNDER_REVIEW");
   });
 
@@ -566,7 +574,7 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.decision).toBe("ALTERNATIVES_PROPOSED");
-    expect(res.body.requestStatus).toBe("ALTERNATIVES_PROPOSED");
+    expect(res.body.requestStatus).toBe("RESPONDED");
     expect(res.body.transportStatus).toBe("DELIVERED");
   });
 
@@ -628,9 +636,16 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
   });
 
   it("Step 11: Repeated NU send creates no second response (idempotency)", async () => {
-    const before = await db.select()
-      .from(taktResponsesTable)
-      .where(eq(taktResponsesTable.taktRequestId, requestId));
+    const [projection] = await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(and(
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId),
+        eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG),
+      ));
+    expect(projection).toBeTruthy();
+    const before = await anDb.select()
+      .from(anLeistungsantwortenTable)
+      .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, projection!.id));
     expect(before).toHaveLength(1);
 
     // Re-send exactly the same payload as Step 7 → hash matches → idempotent 200
@@ -642,9 +657,9 @@ describe.skip("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
     expect(retry.status).toBe(200);
     expect(retry.body.responseId).toBe(before[0].id);
 
-    const after = await db.select()
-      .from(taktResponsesTable)
-      .where(eq(taktResponsesTable.taktRequestId, requestId));
+    const after = await anDb.select()
+      .from(anLeistungsantwortenTable)
+      .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, projection!.id));
     expect(after).toHaveLength(1); // still only one response
   });
 

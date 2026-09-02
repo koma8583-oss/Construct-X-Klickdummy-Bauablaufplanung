@@ -18,6 +18,13 @@ import { toExternalResourceRequirementsFromSnapshot, toExternalServiceRequest } 
 import { deliverLocalServiceRequest, deliverLocalServiceResponse } from "./dataspace/local-dataspace-delivery";
 import { createAnServiceResponse, type CreateAnServiceResponseResult } from "./nu-response-service";
 import type { ExternalServiceRequest } from "./dataspace/external-contracts";
+import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
+import {
+  generateAlternatives,
+  toPublicAlternative,
+  type AlternativeRequirement,
+  type AlternativeResource,
+} from "./alternative-generator";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
@@ -477,12 +484,20 @@ export async function runAnAvailabilityCheck(
     const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
     const availableCapacity = candidates.reduce((total, resource) => {
       const matchingBookings = relevantBookings.filter((booking) =>
-        (booking.resourceId === resource.id || booking.resourceTypeId === requirement.localResourceTypeId)
-        && timeOverlaps(start, end, booking.startAt, booking.endAt),
+        (
+          booking.resourceId === resource.id ||
+          (booking.resourceId === null && booking.resourceTypeId === requirement.localResourceTypeId)
+        ) &&
+        timeOverlaps(start, end, booking.startAt, booking.endAt),
       );
       const confirmedUse = matchingBookings
         .filter((booking) => booking.status === "CONFIRMED")
-        .reduce((sum, booking) => sum + (booking.quantity ?? booking.utilizationPercent / 100), 0);
+        .reduce((sum, booking) => {
+          if (booking.resourceId === null) {
+            return sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100;
+          }
+          return sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100;
+        }, 0);
       for (const booking of matchingBookings.filter((entry) => entry.status === "TENTATIVE")) {
         tentativeWarnings.push({
           resourceId: resource.id,
@@ -515,12 +530,53 @@ export async function runAnAvailabilityCheck(
     });
   }
 
-  const result = conflicts.length ? "NOT_FEASIBLE" as const : "FEASIBLE" as const;
+  const alternatives = conflicts.length > 0
+    ? generateAlternatives(
+      {
+        plannedTimeWindow: {
+          start: projection.plannedStart,
+          end: projection.plannedEnd,
+        },
+        bufferTimeWindow: {
+          earliestStart: projection.plannedStart,
+          latestEnd: projection.plannedEnd,
+        },
+        resourceRequirements: [],
+      } as unknown as TaktRequestSnapshotPayload,
+      resources.map((resource): AlternativeResource => ({
+        resourceId: resource.id,
+        resourceType: resource.type,
+        resourceTypeId: resource.resourceTypeId,
+        capacity: resource.capacity,
+        capacityUnit: resource.capacityUnit,
+        active: resource.active,
+        qualifications: resource.qualifications,
+      })),
+      relevantBookings,
+      requirements.map((requirement): AlternativeRequirement => ({
+        resourceTypeId: requirement.localResourceTypeId,
+        requiredCapacity: requirement.requiredCapacity,
+        utilizationPercent: requirement.utilizationPercent,
+        requiredQualification: requirement.requiredQualification,
+        periodStart: requirement.periodStart,
+        periodEnd: requirement.periodEnd,
+      })),
+    ).map(toPublicAlternative)
+    : [];
+  const result = conflicts.length === 0
+    ? "FEASIBLE" as const
+    : alternatives.length > 0
+      ? "FEASIBLE_WITH_ALTERNATIVES" as const
+      : "NOT_FEASIBLE" as const;
   const publicResult = {
-    recommendedDecision: result === "FEASIBLE" ? "ACCEPTED" as const : "REJECTED" as const,
+    recommendedDecision: result === "FEASIBLE"
+      ? "ACCEPTED" as const
+      : result === "FEASIBLE_WITH_ALTERNATIVES"
+        ? "ALTERNATIVES_PROPOSED" as const
+        : "REJECTED" as const,
     reasonCode: result === "FEASIBLE" ? "FEASIBLE" as const : "RESOURCE_CONFLICT" as const,
-    alternatives: [],
-    nextAvailableDate: null,
+    alternatives,
+    nextAvailableDate: alternatives[0]?.timeWindow.start ?? null,
   };
   const now = new Date();
   const [check] = await anDb.insert(anAvailabilityChecksTable).values({
