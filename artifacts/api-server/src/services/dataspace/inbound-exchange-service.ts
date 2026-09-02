@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
+  ExternalDataOfferResponse,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -12,6 +13,7 @@ import type {
 import {
   externalCoordinationDecisionSchema,
   externalDataOfferSchema,
+  externalDataOfferResponseSchema,
   externalProjectInvitationSchema,
   externalProjectInvitationResponseSchema,
   externalServiceRequestSchema,
@@ -41,10 +43,12 @@ function payloadHash(payload: unknown): string {
 }
 
 function validatePayload(
-  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer | ExternalCoordinationDecision,
+  payload: ExternalServiceRequest | ExternalServiceResponse | ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer | ExternalDataOfferResponse | ExternalCoordinationDecision,
 ): void {
   const result =
-    "publicationId" in payload
+    "publicationId" in payload && "decision" in payload
+      ? externalDataOfferResponseSchema.safeParse(payload)
+      : "publicationId" in payload
       ? externalDataOfferSchema.safeParse(payload)
       : "invitationId" in payload
       ? ("decision" in payload
@@ -139,9 +143,9 @@ async function processIncoming<T extends ExternalServiceRequest | ExternalServic
   return { duplicate: false, status: "PROCESSED" };
 }
 
-async function processIncomingInvitation<T extends ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer>(
+async function processIncomingInvitation<T extends ExternalProjectInvitation | ExternalProjectInvitationResponse | ExternalDataOffer | ExternalDataOfferResponse>(
   payload: T,
-  messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE" | "DATA_OFFER_PUBLISHED",
+   messageType: "PROJECT_INVITATION" | "PROJECT_INVITATION_RESPONSE" | "DATA_OFFER_PUBLISHED" | "DATA_OFFER_RESPONSE",
   process?: (payload: T) => Promise<void>,
 ): Promise<InboundProcessResult> {
   validateMetadata(payload);
@@ -248,4 +252,11 @@ export function handleIncomingDataOffer(
   process?: (payload: ExternalDataOffer) => Promise<void>,
 ) {
   return processIncomingInvitation(payload, "DATA_OFFER_PUBLISHED", process);
+}
+
+export function handleIncomingDataOfferResponse(
+  payload: ExternalDataOfferResponse,
+  process?: (payload: ExternalDataOfferResponse) => Promise<void>,
+) {
+  return processIncomingInvitation(payload, "DATA_OFFER_RESPONSE", process);
 }

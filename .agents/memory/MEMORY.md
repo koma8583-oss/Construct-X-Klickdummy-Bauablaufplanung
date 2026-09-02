@@ -56,3 +56,4 @@
 - [Interactive Dataspace coordination](interactive-dataspace-coordination.md) — publish proposals at creation; local delivery must project them without auto-answering so the recipient can choose an action.
 - [Tractus-X NOT_CONFIGURED boundary](tractusx-not-configured-boundary.md) — no local fallback or simulated success before real participant identities and connector phases are configured.
 - [Wizard draft retry state](wizard-draft-retry-state.md) — after creating a draft, form initialization must not overwrite the active retry state.
+- [Independent data-offer responses](independent-data-offer-responses.md) — publication decisions use their own contract and never mutate project membership.

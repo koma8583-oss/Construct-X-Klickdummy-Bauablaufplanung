@@ -215,6 +215,29 @@ export const externalDataOfferSchema = z.object({
   }
 });
 
+/**
+ * A data-offer response is deliberately independent from project invitations.
+ * It changes only the publication recipient decision and never carries an
+ * invitation identifier or membership decision.
+ */
+export const externalDataOfferResponseSchema = z.object({
+  metadata: metadataSchema,
+  publicationId: nonEmpty(200),
+  projectReference: nonEmpty(200),
+  decision: z.enum(["ACCEPTED", "REJECTED"]),
+  policyAccepted: z.boolean().optional(),
+  message: z.string().trim().max(4000).optional(),
+  respondedAt: z.string().datetime({ offset: true }),
+}).strict().superRefine((value, ctx) => {
+  if (value.decision === "ACCEPTED" && value.policyAccepted !== true) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["policyAccepted"],
+      message: "policyAccepted=true is required when accepting a data offer",
+    });
+  }
+});
+
 export const externalServiceRequestSchema = z.object({
   metadata: metadataSchema,
   requestId: nonEmpty(200),
@@ -560,6 +583,8 @@ export type ExternalProjectInvitationResponse = {
   message?: string;
   respondedAt: string;
 };
+
+export type ExternalDataOfferResponse = z.infer<typeof externalDataOfferResponseSchema>;
 
 export type ExternalDataOffer = {
   metadata: ExchangeMetadata;

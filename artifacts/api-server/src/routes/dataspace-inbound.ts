@@ -21,17 +21,19 @@ import { createDataspaceExchange } from "../services/dataspace/dataspace-exchang
 import type {
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
+  ExternalDataOfferResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "../services/dataspace/external-contracts";
 import {
   externalProjectInvitationSchema,
   externalProjectInvitationResponseSchema,
+  externalDataOfferResponseSchema,
   externalServiceRequestSchema,
   externalServiceResponseSchema,
 } from "../services/dataspace/external-contracts";
 import pino from "pino";
-import { processIncomingProjectInvitation, processIncomingProjectInvitationResponse, processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
+import { processIncomingDataOfferResponse, processIncomingProjectInvitation, processIncomingProjectInvitationResponse, processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
 
 const logger = pino({ name: "dataspace-inbound" });
 const router = Router();
@@ -71,6 +73,31 @@ router.post("/dataspace/inbound/project-invitation-responses", requireDataspaceC
     logger.error({ err: error, messageId: metadata.messageId }, "receiveProjectInvitationResponse failed");
     if (error instanceof Error && error.message.includes("conflicts")) { res.status(409).json({ error: error.message }); return; }
     res.status(500).json({ error: "Internal error processing inbound project invitation response" });
+  }
+});
+
+router.post("/dataspace/inbound/data-offer-responses", requireDataspaceConnector, async (req, res): Promise<void> => {
+  const parsed = externalDataOfferResponseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Invalid data offer response payload", issues: parsed.error.issues });
+    return;
+  }
+  const body = parsed.data as ExternalDataOfferResponse;
+  const metadata = body.metadata;
+  if ((req as Request & { dataspaceConnectorOrgId?: string }).dataspaceConnectorOrgId !== metadata.receiverOrgId) {
+    res.status(403).json({ error: "Connector organisation does not match metadata.receiverOrgId" });
+    return;
+  }
+  try {
+    const result = await exchange.receiveDataOfferResponse(body, processIncomingDataOfferResponse);
+    res.status(result.duplicate ? 200 : 202).json({ messageId: metadata.messageId, status: result.status });
+  } catch (error) {
+    logger.error({ err: error, messageId: metadata.messageId }, "receiveDataOfferResponse failed");
+    if (error instanceof Error && error.message.includes("conflicts")) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    res.status(500).json({ error: "Internal error processing inbound data-offer response" });
   }
 });
 

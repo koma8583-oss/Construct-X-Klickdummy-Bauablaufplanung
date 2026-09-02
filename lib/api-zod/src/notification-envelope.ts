@@ -55,6 +55,7 @@ export const TAKTKOORD_NOTIFICATION_CONTEXTS = {
   TAKT_REQUEST_EXPIRED: "TaktKoord-ServiceCoordination-TaktRequestExpired:1.0.0",
   TAKT_REQUEST_REMINDER: "TaktKoord-ServiceCoordination-TaktRequestReminder:1.0.0",
   DATA_OFFER_PUBLISHED: "TaktKoord-DataPublication-DataOffer:1.0.0",
+  DATA_OFFER_RESPONSE: "TaktKoord-DataPublication-DataOfferResponse:1.0.0",
   PROJECT_INVITATION: "TaktKoord-ProjectMembership-Invitation:1.0.0",
   PROJECT_INVITATION_RESPONSE: "TaktKoord-ProjectMembership-InvitationResponse:1.0.0",
 } as const;

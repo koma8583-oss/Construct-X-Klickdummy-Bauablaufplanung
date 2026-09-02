@@ -10,13 +10,17 @@ import {
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
+  ExternalDataOfferResponse,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
 } from "./external-contracts";
 import { handleIncomingCoordinationDecision } from "./inbound-exchange-service";
-import { processIncomingDataOffer } from "./inbound-domain-service";
+import {
+  processIncomingDataOffer,
+  processIncomingDataOfferResponse,
+} from "./inbound-domain-service";
 
 /**
  * `rest` (and the unset value) is the local in-process PoC transport in
@@ -112,6 +116,17 @@ export async function deliverLocalDataOffer(
       ? { ...payload, contentSnapshot: localContentSnapshot }
       : payload;
     await exchange.receiveDataOffer(localPayload, processIncomingDataOffer);
+  }
+  return delivery;
+}
+
+export async function deliverLocalDataOfferResponse(
+  payload: ExternalDataOfferResponse,
+  exchange: DataspaceExchange = createDataspaceExchange(),
+): Promise<ExchangeReference> {
+  const delivery = await exchange.publishDataOfferResponse(payload);
+  if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
+    await exchange.receiveDataOfferResponse(payload, processIncomingDataOfferResponse);
   }
   return delivery;
 }

@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
+  ExternalDataOfferResponse,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -293,7 +294,62 @@ export async function processIncomingDataOffer(payload: ExternalDataOffer): Prom
   await storeIncomingDataOffer(payload);
 }
 
+/**
+ * Apply an AN decision for a published data offer. This path intentionally
+ * updates only the publication recipient row: a data offer is not a project
+ * invitation and therefore can never activate, reject, or revoke membership.
+ */
+export async function processIncomingDataOfferResponse(
+  payload: ExternalDataOfferResponse,
+): Promise<void> {
+  if (payload.metadata.senderOrgId === payload.metadata.receiverOrgId) {
+    throw new Error("Inbound data-offer response organisations conflict");
+  }
+  const [publication] = await agDb.select().from(dataPublicationsTable)
+    .where(and(
+      eq(dataPublicationsTable.id, payload.publicationId),
+      eq(dataPublicationsTable.projectId, payload.projectReference),
+      eq(dataPublicationsTable.agOrgId, payload.metadata.receiverOrgId),
+    ))
+    .limit(1);
+  const [recipient] = await agDb.select().from(dataPublicationRecipientsTable)
+    .where(and(
+      eq(dataPublicationRecipientsTable.publicationId, payload.publicationId),
+      eq(dataPublicationRecipientsTable.anOrgId, payload.metadata.senderOrgId),
+    ))
+    .limit(1);
+  if (!publication || !recipient) {
+    throw new Error("Inbound data-offer response references an unknown publication recipient");
+  }
+
+  const nextStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" : "REJECTED";
+  if (recipient.status === nextStatus) return;
+  if (recipient.status !== "OFFERED") {
+    throw new Error("Inbound data-offer response conflicts with the current recipient status");
+  }
+
+  const respondedAt = new Date(payload.respondedAt);
+  await agDb.transaction(async (tx) => {
+    const [updated] = await tx.update(dataPublicationRecipientsTable).set(
+      nextStatus === "ACCEPTED"
+        ? { status: "ACCEPTED", policyAcceptedAt: respondedAt, updatedAt: new Date() }
+        : { status: "REJECTED", policyRejectedAt: respondedAt, updatedAt: new Date() },
+    ).where(and(
+      eq(dataPublicationRecipientsTable.id, recipient.id),
+      eq(dataPublicationRecipientsTable.status, "OFFERED"),
+    )).returning();
+    if (!updated) {
+      throw new Error("Inbound data-offer response conflicts with the current recipient status");
+    }
+  });
+}
+
 export async function processIncomingProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<void> {
+  if (payload.dataPublicationId) {
+    throw new Error(
+      "Project invitation responses cannot decide a data offer; use DATA_OFFER_RESPONSE",
+    );
+  }
   if (payload.dataPublicationId) {
     const [recipient] = await agDb.select().from(dataPublicationRecipientsTable)
       .where(and(

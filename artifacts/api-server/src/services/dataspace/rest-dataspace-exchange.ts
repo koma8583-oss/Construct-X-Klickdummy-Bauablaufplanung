@@ -10,6 +10,7 @@ import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange"
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
+  ExternalDataOfferResponse,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -22,6 +23,7 @@ import {
   handleIncomingProjectInvitationResponse,
   handleIncomingCoordinationDecision,
   handleIncomingDataOffer,
+  handleIncomingDataOfferResponse,
 } from "./inbound-exchange-service";
 
 export class RestDataspaceExchange implements DataspaceExchange {
@@ -147,11 +149,52 @@ export class RestDataspaceExchange implements DataspaceExchange {
     };
   }
 
+  async retryDataOfferResponse(messageId: string): Promise<ExchangeReference> {
+    const [outbox] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (!outbox || outbox.messageType !== "DATA_OFFER_RESPONSE") {
+      throw new Error(`Data offer response delivery not found: ${messageId}`);
+    }
+    const result = await this.transport.retry(messageId);
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      status: result.status,
+      sentAt: result.sentAt,
+      deliveredAt: result.deliveredAt,
+      attemptCount: result.attemptCount,
+      error: result.error,
+    };
+  }
+
   async publishDataOffer(payload: ExternalDataOffer): Promise<ExchangeReference> {
     const result = await this.transport.send({
       messageId: payload.metadata.messageId,
       schemaVersion: payload.metadata.schemaVersion,
       messageType: DataspaceMessageType.DATA_OFFER_PUBLISHED,
+      senderOrgId: payload.metadata.senderOrgId,
+      recipientOrgId: payload.metadata.receiverOrgId,
+      correlationId: payload.metadata.correlationId,
+      createdAt: new Date(payload.metadata.createdAt),
+      causationId: null,
+      payload: payload as unknown as Record<string, unknown>,
+    });
+    return {
+      exchangeId: result.messageId,
+      externalReference: result.messageId,
+      status: result.status,
+      sentAt: result.sentAt,
+      deliveredAt: result.deliveredAt,
+      attemptCount: result.attemptCount,
+      error: result.error,
+    };
+  }
+
+  async publishDataOfferResponse(payload: ExternalDataOfferResponse): Promise<ExchangeReference> {
+    const result = await this.transport.send({
+      messageId: payload.metadata.messageId,
+      schemaVersion: payload.metadata.schemaVersion,
+      messageType: DataspaceMessageType.DATA_OFFER_RESPONSE,
       senderOrgId: payload.metadata.senderOrgId,
       recipientOrgId: payload.metadata.receiverOrgId,
       correlationId: payload.metadata.correlationId,
@@ -197,6 +240,13 @@ export class RestDataspaceExchange implements DataspaceExchange {
     process?: (payload: ExternalDataOffer) => Promise<void>,
   ) {
     return handleIncomingDataOffer(payload, process);
+  }
+
+  async receiveDataOfferResponse(
+    payload: ExternalDataOfferResponse,
+    process?: (payload: ExternalDataOfferResponse) => Promise<void>,
+  ) {
+    return handleIncomingDataOfferResponse(payload, process);
   }
 
   private requestPayload(payload: ExternalServiceRequest): Record<string, unknown> {

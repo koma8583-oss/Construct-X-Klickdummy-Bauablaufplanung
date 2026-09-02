@@ -8,6 +8,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   type ExternalCoordinationDecision,
   type ExternalDataOffer,
+  type ExternalDataOfferResponse,
   type ExternalProjectInvitation,
   type ExternalProjectInvitationResponse,
   type ExternalServiceRequest,
@@ -19,6 +20,7 @@ import {
   handleIncomingProjectInvitation,
   handleIncomingProjectInvitationResponse,
   handleIncomingDataOffer,
+  handleIncomingDataOfferResponse,
   handleIncomingCoordinationDecision,
 } from "./inbound-exchange-service";
 
@@ -161,6 +163,18 @@ export class TractusXEdcExchange implements DataspaceExchange {
     return this.failOutboxAsNotConfigured(row);
   }
 
+  async retryDataOfferResponse(messageId: string): Promise<ExchangeReference> {
+    const [row] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (!row || row.messageType !== "DATA_OFFER_RESPONSE") {
+      throw new Error(`Data offer response delivery not found: ${messageId}`);
+    }
+    if (row.status !== "FAILED") {
+      throw new Error(`Message ${messageId} cannot be retried — current status is ${row.status}`);
+    }
+    return this.failOutboxAsNotConfigured(row);
+  }
+
   async publishDataOffer(payload: ExternalDataOffer): Promise<ExchangeReference> {
     const messageId = payload.metadata.messageId;
     let [row] = await db.select().from(messageOutboxTable)
@@ -197,6 +211,45 @@ export class TractusXEdcExchange implements DataspaceExchange {
       }
     }
     if (!row) throw new Error(`Could not persist data offer message: ${messageId}`);
+    return this.failOutboxAsNotConfigured(row);
+  }
+
+  async publishDataOfferResponse(payload: ExternalDataOfferResponse): Promise<ExchangeReference> {
+    const messageId = payload.metadata.messageId;
+    let [row] = await db.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+    if (row) {
+      if (row.messageType !== "DATA_OFFER_RESPONSE") {
+        throw new Error(`Message ${messageId} conflicts with an existing message type`);
+      }
+      if (row.status === "DELIVERED") {
+        return {
+          exchangeId: row.messageId,
+          externalReference: row.messageId,
+          status: "DELIVERED",
+          sentAt: row.sentAt,
+          deliveredAt: row.deliveredAt,
+          attemptCount: row.attemptCount,
+        };
+      }
+    } else {
+      [row] = await db.insert(messageOutboxTable).values({
+        messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType: "DATA_OFFER_RESPONSE",
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        causationId: null,
+        payload: payload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      }).onConflictDoNothing().returning();
+      if (!row) {
+        [row] = await db.select().from(messageOutboxTable)
+          .where(eq(messageOutboxTable.messageId, messageId)).limit(1);
+      }
+    }
+    if (!row) throw new Error(`Could not persist data offer response message: ${messageId}`);
     return this.failOutboxAsNotConfigured(row);
   }
 
@@ -343,6 +396,9 @@ export class TractusXEdcExchange implements DataspaceExchange {
   }
   receiveDataOffer(payload: ExternalDataOffer, process?: (payload: ExternalDataOffer) => Promise<void>) {
     return handleIncomingDataOffer(payload, process);
+  }
+  receiveDataOfferResponse(payload: ExternalDataOfferResponse, process?: (payload: ExternalDataOfferResponse) => Promise<void>) {
+    return handleIncomingDataOfferResponse(payload, process);
   }
 
   async receiveServiceRequest(

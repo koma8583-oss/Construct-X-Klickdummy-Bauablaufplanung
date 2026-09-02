@@ -13,12 +13,11 @@ export {
   TAKT_REQUEST_SNAPSHOT_PUBLIC_FIELDS,
 } from "./taktRequestSnapshotPayload";
 export type { TaktRequestSnapshotPayload } from "./taktRequestSnapshotPayload";
-
 export {
   CATENA_X_MESSAGE_HEADER_VERSION,
+  TAKTKOORD_NOTIFICATION_CONTEXTS,
   NotificationEnvelopeSchema,
   NotificationHeaderSchema,
-  TAKTKOORD_NOTIFICATION_CONTEXTS,
   createNotificationEnvelope,
 } from "./notification-envelope";
 export type {

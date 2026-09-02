@@ -12,15 +12,12 @@ import {
   useGetAnDataOffer,
   useAcceptDataOffer,
   useRejectDataOffer,
-  useGetDataOfferContent,
-  useGetDataPublicationOdrl,
   useGetAnInboxMessages,
   type DataOfferSummary,
   type DataOfferProjectInfo,
   type DataOfferAssignment,
 } from '@workspace/api-client-react';
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,10 +30,6 @@ import {
   XCircle,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
-  Lock,
-  Eye,
-  FileJson,
   Building2,
   Calendar,
   MapPin,
@@ -224,127 +217,6 @@ function AccessNotice({ recipientStatus }: { recipientStatus: string }) {
   );
 }
 
-// ── Fachliche Leistungs-Content-View ──────────────────────────────────────────
-
-function LeistungInformationPackageView({ payload }: { payload: Record<string, unknown> }) {
-  const [showJson, setShowJson] = useState(false);
-  const tw = payload.plannedTimeWindow as Record<string, unknown> | undefined;
-  const loc = payload.location as Record<string, unknown> | undefined;
-  const bw = payload.bufferTimeWindow as Record<string, unknown> | undefined;
-
-  const workPackage  = (payload.workPackage ?? payload.taktBezeichnung) as string | undefined;
-  const trade        = (payload.trade ?? payload.gewerk)                as string | undefined;
-  const zone         = (loc?.zone ?? payload.zone)                      as string | undefined;
-  const description  = (payload.requiredOutput ?? payload.description)  as string | undefined;
-  const plannedStart = (tw?.start ?? payload.plannedStart)              as string | undefined;
-  const plannedEnd   = (tw?.end   ?? payload.plannedEnd)                as string | undefined;
-  const bufferStart  = bw?.earliestStart                                as string | undefined;
-  const bufferEnd    = bw?.latestEnd                                    as string | undefined;
-  const reqs = (payload.resourceRequirements as unknown[]) ?? [];
-
-  return (
-    <div className="space-y-4">
-      {/* Fachliche Ansicht */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          Leistungsdaten (fachliche Ansicht)
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          {workPackage && (
-            <div className="sm:col-span-2">
-              <div className="text-xs text-muted-foreground mb-0.5">Arbeitspaket / Bezeichnung</div>
-              <div className="font-medium">{workPackage}</div>
-            </div>
-          )}
-          {trade && (
-            <div className="flex items-start gap-2">
-              <Wrench className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <div className="text-xs text-muted-foreground">Gewerk</div>
-                <div className="font-medium">{trade}</div>
-              </div>
-            </div>
-          )}
-          {zone && (
-            <div className="flex items-start gap-2">
-              <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <div className="text-xs text-muted-foreground">Zone</div>
-                <div className="font-medium">{zone}</div>
-              </div>
-            </div>
-          )}
-          {(plannedStart || plannedEnd) && (
-            <div className="sm:col-span-2 flex items-start gap-2">
-              <Calendar className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <div className="text-xs text-muted-foreground">Geplanter Zeitraum</div>
-                <div className="font-medium">
-                  {fmtDateOnly(plannedStart)} – {fmtDateOnly(plannedEnd)}
-                </div>
-              </div>
-            </div>
-          )}
-          {(bufferStart || bufferEnd) && (
-            <div className="col-span-2">
-              <div className="text-xs text-muted-foreground mb-0.5">Pufferzeitraum</div>
-              <div className="text-sm">{fmtDateOnly(bufferStart)} – {fmtDateOnly(bufferEnd)}</div>
-            </div>
-          )}
-          {description && (
-            <div className="col-span-2">
-              <div className="text-xs text-muted-foreground mb-0.5">Beschreibung / Leistung</div>
-              <div className="text-sm text-foreground/80">{description}</div>
-            </div>
-          )}
-        </div>
-
-        {reqs.length > 0 && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1.5">Ressourcenanforderungen</div>
-            <div className="space-y-1">
-              {reqs.map((r: any, i: number) => (
-                <div key={i} className="text-xs bg-muted/40 rounded px-2 py-1 flex items-center gap-3">
-                  <span className="font-medium">{r.resourceType ?? '—'}</span>
-                  {r.quantity && <span>× {r.quantity}</span>}
-                  {r.notes && <span className="text-muted-foreground">{r.notes}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Collapsed JSON */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowJson(v => !v)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <FileJson className="h-3.5 w-3.5" />
-          Technisches JSON {showJson ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </button>
-        {showJson && (
-          <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-48 overflow-y-auto mt-1.5">
-            {JSON.stringify(payload, null, 2)}
-          </pre>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Generic content view ───────────────────────────────────────────────────────
-
-function GenericContentView({ content }: { content: Record<string, unknown> }) {
-  return (
-    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto">
-      {JSON.stringify(content, null, 2)}
-    </pre>
-  );
-}
-
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
 function OfferDetailPanel({
@@ -359,16 +231,6 @@ function OfferDetailPanel({
   const { data: offer, isLoading } = useGetAnDataOffer(offerSummary.publicationId);
   const accept = useAcceptDataOffer();
   const reject = useRejectDataOffer();
-  const [showContent, setShowContent] = useState(false);
-  const [odrlEnabled, setOdrlEnabled] = useState(false);
-  const { data: content, isLoading: contentLoading } = useGetDataOfferContent(
-    offerSummary.publicationId,
-    showContent,
-  );
-  const { data: odrl, isLoading: odrlLoading } = useGetDataPublicationOdrl(
-    offerSummary.publicationId,
-    odrlEnabled,
-  );
 
   const handleAccept = async () => {
     try {
@@ -402,10 +264,9 @@ function OfferDetailPanel({
   if (!offer) return <div className="py-4 text-muted-foreground">Leistungsfreigabe nicht gefunden.</div>;
 
   const canAccept = offer.recipientStatus === 'OFFERED' && offer.publicationStatus === 'PUBLISHED';
-  const canReject = ['OFFERED', 'ACCEPTED'].includes(offer.recipientStatus) && offer.publicationStatus === 'PUBLISHED';
-  const canViewContent = offer.recipientStatus === 'ACCEPTED' && offer.publicationStatus === 'PUBLISHED';
+  const canReject = offer.recipientStatus === 'OFFERED' && offer.publicationStatus === 'PUBLISHED';
 
-  // Linked TaktRequest (if any)
+  // Linked service request (if any)
   const linkedTaktRequestId = (offer as any).taktRequestId as string | undefined;
 
   return (
@@ -457,7 +318,7 @@ function OfferDetailPanel({
        )}
        <AccessNotice recipientStatus={offer.recipientStatus} />
 
-      {/* Linked TaktRequest */}
+      {/* Linked service request */}
       {linkedTaktRequestId && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-center justify-between gap-2">
           <div>
@@ -478,7 +339,7 @@ function OfferDetailPanel({
         </div>
       )}
 
-      {/* Policy — tabbed view */}
+      {/* Policy conditions */}
       {offer.policy && (
         <div className="rounded-lg border bg-muted/20">
           <div className="flex items-center gap-2 px-3.5 pt-3 pb-2 border-b border-border/60">
@@ -488,19 +349,8 @@ function OfferDetailPanel({
               <p className="font-semibold text-sm leading-tight">{offer.policy.name}</p>
             </div>
           </div>
-          <Tabs defaultValue="inhalt" className="px-3.5 pb-3.5 pt-2">
-            <TabsList className="grid w-full grid-cols-2 h-8">
-              <TabsTrigger value="inhalt" className="text-xs">Inhalt</TabsTrigger>
-              <TabsTrigger
-                value="odrl"
-                className="text-xs"
-                onClick={() => setOdrlEnabled(true)}
-              >
-                ODRL / JSON-LD
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="inhalt" className="mt-3 max-h-[300px] overflow-y-auto pr-1">
-              <div className="space-y-3 text-xs">
+          <div className="px-3.5 pb-3.5 pt-3 max-h-[300px] overflow-y-auto">
+            <div className="space-y-3 text-xs">
                 {offer.policy.purpose && (
                   <div>
                     <div className="font-semibold uppercase tracking-wider text-muted-foreground mb-1">Zweck</div>
@@ -550,22 +400,8 @@ function OfferDetailPanel({
                     {(offer.policy as any).description}
                   </div>
                 )}
-              </div>
-            </TabsContent>
-            <TabsContent value="odrl" className="mt-3">
-              {odrlLoading && (
-                <p className="text-xs text-muted-foreground py-2">ODRL wird geladen…</p>
-              )}
-              {!odrlLoading && odrl && (
-                <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/50 rounded p-2.5 max-h-[260px] overflow-y-auto">
-                  {JSON.stringify(odrl, null, 2)}
-                </pre>
-              )}
-              {!odrlLoading && !odrl && odrlEnabled && (
-                <p className="text-xs text-muted-foreground py-2">ODRL konnte nicht geladen werden.</p>
-              )}
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       )}
 
@@ -594,49 +430,21 @@ function OfferDetailPanel({
         </div>
       )}
 
-      {/* Content access */}
-      {canViewContent && (
-        <div className="border-t pt-4 space-y-3">
-          {!showContent && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full gap-1.5"
-              onClick={() => setShowContent(true)}
-              disabled={contentLoading}
-            >
-              <Eye className="h-4 w-4" />
-              {contentLoading ? 'Lade Inhalt…' : 'Inhalt anzeigen'}
-            </Button>
-          )}
-
-          {content && (
-            <div className="rounded-lg border bg-card p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-medium">
-                  <FileJson className="h-3.5 w-3.5" />
-                  Inhalt (Snapshot v{content.version})
-                </div>
-                {content.contentHash && (
-                  <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">
-                    SHA256: {content.contentHash.slice(0, 12)}…
-                  </span>
-                )}
-              </div>
-
-              {/* Fachliche or generic view */}
-              {offer.dataProductType === 'TAKT_INFORMATION_PACKAGE' && content.content ? (
-                <LeistungInformationPackageView payload={content.content as Record<string, unknown>} />
-              ) : (
-                <GenericContentView content={content.content as Record<string, unknown>} />
-              )}
-
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Lock className="h-3 w-3" />
-                Nur Felder, denen Sie zugestimmt haben. Interne Daten des AG sind nicht enthalten.
-              </div>
-            </div>
-          )}
+      {offer.recipientStatus === 'ACCEPTED' && offer.publicationStatus === 'PUBLISHED' && (
+        <div className="border-t pt-4">
+          <Button
+            size="sm"
+            className="w-full gap-1.5"
+            onClick={() => {
+              onClose();
+              setLocation('/leistungen');
+            }}
+          >
+            Leistungen öffnen <ArrowRight className="h-4 w-4" />
+          </Button>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Die freigegebenen Leistungen werden in der Arbeitsansicht angezeigt.
+          </p>
         </div>
       )}
 
@@ -712,7 +520,7 @@ export default function DataOffersPage() {
         </div>
       )}
 
-      {/* Datenraum-Erinnerungen (TAKT_REQUEST_REMINDER / TAKT_REQUEST_EXPIRED) */}
+      {/* Datenraum-Erinnerungen */}
       {reminders && reminders.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-2">
@@ -758,12 +566,6 @@ export default function DataOffersPage() {
                         <span className="text-xs font-mono text-muted-foreground">{p.requestNumber}</span>
                       )}
                     </div>
-                    {p.taktReference && (
-                      <div className="text-sm font-medium mt-1 truncate">
-                        {[p.taktReference.taktBezeichnung, p.taktReference.zone, p.taktReference.gewerk]
-                          .filter(Boolean).join(' · ')}
-                      </div>
-                    )}
                     {p.dueAt && (
                       <div className="text-xs text-muted-foreground mt-0.5">
                         Frist: {format(new Date(p.dueAt), 'dd.MM.yyyy HH:mm', { locale: de })}

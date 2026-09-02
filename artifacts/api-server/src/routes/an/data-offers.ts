@@ -24,11 +24,11 @@ import {
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
 import {
-  AnProjectInvitationError,
-  decideAnProjectInvitation,
-} from "../../services/an-project-invitation-service";
+  AnDataOfferError,
+  decideAnDataOffer,
+} from "../../services/an-data-offer-service";
 import { createDataspaceExchange } from "../../services/dataspace/dataspace-exchange-factory";
-import { deliverLocalProjectInvitationResponse } from "../../services/dataspace/local-dataspace-delivery";
+import { deliverLocalDataOfferResponse } from "../../services/dataspace/local-dataspace-delivery";
 import { buildOdrl } from "../../lib/odrl-builder";
 
 const router = Router();
@@ -66,7 +66,13 @@ function asIsoDate(value: unknown, fallback: Date | null): string | null {
   return fallback?.toISOString() ?? null;
 }
 
-function recipientStatus(status: "PENDING" | "ACCEPTED" | "REJECTED"): "OFFERED" | "ACCEPTED" | "REJECTED" {
+function recipientStatus(
+  status: "PENDING" | "ACCEPTED" | "REJECTED",
+  validUntil?: string | null,
+  publicationStatus?: unknown,
+): "OFFERED" | "ACCEPTED" | "REJECTED" | "REVOKED" | "EXPIRED" {
+  if (publicationStatus === "WITHDRAWN") return "REVOKED";
+  if (validUntil && new Date(validUntil) < new Date()) return "EXPIRED";
   return status === "PENDING" ? "OFFERED" : status;
 }
 
@@ -91,7 +97,7 @@ function toOffer(invitation: typeof anProjectInvitationsTable.$inferSelect) {
       : validUntil && new Date(validUntil) < new Date()
         ? "EXPIRED"
         : "PUBLISHED",
-    recipientStatus: recipientStatus(invitation.status),
+     recipientStatus: recipientStatus(invitation.status, validUntil, dataOffer.status),
     policyCode: asString(policy.code, "PROJECT_INVITATION"),
     policyName: asString(policy.name, "Nutzungsrichtlinie"),
     validFrom: asIsoDate(dataOffer.validFrom, invitation.createdAt),
@@ -142,13 +148,13 @@ router.get(
   },
 );
 
-async function deliverDecision(payload: Parameters<typeof deliverLocalProjectInvitationResponse>[0]) {
+async function deliverDecision(payload: Parameters<typeof deliverLocalDataOfferResponse>[0]) {
   const exchange = createDataspaceExchange();
-  const delivery = await deliverLocalProjectInvitationResponse(payload, exchange);
+  const delivery = await deliverLocalDataOfferResponse(payload, exchange);
   if (delivery.status === "PENDING") {
-    const retry = await exchange.retryProjectInvitation(payload.metadata.messageId);
+    const retry = await exchange.retryDataOfferResponse(payload.metadata.messageId);
     if (retry.status === "DELIVERED") {
-      await deliverLocalProjectInvitationResponse(payload, exchange);
+      await deliverLocalDataOfferResponse(payload, exchange);
     }
   }
 }
@@ -232,15 +238,14 @@ router.post(
       return;
     }
     try {
-      const result = await decideAnProjectInvitation({
-        id: invitation.id,
-        anOrgId,
-        action: "accept",
-        policyAccepted: true,
-      });
+       const result = await decideAnDataOffer({
+         publicationId,
+         anOrgId,
+         action: "accept",
+       });
       await deliverDecision(result.payload);
-    } catch (error) {
-      if (error instanceof AnProjectInvitationError) {
+     } catch (error) {
+       if (error instanceof AnDataOfferError) {
         res.status(409).json({ error: error.message, code: error.code });
         return;
       }
@@ -263,15 +268,11 @@ router.post(
       res.status(404).json({ error: "Data offer not found" });
       return;
     }
-    if (invitation.status !== "PENDING") {
-      res.status(409).json({ error: `Cannot reject an offer with status "${recipientStatus(invitation.status)}". Only OFFERED offers can be rejected.` });
-      return;
-    }
     try {
-      const result = await decideAnProjectInvitation({ id: invitation.id, anOrgId, action: "reject" });
+       const result = await decideAnDataOffer({ publicationId, anOrgId, action: "reject" });
       await deliverDecision(result.payload);
     } catch (error) {
-      if (error instanceof AnProjectInvitationError) {
+       if (error instanceof AnDataOfferError) {
         res.status(409).json({ error: error.message, code: error.code });
         return;
       }
@@ -296,14 +297,14 @@ router.get(
       res.status(404).json({ error: "Data offer not found" });
       return;
     }
+    const offer = toOffer(invitation);
     if (invitation.status !== "ACCEPTED") {
       res.status(403).json({
         error: "Policy must be accepted before accessing content",
-        recipientStatus: recipientStatus(invitation.status),
+        recipientStatus: recipientStatus(invitation.status, offer.validUntil, offer.publicationStatus),
       });
       return;
     }
-    const offer = toOffer(invitation);
     if (offer.publicationStatus !== "PUBLISHED") {
       res.status(403).json({
         error: `Publication is ${offer.publicationStatus.toLowerCase()}`,

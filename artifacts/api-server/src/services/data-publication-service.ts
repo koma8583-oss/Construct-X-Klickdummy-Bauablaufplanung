@@ -539,7 +539,7 @@ async function buildTaktSnapshot(
   if (include.has("projectDescription")) snap.projectDescription = project.description ?? null;
 
   if (taktIds.length === 0) {
-    return { ...snap, takte: [] };
+    return { ...snap, leistungen: [] };
   }
 
   const taktRows = await db
@@ -551,6 +551,7 @@ async function buildTaktSnapshot(
         eq(takteTable.projectId, project.id),
       ),
     );
+  const releasedIds = new Set(taktRows.map((t) => t.id));
 
   // Fetch predecessors/successors for included takte if needed.
   // We need both directions:
@@ -565,9 +566,9 @@ async function buildTaktSnapshot(
         .select()
         .from(taktDependenciesTable)
         .where(
-          inArray(
-            taktDependenciesTable.predecessorId,
-            taktIds as [string, ...string[]],
+          and(
+            eq(taktDependenciesTable.projectId, project.id),
+            inArray(taktDependenciesTable.predecessorId, taktIds as [string, ...string[]]),
           ),
         ),
       // backward: takt → its predecessors
@@ -575,14 +576,15 @@ async function buildTaktSnapshot(
         .select()
         .from(taktDependenciesTable)
         .where(
-          inArray(
-            taktDependenciesTable.successorId,
-            taktIds as [string, ...string[]],
+          and(
+            eq(taktDependenciesTable.projectId, project.id),
+            inArray(taktDependenciesTable.successorId, taktIds as [string, ...string[]]),
           ),
         ),
     ]);
 
     for (const dep of forwardDeps) {
+      if (!releasedIds.has(dep.predecessorId) || !releasedIds.has(dep.successorId)) continue;
       const entry = depMap.get(dep.predecessorId) ?? {
         predecessors: [],
         successors: [],
@@ -591,6 +593,7 @@ async function buildTaktSnapshot(
       depMap.set(dep.predecessorId, entry);
     }
     for (const dep of backwardDeps) {
+      if (!releasedIds.has(dep.predecessorId) || !releasedIds.has(dep.successorId)) continue;
       const entry = depMap.get(dep.successorId) ?? {
         predecessors: [],
         successors: [],
@@ -602,6 +605,8 @@ async function buildTaktSnapshot(
 
   const takte = taktRows.map((t) => {
     const obj: Record<string, unknown> = {};
+    const leistungReference = t.id;
+    obj.leistungReference = leistungReference;
     if (include.has("location")) obj.location = t.zone;
     if (include.has("kurzbezeichnung")) obj.kurzbezeichnung = t.kurzbezeichnung;
     if (include.has("trade")) obj.trade = t.gewerk;
@@ -617,16 +622,16 @@ async function buildTaktSnapshot(
         latestEnd: t.latestEnd ?? null,
       };
     if (include.has("predecessors"))
-      obj.predecessors = depMap.get(t.id)?.predecessors ?? [];
+       obj.predecessors = (depMap.get(t.id)?.predecessors ?? []).filter((id) => releasedIds.has(id));
     if (include.has("successors"))
-      obj.successors = depMap.get(t.id)?.successors ?? [];
+       obj.successors = (depMap.get(t.id)?.successors ?? []).filter((id) => releasedIds.has(id));
     if (include.has("resourceRequirements"))
       obj.resourceRequirements = t.requiredResources ?? null;
     if (include.has("executionNotes")) obj.executionNotes = (t as any).description ?? null;
     return obj;
   });
 
-  return { ...snap, takte };
+  return { ...snap, leistungen: takte };
 }
 
 // ── Content hash ──────────────────────────────────────────────────────────────

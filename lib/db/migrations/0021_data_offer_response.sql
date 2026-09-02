@@ -1,0 +1,5 @@
+ALTER TYPE dataspace_message_type
+  ADD VALUE IF NOT EXISTS 'DATA_OFFER_RESPONSE';
+
+ALTER TYPE dataspace_exchange_message_type
+  ADD VALUE IF NOT EXISTS 'DATA_OFFER_RESPONSE';

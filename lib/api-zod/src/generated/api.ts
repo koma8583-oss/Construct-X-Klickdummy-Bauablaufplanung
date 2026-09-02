@@ -3269,7 +3269,7 @@ export const listInboxMessagesQueryOffsetMin = 0;
 
 export const ListInboxMessagesQueryParams = zod.object({
   "status": zod.enum(['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED']).optional(),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).optional(),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'DATA_OFFER_RESPONSE', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).optional(),
   "correlationId": zod.coerce.string().optional(),
   "limit": zod.coerce.number().min(1).max(listInboxMessagesQueryLimitMax).default(listInboxMessagesQueryLimitDefault),
   "offset": zod.coerce.number().min(listInboxMessagesQueryOffsetMin).default(listInboxMessagesQueryOffsetDefault)
@@ -3278,7 +3278,7 @@ export const ListInboxMessagesQueryParams = zod.object({
 export const ListInboxMessagesResponseItem = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'DATA_OFFER_RESPONSE', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),
@@ -3301,7 +3301,7 @@ export const GetInboxMessageParams = zod.object({
 export const GetInboxMessageResponse = zod.object({
   "id": zod.string().describe('Inbox row ID (unique per message+recipient pair)'),
   "messageId": zod.string().describe('Globally unique message identifier'),
-  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
+  "messageType": zod.enum(['TAKT_REQUEST_NOTIFICATION', 'TAKT_REQUEST_REVISED', 'TAKT_REQUEST_CANCELLED', 'TAKT_DETAILS_RETRIEVED', 'TAKT_RESPONSE_SUBMITTED', 'TAKT_RESPONSE_ACCEPTED', 'TAKT_RESPONSE_REVISION_REQUESTED', 'TAKT_REQUEST_EXPIRED', 'TAKT_REQUEST_REMINDER', 'DATA_OFFER_PUBLISHED', 'DATA_OFFER_RESPONSE', 'PROJECT_INVITATION', 'PROJECT_INVITATION_RESPONSE']).describe('Typed message kinds for the federated Takt coordination dataspace. These values identify the business event carried in a MessageEnvelope.\n'),
   "senderOrgId": zod.string().describe('Organisation that sent the message'),
   "recipientOrgId": zod.string().describe('Organisation that received the message'),
   "correlationId": zod.string().describe('Ties this message to a TaktRequest coordination thread'),

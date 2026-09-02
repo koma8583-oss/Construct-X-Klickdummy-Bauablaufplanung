@@ -1,6 +1,7 @@
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
+  ExternalDataOfferResponse,
   ExternalProjectInvitation,
   ExternalProjectInvitationResponse,
   ExternalServiceRequest,
@@ -23,11 +24,17 @@ export interface DataspaceExchange {
   publishProjectInvitation(payload: ExternalProjectInvitation): Promise<ExchangeReference>;
   publishProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<ExchangeReference>;
   publishDataOffer(payload: ExternalDataOffer): Promise<ExchangeReference>;
+  publishDataOfferResponse(payload: ExternalDataOfferResponse): Promise<ExchangeReference>;
   retryProjectInvitation(messageId: string): Promise<ExchangeReference>;
   retryDataOffer(messageId: string): Promise<ExchangeReference>;
+  retryDataOfferResponse(messageId: string): Promise<ExchangeReference>;
   receiveDataOffer(
     payload: ExternalDataOffer,
     process?: (payload: ExternalDataOffer) => Promise<void>,
+  ): Promise<InboundProcessResult>;
+  receiveDataOfferResponse(
+    payload: ExternalDataOfferResponse,
+    process?: (payload: ExternalDataOfferResponse) => Promise<void>,
   ): Promise<InboundProcessResult>;
   receiveProjectInvitation(
     payload: ExternalProjectInvitation,

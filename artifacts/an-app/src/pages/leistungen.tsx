@@ -22,11 +22,11 @@ function dateLabel(value: unknown) {
 }
 
 function itemLabel(item: SnapshotItem, index: number) {
-  return String(item.kurzbezeichnung ?? item.workPackage ?? item.taktBezeichnung ?? `Leistung ${index + 1}`);
+  return String(item.kurzbezeichnung ?? item.workPackage ?? `Leistung ${index + 1}`);
 }
 
 function snapshotItems(content: DataOfferContent | undefined): SnapshotItem[] {
-  const items = content?.content?.takte;
+  const items = content?.content?.leistungen;
   return Array.isArray(items) ? items.filter((item): item is SnapshotItem => !!item && typeof item === "object") : [];
 }
 
@@ -134,7 +134,10 @@ function GanttView({ items }: { items: SnapshotItem[] }) {
 }
 
 function NetworkView({ items }: { items: SnapshotItem[] }) {
-  const labels = useMemo(() => new Map(items.map((item, index) => [String(item.id ?? index), itemLabel(item, index)])), [items]);
+  const labels = useMemo(
+    () => new Map(items.map((item, index) => [String(item.leistungReference ?? index), itemLabel(item, index)])),
+    [items],
+  );
   return (
     <div className="space-y-3">
       {items.map((item, index) => {
@@ -177,7 +180,7 @@ export default function LeistungenPage() {
     ? selectedId
     : acceptedOffers[0]?.publicationId;
   const { data: content, isLoading: contentLoading, isError: contentError } = useGetDataOfferContent(activeId, !!activeId);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+   const [viewMode, setViewMode] = useState<ViewMode>("gantt");
   const items = snapshotItems(content);
   const selectedOffer = acceptedOffers.find((offer) => offer.publicationId === activeId);
 
@@ -204,7 +207,7 @@ export default function LeistungenPage() {
             <p className="max-w-md text-sm text-muted-foreground">
               Nach aktiver Projektmitgliedschaft werden veröffentlichte Leistungsfreigaben im Datenraum angezeigt. Erst nach deiner Akzeptanz werden die enthaltenen Leistungen hier geöffnet.
             </p>
-            <Button variant="outline" asChild><a href="/data-room">Zum Datenraum</a></Button>
+             <Button variant="outline" asChild><a href="/data-offers">Leistungsfreigaben prüfen</a></Button>
           </CardContent>
         </Card>
       )}
