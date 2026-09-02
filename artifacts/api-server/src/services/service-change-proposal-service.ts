@@ -59,7 +59,7 @@ export async function createLeistungsanfrageRevision(input: {
   reasonCode?: string | null;
   comment?: string | null;
 }) {
-  if (input.end <= input.start) {
+  if (Number.isNaN(input.start.getTime()) || Number.isNaN(input.end.getTime()) || input.end <= input.start) {
     throw Object.assign(new Error("Ende muss nach Beginn liegen"), { statusCode: 400 });
   }
 

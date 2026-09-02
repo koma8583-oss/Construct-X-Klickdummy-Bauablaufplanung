@@ -20,7 +20,7 @@ async function apiFetch<T = unknown>(url: string, init?: RequestInit): Promise<T
   return body as T;
 }
 
-export function ProposalActions({ requestId }: { requestId: string }) {
+export function ProposalActions({ requestId, currentStart, currentEnd }: { requestId: string; currentStart?: string; currentEnd?: string }) {
   const queryClient = useQueryClient();
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -32,7 +32,10 @@ export function ProposalActions({ requestId }: { requestId: string }) {
     queryFn: () => apiFetch<Coordination>(`/api/leistungsanfragen/${requestId}/coordination`),
   });
   const proposal = data?.openProposal;
-  const canAct = !!data?.currentAgreement && (!data?.nextActionOwner || data.nextActionOwner === 'AG');
+  const openRequestRevision = !data?.currentAgreement && !proposal;
+  const canAct = proposal
+    ? (!data?.nextActionOwner || data.nextActionOwner === 'AG')
+    : openRequestRevision;
 
   const refresh = async () => {
     await Promise.all([
@@ -44,10 +47,6 @@ export function ProposalActions({ requestId }: { requestId: string }) {
   };
   const submit = async (action: 'accept' | 'reject' | 'counter' | 'propose') => {
     setError('');
-    if ((action === 'counter' || action === 'propose') && !data?.currentAgreement) {
-      setError('Ein Änderungsvorschlag ist erst nach einer bestätigten Terminvereinbarung möglich.');
-      return;
-    }
     if ((action === 'counter' || action === 'propose') && (!start || !end)) {
       setError('Bitte geben Sie Beginn und Ende des Zeitraums an.');
       return;
@@ -61,6 +60,12 @@ export function ProposalActions({ requestId }: { requestId: string }) {
       const base = `/api/leistungsanfragen/${requestId}/change-proposals`;
       if (action === 'accept' || action === 'reject') {
         await apiFetch(`${base}/${proposal!.id}/${action}`, { method: 'POST' });
+      } else if (action === 'propose' && !data?.currentAgreement) {
+        const revision = await apiFetch<{ requestId: string }>(`/api/leistungsanfragen/${requestId}/revisions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: day(start), end: day(end), comment: comment || null }),
+        });
+        await apiFetch(`/api/leistungsanfragen/${revision.requestId}/send`, { method: 'POST' });
       } else {
         await apiFetch(action === 'counter' ? `${base}/${proposal!.id}/counter` : base, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -78,7 +83,9 @@ export function ProposalActions({ requestId }: { requestId: string }) {
       <div>
         <h3 className="font-semibold">Zeitraum abstimmen</h3>
         <p className="text-sm text-muted-foreground">
-          {proposal ? `Offener Vorschlag: ${new Date(proposal.start).toLocaleDateString('de-DE')} – ${new Date(proposal.end).toLocaleDateString('de-DE')}` : 'Sie können einen Zeitraum vorschlagen.'}
+          {proposal
+            ? `Offener Vorschlag: ${new Date(proposal.start).toLocaleDateString('de-DE')} – ${new Date(proposal.end).toLocaleDateString('de-DE')}`
+            : `Offene Leistungsanfrage ändern${currentStart && currentEnd ? ` (bisher ${new Date(currentStart).toLocaleDateString('de-DE')} – ${new Date(currentEnd).toLocaleDateString('de-DE')})` : ''}.`}
         </p>
       </div>
       {proposal && canAct && <div className="flex flex-col sm:flex-row gap-2">
@@ -91,7 +98,7 @@ export function ProposalActions({ requestId }: { requestId: string }) {
         <Textarea className="sm:col-span-2" value={comment} onChange={e => setComment(e.target.value)} placeholder="Kommentar (optional)" maxLength={2000} />
         <Button className="w-full sm:col-span-2" variant="secondary" onClick={() => submit(proposal ? 'counter' : 'propose')} disabled={busy}>
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
-          {proposal ? 'Gegenvorschlag senden' : 'Zeitraum vorschlagen'}
+          {proposal ? 'Gegenvorschlag senden' : 'Neue Anfrageversion senden'}
         </Button>
       </div>}
       {proposal && !canAct && <p className="text-sm text-muted-foreground">Der Vorschlag wurde gesendet. Die Gegenseite ist jetzt am Zug.</p>}

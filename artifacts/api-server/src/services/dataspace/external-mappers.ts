@@ -102,6 +102,7 @@ export function toExternalServiceRequest(input: {
   changeProposalId?: string;
   comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
+  revisionContext?: ExternalServiceRequest["revisionContext"];
   projectReference: string;
   projectName?: string;
   leistungReference?: string;
@@ -140,6 +141,7 @@ export function toExternalServiceRequest(input: {
     changeProposalId: input.changeProposalId,
     comment: input.comment,
     baseTimeWindow: input.baseTimeWindow,
+    revisionContext: input.revisionContext,
     projectReference: input.projectReference,
     projectName: input.projectName,
     leistungReference: input.leistungReference,

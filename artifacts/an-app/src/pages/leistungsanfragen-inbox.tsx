@@ -124,7 +124,9 @@ function ActionBadge({ item }: { item: InboxItem }) {
   const owner = nextActionOwner(item);
   if (owner === "AN") {
     return <Badge data-testid={`next-action-${item.id}`} className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
-      {item.openProposal?.proposerRole === "AG" ? "Neuer AG-Terminvorschlag" : "Ihre Aktion"}
+      {item.openProposal?.proposerRole === "AG"
+        ? "Neuer AG-Terminvorschlag"
+        : (item as InboxItem & { revision?: unknown }).revision ? "Terminänderung – Rückmeldung erforderlich" : "Ihre Aktion"}
     </Badge>;
   }
   if (owner === "AG") {

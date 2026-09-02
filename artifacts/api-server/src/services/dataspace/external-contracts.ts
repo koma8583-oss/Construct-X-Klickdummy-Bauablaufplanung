@@ -249,6 +249,15 @@ export const externalServiceRequestSchema = z.object({
   changeProposalId: nonEmpty(200).optional(),
   comment: z.string().trim().max(2000).nullable().optional(),
   baseTimeWindow: timeWindowSchema.optional(),
+  revisionContext: z.object({
+    revisionNumber: z.number().int().positive(),
+    previousRequestId: nonEmpty(200),
+    previousTimeWindow: timeWindowSchema,
+    proposedTimeWindow: timeWindowSchema,
+    reasonCode: z.string().trim().max(120).nullable().optional(),
+    comment: z.string().trim().max(2000).nullable().optional(),
+    createdAt: z.string().datetime({ offset: true }),
+  }).strict().optional(),
   projectReference: nonEmpty(200),
   projectName: nonEmpty(500).optional(),
   leistungReference: nonEmpty(200).optional(),
@@ -651,6 +660,15 @@ export type ExternalServiceRequest = {
   changeProposalId?: string;
   comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
+  revisionContext?: {
+    revisionNumber: number;
+    previousRequestId: string;
+    previousTimeWindow: { start: string; end: string };
+    proposedTimeWindow: { start: string; end: string };
+    reasonCode?: string | null;
+    comment?: string | null;
+    createdAt: string;
+  };
   projectReference: string;
   projectName?: string;
   leistungReference?: string;

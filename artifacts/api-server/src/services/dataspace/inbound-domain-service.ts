@@ -165,7 +165,9 @@ export async function processIncomingServiceRequest(
   // Interactive AN coordination uses the projection as the user's work item.
   // Callers that explicitly disable automatic responses can now resolve it
   // through /api/an instead of racing an availability worker.
-  if (options.automaticResponse === false) return;
+  // Schedule changes are interactive work items. No implicit availability
+  // check or response may race the AN user's review.
+  if (options.automaticResponse !== true) return;
 
   const [previousProjection] = payload.sourceRequestId
     ? await anDb.select({ id: anLeistungsanfragenTable.id }).from(anLeistungsanfragenTable).where(and(

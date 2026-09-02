@@ -732,7 +732,11 @@ export default function LeistungsanfragenDetailPage() {
       <Section icon={<ArrowRightLeft className="w-4 h-4" />} title="Abstimmung">
         <div id="coordination" className="min-w-0 space-y-5">
           <ResponsePanel detail={detail} />
-          <ProposalActions requestId={requestId ?? ''} />
+          <ProposalActions
+            requestId={requestId ?? ''}
+            currentStart={(detail as any).plannedStart}
+            currentEnd={(detail as any).plannedEnd}
+          />
           {detail.response?.decision === 'ALTERNATIVES_PROPOSED' && detail.response.alternatives.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Auswirkungen auf Abhängigkeiten</h3>

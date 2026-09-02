@@ -478,32 +478,6 @@ router.post(
       return;
     }
 
-    // Once a request exists, its published dates are immutable. A date change
-    // must go through the coordination revision endpoint so the addressed AN
-    // can review the old/new window and respond in the same request chain.
-    const changesDate = parsed.data.plannedStart !== undefined || parsed.data.plannedEnd !== undefined;
-    if (changesDate &&
-        (parsed.data.plannedStart !== undefined && parsed.data.plannedStart !== existing.plannedStart ||
-         parsed.data.plannedEnd !== undefined && parsed.data.plannedEnd !== existing.plannedEnd)) {
-      const [activeRequest] = await db.select({ id: leistungsanfragenTable.id })
-        .from(leistungsanfragenTable)
-        .where(and(
-          eq(leistungsanfragenTable.leistungId, leistungId),
-          // Terminal rows are historical and do not block ordinary planning edits.
-          // An open request must be revised instead of silently changing its snapshot.
-          notInArray(leistungsanfragenTable.status, ["CANCELLED", "EXPIRED", "REJECTED", "SUPERSEDED"]),
-        ))
-        .limit(1);
-      if (activeRequest) {
-        res.status(409).json({
-          error: "LEISTUNGSANFRAGE_REVISION_REQUIRED",
-          message: "Der Zeitraum ist nach Erstellung einer Leistungsanfrage unveränderlich. Erstellen Sie eine neue Anfrageversion.",
-          requestId: activeRequest.id,
-        });
-        return;
-      }
-    }
-
     let plannedEnd = parsed.data.plannedEnd;
     const { durationDays, taktBezeichnung, ...restData } = parsed.data;
     if (durationDays != null) {
@@ -653,6 +627,30 @@ router.patch(
       patchData.durationDays = String(durationDays);
     } else if (durationDays === null) {
       patchData.durationDays = null;
+    }
+
+    // Once a request exists, its published dates are immutable. A date change
+    // must go through the coordination revision endpoint so the addressed AN
+    // can review the old/new window and respond in the same request chain.
+    const changesDate = patchData.plannedStart !== undefined || patchData.plannedEnd !== undefined;
+    if (changesDate &&
+        (patchData.plannedStart !== undefined && patchData.plannedStart !== existing.plannedStart ||
+         patchData.plannedEnd !== undefined && patchData.plannedEnd !== existing.plannedEnd)) {
+      const [activeRequest] = await db.select({ id: leistungsanfragenTable.id })
+        .from(leistungsanfragenTable)
+        .where(and(
+          eq(leistungsanfragenTable.leistungId, leistungId),
+          notInArray(leistungsanfragenTable.status, ["CANCELLED", "EXPIRED", "REJECTED", "SUPERSEDED"]),
+        ))
+        .limit(1);
+      if (activeRequest) {
+        res.status(409).json({
+          error: "LEISTUNGSANFRAGE_REVISION_REQUIRED",
+          message: "Der Zeitraum ist nach Erstellung einer Leistungsanfrage unveränderlich. Erstellen Sie eine neue Anfrageversion.",
+          requestId: activeRequest.id,
+        });
+        return;
+      }
     }
 
     const result = await db.transaction(async (tx) => {
@@ -1503,6 +1501,7 @@ router.post(
           { start: plannedTimeWindow.start, end: plannedTimeWindow.end },
         ),
         publicSnapshot: publicSnapshotFromRecord(snapshotPayload),
+         revisionContext: snapPayload.revisionContext as Parameters<typeof toExternalServiceRequest>[0]["revisionContext"],
          policySnapshot: snapPayload.policySnapshot as Parameters<typeof toExternalServiceRequest>[0]["policySnapshot"],
       });
     } catch (error) {

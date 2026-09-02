@@ -40,7 +40,7 @@ import {
   useRunLeistungsanfrageAvailabilityCheck,
   useSubmitLeistungsanfrageResponse,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ProposalActions } from "@/components/proposal-actions";
 
 const EMPTY = "Nicht veröffentlicht";
 const STATUS_LABELS: Record<string, string> = {
@@ -114,6 +113,7 @@ function RequestOverview({ details, requestedStart, requestedEnd }: { details: A
   const place = text(location.name, location.address, snap.projectLocation, details.project.location);
   const policyPermissions = list(policy.permissions);
   const policyProhibitions = list(policy.prohibitions);
+  const revision = (details as AnLeistungsanfrageDetails & { revision?: any }).revision;
 
   return (
     <section data-testid="request-overview" className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
@@ -125,6 +125,22 @@ function RequestOverview({ details, requestedStart, requestedEnd }: { details: A
         <div><p className="text-xs text-muted-foreground">Antwortfrist</p><p data-testid="overview-deadline" className={`mt-1 font-semibold ${details.responseRequiredBy && new Date(details.responseRequiredBy) < new Date() ? "text-destructive" : ""}`}>{dateText(details.responseRequiredBy, true)}</p></div>
         <div><p className="text-xs text-muted-foreground">Status</p><div className="mt-1"><StatusBadge status={details.status} /></div></div>
       </div>
+
+      {revision && (
+        <div data-testid="revision-comparison" className="mt-5 rounded-xl border border-amber-600/25 bg-amber-500/10 p-4">
+          <p className="font-semibold">{revision.kind === "SCHEDULE_CHANGE" ? "Terminänderung – Rückmeldung erforderlich" : "Neue Version der Leistungsanfrage"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {revision.kind === "SCHEDULE_CHANGE" ? "Neuer AG-Terminvorschlag" : "Bitte prüfen Sie die neue Version derselben Anfragekette."}
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div><p className="text-xs text-muted-foreground">Bisheriger Zeitraum</p><p className="mt-1 font-medium">{revision.previousTimeWindow ? `${dateText(revision.previousTimeWindow.start)} – ${dateText(revision.previousTimeWindow.end)}` : "Nicht veröffentlicht"}</p></div>
+            <div><p className="text-xs text-muted-foreground">Neuer Vorschlag</p><p className="mt-1 font-medium">{dateText(revision.proposedTimeWindow?.start)} – {dateText(revision.proposedTimeWindow?.end)}</p></div>
+          </div>
+          {revision.dayDelta && <p className="mt-3 text-xs text-muted-foreground">Verschiebung: Beginn {revision.dayDelta.startDays >= 0 ? "+" : ""}{revision.dayDelta.startDays} Tage, Ende {revision.dayDelta.endDays >= 0 ? "+" : ""}{revision.dayDelta.endDays} Tage.</p>}
+          {revision.comment && <p className="mt-2 text-sm"><span className="font-medium">Änderungsgrund:</span> {revision.comment}</p>}
+          {revision.history?.length > 1 && <div className="mt-3 border-t border-amber-700/15 pt-3"><p className="text-xs font-semibold text-muted-foreground">Revisionsverlauf</p><div className="mt-2 space-y-1 text-xs">{revision.history.map((item: any, index: number) => <p key={`${item.id}-${index}`}>{item.kind === "SCHEDULE_CHANGE" ? "Terminänderung" : `Version ${index + 1}`} · {dateText(item.start)} – {dateText(item.end)} · {STATUS_LABELS[item.status] ?? item.status}</p>)}</div></div>}
+        </div>
+      )}
 
       <details data-testid="secondary-request-details" className="group mt-5 border-t border-border/70 pt-4">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
@@ -234,6 +250,67 @@ type ResponsePreset = {
   alternatives?: Array<{ start: string; end: string }>;
 };
 
+type ScheduleProposal = {
+  id: string;
+  start: string;
+  end: string;
+  comment?: string | null;
+  proposerRole?: "AG" | "AN";
+};
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { credentials: "include", ...init });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Aktion konnte nicht ausgeführt werden.");
+  return body as T;
+}
+
+function ScheduleChangeResponse({ requestId, proposal, onChanged }: { requestId: string; proposal: ScheduleProposal; onChanged: () => void }) {
+  const { toast } = useToast();
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (action: "accept" | "reject" | "counter") => {
+    if (action === "counter" && (!start || !end || end < start)) {
+      toast({ title: "Zeitraum prüfen", description: "Beginn und Ende des Gegenvorschlags sind erforderlich.", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const base = `/api/an/leistungsanfragen/${requestId}/change-proposals/${proposal.id}`;
+      await fetchJson(action === "counter" ? `${base}/counter` : `${base}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: action === "counter" ? JSON.stringify({ start: `${start}T00:00:00.000Z`, end: `${end}T23:59:59.000Z`, comment: comment || null }) : undefined,
+      });
+      toast({ title: action === "accept" ? "Terminänderung bestätigt" : action === "reject" ? "Terminänderung abgelehnt" : "Alternative gesendet" });
+      onChanged();
+    } catch (error) {
+      toast({ title: "Terminänderung konnte nicht verarbeitet werden", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section data-testid="schedule-change-response" className="rounded-xl border border-amber-600/25 bg-amber-500/10 p-4">
+      <h2 className="text-base font-semibold">Neuer Terminvorschlag</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Terminänderung – Rückmeldung erforderlich. Neuer AG-Terminvorschlag: {dateText(proposal.start)} – {dateText(proposal.end)}.</p>
+      {proposal.comment && <p className="mt-2 text-sm">{proposal.comment}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => void submit("accept")} disabled={busy}><CheckCircle2 className="mr-1.5 h-4 w-4" />Bestätigen</Button>
+        <Button size="sm" variant="outline" onClick={() => void submit("reject")} disabled={busy}><X className="mr-1.5 h-4 w-4" />Nicht möglich</Button>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div><Label htmlFor="schedule-counter-start">Neuer Beginn</Label><Input id="schedule-counter-start" aria-label="Neuer Beginn" className="mt-1" type="date" value={start} onChange={(event) => setStart(event.target.value)} /></div>
+        <div><Label htmlFor="schedule-counter-end">Neues Ende</Label><Input id="schedule-counter-end" aria-label="Neues Ende" className="mt-1" type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></div>
+        <Textarea className="sm:col-span-2" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Hinweis (optional)" />
+        <Button className="sm:col-span-2" variant="secondary" onClick={() => void submit("counter")} disabled={busy}>Alternative vorschlagen</Button>
+      </div>
+    </section>
+  );
+}
+
 function AvailabilitySection({ id, canRespond, latest, loadError, onContinueWithoutCheck, onUseRecommendation }: {
   id: string;
   canRespond: boolean;
@@ -247,7 +324,7 @@ function AvailabilitySection({ id, canRespond, latest, loadError, onContinueWith
   const run = useRunLeistungsanfrageAvailabilityCheck();
   const publicResult = latest?.publicResult;
   const result = latest?.result as string | undefined;
-  const runCheck = () => run.mutate({ leistungsanfrageId: id }, { onSuccess: () => { toast({ title: "Verfügbarkeitsprüfung aktualisiert" }); void client.invalidateQueries({ queryKey: getGetLeistungsanfrageLatestAvailabilityCheckQueryKey(id) }); }, onError: () => toast({ title: "Verfügbarkeitsprüfung konnte nicht gestartet werden", variant: "destructive" }) });
+  const runCheck = () => run.mutate({ leistungsanfrageId: id }, { onSuccess: () => { toast({ title: "Verfügbarkeitsprüfung aktualisiert" }); void client.invalidateQueries({ queryKey: ["/api/an/leistungsanfragen", id, "availability-checks/latest"] }); }, onError: () => toast({ title: "Verfügbarkeitsprüfung konnte nicht gestartet werden", variant: "destructive" }) });
   const complete = latest?.status === "COMPLETED";
   const alternatives = Array.isArray(publicResult?.alternatives) ? publicResult.alternatives : [];
   const recommendation = result === "FEASIBLE"
@@ -310,9 +387,9 @@ function ResponseForm({ id, canRespond, requestedStart, requestedEnd, preset }: 
   return (
     <form data-testid="response-form" onSubmit={send} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <button data-testid="button-decision-accepted" type="button" onClick={() => setDecision("ACCEPTED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "ACCEPTED" ? "border-emerald-600 bg-emerald-600/10" : "border-border hover:border-primary/40"}`}><CheckCircle2 className="mb-2 h-4 w-4 text-emerald-700" /><span className="font-semibold">Termin bestätigen</span><span className="mt-1 block text-xs text-muted-foreground">Angefragten Zeitraum übernehmen</span></button>
-        <button data-testid="button-decision-alternative" type="button" onClick={() => setDecision("ALTERNATIVES_PROPOSED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "ALTERNATIVES_PROPOSED" ? "border-amber-600 bg-amber-500/10" : "border-border hover:border-primary/40"}`}><CalendarDays className="mb-2 h-4 w-4 text-amber-700" /><span className="font-semibold">Alternative vorschlagen</span><span className="mt-1 block text-xs text-muted-foreground">Neuen Zeitraum angeben</span></button>
-        <button data-testid="button-decision-rejected" type="button" onClick={() => setDecision("REJECTED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "REJECTED" ? "border-destructive bg-destructive/10" : "border-border hover:border-primary/40"}`}><X className="mb-2 h-4 w-4 text-destructive" /><span className="font-semibold">Nicht möglich</span><span className="mt-1 block text-xs text-muted-foreground">Allgemeinen Grund auswählen</span></button>
+        <button aria-pressed={decision === "ACCEPTED" || preset?.decision === "ACCEPTED"} data-testid="button-decision-accepted" type="button" onClick={() => setDecision("ACCEPTED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "ACCEPTED" || preset?.decision === "ACCEPTED" ? "border-emerald-600 bg-emerald-600/10" : "border-border hover:border-primary/40"}`}><CheckCircle2 className="mb-2 h-4 w-4 text-emerald-700" /><span className="font-semibold">Termin bestätigen</span><span className="mt-1 block text-xs text-muted-foreground">Angefragten Zeitraum übernehmen</span></button>
+        <button aria-pressed={decision === "ALTERNATIVES_PROPOSED"} data-testid="button-decision-alternative" type="button" onClick={() => setDecision("ALTERNATIVES_PROPOSED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "ALTERNATIVES_PROPOSED" ? "border-amber-600 bg-amber-500/10" : "border-border hover:border-primary/40"}`}><CalendarDays className="mb-2 h-4 w-4 text-amber-700" /><span className="font-semibold">Alternative vorschlagen</span><span className="mt-1 block text-xs text-muted-foreground">Neuen Zeitraum angeben</span></button>
+        <button aria-pressed={decision === "REJECTED"} data-testid="button-decision-rejected" type="button" onClick={() => setDecision("REJECTED")} className={`rounded-xl border p-4 text-left text-sm ${decision === "REJECTED" ? "border-destructive bg-destructive/10" : "border-border hover:border-primary/40"}`}><X className="mb-2 h-4 w-4 text-destructive" /><span className="font-semibold">Nicht möglich</span><span className="mt-1 block text-xs text-muted-foreground">Allgemeinen Grund auswählen</span></button>
       </div>
       {decision === "ACCEPTED" && <div data-testid="accepted-window-summary" className="rounded-xl border border-emerald-700/20 bg-emerald-600/10 p-4 text-sm"><p className="font-semibold">Angefragter Zeitraum wird bestätigt</p><p className="mt-1">{dateText(requestedStart)} – {dateText(requestedEnd)}</p><p className="mt-1 text-xs text-muted-foreground">Eine erneute Eingabe ist nicht erforderlich.</p></div>}
       {decision === "ALTERNATIVES_PROPOSED" && <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-4"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Neuer Zeitraum</p>{alternatives.length < 3 && <Button data-testid="button-add-alternative" type="button" size="sm" variant="outline" onClick={() => setAlternatives([...alternatives, { start: "", end: "" }])}><Plus className="mr-1 h-3.5 w-3.5" />Weitere Alternative</Button>}</div>{alternatives.map((item, index) => <div key={index} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><div><Label htmlFor={`alternative-start-${index}`}>Beginn {index + 1}</Label><Input data-testid={`input-alternative-start-${index}`} id={`alternative-start-${index}`} className="mt-1" type="date" value={item.start} onChange={(event) => setAlternatives(alternatives.map((row, rowIndex) => rowIndex === index ? { ...row, start: event.target.value } : row))} /></div><div><Label htmlFor={`alternative-end-${index}`}>Ende {index + 1}</Label><Input data-testid={`input-alternative-end-${index}`} id={`alternative-end-${index}`} className="mt-1" type="date" value={item.end} onChange={(event) => setAlternatives(alternatives.map((row, rowIndex) => rowIndex === index ? { ...row, end: event.target.value } : row))} /></div>{alternatives.length > 1 && <Button data-testid={`button-remove-alternative-${index}`} type="button" variant="ghost" size="icon" className="self-end" onClick={() => setAlternatives(alternatives.filter((_, rowIndex) => rowIndex !== index))}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>}
@@ -342,8 +419,17 @@ export default function LeistungsanfrageDetailPage() {
   const [phaseOverride, setPhaseOverride] = useState<number | null>(null);
   const [responsePreset, setResponsePreset] = useState<ResponsePreset | null>(null);
   const detailQuery = useGetAnLeistungsanfrageDetails(id, { query: { enabled: !!id, queryKey: getGetAnLeistungsanfrageDetailsQueryKey(id) } });
+  const coordinationQuery = useQuery({
+    queryKey: ["/api/an/leistungsanfragen", id, "coordination"],
+    enabled: !!id,
+    queryFn: () => fetchJson<{ openProposal?: ScheduleProposal | null }>(`/api/an/leistungsanfragen/${id}/coordination`),
+  });
   const requirementQuery = useListLeistungsanfrageResourceRequirements(id, { query: { enabled: !!id, queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(id) } });
-  const availabilityQuery = useGetLeistungsanfrageLatestAvailabilityCheck(id, { query: { enabled: !!id, queryKey: getGetLeistungsanfrageLatestAvailabilityCheckQueryKey(id) } });
+  const availabilityQuery = useQuery({
+    queryKey: ["/api/an/leistungsanfragen", id, "availability-checks/latest"],
+    enabled: !!id,
+    queryFn: () => fetchJson<any>(`/api/an/leistungsanfragen/${id}/availability-checks/latest`),
+  });
   const details = detailQuery.data;
   if (detailQuery.isLoading) return <main className="mx-auto max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-8 w-32" /><Skeleton className="h-28 w-full" /><Skeleton className="h-64 w-full" /><Skeleton className="h-64 w-full" /></main>;
   if (detailQuery.isError || !details) return <main className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Leistungsanfrage nicht verfügbar</h1><p className="text-sm text-muted-foreground">Die Anfrage konnte nicht geöffnet werden oder ist nicht mehr verfügbar.</p><div className="flex gap-2"><Button data-testid="button-back-error" variant="outline" onClick={() => setLocation("/leistungsanfragen")}><ArrowLeft className="mr-2 h-4 w-4" />Zur Inbox</Button><Button data-testid="button-retry-detail" variant="secondary" onClick={() => void detailQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div></main>;
@@ -357,6 +443,14 @@ export default function LeistungsanfrageDetailPage() {
   const requirements = (requirementQuery.data ?? details.resourceRequirements) as AnLeistungsanfrageResourceRequirement[];
   const terminal = ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status);
   const canRespond = !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
+  const scheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AG"
+    ? coordinationQuery.data.openProposal
+    : null;
+  const effectiveResponsePreset = responsePreset ?? (
+    phaseOverride === 3 && availabilityQuery.data?.result === "FEASIBLE"
+      ? { decision: "ACCEPTED" as const }
+      : null
+  );
   const derivedPhase = terminal ? 3 : !details.detailsRetrievedAt ? 1 : availabilityQuery.data?.status === "COMPLETED" ? 3 : 2;
   const phase = phaseOverride ?? derivedPhase;
   const useRecommendation = (preset: ResponsePreset) => {
@@ -374,16 +468,16 @@ export default function LeistungsanfrageDetailPage() {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-5 pb-12 lg:p-8">
       <Button data-testid="button-back-inbox" variant="ghost" className="-ml-3 gap-2 text-muted-foreground" onClick={() => setLocation("/leistungsanfragen")}><ArrowLeft className="h-4 w-4" />Zurück zu Anfragen</Button>
-      <ProposalActions requestId={id} />
       <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-3"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">LEISTUNGSANFRAGE / {details.requestNumber}</p><StatusBadge status={details.status} /></div><h1 data-testid="text-detail-title" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{phaseHeading(phase)}</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Nur der nächste erforderliche Schritt ist geöffnet. Abgeschlossene Angaben bleiben als Kontext verfügbar.</p></div><div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm shadow-sm"><p className="text-[11px] text-muted-foreground">Aktuelle Phase</p><p data-testid="current-phase" className="mt-1 font-semibold">{phase} · {phaseHeading(phase)}</p></div></header>
 
       <div data-testid="phase-progress" className="grid gap-2 md:grid-cols-3">{[1, 2, 3].map((number) => <div key={number} className={`rounded-xl border px-4 py-3 ${phase === number ? "border-primary/40 bg-primary/5" : phase > number ? "border-emerald-700/20 bg-emerald-600/5" : "border-border bg-card"}`}><p className="text-xs text-muted-foreground">Phase {number}</p><p className="mt-1 text-sm font-semibold">{phaseHeading(number)}</p></div>)}</div>
+      {scheduleProposal && <ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} />}
 
       {phase > 1 ? <details data-testid="phase-1" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 1 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Anfrage prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4"><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></div></details> : <section data-testid="phase-1" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 1</p><h2 className="mt-1 text-xl font-semibold">Anfrage prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Die wichtigsten Angaben auf einen Blick. Zusatzinformationen bleiben bewusst sekundär.</p></div><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></section>}
 
-      {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} onContinueWithoutCheck={() => undefined} onUseRecommendation={() => undefined} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
+      {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} onContinueWithoutCheck={() => undefined} onUseRecommendation={useRecommendation} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
 
-      {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">Rückmeldung senden</h2><p className="mt-1 text-sm text-muted-foreground">Wählen Sie eine der drei fachlichen Antworten.</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : <ResponseForm id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={responsePreset} />}</div></section>}
+      {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">Rückmeldung senden</h2><p className="mt-1 text-sm text-muted-foreground">Termin bestätigen, Alternative vorschlagen oder Nicht-Machbarkeit melden.</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : <ResponseForm key={effectiveResponsePreset?.decision ?? "manual"} id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={effectiveResponsePreset} />}{scheduleProposal && <div className="mt-5 border-t border-border/70 pt-5"><ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /></div>}</div></section>}
     </main>
   );
 }

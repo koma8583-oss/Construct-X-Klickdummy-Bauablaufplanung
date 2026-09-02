@@ -70,7 +70,9 @@ function snapshotOf(projection: Projection): PayloadSnapshot {
 }
 
 function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
-  return snapshot[key] ?? (snapshot.request as Record<string, unknown> | undefined)?.[key];
+  return snapshot[key]
+    ?? (snapshot.request as Record<string, unknown> | undefined)?.[key]
+    ?? (snapshot.publicSnapshot as Record<string, unknown> | undefined)?.[key];
 }
 
 function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView, revision?: RevisionView | null) {
@@ -291,6 +293,26 @@ export async function getAnLeistungsanfrageDetail(
   if (!rootProjection) return null;
 
   const related = await coordinationProjections(externalLeistungsanfrageId, anOrgId);
+  const chainCandidates = await anDb.select().from(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
+    .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion));
+  const chainIds = new Set([externalLeistungsanfrageId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of chainCandidates) {
+      const previousValue = revisionContext(row)?.previousRequestId;
+      const previous = typeof previousValue === "string" ? previousValue : null;
+      if (chainIds.has(row.externalLeistungsanfrageId) || (previous && chainIds.has(previous))) {
+        if (!chainIds.has(row.externalLeistungsanfrageId)) {
+          chainIds.add(row.externalLeistungsanfrageId);
+          changed = true;
+        }
+      }
+    }
+  }
+  const historyProjections = chainCandidates.filter((row) => chainIds.has(row.externalLeistungsanfrageId));
+  const allRelated = [...new Map([...related, ...historyProjections].map((row) => [row.id, row])).values()];
   const activeSchedule = externalLeistungsanfrageId === rootProjection.externalLeistungsanfrageId
     ? related.find((row) =>
         coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
@@ -316,10 +338,10 @@ export async function getAnLeistungsanfrageDetail(
     .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, current.id));
   const publicSnapshot = objectRecord(snapshotValue(snapshotOf(current), "publicSnapshot"));
   return {
-    ...toRequestView(current, requirements.length),
+     ...toRequestView(current, requirements.length),
     schemaVersion: String(snapshotValue(snapshotOf(current), "schemaVersion") ?? "1.0"),
-    snapshotPayload: Object.keys(publicSnapshot).length > 0
-      ? publicSnapshot
+     snapshotPayload: Object.keys(publicSnapshot).length > 0
+       ? { ...publicSnapshot, plannedTimeWindow: { start: current.plannedStart, end: current.plannedEnd } }
       : current.payloadSnapshot,
     resourceRequirements: requirements.map((requirement) => ({
       id: requirement.id,
@@ -334,7 +356,7 @@ export async function getAnLeistungsanfrageDetail(
       requiredQualification: requirement.requiredQualification,
       notes: requirement.notes,
     })),
-     revision: revisionView(projection, related),
+     revision: revisionView(current, allRelated),
      detailsRetrievedNow: projection.status === "RECEIVED",
   };
 }
@@ -536,10 +558,14 @@ export async function runAnAvailabilityCheck(
   userId: string | null,
   options: { excludeSourceReferenceIds?: string[] } = {},
 ) {
-  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
-    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
-    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
-  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  const projections = await anDb.select().from(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
+    .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion));
+  const projection = projections.find((row) =>
+    coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
+    coordinationSourceRequestId(row) === externalLeistungsanfrageId &&
+    actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
+  ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return null;
 
   const [requirements, resources, bookings, previous] = await Promise.all([
@@ -725,11 +751,14 @@ export async function getLatestAnAvailabilityCheck(
   externalLeistungsanfrageId: string,
   anOrgId: string,
 ) {
-  const [projection] = await anDb.select({ id: anLeistungsanfragenTable.id })
-    .from(anLeistungsanfragenTable).where(and(
-      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
-      eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
-    )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  const projections = await anDb.select().from(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
+    .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion));
+  const projection = projections.find((row) =>
+    coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
+    coordinationSourceRequestId(row) === externalLeistungsanfrageId &&
+    actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
+  ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return { projectionFound: false as const, check: null };
   const [check] = await anDb.select().from(anAvailabilityChecksTable).where(and(
     eq(anAvailabilityChecksTable.anLeistungsanfrageId, projection.id),
