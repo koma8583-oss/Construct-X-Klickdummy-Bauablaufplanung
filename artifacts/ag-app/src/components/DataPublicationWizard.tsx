@@ -32,9 +32,10 @@ import {
   type DataProductType,
   type DataPublication,
   type PolicyTemplate,
+  type Takt,
 } from '@workspace/api-client-react';
 import {
-  ChevronRight, ChevronLeft, Globe, Lock, Shield, Eye, ClipboardList,
+  ChevronRight, ChevronLeft, Globe, Lock, Shield, Eye, ClipboardList, CalendarDays,
 } from 'lucide-react';
 
 // ── Policy content display (shared by wizard + AG detail) ─────────────────────
@@ -189,16 +190,17 @@ interface Props {
   projectId: string;
   projectName: string;
   contractors: ContractorOption[];
+  /** Takte from the AG-owned project schedule. */
+  takte?: Takt[];
   initialRecipientIds?: string[];
   /** Reopen an existing draft instead of creating another publication. */
   draftPublication?: DataPublication;
 }
 
-// The only product type is TAKT_INFORMATION_PACKAGE — no selection step needed.
-const PRODUCT_LABEL = 'Informationspaket Leistungsvergabe';
+const PRODUCT_LABEL = 'Leistungsfreigabe';
 
-// Steps: 0 = Empfänger, 1 = Policy, 2 = Daten auswählen, 3 = Freigabe prüfen
-const STEP_LABELS = ['Empfänger', 'Policy', 'Daten auswählen', 'Freigabe prüfen'];
+// Steps: 0 = Empfänger, 1 = Leistungen, 2 = Informationen & Nutzung, 3 = Freigabe prüfen
+const STEP_LABELS = ['Empfänger', 'Leistungen auswählen', 'Informationen prüfen', 'Freigabe prüfen'];
 const PRODUCT_TYPE: DataProductType = 'TAKT_INFORMATION_PACKAGE';
 const ALL_FIELDS = FIELD_WHITELISTS[PRODUCT_TYPE];
 
@@ -217,6 +219,7 @@ export function DataPublicationWizard({
   projectId,
   projectName,
   contractors,
+  takte = [],
   initialRecipientIds = [],
   draftPublication,
 }: Props) {
@@ -225,6 +228,7 @@ export function DataPublicationWizard({
 
   const [step, setStep] = useState(0);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(ALL_FIELDS));
+  const [selectedTaktIds, setSelectedTaktIds] = useState<Set<string>>(new Set());
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [policyTemplateId, setPolicyTemplateId] = useState('');
   const [policyTemplateVersion, setPolicyTemplateVersion] = useState<number | undefined>();
@@ -241,6 +245,10 @@ export function DataPublicationWizard({
   const publishDataPublication = usePublishDataPublication();
 
   const activeContractors = contractors.filter((c) => c.assignmentStatus === 'ACTIVE');
+  const selectableTakte = useMemo(
+    () => takte.filter((takt) => takt.status !== 'STORNIERT' && takt.lifecycleStatus !== 'CANCELLED'),
+    [takte],
+  );
   const selectedPolicy = policyTemplates?.find((p) => p.id === policyTemplateId);
   const allowedFields = selectedPolicy?.allowedPublicationFields ?? ALL_FIELDS;
   const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
@@ -266,6 +274,7 @@ export function DataPublicationWizard({
     const draftRecipients = draftPublication?.recipients?.map((recipient) => recipient.anOrgId);
     setSelectedRecipients(new Set(draftRecipients?.length ? draftRecipients : initialRecipientIds));
     setSelectedFields(new Set(draftPublication?.selectedFields ?? ALL_FIELDS));
+    setSelectedTaktIds(new Set(draftPublication?.selectedTaktIds ?? []));
     setPolicyTemplateId(draftPublication?.policyTemplateId ?? '');
     setPolicyTemplateVersion(draftPublication?.policyTemplateVersion ?? undefined);
     setTitle(draftPublication?.title ?? '');
@@ -294,6 +303,7 @@ export function DataPublicationWizard({
     if (!v) {
       setStep(0);
       setSelectedFields(new Set(ALL_FIELDS));
+      setSelectedTaktIds(new Set());
       setSelectedRecipients(new Set());
       setPolicyTemplateId('');
       setPolicyTemplateVersion(undefined);
@@ -315,13 +325,13 @@ export function DataPublicationWizard({
 
   const canNext = useMemo(() => {
     if (step === 0) return selectedRecipients.size > 0;
-    if (step === 1) return !!policyTemplateId && !!title.trim();
-    if (step === 2) return selectedFields.size > 0;
+    if (step === 1) return selectedTaktIds.size > 0;
+    if (step === 2) return !!policyTemplateId && !!title.trim() && selectedFields.size > 0;
     return true;
-  }, [step, selectedFields, selectedRecipients, policyTemplateId, title]);
+  }, [step, selectedFields, selectedTaktIds, selectedRecipients, policyTemplateId, title]);
 
   const handleNext = () => {
-    if (step === 0 && !title) setTitle(autoTitle);
+    if (step === 1 && !title) setTitle(autoTitle);
     setStep((s) => Math.min(s + 1, 3));
   };
 
@@ -336,6 +346,7 @@ export function DataPublicationWizard({
           description: description.trim() || undefined,
           policyTemplateId,
           selectedFields: Array.from(selectedFields),
+          selectedTaktIds: Array.from(selectedTaktIds),
           recipientAnOrgIds: Array.from(selectedRecipients),
           validFrom: validFrom ? `${validFrom}T00:00:00Z` : undefined,
           validUntil: validUntil ? `${validUntil}T23:59:59Z` : undefined,
@@ -344,7 +355,7 @@ export function DataPublicationWizard({
         setDraftIdForRetry(publication.id);
       }
       await publishDataPublication.mutateAsync(publicationId);
-      toast({ title: 'Datenfreigabe veröffentlicht', description: 'Die Datenfreigabe wurde separat für aktive Projektmitglieder bereitgestellt.' });
+      toast({ title: 'Leistungen für AN freigegeben', description: 'Die ausgewählten Leistungen wurden separat für aktive Projektmitglieder bereitgestellt.' });
       handleOpenChange(false);
     } catch (err) {
       if (publicationId) {
@@ -369,17 +380,17 @@ export function DataPublicationWizard({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-             <span>Daten für Projektpartner freigeben</span>
+           <span>Leistungen für AN freigeben</span>
           </DialogTitle>
           <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground/80 space-y-1">
             <p>
-               Diese Datenfreigabe ist ein eigener Schritt nach der aktiven
-               Projektmitgliedschaft. Wählen Sie eine Policy und nur die Felder,
-               die der AN sehen darf.
+               Diese Leistungsfreigabe ist ein eigener Schritt nach der aktiven
+               Projektmitgliedschaft. Wählen Sie konkrete Leistungen aus dem
+               AG-Gesamtterminplan und legen Sie die sichtbaren Informationen fest.
             </p>
             <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-0.5">
               <Lock className="h-3 w-3 shrink-0 mt-0.5" />
-              <span>Detailinformationen zu einer konkreten Leistung sind erst zugänglich, wenn der Empfänger die Nutzungsrichtlinie akzeptiert hat <em>und</em> ihm diese Leistung explizit zugeordnet wurde.</span>
+               <span>Der AN erhält nur die hier ausgewählten Leistungen. Die Freigabe wartet auf seine Annahme bzw. Nutzung gemäß Nutzungsbedingungen.</span>
             </p>
           </div>
           {draftSavedForRetry && (
@@ -417,7 +428,84 @@ export function DataPublicationWizard({
 
         <div className="min-h-[300px] py-2">
 
-          {/* ── Step 2: Felder ────────────────────────────────────────────── */}
+           {/* ── Step 1: Konkrete Leistungen ─────────────────────────────── */}
+           {step === 1 && (
+             <div className="space-y-3">
+               <div className="flex items-start justify-between gap-3">
+                 <div>
+                   <p className="text-sm font-medium">Leistungen aus dem Gesamtterminplan</p>
+                   <p className="text-sm text-muted-foreground">
+                     Nur die markierten Takte werden in das Freigabepaket aufgenommen.
+                   </p>
+                 </div>
+                 {selectableTakte.length > 0 && (
+                   <button
+                     type="button"
+                     onClick={() => setSelectedTaktIds(
+                       selectedTaktIds.size === selectableTakte.length
+                         ? new Set()
+                         : new Set(selectableTakte.map((takt) => takt.id)),
+                     )}
+                     className="text-xs text-primary hover:underline shrink-0"
+                   >
+                     {selectedTaktIds.size === selectableTakte.length ? 'Alle abwählen' : 'Alle wählen'}
+                   </button>
+                 )}
+               </div>
+               {selectableTakte.length === 0 ? (
+                 <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                   <CalendarDays className="mx-auto h-7 w-7 text-muted-foreground/60" />
+                   <p className="mt-2 text-sm font-medium">Keine freigebbaren Leistungen vorhanden</p>
+                   <p className="mt-1 text-xs text-muted-foreground">
+                     Legen Sie zuerst mindestens eine Leistung im AG-Terminplan an.
+                   </p>
+                 </div>
+               ) : (
+                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                   {selectableTakte.map((takt) => (
+                     <label
+                       key={takt.id}
+                       htmlFor={`takt-${takt.id}`}
+                       className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                         selectedTaktIds.has(takt.id)
+                           ? 'border-primary bg-primary/5'
+                           : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                       }`}
+                     >
+                       <Checkbox
+                         id={`takt-${takt.id}`}
+                         checked={selectedTaktIds.has(takt.id)}
+                         onCheckedChange={() => setSelectedTaktIds((previous) => {
+                           const next = new Set(previous);
+                           next.has(takt.id) ? next.delete(takt.id) : next.add(takt.id);
+                           return next;
+                         })}
+                         className="mt-0.5 shrink-0"
+                       />
+                       <span className="min-w-0 flex-1">
+                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                           <span className="text-sm font-medium">{takt.kurzbezeichnung}</span>
+                           <Badge variant="outline" className="text-[10px]">{takt.taktBezeichnung}</Badge>
+                         </span>
+                         <span className="mt-1 block text-xs text-muted-foreground">
+                           {[takt.gewerk, takt.zone].filter(Boolean).join(' · ')}
+                           {takt.plannedStart && takt.plannedEnd
+                             ? ` · ${takt.plannedStart} – ${takt.plannedEnd}`
+                             : ''}
+                         </span>
+                       </span>
+                     </label>
+                   ))}
+                 </div>
+               )}
+               <p className="text-xs text-muted-foreground flex items-center gap-1">
+                 <Lock className="h-3 w-3 shrink-0" />
+                 Nicht ausgewählte Leistungen bleiben vollständig im AG-Terminplan.
+               </p>
+             </div>
+           )}
+
+           {/* ── Step 2: Informationen und Nutzung ───────────────────────── */}
           {step === 2 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -513,8 +601,7 @@ export function DataPublicationWizard({
             </div>
           )}
 
-          {/* ── Step 1: Policy ────────────────────────────────────────────── */}
-          {step === 1 && (
+           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Titel der Veröffentlichung</Label>
@@ -600,6 +687,16 @@ export function DataPublicationWizard({
                   )}
                 </div>
                 <div>
+                   <div className="text-muted-foreground text-xs uppercase tracking-wider mb-1.5">
+                     Leistungen ({selectedTaktIds.size})
+                   </div>
+                   <div className="flex flex-wrap gap-1">
+                     {selectableTakte.filter((takt) => selectedTaktIds.has(takt.id)).map((takt) => (
+                       <Badge key={takt.id} variant="secondary" className="text-[10px]">{takt.kurzbezeichnung}</Badge>
+                     ))}
+                   </div>
+                 </div>
+                 <div>
                   <div className="text-muted-foreground text-xs uppercase tracking-wider mb-1.5">
                     Wird freigegeben ({selectedFields.size} Felder)
                   </div>
@@ -634,7 +731,7 @@ export function DataPublicationWizard({
                 </div>
                 <div className="border-t pt-3 space-y-1 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1.5"><Lock className="h-3 w-3" /> Interne Felder bleiben ausschließlich im AG-System.</div>
-                  <div className="flex items-center gap-1.5"><Shield className="h-3 w-3" /> Empfänger müssen die Nutzungsrichtlinie akzeptieren, bevor sie zugreifen können.</div>
+                  <div className="flex items-center gap-1.5"><Shield className="h-3 w-3" /> Der AN muss die Nutzungsrichtlinie akzeptieren, bevor er zugreifen kann.</div>
                 </div>
               </div>
             </div>
@@ -652,7 +749,7 @@ export function DataPublicationWizard({
               </Button>
             ) : (
               <Button type="button" onClick={handlePublish} disabled={isPending || !canNext} className="min-w-36">
-                {isPending ? 'Wird veröffentlicht…' : <><Globe className="h-4 w-4 mr-1.5" /> Datenfreigabe veröffentlichen</>}
+                {isPending ? 'Wird veröffentlicht…' : <><Globe className="h-4 w-4 mr-1.5" /> Freigabe veröffentlichen</>}
               </Button>
             )}
           </div>

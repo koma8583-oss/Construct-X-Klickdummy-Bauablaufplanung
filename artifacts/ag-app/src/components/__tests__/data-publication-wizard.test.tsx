@@ -171,10 +171,23 @@ describe("DataPublicationWizard", () => {
           name: "Baupartner",
           assignmentStatus: "ACTIVE",
         }]}
+        takte={[{
+          id: "takt-1",
+          projectId: "project-1",
+          taktBezeichnung: "T1",
+          kurzbezeichnung: "Fundament Nord",
+          gewerk: "Rohbau",
+          plannedStart: "2026-09-10",
+          plannedEnd: "2026-09-12",
+          status: "GEPLANT",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        }]}
         initialRecipientIds={["an-1"]}
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
     await user.selectOptions(screen.getByRole("combobox"), "policy-1");
     await user.click(screen.getByRole("button", { name: /Weiter/ }));

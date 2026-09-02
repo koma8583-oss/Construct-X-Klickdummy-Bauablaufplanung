@@ -24,6 +24,7 @@ import {
   projectMembershipsTable,
   organizationsTable,
   taktRequestsTable,
+  takteTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { buildOdrl } from "../lib/odrl-builder";
@@ -419,6 +420,30 @@ router.post(
         error: `Recipients not found as active contractors for this project: ${invalidRecipients.join(", ")}`,
       });
       return;
+    }
+
+    if (dataProductType === "TAKT_INFORMATION_PACKAGE") {
+      if (!selectedTaktIds || selectedTaktIds.length === 0) {
+        res.status(400).json({ error: "Mindestens eine konkrete Leistung muss ausgewählt werden" });
+        return;
+      }
+      const projectTakte = await db
+        .select({ id: takteTable.id })
+        .from(takteTable)
+        .where(
+          and(
+            eq(takteTable.projectId, project.id),
+            inArray(takteTable.id, selectedTaktIds as [string, ...string[]]),
+          ),
+        );
+      const projectTaktIds = new Set(projectTakte.map((takt) => takt.id));
+      const invalidTaktIds = selectedTaktIds.filter((id) => !projectTaktIds.has(id));
+      if (invalidTaktIds.length > 0) {
+        res.status(400).json({
+          error: `Leistungen gehören nicht zu diesem Projekt: ${invalidTaktIds.join(", ")}`,
+        });
+        return;
+      }
     }
 
     // Determine next version number for this (project, dataProductType) combination

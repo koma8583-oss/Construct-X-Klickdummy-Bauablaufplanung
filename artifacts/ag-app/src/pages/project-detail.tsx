@@ -1749,7 +1749,7 @@ export default function ProjectDetail() {
         </div>
       </details>
 
-      {/* ── Datenraum Bereitstellungen ─────────────────────────────────────── */}
+      {/* ── Leistungsfreigaben ─────────────────────────────────────────────── */}
       <details
         className="rounded-xl border border-border bg-card overflow-hidden"
         data-testid="project-dataspace-section"
@@ -1758,7 +1758,7 @@ export default function ProjectDetail() {
         <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-sm flex items-center justify-between hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
             <Globe className="h-4 w-4 text-primary" />
-            Datenraum
+            Leistungsfreigaben
             {visibleDataPublications.length > 0 && (
               <span className="text-xs text-muted-foreground">({visibleDataPublications.length})</span>
             )}
@@ -1769,8 +1769,8 @@ export default function ProjectDetail() {
           <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
               {publicationRecipients.length > 0
-                ? `${publicationRecipients.length} aktive${publicationRecipients.length === 1 ? 's' : ''} Projektmitglied${publicationRecipients.length === 1 ? '' : 'er'} können Daten erhalten.`
-                : 'Eine Datenfreigabe wird erst nach aktiver Projektmitgliedschaft verfügbar.'}
+                ? `${publicationRecipients.length} aktive${publicationRecipients.length === 1 ? 's' : ''} Projektmitglied${publicationRecipients.length === 1 ? '' : 'er'} können konkrete Leistungen erhalten.`
+                : 'Eine Leistungsfreigabe wird erst nach aktiver Projektmitgliedschaft verfügbar.'}
             </p>
             <Button
               data-testid="button-create-data-publication"
@@ -1780,20 +1780,20 @@ export default function ProjectDetail() {
               onClick={() => openDataPublicationFor()}
             >
               <Globe className="mr-1.5 h-4 w-4" />
-              Datenfreigabe erstellen
+              Leistungen für AN freigeben
             </Button>
           </div>
           {dataPublicationsLoading ? (
             <div className="px-4 py-5 text-sm text-muted-foreground" data-testid="project-dataspace-loading">
-              Datenraum wird geladen …
+              Leistungsfreigaben werden geladen …
             </div>
           ) : dataPublicationsError ? (
             <div className="px-4 py-5 text-sm text-destructive" data-testid="project-dataspace-error">
-              Die Datenraum-Bereitstellungen konnten nicht geladen werden.
+              Die Leistungsfreigaben konnten nicht geladen werden.
             </div>
           ) : visibleDataPublications.length === 0 ? (
             <div className="px-4 py-5 text-sm text-muted-foreground" data-testid="project-dataspace-empty">
-              Für dieses Projekt sind noch keine Datenpublikationen vorhanden.
+              Für dieses Projekt sind noch keine Leistungsfreigaben vorhanden.
             </div>
           ) : (
             <div className="divide-y divide-border/50">
@@ -3995,6 +3995,7 @@ export default function ProjectDetail() {
           onOpenChange={setIsDataspaceOpen}
           projectId={projectId}
           projectName={project.projectName ?? ''}
+          takte={takte ?? []}
           contractors={publicationRecipients}
           initialRecipientIds={dataPublicationRecipientIds}
           draftPublication={dataPublicationDraftId

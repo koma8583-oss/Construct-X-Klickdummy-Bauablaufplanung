@@ -59,7 +59,7 @@ describe("CollaborationProcessPanel", () => {
     renderPanel([{ id: "membership-1", anOrgId: "an-invited", status: "INVITED" }]);
 
     const partner = screen.getByTestId("collaboration-process-partner-an-invited");
-    expect(within(partner).getByText("Eingeladener Betrieb · Datenraumprozess")).toBeInTheDocument();
+    expect(within(partner).getByText("Eingeladener Betrieb · Leistungsfreigabe")).toBeInTheDocument();
     expect(within(partner).getByText("Gesendet")).toBeInTheDocument();
     expect(within(partner).getByText("Warten auf Annahme durch AN")).toBeInTheDocument();
     expectStepState(partner, 1, "complete");
@@ -67,8 +67,8 @@ describe("CollaborationProcessPanel", () => {
     expectStepState(partner, 3, "locked");
     expectStepState(partner, 4, "locked");
     expect(within(partner).getAllByText("Gesperrt · erst nach aktiver Projektmitgliedschaft")).toHaveLength(1);
-    expect(within(partner).getByText("Gesperrt · erst nach Datenfreigabe")).toBeInTheDocument();
-    expect(within(partner).queryByRole("button", { name: "Daten für AN freigeben" })).not.toBeInTheDocument();
+    expect(within(partner).getByText("Gesperrt · erst nach Leistungsfreigabe")).toBeInTheDocument();
+    expect(within(partner).queryByRole("button", { name: "Leistungen für AN freigeben" })).not.toBeInTheDocument();
   });
 
   it("offers release only to active members without a publication", () => {
@@ -76,8 +76,8 @@ describe("CollaborationProcessPanel", () => {
 
     const partner = screen.getByTestId("collaboration-process-partner-an-active");
     expect(within(partner).getByText("Aktive Projektmitgliedschaft")).toBeInTheDocument();
-    expect(within(partner).getByRole("button", { name: "Daten für AN freigeben" })).toBeInTheDocument();
-    within(partner).getByRole("button", { name: "Daten für AN freigeben" }).click();
+    expect(within(partner).getByRole("button", { name: "Leistungen für AN freigeben" })).toBeInTheDocument();
+    within(partner).getByRole("button", { name: "Leistungen für AN freigeben" }).click();
     expect(onReleaseData).toHaveBeenCalledWith("an-active", undefined);
     expectStepState(partner, 3, "current");
     expectStepState(partner, 4, "locked");
@@ -96,11 +96,11 @@ describe("CollaborationProcessPanel", () => {
     );
 
     const partner = screen.getByTestId("collaboration-process-partner-an-active");
-    expect(within(partner).getByText("Datenfreigabe veröffentlicht")).toBeInTheDocument();
+    expect(within(partner).getByText("Leistungsfreigabe veröffentlicht")).toBeInTheDocument();
     expect(within(partner).getByText(detail)).toBeInTheDocument();
     expectStepState(partner, 3, "complete");
     expectStepState(partner, 4, stepState);
-    expect(within(partner).queryByRole("button", { name: "Daten für AN freigeben" })).not.toBeInTheDocument();
+    expect(within(partner).queryByRole("button", { name: "Leistungen für AN freigeben" })).not.toBeInTheDocument();
   });
 
   it("keeps a published accepted release effective when a newer draft exists", () => {
@@ -113,8 +113,8 @@ describe("CollaborationProcessPanel", () => {
     );
 
     const partner = screen.getByTestId("collaboration-process-partner-an-active");
-    expect(within(partner).getByText("Datenfreigabe veröffentlicht · neuer Entwurf vorhanden")).toBeInTheDocument();
-    expect(within(partner).getByText("Datenzugriff aktiv · abgeschlossen")).toBeInTheDocument();
+    expect(within(partner).getByText("Leistungsfreigabe veröffentlicht · neuer Entwurf vorhanden")).toBeInTheDocument();
+    expect(within(partner).getByText("AN-Zugriff aktiv · abgeschlossen")).toBeInTheDocument();
     expectStepState(partner, 3, "complete");
     expectStepState(partner, 4, "complete");
   });
@@ -133,8 +133,8 @@ describe("CollaborationProcessPanel", () => {
 
     const offered = screen.getByTestId("collaboration-process-partner-an-offered");
     const accepted = screen.getByTestId("collaboration-process-partner-an-accepted");
-    expect(within(offered).getByText("Datenangebot wartet auf Prüfung/Akzeptanz durch AN")).toBeInTheDocument();
-    expect(within(accepted).getByText("Datenzugriff aktiv · abgeschlossen")).toBeInTheDocument();
+    expect(within(offered).getByText("Freigabe wartet auf Prüfung/Akzeptanz durch AN")).toBeInTheDocument();
+    expect(within(accepted).getByText("AN-Zugriff aktiv · abgeschlossen")).toBeInTheDocument();
     expectStepState(offered, 4, "current");
     expectStepState(accepted, 4, "complete");
   });

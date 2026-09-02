@@ -166,31 +166,33 @@ function PartnerProcess({
   } = getEffectivePublicationState(publications, membership.anOrgId);
   const isPublished = !!publishedPublication;
   const recipientStatus = publishedRecipient?.status;
+  const releasedTaktCount = publishedPublication?.selectedTaktIds?.length ?? 0;
+  const draftTaktCount = draftPublication?.selectedTaktIds?.length ?? 0;
 
   const publicationDetail = !isActive
     ? "Gesperrt · erst nach aktiver Projektmitgliedschaft"
     : isPublished
       ? draftPublication
-        ? "Datenfreigabe veröffentlicht · neuer Entwurf vorhanden"
-        : "Datenfreigabe veröffentlicht"
+        ? "Leistungsfreigabe veröffentlicht · neuer Entwurf vorhanden"
+        : "Leistungsfreigabe veröffentlicht"
       : draftPublication
-        ? "Datenfreigabe als Entwurf gespeichert · erneut veröffentlichbar"
-        : "Noch keine Datenfreigabe veröffentlicht";
+        ? "Leistungsfreigabe als Entwurf gespeichert · erneut veröffentlichbar"
+        : "Noch keine Leistungsfreigabe veröffentlicht";
 
   const accessDetail = !isActive
-    ? "Gesperrt · erst nach Datenfreigabe"
+    ? "Gesperrt · erst nach Leistungsfreigabe"
     : !isPublished
-      ? "Gesperrt · erst nach veröffentlichter Datenfreigabe"
+      ? "Gesperrt · erst nach veröffentlichter Leistungsfreigabe"
       : recipientStatus === "OFFERED"
-        ? "Datenangebot wartet auf Prüfung/Akzeptanz durch AN"
+        ? "Freigabe wartet auf Prüfung/Akzeptanz durch AN"
         : recipientStatus === "ACCEPTED"
-          ? "Datenzugriff aktiv · abgeschlossen"
+          ? "AN-Zugriff aktiv · abgeschlossen"
           : recipientStatus === "REJECTED"
-            ? "Datenangebot abgelehnt"
+            ? "Freigabe abgelehnt"
             : recipientStatus === "REVOKED"
-              ? "Datenzugriff widerrufen"
+              ? "AN-Zugriff widerrufen"
               : recipientStatus === "EXPIRED"
-                ? "Datenfreigabe abgelaufen"
+                ? "Leistungsfreigabe abgelaufen"
                 : "Empfängerstatus nicht verfügbar";
 
   const accessState: StepState = !isActive || !isPublished
@@ -210,7 +212,7 @@ function PartnerProcess({
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-semibold">{partnerName} · Datenraumprozess</p>
+          <p className="truncate font-semibold">{partnerName} · Leistungsfreigabe</p>
           <p className="text-xs text-muted-foreground">
             {isActive
               ? "Aktive Projektmitgliedschaft"
@@ -219,6 +221,19 @@ function PartnerProcess({
                 : membership.status === "REVOKED"
                   ? "Projektmitgliedschaft widerrufen"
                   : "Projektaufnahme abgelehnt"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isPublished
+              ? `${releasedTaktCount} ${releasedTaktCount === 1 ? "Leistung" : "Leistungen"} freigegeben · AN-Status: ${
+                  recipientStatus === "ACCEPTED"
+                    ? "angenommen"
+                    : recipientStatus === "OFFERED"
+                      ? "wartet auf Annahme"
+                      : recipientStatus?.toLowerCase() ?? "nicht zugestellt"
+                }`
+              : draftPublication
+                ? `${draftTaktCount} ${draftTaktCount === 1 ? "Leistung" : "Leistungen"} im Entwurf`
+                : "Noch keine Leistung freigegeben"}
           </p>
         </div>
         <Badge
@@ -266,10 +281,10 @@ function PartnerProcess({
         />
         <ProcessStep
           number={3}
-          label="Datenfreigabe"
+          label="Leistungsfreigabe"
           detail={publicationDetail}
           state={isRejected || isRevoked ? "locked" : isPublished ? "complete" : isActive ? "current" : "locked"}
-          action={isActive && !isPublished ? (draftPublication ? "Entwurf veröffentlichen" : "Daten für AN freigeben") : undefined}
+          action={isActive && !isPublished ? (draftPublication ? "Entwurf veröffentlichen" : "Leistungen für AN freigeben") : undefined}
           onAction={
             isActive && !isPublished
               ? () => onReleaseData(membership.anOrgId, draftPublication?.id)
@@ -301,12 +316,12 @@ export function CollaborationProcessPanel({
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Database className="h-4 w-4 text-primary" />
-              Zusammenarbeit im Datenraum
+              Projektzusammenarbeit
             </CardTitle>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Einladung, Beitritt, separate Datenfreigabe und Datenzugriff sind vier
-              voneinander getrennte Schritte. Daten werden erst nach aktiver
-              Projektmitgliedschaft freigegeben.
+              Einladung, aktive Projektmitgliedschaft, konkrete Leistungsfreigabe und
+              AN-Nutzung sind voneinander getrennte Schritte. Eine Freigabe wartet
+              auf die Annahme bzw. Nutzung durch den AN.
             </p>
           </div>
           <Button data-testid="collaboration-process-invite" size="sm" onClick={onInvite}>
@@ -320,7 +335,7 @@ export function CollaborationProcessPanel({
           <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm">
             <p className="font-medium">Noch kein AN zum Projekt eingeladen</p>
             <p className="mt-1 text-muted-foreground">
-              Datenfreigaben sind noch nicht verfügbar. Laden Sie zuerst einen AN
+              Leistungsfreigaben sind noch nicht verfügbar. Laden Sie zuerst einen AN
               ein und warten Sie auf die ausdrückliche Projektaufnahme.
             </p>
           </div>
