@@ -625,32 +625,53 @@ export async function runAnAvailabilityCheck(
     }
 
     const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
-    const availableCapacity = candidates.reduce((total, resource) => {
-      const matchingBookings = relevantBookings.filter((booking) =>
-        (
-          booking.resourceId === resource.id ||
-          (booking.resourceId === null && booking.resourceTypeId === requirement.localResourceTypeId)
-        ) &&
+    const matchingTypeBookings = relevantBookings.filter((booking) =>
+      booking.resourceId === null &&
+      booking.resourceTypeId === requirement.localResourceTypeId &&
+      timeOverlaps(start, end, booking.startAt, booking.endAt),
+    );
+    const confirmedTypeUse = matchingTypeBookings
+      .filter((booking) => booking.status === "CONFIRMED")
+      .reduce(
+        (sum, booking) => sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100,
+        0,
+      );
+    const availableCapacityBeforeTypeBookings = candidates.reduce((total, resource) => {
+      const matchingConcreteBookings = relevantBookings.filter((booking) =>
+        booking.resourceId === resource.id &&
         timeOverlaps(start, end, booking.startAt, booking.endAt),
       );
-      const confirmedUse = matchingBookings
+      const confirmedConcreteUse = matchingConcreteBookings
         .filter((booking) => booking.status === "CONFIRMED")
-        .reduce((sum, booking) => {
-          if (booking.resourceId === null) {
-            return sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100;
-          }
-          return sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100;
-        }, 0);
-      for (const booking of matchingBookings.filter((entry) => entry.status === "TENTATIVE")) {
+        .reduce(
+          (sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100,
+          0,
+        );
+      for (const booking of matchingConcreteBookings.filter((entry) => entry.status === "TENTATIVE")) {
+        if (!tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
+          tentativeWarnings.push({
+            resourceId: resource.id,
+            bookingId: booking.id,
+            overlapStart: booking.startAt.toISOString(),
+            overlapEnd: booking.endAt.toISOString(),
+          });
+        }
+      }
+      return total + Math.max(0, (resource.capacity ?? 1) - confirmedConcreteUse);
+    }, 0);
+    // A type-level booking reserves the shared resource-type pool, so subtract
+    // it once after summing the residual capacity of concrete resources.
+    const availableCapacity = Math.max(0, availableCapacityBeforeTypeBookings - confirmedTypeUse);
+    for (const booking of matchingTypeBookings.filter((entry) => entry.status === "TENTATIVE")) {
+      if (!tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
         tentativeWarnings.push({
-          resourceId: resource.id,
+          resourceId: requirement.localResourceTypeId,
           bookingId: booking.id,
           overlapStart: booking.startAt.toISOString(),
           overlapEnd: booking.endAt.toISOString(),
         });
       }
-      return total + Math.max(0, (resource.capacity ?? 1) - confirmedUse);
-    }, 0);
+    }
 
     if (availableCapacity < requiredCapacity) {
       conflicts.push({
