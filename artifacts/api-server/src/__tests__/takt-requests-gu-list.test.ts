@@ -268,7 +268,7 @@ describe("GET /takt-requests — GU enriched list", () => {
   it("NU calling without role=nu gets their OWN requests (empty, since NU has no GU requests)", async () => {
     // The NU has no requests as GU (guOrgId = NU_ORG_A would return nothing from GU list)
     const res = await request(app)
-      .get("/api/takt-requests")
+      .get("/api/an/takt-requests")
       .set("Authorization", `Bearer ${nuToken}`);
     expect(res.status).toBe(200);
     // NU has no requests as a guOrgId — list is empty

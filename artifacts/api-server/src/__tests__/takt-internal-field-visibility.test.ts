@@ -168,6 +168,7 @@ describe("Takt internal field visibility — GET /api/projects/:id/takte/:taktId
 describe("Takt write operations — owning AG only", () => {
   const newTaktBody = {
     taktBezeichnung: "T77-X",
+    kurzbezeichnung: "T77-X",
     zone: "OG",
     gewerk: "Elektro",
     plannedStart: "2026-10-01",

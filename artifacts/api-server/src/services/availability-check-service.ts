@@ -757,6 +757,7 @@ async function executeLegacyCheck(
     const altResources: AlternativeResource[] = nuResources.map(r => ({
       resourceId: r.id,
       resourceType: r.type,
+      resourceTypeId: r.resourceTypeId,
       capacity: r.capacity,
       capacityUnit: r.capacityUnit,
       active: r.active,

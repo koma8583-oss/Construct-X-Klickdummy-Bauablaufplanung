@@ -407,7 +407,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
 
   it("t68-A3: GET /takt-requests/:id/details (NU) transitions to DETAILS_RETRIEVED", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -419,7 +419,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
 
   it("t68-A3b: Second GET /details call is idempotent (stays DETAILS_RETRIEVED)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("DETAILS_RETRIEVED");
@@ -430,15 +430,15 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
       .get(`/api/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${guToken}`);
     expect(res.status).toBe(200);
-    // Status is still DETAILS_RETRIEVED — GU access does not change it
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    // GU access is a preview and does not change the AG request status.
+    expect(res.body.status).toBe("DELIVERED");
   });
 
   // ── Step 4: NU submits ACCEPTED response ─────────────────────────────────────
 
   it("t68-A4: POST /takt-requests/:id/responses (ACCEPTED) returns 201", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         decision: "ACCEPTED",
@@ -523,7 +523,7 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
 
   it("t68-B3: NU retrieves details → DETAILS_RETRIEVED", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -537,7 +537,7 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
 
   it("t68-B4: NU submits ALTERNATIVES_PROPOSED with two alternatives", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         decision: "ALTERNATIVES_PROPOSED",

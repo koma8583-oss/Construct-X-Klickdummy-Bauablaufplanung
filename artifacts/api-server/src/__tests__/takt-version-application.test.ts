@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -33,7 +33,7 @@ import {
   messageInboxTable,
   projectContractorsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import app from "../app";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
@@ -82,6 +82,9 @@ beforeAll(async () => {
   // Flush outbox/inbox before org deletes (FK: message_outbox.sender_org_id → organizations)
   await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
+  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});
 
@@ -217,8 +220,9 @@ afterAll(async () => {
   // Flush outbox/inbox before org deletes (FK: message_outbox.sender_org_id → organizations)
   await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG));
-  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG));
+  await hubDb.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
+  await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
+  await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});
 });
 
 // ── CONFIRM_ACCEPTED — no content change ──────────────────────────────────────

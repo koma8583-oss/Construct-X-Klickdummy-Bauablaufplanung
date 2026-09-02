@@ -211,6 +211,7 @@ export async function getAnLeistungsanfrageDetail(
       requiredQualification: requirement.requiredQualification,
       notes: requirement.notes,
     })),
+    detailsRetrievedNow: projection.status === "RECEIVED",
   };
 }
 

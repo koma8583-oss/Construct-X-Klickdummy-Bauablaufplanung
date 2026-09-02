@@ -365,6 +365,7 @@ export async function createRevision(
         requestNumber:       newRequestNumber,
         status:              "DRAFT",
         responseRequiredBy:  responseRequiredBy ?? null,
+        dataPublicationId:  oldRequest.dataPublicationId,
         supersedesRequestId: oldRequestId,
         createdByUserId:     userId,
         createdAt:           now,
@@ -374,18 +375,20 @@ export async function createRevision(
 
     // d. Insert new Snapshot for the new request
     const snapshotPayload: Record<string, unknown> = {
+      ...((oldPayload ?? {}) as Record<string, unknown>),
       taktId:            takt.id,
       taktVersion:       newVersionNumber,
       taktBezeichnung:   mergedTakt.taktBezeichnung,
       zone:              mergedTakt.zone,
       gewerk:            mergedTakt.gewerk,
+      kurzbezeichnung:   mergedTakt.kurzbezeichnung ?? null,
       description:       mergedTakt.description  ?? null,
       plannedStart:      newStart,
       plannedEnd:        newEnd,
       plannedTimeWindow: { start: newStart, end: newEnd },
       resourceRequirements: mergedTakt.requiredResources
         ? [{ resourceType: "CREW", notes: mergedTakt.requiredResources }]
-        : [],
+        : ((oldPayload?.resourceRequirements as unknown[]) ?? []),
       projectReference:  project?.id ?? takt.projectId,
       ...(subject != null || message != null
         ? { coordinationContext: { subject: subject ?? null, message: message ?? null } }

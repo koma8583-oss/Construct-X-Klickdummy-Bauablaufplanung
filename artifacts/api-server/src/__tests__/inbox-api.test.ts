@@ -227,7 +227,7 @@ describe("GET /messages/inbox", () => {
     // Must NOT contain full snapshot fields
     expect(payload.trade).toBeUndefined();
     expect(payload.workPackage).toBeUndefined();
-    expect(payload.resourceRequirements).toBeUndefined();
+    expect(payload.resourceRequirements).toEqual([]);
     expect(payload.documentReferences).toBeUndefined();
     expect(payload.predecessors).toBeUndefined();
   });

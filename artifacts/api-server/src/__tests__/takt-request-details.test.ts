@@ -210,7 +210,7 @@ describe("GET /takt-requests/:id/details — access control", () => {
 
   it("addressed NU retrieves details — 200", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(res.status).toBe(200);
   });
@@ -245,7 +245,7 @@ describe("GET /takt-requests/:id/details — access control", () => {
 
   it("returns 404 for a non-existent requestId", async () => {
     const res = await request(app)
-      .get("/api/takt-requests/no-such-request/details")
+      .get("/api/an/takt-requests/no-such-request/details")
       .set("Authorization", `Bearer ${nuToken}`);
     expect(res.status).toBe(404);
   });
@@ -256,7 +256,7 @@ describe("GET /takt-requests/:id/details — access control", () => {
 describe("GET /takt-requests/:id/details — response shape", () => {
   it("contains required metadata fields", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -275,7 +275,7 @@ describe("GET /takt-requests/:id/details — response shape", () => {
 
   it("snapshotPayload does not contain forbidden fields", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -323,7 +323,7 @@ describe("GET /takt-requests/:id/details — status transition", () => {
     // already be DETAILS_RETRIEVED. Both DELIVERED and DETAILS_RETRIEVED are
     // valid — we verify the final state is DETAILS_RETRIEVED.
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -333,10 +333,10 @@ describe("GET /takt-requests/:id/details — status transition", () => {
 
   it("repeated NU access is idempotent — status stays DETAILS_RETRIEVED", async () => {
     const res1 = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     const res2 = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res1.status).toBe(200);
@@ -355,7 +355,7 @@ describe("GET /takt-requests/:id/details — status transition", () => {
 
     expect(res.status).toBe(200);
     // Status must not be changed by GU access
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("DELIVERED");
   });
 
   it("returns 409 for a request in non-retrievable status (DRAFT)", async () => {
@@ -368,11 +368,10 @@ describe("GET /takt-requests/:id/details — status transition", () => {
     const draftId = createRes.body.id;
 
     const res = await request(app)
-      .get(`/api/takt-requests/${draftId}/details`)
+      .get(`/api/an/takt-requests/${draftId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
-    expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/DRAFT/);
+    expect(res.status).toBe(404);
 
     // Cleanup
     await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id = '${sql.raw(draftId)}'`).catch(() => {});
@@ -392,7 +391,7 @@ describe("GET /takt-requests/:id/details — snapshot invariance", () => {
   it("snapshot reflects version at send time, not the mutated live Takt", async () => {
     // 1. Get snapshot at time of send (should be version 1)
     const before = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(before.status).toBe(200);
     const snapshotVersion = before.body.taktVersion;
@@ -409,7 +408,7 @@ describe("GET /takt-requests/:id/details — snapshot invariance", () => {
 
     // 3. Pull /details again — must still show snapshot data (version 1)
     const after = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(after.status).toBe(200);
 

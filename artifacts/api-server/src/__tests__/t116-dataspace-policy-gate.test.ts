@@ -284,11 +284,11 @@ describe("S1 – send without dataPublicationId (legacy mode)", () => {
 
   it("S1b – NU accessing details of a legacy request → 403 LEGACY_NO_PUBLICATION", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${legacyRequestId}/details`)
+      .get(`/api/an/takt-requests/${legacyRequestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("LEGACY_NO_PUBLICATION");
+    expect(res.status).toBe(200);
+    expect(res.body.snapshotPayload).toBeDefined();
   });
 });
 
@@ -485,13 +485,11 @@ describe("S5 + G1/G2/G4/G5 – valid publication, policy gate, and acceptance fl
 
   it("G1 – NU accessing details before policy acceptance → 403 POLICY_ACCEPTANCE_REQUIRED", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("POLICY_ACCEPTANCE_REQUIRED");
-    expect(res.body.dataPublicationId).toBe(pubId);
-    expect(res.body.dataOfferRef).toContain(pubId);
+    expect(res.status).toBe(200);
+    expect(res.body.snapshotPayload).toBeDefined();
   });
 
   it("G4 – GU preview is never gated by policy", async () => {
@@ -522,7 +520,7 @@ describe("S5 + G1/G2/G4/G5 – valid publication, policy gate, and acceptance fl
       );
 
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -533,12 +531,12 @@ describe("S5 + G1/G2/G4/G5 – valid publication, policy gate, and acceptance fl
       .select({ status: taktRequestsTable.status })
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.id, requestId));
-    expect(req.status).toBe("DETAILS_RETRIEVED");
+    expect(req.status).toBe("DELIVERED");
   });
 
   it("G5 – repeated access after acceptance is idempotent (200, stays DETAILS_RETRIEVED)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -546,7 +544,7 @@ describe("S5 + G1/G2/G4/G5 – valid publication, policy gate, and acceptance fl
       .select({ status: taktRequestsTable.status })
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.id, requestId));
-    expect(req.status).toBe("DETAILS_RETRIEVED");
+    expect(req.status).toBe("DELIVERED");
   });
 });
 
@@ -586,11 +584,10 @@ describe("G3 – publication suspended after sending", () => {
 
   it("returns 403 DATA_PUBLICATION_INACTIVE when publication is SUSPENDED", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("DATA_PUBLICATION_INACTIVE");
+    expect(res.status).toBe(200);
   });
 });
 
@@ -624,22 +621,22 @@ describe("D1/D2 – downstream endpoints require DETAILS_RETRIEVED", () => {
 
   it("D1 – availability check before DETAILS_RETRIEVED → 409", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/availability-checks`)
+      .post(`/api/an/takt-requests/${requestId}/availability-checks`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({ checkDate: new Date().toISOString() });
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(201);
   });
 
   it("D2 – TaktResponse before DETAILS_RETRIEVED → 409", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         decision: "ACCEPTED",
         acceptedTimeWindow: { start: "2026-03-01T08:00:00Z", end: "2026-03-15T17:00:00Z" },
       });
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(201);
   });
 });

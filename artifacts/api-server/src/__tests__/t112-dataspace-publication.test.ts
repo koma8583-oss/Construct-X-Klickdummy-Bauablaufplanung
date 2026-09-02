@@ -17,6 +17,7 @@ import {
   organizationsTable,
   usersTable,
   projectsTable,
+  takteTable,
   projectContractorsTable,
   projectMembershipsTable,
   dataPublicationsTable,
@@ -58,6 +59,7 @@ let nonCatalogPolicyId: string;
 let agToken: string;
 let anToken: string;
 let anotherAgToken: string;
+const testTaktId = "t112-performance-takt";
 
 beforeAll(async () => {
   // AG org + user
@@ -117,6 +119,15 @@ beforeAll(async () => {
     })
     .returning();
   projectId = project.id;
+  await db.insert(takteTable).values({
+    id: testTaktId,
+    projectId,
+    taktBezeichnung: "T112 Performance Takt",
+    zone: "A",
+    gewerk: "ELK",
+    plannedStart: "2025-03-01",
+    plannedEnd: "2025-03-05",
+  }).onConflictDoNothing();
 
   // Add anOrgId as ACTIVE contractor
   await db.insert(projectContractorsTable).values({
@@ -297,6 +308,7 @@ describe("POST /api/projects/:projectId/data-publications", () => {
       dataProductType: "TAKT_INFORMATION_PACKAGE",
       policyTemplateId: "tk-policy-performance-coordination",
       selectedFields: ["workPackage", "predecessors", "successors"],
+      selectedTaktIds: [testTaktId],
     });
     expect(res.status).toBe(201);
     expect(res.body.dataProductType).toBe("TAKT_INFORMATION_PACKAGE");

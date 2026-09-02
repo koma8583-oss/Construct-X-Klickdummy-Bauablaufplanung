@@ -368,12 +368,14 @@ describe("POST /takt-requests/:id/response — legacy flat format adapter", () =
     const reqId = await insertReviewRequest("resp-acc");
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         decision:      "ACCEPTED",
-        acceptedStart: "2026-10-10T08:00:00Z",
-        acceptedEnd:   "2026-10-15T17:00:00Z",
+        acceptedTimeWindow: {
+          start: "2026-10-10T08:00:00Z",
+          end:   "2026-10-15T17:00:00Z",
+        },
       });
 
     expect(res.status).toBe(201);
@@ -402,13 +404,13 @@ describe("POST /takt-requests/:id/response — legacy flat format adapter", () =
     };
 
     const first = await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send(body);
     expect(first.status).toBe(201);
 
     const second = await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send(body);
     expect(second.status).toBe(200);
@@ -424,14 +426,14 @@ describe("POST /takt-requests/:id/response — legacy flat format adapter", () =
     const reqId = await insertReviewRequest("resp-conflict-sing");
 
     await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
-      .send({ decision: "ACCEPTED", acceptedStart: "2026-10-10T08:00:00Z", acceptedEnd: "2026-10-15T17:00:00Z" });
+      .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-10T08:00:00Z", end: "2026-10-15T17:00:00Z" } });
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
-      .send({ decision: "ACCEPTED", acceptedStart: "2026-10-11T08:00:00Z", acceptedEnd: "2026-10-16T17:00:00Z" });
+      .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-11T08:00:00Z", end: "2026-10-16T17:00:00Z" } });
 
     expect(res.status).toBe(409);
   });
@@ -440,13 +442,13 @@ describe("POST /takt-requests/:id/response — legacy flat format adapter", () =
     const reqId = await insertReviewRequest("resp-alt-sing");
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/response`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({
         decision:    "ALTERNATIVES_PROPOSED",
         alternatives: [
-          { alternativeId: "alt-1", rank: 1, proposedStart: "2026-10-17T08:00:00Z", proposedEnd: "2026-10-22T17:00:00Z" },
-          { alternativeId: "alt-2", rank: 2, proposedStart: "2026-10-24T08:00:00Z", proposedEnd: "2026-10-29T17:00:00Z" },
+          { alternativeId: "alt-1", rank: 1, timeWindow: { start: "2026-10-17T08:00:00Z", end: "2026-10-22T17:00:00Z" } },
+          { alternativeId: "alt-2", rank: 2, timeWindow: { start: "2026-10-24T08:00:00Z", end: "2026-10-29T17:00:00Z" } },
         ],
       });
 
@@ -483,13 +485,13 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
     };
 
     const first = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send(body);
     expect(first.status).toBe(201);
 
     const second = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send(body);
     expect(second.status).toBe(200);
@@ -506,12 +508,12 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
     const reqId = await insertReviewRequest("resp-hash-diff-comment");
 
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY", comment: "First comment" });
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY", comment: "Different comment" });
 
@@ -522,12 +524,12 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
     const reqId = await insertReviewRequest("resp-hash-diff-tw");
 
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-10T08:00:00Z", end: "2026-10-15T17:00:00Z" } });
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-11T08:00:00Z", end: "2026-10-16T17:00:00Z" } });
 
@@ -538,12 +540,12 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
     const reqId = await insertReviewRequest("resp-diff-decision");
 
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "ACCEPTED", acceptedTimeWindow: { start: "2026-10-10T08:00:00Z", end: "2026-10-15T17:00:00Z" } });
 
@@ -556,13 +558,13 @@ describe("POST /takt-requests/:id/responses — hash-based idempotency", () => {
 
     // First submission
     await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
     // Retry: the AN-owned response keeps the original outbound payload.
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
@@ -578,14 +580,15 @@ describe("Transaction atomicity — response + status in one commit", () => {
     const reqId = await insertReviewRequest("resp-atomic");
 
     const res = await request(app)
-      .post(`/api/takt-requests/${reqId}/responses`)
+      .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuToken}`)
       .send({ decision: "REJECTED", reasonCode: "RESOURCE_CONFLICT" });
 
     expect(res.status).toBe(201);
-    expect(res.body.requestStatus).toBe("REJECTED");
+    expect(res.body.requestStatus).toBe("RESPONDED");
 
-    // DB request status must also be REJECTED
+    // AN-local response submission leaves the request in RESPONDED until
+    // the Dataspace response is processed by the AG.
     const [row] = await db.select()
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.id, reqId))

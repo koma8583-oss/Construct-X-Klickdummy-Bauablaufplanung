@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -32,6 +32,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  anLeistungsanfragenTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import app from "../app";
@@ -173,6 +174,55 @@ beforeAll(async () => {
       plannedTimeWindow: { start: "2026-09-01", end: "2026-09-07" },
     },
   }).onConflictDoNothing();
+  await anDb.delete(anLeistungsanfragenTable).where(
+    and(
+      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, REQUEST_ID),
+      eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG),
+    ),
+  );
+  await anDb.insert(anLeistungsanfragenTable).values({
+    externalLeistungsanfrageId: REQUEST_ID,
+    externalRequestVersion: 1,
+    sourceMessageId: `t90-audit-source-${REQUEST_ID}`,
+    payloadHash: `t90-audit-hash-${REQUEST_ID}`,
+    correlationId: REQUEST_ID,
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT_ID,
+    leistungReference: TAKT_ID,
+    plannedStart: "2026-09-01",
+    plannedEnd: "2026-09-07",
+    policySnapshot: { recipientOrganizationId: NU_ORG },
+    payloadSnapshot: {
+      requestId: REQUEST_ID,
+      requestVersion: 1,
+      projectReference: PROJECT_ID,
+      taktReference: TAKT_ID,
+      plannedStart: "2026-09-01",
+      plannedEnd: "2026-09-07",
+      publicSnapshot: {
+        schemaVersion: "1.0",
+        projectReference: PROJECT_ID,
+        projectLocation: null,
+        projectDescription: null,
+        taktReference: TAKT_ID,
+        taktVersion: 1,
+        trade: "Elektro",
+        workPackage: "T90 Test Takt",
+        kurzbezeichnung: "T90",
+        location: { building: null, storey: null, zone: "A" },
+        plannedTimeWindow: { start: "2026-09-01", end: "2026-09-07" },
+        bufferTimeWindow: null,
+        requiredOutput: null,
+        resourceRequirements: [],
+        constraints: [],
+        predecessors: [],
+        successors: [],
+        documentReferences: { lvReference: null, bimReference: null },
+      },
+    },
+    status: "RECEIVED",
+  }).onConflictDoNothing();
 
   // Tokens
   guToken    = signToken({ userId: GU_USER,    orgId: GU_ORG,    orgType: "AG" });
@@ -225,7 +275,7 @@ afterAll(async () => {
 describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event", () => {
   it("NU first access writes DETAILS_RETRIEVED audit event", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${REQUEST_ID}/details`)
+      .get(`/api/an/takt-requests/${REQUEST_ID}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -253,7 +303,7 @@ describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event",
   it("NU subsequent access does NOT add a second DETAILS_RETRIEVED event", async () => {
     // Already DETAILS_RETRIEVED from previous test; call again
     const res = await request(app)
-      .get(`/api/takt-requests/${REQUEST_ID}/details`)
+      .get(`/api/an/takt-requests/${REQUEST_ID}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
@@ -402,6 +452,9 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
           eq(taktRequestAuditEventsTable.eventType, "DETAILS_RETRIEVED"),
         ),
       );
+    await anDb.update(anLeistungsanfragenTable)
+      .set({ status: "RECEIVED", detailsRetrievedAt: null })
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, REQUEST_ID));
 
     // Fire 10 concurrent NU requests — the atomic UPDATE ensures exactly one
     // wins the DELIVERED→DETAILS_RETRIEVED transition and writes the event.
@@ -409,7 +462,7 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
     const responses = await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
         request(app)
-          .get(`/api/takt-requests/${REQUEST_ID}/details`)
+          .get(`/api/an/takt-requests/${REQUEST_ID}/details`)
           .set("Authorization", `Bearer ${nuToken}`),
       ),
     );

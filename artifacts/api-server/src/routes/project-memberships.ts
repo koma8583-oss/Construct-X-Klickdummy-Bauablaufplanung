@@ -130,11 +130,38 @@ const invitationPackageSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 }).strict();
 
+function validateInvitationFields(body: unknown): { code: string; error: string } | null {
+  if (!body || typeof body !== "object" || !Array.isArray((body as { selectedFields?: unknown }).selectedFields)) {
+    return null;
+  }
+  const selectedFields = (body as { selectedFields: unknown[] }).selectedFields;
+  const allowed = new Set(["projectReference", "projectName", "projectStatus", "projectLocation"]);
+  if (selectedFields.some((field) => typeof field !== "string" || !allowed.has(field))) {
+    return {
+      code: "PROJECT_INVITATION_FIELDS_NOT_ALLOWED",
+      error: "Für Projekteinladungen sind nur Projektstammdaten zulässig.",
+    };
+  }
+  return null;
+}
+
 // The invitation-package endpoint is the canonical membership-invitation
 // workflow. A data publication is a separate, later operation.
 router.post("/projects/:projectId/invitation-packages", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
   if (req.user?.orgType !== "AG" || !req.user.orgId) {
     res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  const fieldError = validateInvitationFields(req.body);
+  if (fieldError) {
+    res.status(400).json(fieldError);
+    return;
+  }
+  if (req.body?.policyTemplateId === "SCHEDULE_COORDINATION") {
+    res.status(400).json({
+      error: "Für Projekteinladungen darf ausschließlich die Policy Projektaufnahme verwendet werden.",
+      code: "PROJECT_INVITATION_POLICY_NOT_ALLOWED",
+    });
     return;
   }
   const parsed = invitationPackageSchema.safeParse(req.body);
@@ -165,6 +192,18 @@ router.post("/projects/:projectId/invitation-packages", requireRole("AG_ADMIN", 
 router.post("/projects/:projectId/invitations-with-data", requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res) => {
   if (req.user?.orgType !== "AG" || !req.user.orgId) {
     res.status(403).json({ error: "AG organisation required" });
+    return;
+  }
+  const fieldError = validateInvitationFields(req.body);
+  if (fieldError) {
+    res.status(400).json(fieldError);
+    return;
+  }
+  if (req.body?.policyTemplateId === "SCHEDULE_COORDINATION") {
+    res.status(400).json({
+      error: "Für Projekteinladungen darf ausschließlich die Policy Projektaufnahme verwendet werden.",
+      code: "PROJECT_INVITATION_POLICY_NOT_ALLOWED",
+    });
     return;
   }
   const parsed = combinedInvitationSchema.safeParse(req.body);

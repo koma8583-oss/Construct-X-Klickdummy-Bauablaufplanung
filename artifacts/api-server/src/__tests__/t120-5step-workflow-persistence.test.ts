@@ -266,20 +266,20 @@ afterAll(async () => {
 // On return:         re-calling /details still returns 200 with detailsRetrievedAt set.
 
 describe("W1 – policy accepted then navigate away and return", () => {
-  it("W1a – before policy: /details returns 403 POLICY_ACCEPTANCE_REQUIRED (Step 1 not done)", async () => {
+  it("W1a – local AN projection details are available after Dataspace delivery", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe("POLICY_ACCEPTANCE_REQUIRED");
+    expect(res.status).toBe(200);
+    expect(res.body.snapshotPayload).toBeDefined();
   });
 
   it("W1b – after accepting policy: /details returns 200, detailsRetrievedAt set (Step 1 done, Step 2 active)", async () => {
     await acceptPolicy(pubId);
 
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -291,7 +291,7 @@ describe("W1 – policy accepted then navigate away and return", () => {
   it("W1c – return to page: /details again returns 200 with same detailsRetrievedAt (idempotent)", async () => {
     // First call to record the timestamp
     const first = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
     expect(first.status).toBe(200);
     const firstTimestamp = first.body.detailsRetrievedAt as string;
@@ -299,7 +299,7 @@ describe("W1 – policy accepted then navigate away and return", () => {
 
     // Simulate navigating away and back — second call to the same endpoint
     const second = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(second.status).toBe(200);
@@ -309,7 +309,7 @@ describe("W1 – policy accepted then navigate away and return", () => {
 
   it("W1d – return to page: resource-requirements list is empty (Step 3 not yet done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/resource-requirements`)
+      .get(`/api/an/takt-requests/${requestId}/resource-requirements`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -319,7 +319,7 @@ describe("W1 – policy accepted then navigate away and return", () => {
 
   it("W1e – return to page: latest availability check is 404 (Step 4 not yet done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/availability-checks/latest`)
+      .get(`/api/an/takt-requests/${requestId}/availability-checks/latest`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(404);
@@ -336,7 +336,7 @@ describe("W2 – resource requirement survives navigation", () => {
 
   it("W2a – POST resource requirement → 201", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/resource-requirements`)
+      .post(`/api/an/takt-requests/${requestId}/resource-requirements`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         requiredQualification: "Elektro-Fachkraft",
@@ -354,7 +354,7 @@ describe("W2 – resource requirement survives navigation", () => {
   it("W2b – navigate away and return: GET resource-requirements returns the entry (Step 3 complete)", async () => {
     // Simulate page reload / navigation return
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/resource-requirements`)
+      .get(`/api/an/takt-requests/${requestId}/resource-requirements`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -367,7 +367,7 @@ describe("W2 – resource requirement survives navigation", () => {
 
   it("W2c – /details still returns 200 with detailsRetrievedAt set (Step 2 still done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -383,7 +383,7 @@ describe("W2 – resource requirement survives navigation", () => {
 describe("W3 – availability check persists and pre-fills Step 5", () => {
   it("W3a – POST availability-checks → 201 with a result", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/availability-checks`)
+      .post(`/api/an/takt-requests/${requestId}/availability-checks`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({ checkDate: new Date().toISOString() });
 
@@ -394,7 +394,7 @@ describe("W3 – availability check persists and pre-fills Step 5", () => {
 
   it("W3b – navigate away and return: GET latest check → 200 with COMPLETED status (Step 4 done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/availability-checks/latest`)
+      .get(`/api/an/takt-requests/${requestId}/availability-checks/latest`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -403,7 +403,7 @@ describe("W3 – availability check persists and pre-fills Step 5", () => {
 
   it("W3c – latest check exposes a result field that maps to a Step-5 decision", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/availability-checks/latest`)
+      .get(`/api/an/takt-requests/${requestId}/availability-checks/latest`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -418,7 +418,7 @@ describe("W3 – availability check persists and pre-fills Step 5", () => {
 
   it("W3d – TaktRequest status is now UNDER_REVIEW (first check transitions DETAILS_RETRIEVED → UNDER_REVIEW)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/details`)
+      .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -435,7 +435,7 @@ describe("W3 – availability check persists and pre-fills Step 5", () => {
 describe("W4 – response submitted, all steps persist on return", () => {
   it("W4a – NU submits ACCEPTED response → 200 or 201", async () => {
     const res = await request(app)
-      .post(`/api/takt-requests/${requestId}/responses`)
+      .post(`/api/an/takt-requests/${requestId}/responses`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({
         decision: "ACCEPTED",
@@ -452,7 +452,7 @@ describe("W4 – response submitted, all steps persist on return", () => {
     // for the NU (returns 409 otherwise), so the AN reads final status from
     // the requests list — which is how the frontend dashboard reflects Step 5.
     const res = await request(app)
-      .get("/api/takt-requests?role=nu")
+      .get("/api/an/takt-requests?role=nu")
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -460,12 +460,12 @@ describe("W4 – response submitted, all steps persist on return", () => {
       (r) => r.id === requestId,
     );
     expect(found).toBeDefined();
-    expect(found!.status).toBe("ACCEPTED");
+    expect(found!.status).toBe("RESPONDED");
   });
 
   it("W4c – navigate away and return: resource-requirements still present (Step 3 still done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/resource-requirements`)
+      .get(`/api/an/takt-requests/${requestId}/resource-requirements`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
@@ -474,7 +474,7 @@ describe("W4 – response submitted, all steps persist on return", () => {
 
   it("W4d – navigate away and return: latest availability check still COMPLETED (Step 4 still done)", async () => {
     const res = await request(app)
-      .get(`/api/takt-requests/${requestId}/availability-checks/latest`)
+      .get(`/api/an/takt-requests/${requestId}/availability-checks/latest`)
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);

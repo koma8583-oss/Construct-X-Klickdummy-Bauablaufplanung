@@ -339,6 +339,12 @@ export async function processIncomingDataOfferResponse(
       eq(dataPublicationRecipientsTable.status, "OFFERED"),
     )).returning();
     if (!updated) {
+      const [currentRecipient] = await tx.select({
+        status: dataPublicationRecipientsTable.status,
+      }).from(dataPublicationRecipientsTable).where(
+        eq(dataPublicationRecipientsTable.id, recipient.id),
+      ).limit(1);
+      if (currentRecipient?.status === nextStatus) return;
       throw new Error("Inbound data-offer response conflicts with the current recipient status");
     }
   });

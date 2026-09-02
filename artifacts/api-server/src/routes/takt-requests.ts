@@ -260,7 +260,11 @@ router.use(requireJwt, (req, res, next) => {
     req.path.startsWith("/takt-requests") ||
     /^\/projects\/[^/]+\/takt-requests(?:\/|$)/.test(req.path)
   ) && !resourceRequirementsPath;
-  if (req.user?.orgType === "AN" && legacyPath) {
+  const guReadOnlyPath =
+    req.method === "GET" &&
+    (/^\/takt-requests\/[^/]+$/.test(req.path) ||
+      /^\/takt-requests\/[^/]+\/audit-trail$/.test(req.path));
+  if (req.user?.orgType === "AN" && legacyPath && !guReadOnlyPath) {
     res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
     return;
   }

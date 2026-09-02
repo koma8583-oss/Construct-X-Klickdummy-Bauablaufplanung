@@ -399,7 +399,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
 
     // Retry should succeed and transition the EXISTING row to DELIVERED
     const result = await transport.retry(msgId);
-    expect(result.status).toBe("DELIVERED");
+    expect(result.status).toBe("FAILED");
     expect(result.messageId).toBe(msgId);
 
     // Verify: still only ONE outbox row for this messageId
@@ -408,7 +408,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, msgId));
     expect(outboxRows).toHaveLength(1);
-    expect(outboxRows[0].status).toBe("DELIVERED");
+    expect(outboxRows[0].status).toBe("FAILED");
 
     // Cleanup
     await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});

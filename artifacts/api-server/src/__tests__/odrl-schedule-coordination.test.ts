@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -20,8 +20,11 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  anProjectInvitationsTable,
+  messageOutboxTable,
+  messageInboxTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import app from "../app";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "test-secret";
@@ -104,11 +107,59 @@ beforeAll(async () => {
     createdAt:  now,
     updatedAt:  now,
   });
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: `odrl-data-offer:${pubId}`,
+    correlationId: `data-offer:${pubId}:${anOrgId}`,
+    senderAgOrgId: agOrgId,
+    receiverAnOrgId: anOrgId,
+    projectReference: projectId,
+    projectName: "ODRL-SC Project",
+    dataPublicationId: pubId,
+    dataPublicationTitle: "ODRL-SC Test Publication",
+    selectedFields: ["taktReference"],
+    dataOfferSnapshot: {
+      publicationId: pubId,
+      projectReference: projectId,
+      title: "ODRL-SC Test Publication",
+      dataProductType: "TAKT_INFORMATION_PACKAGE",
+      publicationVersion: 1,
+      status: "PUBLISHED",
+      accessPolicy: { code: "SCHEDULE_COORDINATION", name: "Schedule coordination" },
+    },
+    policySnapshot: { code: "SCHEDULE_COORDINATION", name: "Schedule coordination" },
+    status: "PENDING",
+  });
 });
 
 afterAll(async () => {
   await db.delete(dataPublicationRecipientsTable).where(eq(dataPublicationRecipientsTable.publicationId, pubId));
+  await hubDb.delete(messageOutboxTable).where(
+    or(
+      eq(messageOutboxTable.senderOrgId, anOrgId),
+      eq(messageOutboxTable.recipientOrgId, anOrgId),
+      eq(messageOutboxTable.senderOrgId, agOrgId),
+      eq(messageOutboxTable.recipientOrgId, agOrgId),
+    ),
+  );
+  await hubDb.delete(messageInboxTable).where(
+    or(
+      eq(messageInboxTable.senderOrgId, anOrgId),
+      eq(messageInboxTable.recipientOrgId, anOrgId),
+      eq(messageInboxTable.senderOrgId, agOrgId),
+      eq(messageInboxTable.recipientOrgId, agOrgId),
+    ),
+  );
+  await db.delete(messageInboxTable).where(
+    or(
+      eq(messageInboxTable.senderOrgId, anOrgId),
+      eq(messageInboxTable.recipientOrgId, anOrgId),
+      eq(messageInboxTable.senderOrgId, agOrgId),
+      eq(messageInboxTable.recipientOrgId, agOrgId),
+    ),
+  );
+  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN (${agOrgId}, ${anOrgId}) OR receiver_org_id IN (${agOrgId}, ${anOrgId})`).catch(() => {});
   await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.id, pubId));
+  await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.dataPublicationId, pubId));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId));
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId));
   await db.delete(usersTable).where(eq(usersTable.id, agUserId));
@@ -244,6 +295,6 @@ describe("POST /an/data-offers/:id/reject — status guard", () => {
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/ACCEPTED/);
+    expect(res.body.error).toMatch(/beantwortet|ACCEPTED/);
   });
 });

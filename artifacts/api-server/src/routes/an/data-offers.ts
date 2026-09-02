@@ -298,17 +298,17 @@ router.get(
       return;
     }
     const offer = toOffer(invitation);
-    if (invitation.status !== "ACCEPTED") {
-      res.status(403).json({
-        error: "Policy must be accepted before accessing content",
-        recipientStatus: recipientStatus(invitation.status, offer.validUntil, offer.publicationStatus),
-      });
-      return;
-    }
     if (offer.publicationStatus !== "PUBLISHED") {
       res.status(403).json({
         error: `Publication is ${offer.publicationStatus.toLowerCase()}`,
         publicationStatus: offer.publicationStatus,
+      });
+      return;
+    }
+    if (invitation.status !== "ACCEPTED") {
+      res.status(403).json({
+        error: "Policy must be accepted before accessing content",
+        recipientStatus: recipientStatus(invitation.status, offer.validUntil, offer.publicationStatus),
       });
       return;
     }

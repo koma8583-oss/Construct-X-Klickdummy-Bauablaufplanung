@@ -39,7 +39,7 @@ import {
   messageInboxTable,
   projectContractorsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import app from "../app";
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -287,6 +287,7 @@ afterAll(async () => {
   // Flush outbox/inbox before org deletes (FK: message_outbox.sender_org_id → organizations)
   await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t63-gu-org','t63-nu-org','t63-gu2-org') OR receiver_org_id IN ('t63-gu-org','t63-nu-org','t63-gu2-org')`).catch(() => {});
   for (const id of [GU_ORG, NU_ORG, GU2_ORG]) {
     await db.delete(organizationsTable).where(eq(organizationsTable.id, id));
   }

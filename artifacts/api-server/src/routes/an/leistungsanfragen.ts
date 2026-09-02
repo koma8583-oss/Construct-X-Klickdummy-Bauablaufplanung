@@ -21,9 +21,14 @@ import {
 import {
   InvalidRequirementPeriodError,
   ResourceRequirementNotFoundError,
+  createResourceRequirement,
+  deleteResourceRequirement,
+  listResourceRequirements,
   requirementUpdateSchema,
+  requirementCreateSchema,
 } from "../../services/resource-requirements-service";
 import { requireJwt } from "../../middlewares/requireJwt";
+import { writeAuditEvent } from "../../lib/takt-request-audit-service";
 
 const router = Router();
 
@@ -75,7 +80,18 @@ async function details(req: any, res: any) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
     return;
   }
-  res.json(result);
+  if (result.detailsRetrievedNow) {
+    await writeAuditEvent({
+      requestId: req.params.id as string,
+      eventType: "DETAILS_RETRIEVED",
+      actorOrgId: anOrgId,
+      actorUserId: req.user?.userId ?? null,
+      actorRole: "NU",
+      metadata: { firstAccess: true },
+    });
+  }
+  const { detailsRetrievedNow: _detailsRetrievedNow, ...publicResult } = result;
+  res.json(publicResult);
 }
 
 async function updateRequirement(req: any, res: any) {
@@ -305,6 +321,72 @@ router.get("/takt-requests/:id/details", requireJwt, details);
 router.get("/leistungsanfragen/:id/details", requireJwt, details);
 router.patch("/takt-requests/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.patch("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
+router.get("/takt-requests/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const rows = await listResourceRequirements(req.params.id as string, anOrgId);
+  if (rows === null) {
+    res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+    return;
+  }
+  res.json(rows);
+});
+router.get("/leistungsanfragen/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const rows = await listResourceRequirements(req.params.id as string, anOrgId);
+  if (rows === null) {
+    res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+    return;
+  }
+  res.json(rows);
+});
+router.post("/takt-requests/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const parsed = requirementCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const row = await createResourceRequirement(req.params.id as string, anOrgId, parsed.data);
+    if (row === null) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.status(201).json(row);
+  } catch (error) {
+    if (error instanceof InvalidRequirementPeriodError) {
+      res.status(422).json({ error: error.code });
+      return;
+    }
+    throw error;
+  }
+});
+router.post("/leistungsanfragen/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const parsed = requirementCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const row = await createResourceRequirement(req.params.id as string, anOrgId, parsed.data);
+    if (row === null) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.status(201).json(row);
+  } catch (error) {
+    if (error instanceof InvalidRequirementPeriodError) {
+      res.status(422).json({ error: error.code });
+      return;
+    }
+    throw error;
+  }
+});
 router.post("/takt-requests/:id/responses", requireJwt, respond);
 router.post("/leistungsanfragen/:id/responses", requireJwt, respond);
 router.get("/takt-requests/:id/coordination", requireJwt, coordination);
