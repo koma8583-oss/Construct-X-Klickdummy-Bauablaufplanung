@@ -419,4 +419,98 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
     await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG2)).catch(() => {});
     await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG2)).catch(() => {});
   });
+
+  it("allows only one of two concurrent retries to deliver a FAILED message", async () => {
+    const { LocalHubTransport } = await import("../lib/transport/local-hub-transport");
+    const transport = new LocalHubTransport();
+    const msgId = "t80-concurrent-retry-msg";
+    const GU_ORG3 = "t80-concurrent-retry-gu";
+    const NU_ORG3 = "t80-concurrent-retry-nu";
+    const failureReason = "Simulated prior failure";
+
+    await db.insert(organizationsTable).values([
+      { id: GU_ORG3, name: "t80 Concurrent Retry GU", type: "AG" as const },
+      { id: NU_ORG3, name: "t80 Concurrent Retry NU", type: "AN" as const },
+    ]).onConflictDoNothing();
+
+    try {
+      await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
+      await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+      await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+
+      await db.insert(messageOutboxTable).values({
+        messageId: msgId,
+        schemaVersion: "1.0",
+        messageType: "TAKT_REQUEST_REVISED",
+        senderOrgId: GU_ORG3,
+        recipientOrgId: NU_ORG3,
+        correlationId: "t80-concurrent-retry-corr",
+        payload: { taktRequestId: "t80-concurrent-retry-req" },
+        status: "FAILED",
+        failureReason,
+        attemptCount: 1,
+      });
+      await db.insert(messageDeliveryAttemptsTable).values({
+        messageId: msgId,
+        attemptNumber: 1,
+        status: "FAILED",
+        attemptedAt: new Date(),
+        failureReason,
+      });
+
+      const results = await Promise.allSettled([
+        transport.retry(msgId),
+        transport.retry(msgId),
+      ]);
+      const successfulRetries = results.filter(
+        (result) => result.status === "fulfilled",
+      );
+      const rejectedRetries = results.filter(
+        (result) => result.status === "rejected",
+      );
+
+      expect(successfulRetries).toHaveLength(1);
+      expect(successfulRetries[0].value).toMatchObject({
+        messageId: msgId,
+        status: "DELIVERED",
+        attemptCount: 2,
+      });
+      expect(rejectedRetries).toHaveLength(1);
+      expect(rejectedRetries[0].reason).toMatchObject({
+        code: "NOT_RETRYABLE",
+        messageId: msgId,
+      });
+
+      const [outbox] = await db
+        .select()
+        .from(messageOutboxTable)
+        .where(eq(messageOutboxTable.messageId, msgId));
+      const history = (await db
+        .select()
+        .from(messageDeliveryAttemptsTable)
+        .where(eq(messageDeliveryAttemptsTable.messageId, msgId)))
+        .sort((left, right) => left.attemptNumber - right.attemptNumber);
+      const inboxRows = await db
+        .select()
+        .from(messageInboxTable)
+        .where(eq(messageInboxTable.messageId, msgId));
+
+      expect(outbox).toMatchObject({
+        status: "DELIVERED",
+        attemptCount: 2,
+        failureReason: null,
+      });
+      expect(history).toHaveLength(2);
+      expect(history.map((attempt) => [attempt.attemptNumber, attempt.status]))
+        .toEqual([[1, "FAILED"], [2, "DELIVERED"]]);
+      expect(outbox.lastAttemptAt).toEqual(history[1].attemptedAt);
+      expect(inboxRows).toHaveLength(1);
+    } finally {
+      await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
+      await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+      await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+      await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG3)).catch(() => {});
+      await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG3)).catch(() => {});
+    }
+  });
 });
