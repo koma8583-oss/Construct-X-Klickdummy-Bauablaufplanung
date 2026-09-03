@@ -218,6 +218,8 @@ export default function LeistungsanfragenPage() {
     {
       query: {
         queryKey: getListTaktRequestsQueryKey(apiStatusFilter ? { status: apiStatusFilter } : undefined),
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: true,
         refetchInterval: (query) => {
           const data = query.state.data as TaktRequestListItem[] | undefined;
           if (!data) return 8_000;

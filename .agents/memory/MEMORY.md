@@ -60,3 +60,4 @@
 - [Independent data-offer responses](independent-data-offer-responses.md) — publication decisions use their own contract and never mutate project membership.
 - [Tractus-X access grants](tractusx-access-grants.md) — reuse only active, unexpired agreement/EDR pairs; a transfer ID alone is not data-plane authorization.
 - [Construct-X policy hierarchy](construct-x-policy-hierarchy.md) — resolve child policies against explicit inherited capabilities, not project-admission permissions.
+- [Authenticated API caching](authenticated-api-cache.md) — protected worklists use no-store and no ETags so deleted or changed records cannot survive as stale 304 responses.

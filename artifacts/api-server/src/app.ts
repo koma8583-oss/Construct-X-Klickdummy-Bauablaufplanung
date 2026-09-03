@@ -15,6 +15,15 @@ import { runWithDatabaseRole, type DatabaseRole } from "@workspace/db";
 
 const app: Express = express();
 
+// Authenticated API responses must never be reused from a browser cache.
+// Otherwise a direct data cleanup or another session's mutation can leave
+// stale Leistungsanfragen visible after the API already returns no rows.
+app.disable("etag");
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // Establish the physical data boundary before any route handler runs.  The
 // URL path is the trust boundary in this single-process deployment: AG, AN,
 // and Hub handlers cannot accidentally inherit one another's connection.
