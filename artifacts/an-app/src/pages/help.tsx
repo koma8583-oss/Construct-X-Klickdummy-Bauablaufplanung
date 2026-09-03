@@ -85,6 +85,8 @@ const articles: HelpArticle[] = [
       "Öffne die Leistungsanfrage und lies in Phase 1 Leistung, freigegebene Informationen, Zweck, Zeitraum, Antwortfrist und fachliche Bedingungen.",
       "Liegt die Child-Policy vollständig innerhalb der akzeptierten Projekt-Policy, ist keine neue ausdrückliche Zustimmung nötig.",
       "Prüfe danach den Leistungssnapshot und fahre direkt mit Machbarkeit prüfen und Rückmeldung senden fort.",
+      "Beispiel Rahmentermine: Du siehst Leistungsname, Zeitraum, Puffer, Bereich und Abhängigkeiten – keine Ressourcen-, Personal-, Kosten- oder Projektdaten.",
+      "Nur bei einer echten Erweiterung erscheint „Neue Nutzungsbedingungen“ mit der Abweichung. BIM-, Logistik- und Dokumentpakete bleiben separate Datenangebote.",
     ],
     keywords: "datenraum leistungsanfrage child-policy projekt-policy policy-delta dataoffer bim logistikkonzept dokumentenpaket sichtbar datenschutz",
     icon: ShieldCheck,

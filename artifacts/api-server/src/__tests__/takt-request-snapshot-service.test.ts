@@ -28,6 +28,8 @@ import {
   UnauthorizedSnapshotError,
   NuNotContractorError,
   InvalidTaktForSnapshotError,
+  InvalidLeistungsfreigabeFieldsError,
+  selectLeistungsfreigabeFields,
 } from "../lib/takt-request-snapshot-service";
 import { ProjectMembershipError } from "../services/project-membership-service";
 import type { Takt } from "@workspace/db";
@@ -140,6 +142,21 @@ afterAll(async () => {
 // ── A. Unit tests for buildTaktRequestSnapshot() ──────────────────────────────
 
 describe("buildTaktRequestSnapshot() — pure function", () => {
+  it("scopes Rahmentermine to technical refs, time windows and dependencies", () => {
+    const scoped = selectLeistungsfreigabeFields(buildTaktRequestSnapshot({
+      takt: TAKT_FIXTURE, projectId: "t35-project-001", projectLocation: "Intern",
+      projectDescription: "Intern", predecessors: PREDECESSORS, successors: SUCCESSORS,
+    }), "RAHMENTERMINE");
+    expect(scoped).toMatchObject({ projectReference: "t35-project-001", plannedTimeWindow: { start: "2026-09-14", end: "2026-09-28" } });
+    expect(scoped).toHaveProperty("taktReference");
+    expect(scoped).toHaveProperty("predecessors");
+    expect(scoped).not.toHaveProperty("resourceRequirements");
+    expect(scoped).not.toHaveProperty("projectLocation");
+    expect(scoped).not.toHaveProperty("projectDescription");
+    expect(() => selectLeistungsfreigabeFields(buildTaktRequestSnapshot({
+      takt: TAKT_FIXTURE, projectId: "t35-project-001", predecessors: [], successors: [],
+    }), "RAHMENTERMINE", ["resourceRequirements", "projectLocation"])).toThrow(InvalidLeistungsfreigabeFieldsError);
+  });
   it("builds a valid snapshot with all whitelisted fields", () => {
     const payload = buildTaktRequestSnapshot({
       takt: TAKT_FIXTURE,

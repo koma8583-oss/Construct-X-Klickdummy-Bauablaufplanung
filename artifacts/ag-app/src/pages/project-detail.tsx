@@ -732,6 +732,8 @@ export default function ProjectDetail() {
           orgId: membership.anOrgId,
           assignmentStatus: 'ACTIVE',
           trade: assignment?.trade,
+          projectAgreementPolicyId: membership.projectAgreementPolicyId,
+          projectAgreementStatus: membership.projectAgreementPolicyId ? 'ACCEPTED' : null,
         };
       });
   }, [allAnOrgs, assignments, memberships]);
@@ -1306,22 +1308,11 @@ export default function ProjectDetail() {
     if (!selectedTakt || isDelegating) return;
     setIsDelegating(true);
     try {
-      const publication = await createDataPublication.mutateAsync({
-        dataProductType: 'TAKT_INFORMATION_PACKAGE',
-        title: `Leistungsfreigabe – ${selectedTakt.kurzbezeichnung || selectedTakt.taktBezeichnung}`,
-        description: values.message,
-        policyTemplateId: values.policyTemplateId,
-        selectedFields: values.selectedFields,
-        selectedTaktIds: [selectedTakt.id],
-        recipientAnOrgIds: values.nuOrgIds,
-      });
-      await publishDataPublication.mutateAsync(publication.id);
       const created = await createTaktRequestBatch.mutateAsync({
         data: {
           taktId: selectedTakt.id,
           nuOrgIds: values.nuOrgIds,
           message: values.message,
-          dataPublicationId: publication.id,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),

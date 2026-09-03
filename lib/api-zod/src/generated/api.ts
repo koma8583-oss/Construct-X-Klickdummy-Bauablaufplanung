@@ -594,6 +594,7 @@ export const ListProjectMembershipsResponseItem = zod.object({
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
+  "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -709,6 +710,7 @@ export const InviteProjectParticipantResponse = zod.object({
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
+  "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -795,6 +797,7 @@ export const CreateProjectInvitationPackageResponse = zod.object({
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
+  "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -889,6 +892,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
+  "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -1270,6 +1274,7 @@ export const RevokeProjectMembershipResponse = zod.object({
   "agOrgId": zod.string(),
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
+  "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -3582,7 +3587,8 @@ export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
   "responseRequiredBy": zod.coerce.date().optional(),
   "subject": zod.string().max(createTaktRequestBatchWithSnapshotBodySubjectMax).optional(),
   "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional(),
-  "dataPublicationId": zod.string().min(1).optional()
+  "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']).optional().describe('Business purpose of the Leistungsfreigabe.'),
+  "selectedFields": zod.array(zod.string().min(1)).optional().describe('Explicit child-owned fields; the server enforces the purpose whitelist.')
 }).describe('Body for atomically creating one request per selected NU.')
 
 

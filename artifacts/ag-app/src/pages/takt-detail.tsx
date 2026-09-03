@@ -180,22 +180,11 @@ export default function TaktDetail() {
     if (!takt) return;
     setSavingAssignment(true);
     try {
-      const publication = await createDataPublication.mutateAsync({
-        dataProductType: 'TAKT_INFORMATION_PACKAGE',
-        title: `Leistungsfreigabe – ${takt.kurzbezeichnung || takt.taktBezeichnung}`,
-        description: values.message,
-        policyTemplateId: values.policyTemplateId,
-        selectedFields: values.selectedFields,
-        selectedTaktIds: [takt.id],
-        recipientAnOrgIds: values.nuOrgIds,
-      });
-      await publishDataPublication.mutateAsync(publication.id);
       const created = await createRequestBatch.mutateAsync({
         data: {
           taktId: takt.id,
           nuOrgIds: values.nuOrgIds,
           message: values.message,
-          dataPublicationId: publication.id,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),

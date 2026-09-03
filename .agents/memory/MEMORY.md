@@ -61,3 +61,4 @@
 - [Tractus-X access grants](tractusx-access-grants.md) — reuse only active, unexpired agreement/EDR pairs; a transfer ID alone is not data-plane authorization.
 - [Construct-X policy hierarchy](construct-x-policy-hierarchy.md) — resolve child policies against explicit inherited capabilities, not project-admission permissions.
 - [Authenticated API caching](authenticated-api-cache.md) — protected worklists use no-store and no ETags so deleted or changed records cannot survive as stale 304 responses.
+- [Performance request child policies](performance-request-child-policies.md) — normal Leistungsanfragen inherit an accepted project agreement and never depend on DataOffer acceptance.

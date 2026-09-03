@@ -149,6 +149,8 @@ export interface ProjectMembership {
   agOrgId: string;
   anOrgId: string;
   dataPublicationId?: string | null;
+  /** Accepted parent project-agreement policy for child Leistungsfreigaben. */
+  projectAgreementPolicyId?: string | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;
@@ -1911,6 +1913,19 @@ export interface CreateTaktRequestBody {
 }
 
 /**
+ * Business purpose of the Leistungsfreigabe.
+ */
+export type TaktRequestBatchInputPurpose = typeof TaktRequestBatchInputPurpose[keyof typeof TaktRequestBatchInputPurpose];
+
+
+export const TaktRequestBatchInputPurpose = {
+  RAHMENTERMINE: 'RAHMENTERMINE',
+  LEISTUNGSKOORDINATION: 'LEISTUNGSKOORDINATION',
+  AUSFUEHRUNGSINFORMATIONEN: 'AUSFUEHRUNGSINFORMATIONEN',
+  INDIVIDUELLE_FREIGABE: 'INDIVIDUELLE_FREIGABE',
+} as const;
+
+/**
  * Body for atomically creating one request per selected NU.
  */
 export interface TaktRequestBatchInput {
@@ -1927,8 +1942,13 @@ export interface TaktRequestBatchInput {
   subject?: string;
   /** @maxLength 2000 */
   message?: string;
-  /** @minLength 1 */
-  dataPublicationId?: string;
+  /** Business purpose of the Leistungsfreigabe. */
+  purpose?: TaktRequestBatchInputPurpose;
+  /**
+     * Explicit child-owned fields; the server enforces the purpose whitelist.
+     * @items.minLength 1
+     */
+  selectedFields?: string[];
 }
 
 /**

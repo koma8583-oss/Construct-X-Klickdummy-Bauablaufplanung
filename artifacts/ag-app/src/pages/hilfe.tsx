@@ -100,6 +100,18 @@ const topics: Topic[] = [
       },
       {
         id: 'projects-02',
+        title: 'Leistungen sicher freigeben',
+        summary: 'Die Leistungsfreigabe folgt immer der akzeptierten Projektvereinbarung und ist kein Datenangebot.',
+        steps: [
+          'Beispiel Rahmentermine: Geben Sie Leistungsname, geplanten Zeitraum, Puffer, Ausführungsbereich und relevante Abhängigkeiten frei – niemals Ressourcen, Personal, Kosten oder Projektbeschreibung.',
+          'Beispiel Leistungskoordination: Ergänzen Sie nur die Angaben, die der AN zur Koordination der ausgewählten Leistung benötigt.',
+          'Bei einer echten Erweiterung der vereinbarten Nutzung erhält der AN neue Nutzungsbedingungen zur Annahme oder Ablehnung.',
+          'BIM-Modelle, Logistikpakete und Dokumentpakete senden Sie weiterhin als separates Datenangebot.',
+        ],
+        tags: ['Leistungsfreigabe', 'Rahmentermine', 'Projektvereinbarung'],
+      },
+      {
+        id: 'projects-02',
         title: 'Die Leistungsanfrage gibt gezielt Informationen frei',
         summary: 'Eine Leistung ist der fachliche Bezug. Erst die konkrete Leistungsanfrage beschreibt, welche Informationen für diese Leistung, zu welchem Zweck und in welchem Zeitraum gezielt freigegeben werden.',
         steps: [

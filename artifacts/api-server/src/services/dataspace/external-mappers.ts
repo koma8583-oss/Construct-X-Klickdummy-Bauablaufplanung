@@ -171,7 +171,10 @@ export function publicSnapshotFromRecord(value: Record<string, unknown>): TaktRe
   if (!parsed.success) {
     throw new Error("The released Takt snapshot is incomplete or malformed");
   }
-  return parsed.data;
+  // The validator permits purpose-scoped children; the external envelope uses
+  // the established snapshot type while consumers must treat omitted fields as
+  // intentionally not released.
+  return parsed.data as TaktRequestSnapshotPayload;
 }
 
 export function toExternalServiceResponse(input: {

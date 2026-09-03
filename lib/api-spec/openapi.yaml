@@ -3825,6 +3825,10 @@ components:
         agOrgId: { type: string }
         anOrgId: { type: string }
         dataPublicationId: { type: string, nullable: true }
+        projectAgreementPolicyId:
+          type: string
+          nullable: true
+          description: Accepted parent project-agreement policy for child Leistungsfreigaben.
         anParticipantId: { type: string, nullable: true }
         status: { type: string, enum: [INVITED, ACTIVE, REJECTED, REVOKED] }
         invitationMessage: { type: string, nullable: true }
@@ -5996,9 +6000,16 @@ components:
         message:
           type: string
           maxLength: 2000
-        dataPublicationId:
+        purpose:
           type: string
-          minLength: 1
+          enum: [RAHMENTERMINE, LEISTUNGSKOORDINATION, AUSFUEHRUNGSINFORMATIONEN, INDIVIDUELLE_FREIGABE]
+          description: Business purpose of the Leistungsfreigabe.
+        selectedFields:
+          type: array
+          description: Explicit child-owned fields; the server enforces the purpose whitelist.
+          items:
+            type: string
+            minLength: 1
       required: [taktId, nuOrgIds]
 
     TaktRequestDraftResponse:

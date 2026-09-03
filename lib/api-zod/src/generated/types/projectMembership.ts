@@ -17,6 +17,8 @@ export interface ProjectMembership {
   agOrgId: string;
   anOrgId: string;
   dataPublicationId?: string | null;
+  /** Accepted parent project-agreement policy for child Leistungsfreigaben. */
+  projectAgreementPolicyId?: string | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;

@@ -5,6 +5,7 @@
  * Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.2.0
  */
+import type { TaktRequestBatchInputPurpose } from './taktRequestBatchInputPurpose';
 
 /**
  * Body for atomically creating one request per selected NU.
@@ -23,6 +24,11 @@ export interface TaktRequestBatchInput {
   subject?: string;
   /** @maxLength 2000 */
   message?: string;
-  /** @minLength 1 */
-  dataPublicationId?: string;
+  /** Business purpose of the Leistungsfreigabe. */
+  purpose?: TaktRequestBatchInputPurpose;
+  /**
+     * Explicit child-owned fields; the server enforces the purpose whitelist.
+     * @items.minLength 1
+     */
+  selectedFields?: string[];
 }

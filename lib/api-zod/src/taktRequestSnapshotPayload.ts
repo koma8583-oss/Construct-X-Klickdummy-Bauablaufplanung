@@ -7,7 +7,7 @@ import { z } from "zod";
  * include internal planning, cost, employee, resource-assignment, or status
  * fields from the AG database.
  */
-export const TaktRequestSnapshotPayloadSchema = z.object({
+const scopedFields = z.object({
   schemaVersion: z.literal("1.0"),
   projectReference: z.string(),
   projectLocation: z.string().nullable(),
@@ -52,9 +52,19 @@ export const TaktRequestSnapshotPayloadSchema = z.object({
   }),
 }).strict();
 
-export type TaktRequestSnapshotPayload = z.infer<
-  typeof TaktRequestSnapshotPayloadSchema
->;
+/** A child release contains the technical project reference and planned window,
+ * plus only the purpose-whitelisted child fields. Project profile fields are
+ * deliberately absent when they are already covered by the parent agreement. */
+export const TaktRequestSnapshotPayloadSchema = scopedFields.partial().extend({
+  schemaVersion: z.literal("1.0"),
+  projectReference: z.string(),
+  plannedTimeWindow: z.object({ start: z.string(), end: z.string() }),
+}).strict();
+
+/** Full builder shape. A scoped child snapshot is validated by the schema
+ * above, while producers still construct this complete canonical shape before
+ * purpose filtering. */
+export type TaktRequestSnapshotPayload = z.infer<typeof scopedFields>;
 
 /**
  * The only top-level fields permitted in the base public snapshot.

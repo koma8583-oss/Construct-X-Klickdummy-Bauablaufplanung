@@ -57,6 +57,7 @@ import {
   UnauthorizedSnapshotError,
   NuNotContractorError,
   InvalidTaktForSnapshotError,
+  InvalidLeistungsfreigabeFieldsError,
 } from "../lib/takt-request-snapshot-service";
 import {
   getTaktResponseWithAlternatives,
@@ -335,7 +336,8 @@ router.post(
       nuOrgId:             z.string().min(1),
       requestNumber:       z.string().min(1).optional(),
       responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
-      dataPublicationId:   z.string().min(1).optional(),
+      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
+      selectedFields: z.array(z.string().min(1)).optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -372,7 +374,8 @@ router.post(
         requestNumber,
         responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
         createdByUserId: userId,
-        dataPublicationId: parsed.data.dataPublicationId,
+        purpose: parsed.data.purpose,
+        selectedFields: parsed.data.selectedFields,
       });
     } catch (err) {
       if (err instanceof ProjectMembershipError) {
@@ -393,6 +396,10 @@ router.post(
       }
       if (err instanceof InvalidTaktForSnapshotError) {
         res.status(422).json({ error: err.message });
+        return;
+      }
+      if (err instanceof InvalidLeistungsfreigabeFieldsError) {
+        res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
         return;
       }
       throw err;
@@ -474,7 +481,8 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
     subject:             z.string().max(255).optional(),
     message:             z.string().max(2000).optional(),
-    dataPublicationId:   z.string().min(1).optional(),
+    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
+    selectedFields: z.array(z.string().min(1)).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -515,7 +523,8 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
       createdByUserId: userId,
       subject,
       message,
-      dataPublicationId: parsed.data.dataPublicationId,
+      purpose: parsed.data.purpose,
+      selectedFields: parsed.data.selectedFields,
     });
   } catch (err) {
     if (err instanceof ProjectMembershipError) {
@@ -536,6 +545,10 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     }
     if (err instanceof InvalidTaktForSnapshotError) {
       res.status(422).json({ error: err.message });
+      return;
+    }
+    if (err instanceof InvalidLeistungsfreigabeFieldsError) {
+      res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
       return;
     }
     throw err;
@@ -587,7 +600,8 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
     responseRequiredBy: z.string().datetime({ offset: true }).optional(),
     subject: z.string().max(255).optional(),
     message: z.string().max(2000).optional(),
-    dataPublicationId: z.string().min(1).optional(),
+    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
+    selectedFields: z.array(z.string().min(1)).optional(),
   }).safeParse(req.body);
 
   if (!parsed.success) {
@@ -664,6 +678,10 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
       res.status(422).json({ error: err.message });
       return;
     }
+    if (err instanceof InvalidLeistungsfreigabeFieldsError) {
+      res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+      return;
+    }
     throw err;
   }
 });
@@ -735,6 +753,15 @@ router.post(
         error:
           "Cannot send TaktRequest: no snapshot exists. " +
           "Create the request via POST /takt-requests which creates a snapshot atomically at creation time.",
+      });
+      return;
+    }
+    const requestPolicy = ((snapResult.snapshot.snapshotPayload as Record<string, unknown>)
+      .policySnapshot ?? {}) as Record<string, unknown>;
+    if (requestPolicy.deltaClass === "NOT_PERMITTED") {
+      res.status(409).json({
+        error: "POLICY_NOT_PERMITTED",
+        message: "Diese Leistungsanfrage liegt außerhalb der Projektvereinbarung. Ändern Sie zuerst die Projektvereinbarung.",
       });
       return;
     }
@@ -1054,19 +1081,20 @@ router.get(
       return;
     }
 
-    // ── 4b. NU: policy gate — AN must have accepted the publication policy ───
-    // Only applies when the request has a linked dataPublicationId.
-    // GU preview is never gated.
-
-    // Legacy requests (no dataPublicationId) block all NU access to details.
+    // ── 4b. NU: normal Leistungsanfragen are gated by project membership and
+    // their child policy, never by a DataOffer acceptance. DataOffers remain a
+    // separate document/BIM/logistics flow and only old linked rows use that
+    // compatibility branch below.
     if (isAddressedNu && !request.dataPublicationId) {
-      res.status(403).json({
-        error: "LEGACY_NO_PUBLICATION",
-        message:
-          "Diese TaktAnfrage wurde ohne Datenraum-Veröffentlichung erstellt. " +
-          "Der Auftraggeber muss zunächst Taktinformationen im Datenraum veröffentlichen.",
-      });
-      return;
+      try {
+        await assertActiveProjectMembership(String((snapshot.snapshotPayload as Record<string, unknown>).projectReference ?? ""), callerOrgId!);
+      } catch (err) {
+        res.status(403).json({
+          error: "PROJECT_MEMBERSHIP_REQUIRED",
+          message: err instanceof Error ? err.message : "Eine aktive Projektmitgliedschaft ist erforderlich.",
+        });
+        return;
+      }
     }
 
     if (isAddressedNu && request.dataPublicationId) {

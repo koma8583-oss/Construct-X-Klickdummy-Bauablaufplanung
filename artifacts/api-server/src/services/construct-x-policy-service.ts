@@ -41,6 +41,7 @@ type PolicyComparable = {
   validUntil?: string | null;
   purpose?: string | null;
   workPackageReference?: string | null;
+  selectedFields?: readonly string[];
 };
 
 function asComparable(value: unknown): PolicyComparable {
@@ -69,6 +70,9 @@ function makeDiff(base: PolicyComparable | null, candidate: PolicyComparable): P
   if (base?.projectReference !== candidate.projectReference) changed.push("projectReference");
   if (base?.purpose !== candidate.purpose) changed.push("purpose");
   if (base?.workPackageReference !== candidate.workPackageReference) changed.push("workPackageReference");
+  if (JSON.stringify(unique(base?.selectedFields)) !== JSON.stringify(unique(candidate.selectedFields))) {
+    changed.push("selectedFields");
+  }
   const candidateValidFrom = candidate.validFrom ?? base?.validFrom;
   const candidateValidUntil = candidate.validUntil ?? base?.validUntil;
   if (base?.validFrom !== candidateValidFrom) changed.push("validFrom");
@@ -127,7 +131,10 @@ export function resolvePolicyDelta(
       base?.templateId === "PROJECT_MEMBERSHIP" ||
       base?.templateId === "tk-policy-project-membership";
     const meaningfulChanges = projectAgreementAllowsChildRefinement
-      ? diff.changed.filter((field) => !["purpose", "workPackageReference", "permissions"].includes(field))
+      // A business purpose, the concrete Leistung and its whitelisted field
+      // subset are refinements of the accepted project agreement, not a new
+      // grant. Validity/identity/permission expansion remains consent-gated.
+      ? diff.changed.filter((field) => !["purpose", "workPackageReference", "selectedFields", "permissions"].includes(field))
       : diff.changed;
     if (outsideValidity || meaningfulChanges.length > 0) {
       deltaClass = "REQUIRES_CONSENT";

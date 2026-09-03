@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataPublicationWizard } from "@/components/DataPublicationWizard";
 
 const mocks = vi.hoisted(() => ({
-  create: vi.fn(),
-  publish: vi.fn(),
+  createBatch: vi.fn(),
+  send: vi.fn(),
   toast: vi.fn(),
 }));
 
@@ -19,36 +19,12 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 vi.mock("@workspace/api-client-react", () => ({
-  FIELD_WHITELISTS: {
-    TAKT_INFORMATION_PACKAGE: ["projectName"],
-  },
-  FIELD_LABELS: { projectName: "Projektname" },
-  FIELD_GROUPS: {
-    TAKT_INFORMATION_PACKAGE: [{ label: "Projektdaten", fields: ["projectName"] }],
-  },
-  useGetPolicyTemplates: () => ({
-    data: [{
-      id: "policy-1",
-      code: "SCHEDULE_COORDINATION",
-      name: "Koordination",
-      purpose: "Projektkoordination",
-      permissions: ["READ"],
-      prohibitions: [],
-      validityRule: "Gültig im Projekt",
-      retentionRule: null,
-      description: null,
-      active: true,
-      templateVersion: 1,
-      availableTemplateVersions: [1],
-      allowedPublicationFields: ["projectName"],
-    }],
-  }),
-  useCreateDataPublication: () => ({
-    mutateAsync: mocks.create,
+  useCreateTaktRequestBatchWithSnapshot: () => ({
+    mutateAsync: mocks.createBatch,
     isPending: false,
   }),
-  usePublishDataPublication: () => ({
-    mutateAsync: mocks.publish,
+  useSendTaktRequest: () => ({
+    mutateAsync: mocks.send,
     isPending: false,
   }),
 }));
@@ -152,12 +128,10 @@ describe("DataPublicationWizard", () => {
     vi.clearAllMocks();
   });
 
-  it("creates one draft and retries publish on that draft after a publish failure", async () => {
+  it("uses the ordered Leistungsfreigabe flow without DataPublication", async () => {
     const user = userEvent.setup();
-    mocks.create.mockResolvedValue({ id: "draft-1" });
-    mocks.publish
-      .mockRejectedValueOnce(new Error("Connector nicht erreichbar"))
-      .mockResolvedValueOnce({ ok: true, status: "PUBLISHED" });
+    mocks.createBatch.mockResolvedValue({ requests: [{ id: "request-1" }] });
+    mocks.send.mockResolvedValue({ status: "DELIVERED" });
 
     render(
       <DataPublicationWizard
@@ -170,6 +144,8 @@ describe("DataPublicationWizard", () => {
           orgId: "an-1",
           name: "Baupartner",
           assignmentStatus: "ACTIVE",
+          projectAgreementPolicyId: "agreement-1",
+          projectAgreementStatus: "ACCEPTED",
         }]}
         takte={[{
           id: "takt-1",
@@ -186,22 +162,21 @@ describe("DataPublicationWizard", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: /Baupartner/ }));
+    expect(screen.getByTestId("parent-agreement")).toHaveTextContent("agreement-1");
+    await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    await user.selectOptions(screen.getByRole("combobox"), "RAHMENTERMINE");
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
-    await user.selectOptions(screen.getByRole("combobox"), "policy-1");
+    expect(screen.getByText("Bereits durch Projektvereinbarung abgedeckt")).toBeInTheDocument();
+    expect(screen.queryByText("Benötigte Ressourcen")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
-
-    const publishButton = screen.getByRole("button", { name: /Freigabe veröffentlichen/ });
-    await user.click(publishButton);
-
-    expect(await screen.findByText("Entwurf gespeichert")).toBeInTheDocument();
-    expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(mocks.publish).toHaveBeenNthCalledWith(1, "draft-1");
-
-    await user.click(publishButton);
-
-    expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(mocks.publish).toHaveBeenNthCalledWith(2, "draft-1");
+    await user.click(screen.getByRole("button", { name: "Senden" }));
+    expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      purpose: "RAHMENTERMINE",
+      selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
+    }) }));
+    expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
   });
 });
