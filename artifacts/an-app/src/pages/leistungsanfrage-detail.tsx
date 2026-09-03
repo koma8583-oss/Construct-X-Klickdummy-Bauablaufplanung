@@ -5,6 +5,7 @@ import { de } from "date-fns/locale";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRightLeft,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -266,6 +267,103 @@ type ScheduleProposal = {
   proposerRole?: "AG" | "AN";
 };
 
+function OwnScheduleChangeStart({
+  requestId,
+  currentAgreement,
+  pending,
+  onChanged,
+}: {
+  requestId: string;
+  currentAgreement?: { start: string; end: string } | null;
+  pending?: ScheduleProposal | null;
+  onChanged: () => void;
+}) {
+  const { toast } = useToast();
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!start || !end || end < start || !reason.trim()) {
+      toast({
+        title: "Angaben fehlen",
+        description: "Bitte geben Sie einen neuen Zeitraum und einen Grund an.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      await fetchJson(`/api/an/leistungsanfragen/${requestId}/change-proposals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: `${start}T00:00:00.000Z`,
+          end: `${end}T23:59:59.000Z`,
+          comment: reason.trim(),
+        }),
+      });
+      toast({ title: "Neuabstimmung gestartet" });
+      setStart("");
+      setEnd("");
+      setReason("");
+      onChanged();
+    } catch (error) {
+      toast({
+        title: "Neuabstimmung konnte nicht gestartet werden",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section data-testid="own-schedule-change" className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+      <div className="flex items-start gap-3">
+        <ArrowRightLeft className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+        <div>
+          <h2 className="text-base font-semibold">Termin nicht mehr einhaltbar?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Starten Sie eine Neuabstimmung. Der bisher bestätigte Zeitraum bleibt bestehen, bis beide Seiten einen neuen Zeitraum vereinbart haben.
+          </p>
+        </div>
+      </div>
+      {currentAgreement && (
+        <p className="mt-3 rounded-lg bg-background/70 px-3 py-2 text-sm">
+          Bestätigter Zeitraum: <span className="font-medium">{dateText(currentAgreement.start)} – {dateText(currentAgreement.end)}</span>
+        </p>
+      )}
+      {pending ? (
+        <p className="mt-3 text-sm font-medium text-primary">
+          Ihr Änderungsvorschlag vom {dateText(pending.start)} – {dateText(pending.end)} wartet auf die Rückmeldung des Auftraggebers.
+        </p>
+      ) : (
+        <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={submit}>
+          <div>
+            <Label htmlFor="own-change-start">Neuer Beginn</Label>
+            <Input id="own-change-start" data-testid="input-own-change-start" className="mt-1" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="own-change-end">Neues Ende</Label>
+            <Input id="own-change-end" data-testid="input-own-change-end" className="mt-1" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="own-change-reason">Grund</Label>
+            <Textarea id="own-change-reason" data-testid="input-own-change-reason" className="mt-1" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Warum kann der bestätigte Zeitraum nicht eingehalten werden?" maxLength={2000} />
+          </div>
+          <Button data-testid="button-start-own-schedule-change" className="sm:col-span-2" type="submit" disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+            Neuabstimmung starten
+          </Button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: "include", ...init });
   const body = await response.json().catch(() => ({}));
@@ -432,7 +530,10 @@ export default function LeistungsanfrageDetailPage() {
   const coordinationQuery = useQuery({
     queryKey: ["/api/an/leistungsanfragen", id, "coordination"],
     enabled: !!id,
-    queryFn: () => fetchJson<{ openProposal?: ScheduleProposal | null }>(`/api/an/leistungsanfragen/${id}/coordination`),
+    queryFn: () => fetchJson<{
+      openProposal?: ScheduleProposal | null;
+      currentAgreement?: { start: string; end: string } | null;
+    }>(`/api/an/leistungsanfragen/${id}/coordination`),
   });
   const requirementQuery = useListLeistungsanfrageResourceRequirements(id, { query: { enabled: !!id, queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(id) } });
   const availabilityQuery = useQuery({
@@ -451,9 +552,13 @@ export default function LeistungsanfrageDetailPage() {
   const defaultStart = requestedStart.slice(0, 10);
   const defaultEnd = requestedEnd.slice(0, 10);
   const requirements = (requirementQuery.data ?? details.resourceRequirements) as AnLeistungsanfrageResourceRequirement[];
-  const terminal = ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status);
+  const hasAgreement = details.status === "CONFIRMED";
+  const terminal = ["RESPONDED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status) && !hasAgreement;
   const canRespond = !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
   const scheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AG"
+    ? coordinationQuery.data.openProposal
+    : null;
+  const ownScheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AN"
     ? coordinationQuery.data.openProposal
     : null;
   const effectiveResponsePreset = responsePreset ?? (
@@ -494,7 +599,7 @@ export default function LeistungsanfrageDetailPage() {
 
       {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => undefined} onUseRecommendation={useRecommendation} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören für den angefragten Zeitraum in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
 
-      {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">Rückmeldung senden</h2><p className="mt-1 text-sm text-muted-foreground">Termin bestätigen, Alternative vorschlagen oder Nicht-Machbarkeit melden.</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : scheduleProposal ? <ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : <ResponseForm key={effectiveResponsePreset?.decision ?? "manual"} id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={effectiveResponsePreset} />}</div></section>}
+      {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">{hasAgreement ? "Koordination" : "Rückmeldung senden"}</h2><p className="mt-1 text-sm text-muted-foreground">{hasAgreement ? "Bestätigte Leistungen können nur über eine bilaterale Neuabstimmung geändert werden." : "Termin bestätigen, Alternative vorschlagen oder Nicht-Machbarkeit melden."}</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : scheduleProposal ? <ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : hasAgreement ? <OwnScheduleChangeStart requestId={id} currentAgreement={coordinationQuery.data?.currentAgreement} pending={ownScheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : <ResponseForm key={effectiveResponsePreset?.decision ?? "manual"} id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={effectiveResponsePreset} />}</div></section>}
     </main>
   );
 }

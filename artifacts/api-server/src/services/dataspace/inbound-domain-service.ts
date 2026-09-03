@@ -243,27 +243,67 @@ export async function processIncomingCoordinationDecision(
       const timeWindow = payload.confirmedTimeWindow!;
       const requirements = await tx.select().from(anLeistungsanfrageResourceRequirementsTable)
         .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id));
+      const projectionSnapshot = projection.payloadSnapshot as { requestKind?: string; sourceRequestId?: string } | null;
+      const rootExternalRequestId = projectionSnapshot?.requestKind === "SCHEDULE_CHANGE"
+        ? projectionSnapshot.sourceRequestId
+        : payload.requestId;
+      const chainExternalRequestIds = [...new Set([rootExternalRequestId, payload.requestId].filter(
+        (value): value is string => Boolean(value),
+      ))];
+      const chainProjections = await tx.select({
+        id: anLeistungsanfragenTable.id,
+        externalLeistungsanfrageId: anLeistungsanfragenTable.externalLeistungsanfrageId,
+      }).from(anLeistungsanfragenTable).where(and(
+        eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+        inArray(anLeistungsanfragenTable.externalLeistungsanfrageId, chainExternalRequestIds),
+      ));
+      const localProjectionIds = chainProjections.map((item) => item.id);
+      const previousBookings = localProjectionIds.length
+        ? await tx.select({
+          resourceTypeId: resourceBookingsTable.resourceTypeId,
+          resourceId: resourceBookingsTable.resourceId,
+        }).from(resourceBookingsTable).where(and(
+          eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
+          eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
+          inArray(resourceBookingsTable.sourceReferenceId, localProjectionIds),
+          eq(resourceBookingsTable.status, "CONFIRMED"),
+        ))
+        : [];
+      const preservedResourceIds = new Map<string, string[]>();
+      for (const booking of previousBookings) {
+        if (!booking.resourceTypeId || !booking.resourceId) continue;
+        const resources = preservedResourceIds.get(booking.resourceTypeId) ?? [];
+        resources.push(booking.resourceId);
+        preservedResourceIds.set(booking.resourceTypeId, resources);
+      }
+      if (localProjectionIds.length === 0) {
+        localProjectionIds.push(projection.id);
+      }
       await tx.delete(resourceBookingsTable).where(and(
         eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
         eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
-        eq(resourceBookingsTable.sourceReferenceId, projection.id),
+        inArray(resourceBookingsTable.sourceReferenceId, localProjectionIds),
         eq(resourceBookingsTable.status, "CONFIRMED"),
       ));
       const bookingValues = requirements
         .filter((requirement) => Boolean(requirement.localResourceTypeId) && Number(requirement.requiredCapacity ?? 0) > 0)
-        .map((requirement) => ({
-          nuOrgId: metadata.receiverOrgId,
-          resourceId: null,
-          resourceTypeId: requirement.localResourceTypeId!,
-          quantity: Number(requirement.requiredCapacity ?? 1),
-          sourceType: "TAKT_REQUEST" as const,
-          sourceReferenceId: projection.id,
-          startAt: new Date(timeWindow.start),
-          endAt: new Date(timeWindow.end),
-          utilizationPercent: requirement.utilizationPercent,
-          status: "CONFIRMED" as const,
-          note: `AG decision ${payload.decisionType}`,
-        }));
+        .map((requirement) => {
+          const resourceIds = preservedResourceIds.get(requirement.localResourceTypeId!) ?? [];
+          const resourceId = resourceIds.shift() ?? null;
+          return {
+            nuOrgId: metadata.receiverOrgId,
+            resourceId,
+            resourceTypeId: requirement.localResourceTypeId!,
+            quantity: resourceId ? null : Number(requirement.requiredCapacity ?? 1),
+            sourceType: "TAKT_REQUEST" as const,
+            sourceReferenceId: projection.id,
+            startAt: new Date(timeWindow.start),
+            endAt: new Date(timeWindow.end),
+            utilizationPercent: requirement.utilizationPercent,
+            status: "CONFIRMED" as const,
+            note: `AG decision ${payload.decisionType}`,
+          };
+        });
       if (bookingValues.length) await tx.insert(resourceBookingsTable).values(bookingValues);
       await tx.update(anLeistungsanfragenTable).set({
         status: "CONFIRMED",

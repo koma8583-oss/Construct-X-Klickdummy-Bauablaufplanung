@@ -434,9 +434,9 @@ describe("t69-scenarioC: REQUEST_REVISION → createRevision → re-send", () =>
     newRequestId = res.body.newRequestId;
   });
 
-  it("t69-C3: Old request is SUPERSEDED", async () => {
+  it("t69-C3: Old request remains valid until the new version is sent", async () => {
     const [old] = await db.select().from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
-    expect(old.status).toBe("SUPERSEDED");
+    expect(old.status).toBe("REVISION_REQUIRED");
   });
 
   it("t69-C4: New request references predecessor", async () => {
@@ -468,6 +468,8 @@ describe("t69-scenarioC: REQUEST_REVISION → createRevision → re-send", () =>
       .set("Authorization", `Bearer ${nuToken}`);
     expect(details.status).toBe(200);
     expect(details.body.taktVersion).toBe(2);
+    const [old] = await db.select().from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
+    expect(old.status).toBe("SUPERSEDED");
   });
 
   it("t69-C8: NU confirms Version 2 and GU accepts — Takt ends CONFIRMED", async () => {
@@ -610,7 +612,11 @@ describe("t69-integrity: Data integrity", () => {
         const [pred] = await db.select().from(taktRequestsTable)
           .where(eq(taktRequestsTable.id, req.supersedesRequestId));
         expect(pred).toBeDefined();
-        expect(pred.status).toBe("SUPERSEDED");
+        if (req.status === "DRAFT") {
+          expect(pred.status).toBe("REVISION_REQUIRED");
+        } else {
+          expect(pred.status).toBe("SUPERSEDED");
+        }
       }
     }
   });

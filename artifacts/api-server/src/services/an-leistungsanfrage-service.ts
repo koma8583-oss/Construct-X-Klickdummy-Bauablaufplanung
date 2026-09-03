@@ -951,6 +951,11 @@ export async function createAnScheduleChangeProposal(input: {
   comment?: string;
   supersedesProposalId?: string;
 }) {
+  const start = new Date(input.start);
+  const end = new Date(input.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    throw Object.assign(new Error("Ende muss nach dem Beginn liegen"), { statusCode: 400 });
+  }
   const coordination = await getAnCoordination(input.requestId, input.anOrgId);
   if (!coordination) return null;
   if (!coordination.currentAgreement) {
@@ -959,6 +964,10 @@ export async function createAnScheduleChangeProposal(input: {
   if (input.supersedesProposalId &&
       coordination.openProposal?.id !== input.supersedesProposalId) {
     return null;
+  }
+  if (coordination.openProposal &&
+      coordination.openProposal.id !== input.supersedesProposalId) {
+    throw Object.assign(new Error("Es existiert bereits eine offene Terminänderung"), { statusCode: 409 });
   }
   const projections = await coordinationProjections(input.requestId, input.anOrgId);
   const root = projections.find((projection) =>

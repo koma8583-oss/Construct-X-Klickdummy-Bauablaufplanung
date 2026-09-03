@@ -19,6 +19,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   takteTable,
+  taktRequestsTable,
   projectsTable,
   messageOutboxTable,
   hubMessagesTable,
@@ -902,6 +903,13 @@ router.post(
         .update(takteTable)
         .set({ lifecycleStatus: "IN_COORDINATION" })
         .where(eq(takteTable.id, existing.taktId));
+
+      if (existing.supersedesRequestId) {
+        await db.update(taktRequestsTable).set({
+          status: "SUPERSEDED",
+          updatedAt: now,
+        }).where(eq(taktRequestsTable.id, existing.supersedesRequestId));
+      }
 
       // ── 9. Write hub audit message ─────────────────────────────────────
       await db.insert(hubMessagesTable).values({
@@ -1854,7 +1862,7 @@ router.post(
 
       res.status(201).json({
         oldRequestId:        result.oldRequest.id,
-        oldRequestStatus:    "SUPERSEDED",
+        oldRequestStatus:    result.sent ? "SUPERSEDED" : result.oldRequest.status,
         newRequestId:        result.newRequest.id,
         newRequestNumber:    result.newRequest.requestNumber,
         newRequestStatus:    result.newRequest.status,

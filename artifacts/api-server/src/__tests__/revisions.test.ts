@@ -236,7 +236,7 @@ it("rejects unknown request (404)", async () => {
 describe("Happy path — new revision (sendImmediately=false)", () => {
   let result: Record<string, unknown>;
 
-  it("returns 201 with new request and version details", async () => {
+  it("returns 201 with new request and version details without superseding before send", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${revReqId}/revisions`)
       .set("Authorization", `Bearer ${guToken}`)
@@ -250,7 +250,7 @@ describe("Happy path — new revision (sendImmediately=false)", () => {
     expect(res.status).toBe(201);
     result = res.body;
     expect(result.oldRequestId).toBe(revReqId);
-    expect(result.oldRequestStatus).toBe("SUPERSEDED");
+    expect(result.oldRequestStatus).toBe("REVISION_REQUIRED");
     expect(result.newRequestId).toBeTruthy();
     expect(result.newRequestStatus).toBe("DRAFT");
     expect(result.sent).toBe(false);
@@ -282,14 +282,14 @@ describe("Happy path — new revision (sendImmediately=false)", () => {
     expect(newReq.supersedesRequestId).toBe(revReqId);
   });
 
-  it("old request is set to SUPERSEDED", async () => {
+  it("old request remains REVISION_REQUIRED until the new version is sent", async () => {
     const [old] = await db
       .select()
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.id, revReqId))
       .limit(1);
 
-    expect(old.status).toBe("SUPERSEDED");
+    expect(old.status).toBe("REVISION_REQUIRED");
   });
 
   it("new snapshot is created and immutable", async () => {
@@ -329,7 +329,7 @@ describe("Happy path — new revision (sendImmediately=false)", () => {
       .where(eq(taktRequestsTable.id, revReqId))
       .limit(1);
 
-    expect(oldReq.status).toBe("SUPERSEDED");
+    expect(oldReq.status).toBe("REVISION_REQUIRED");
   });
 
   it("a second revision attempt on the same (now SUPERSEDED) request returns 409", async () => {

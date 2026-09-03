@@ -404,12 +404,6 @@ export async function createRevision(
       })
       .returning();
 
-    // e. Set old request to SUPERSEDED
-    await tx
-      .update(taktRequestsTable)
-      .set({ status: "SUPERSEDED" })
-      .where(eq(taktRequestsTable.id, oldRequestId));
-
     return {
       oldRequest: withCanonicalTaktRequest(oldRequest),
       newRequest: withCanonicalTaktRequest(newRequest),
@@ -496,6 +490,19 @@ export async function createRevision(
         { transportResult, newRequestId: txResult.newRequest.id },
         "sendImmediately transport failed — request remains DRAFT",
       );
+    }
+
+    // The old version is only superseded after the new envelope was accepted
+    // by the transport. A failed send must leave the previous version valid
+    // so the caller can retry the same successor.
+    if (sent) {
+      await db
+        .update(taktRequestsTable)
+        .set({ status: "SUPERSEDED" })
+        .where(and(
+          eq(taktRequestsTable.id, oldRequestId),
+          eq(taktRequestsTable.status, "REVISION_REQUIRED"),
+        ));
     }
   }
 

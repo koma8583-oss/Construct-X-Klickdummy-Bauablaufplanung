@@ -2873,11 +2873,11 @@ export default function ProjectDetail() {
                             </Button>
                           </Link>
                         )}
-                        {String(activeTaktRequest.status) === 'CONFIRMED' && (
+                        {selectedTakt.lifecycleStatus === 'CONFIRMED' && (
                           <Link href={`/leistungsanfragen/${activeTaktRequest.id}#coordination`}>
                             <Button data-testid="button-propose-schedule-change" variant="outline" size="sm" className="w-full mt-3">
                               <ArrowRightLeft className="mr-2 h-4 w-4" />
-                              Terminänderung vorschlagen
+                              Terminänderung zur Abstimmung senden
                             </Button>
                           </Link>
                         )}

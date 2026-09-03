@@ -51,6 +51,7 @@
 - [Published display labels](published-display-labels.md) — business-facing AN labels must come from published Dataspace names; missing names use neutral text, never technical IDs.
 - [Delivery history transport coverage](delivery-history-transport-coverage.md) — append-only delivery history must be written by every connector adapter, including adapters that bypass the shared transport.
 - [Atomic delivery claims](atomic-delivery-claims.md) — increment attempt counts in the same conditional outbox claim that transitions a retry to SENT; history uniqueness alone cannot prevent lost races.
+- [Revision send atomicity](revision-send-atomicity.md) — keep the prior request valid through draft and failed transport; supersede it only after the successor is delivered.
 - [Role-specific browser sessions](role-session-isolation.md) — AG and AN auth flows need separate refresh-cookie state when both apps share a browser origin.
 - [AG Vitest component mocks](ag-vitest-mocks.md) — large AG page tests need explicit synchronous API-client mocks; async importActual partial mocks can block workers before tests start.
 - [Interactive Dataspace coordination](interactive-dataspace-coordination.md) — publish proposals at creation; local delivery must project them without auto-answering so the recipient can choose an action.

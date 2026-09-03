@@ -326,7 +326,7 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
     expect(dbRow?.status).toBe("DRAFT");
   });
 
-  it("old request (REVISION_REQUIRED) becomes SUPERSEDED even when transport fails", async () => {
+  it("old request (REVISION_REQUIRED) remains valid when transport fails", async () => {
     const { requestId } = await insertRevisionRequiredFixture("c2");
 
     await createAgRevision({
@@ -342,7 +342,7 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.id, requestId))
       .limit(1);
-    expect(oldRow?.status).toBe("SUPERSEDED");
+    expect(oldRow?.status).toBe("REVISION_REQUIRED");
   });
 
   it("no second revision or snapshot is created on transport failure", async () => {

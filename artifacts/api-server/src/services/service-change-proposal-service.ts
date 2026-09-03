@@ -150,11 +150,6 @@ export async function createLeistungsanfrageRevision(input: {
     }).returning();
     if (!newSnapshot) throw new Error("Snapshot der neuen Leistungsanfrageversion konnte nicht gespeichert werden");
 
-    await tx.update(leistungsanfragenTable).set({
-      status: "SUPERSEDED",
-      updatedAt: now,
-    }).where(eq(leistungsanfragenTable.id, request.id));
-
     return {
       id: newRequest.id,
       requestId: newRequest.id,

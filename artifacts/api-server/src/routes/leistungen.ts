@@ -1533,6 +1533,19 @@ router.post(
         .set({ lifecycleStatus: "IN_COORDINATION" })
         .where(eq(leistungenTable.id, existing.taktId));
 
+      // Keep the previous request version readable until the successor has
+      // actually crossed the transport boundary. This is intentionally after
+      // delivery, not part of draft creation.
+      if (existing.supersedesRequestId) {
+        await db.update(leistungsanfragenTable).set({
+          status: "SUPERSEDED",
+          updatedAt: now,
+        }).where(and(
+          eq(leistungsanfragenTable.id, existing.supersedesRequestId),
+          eq(leistungsanfragenTable.status, "REVISION_REQUIRED"),
+        ));
+      }
+
       await db.insert(hubMessagesTable).values({
         type: "TAKT_REQUEST_SENT",
         senderOrgId: guOrgId,
