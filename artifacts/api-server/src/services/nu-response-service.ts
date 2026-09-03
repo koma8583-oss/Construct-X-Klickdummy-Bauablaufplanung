@@ -33,6 +33,7 @@ import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "..
 import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import { applyIncomingScheduleChangeResponseOnAg } from "./service-change-proposal-service";
+import { applyAcceptedAnScheduleChange } from "./an-schedule-change-booking-service";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -245,8 +246,18 @@ export async function createAnServiceResponse(
         })),
       ).returning();
     }
+    const isScheduleChange = (request.payloadSnapshot as { requestKind?: string }).requestKind === "SCHEDULE_CHANGE";
+    if (isScheduleChange && input.decision === "ACCEPTED" && input.acceptedTimeWindow) {
+      await applyAcceptedAnScheduleChange(tx, {
+        projectionId: request.id,
+        targetStart: new Date(input.acceptedTimeWindow.start),
+        targetEnd: new Date(input.acceptedTimeWindow.end),
+        note: "AN accepted schedule change",
+        useRequirementPeriods: true,
+      });
+    }
     await tx.update(anLeistungsanfragenTable).set({
-      status: "RESPONDED",
+      status: isScheduleChange && input.decision === "ACCEPTED" ? "CONFIRMED" : "RESPONDED",
       respondedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(anLeistungsanfragenTable.id, request.id));

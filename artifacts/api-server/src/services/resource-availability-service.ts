@@ -82,46 +82,64 @@ export function restoreConcreteResourceAssignments<
   const inclusiveEnd = (value: string) => {
     return date(addCalendarDays(value, 1));
   };
+  const shiftDateOnly = (value: string | null) =>
+    value === null ? null : addCalendarDays(value, shiftDays);
   const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
     aStart < bEnd && aEnd > bStart;
-  const used = new Set<string>();
+  const assignedIntervals: Array<{ resourceId: string; startAt: Date; endAt: Date }> = [];
   const output: Array<T & { resourceId: string | null; quantity: number }> = [];
 
   for (const requirement of requirements) {
     if (!requirement.resourceTypeId || Number(requirement.requiredCapacity ?? 0) <= 0) continue;
     const oldStart = requirement.periodStart ? date(requirement.periodStart) : oldWindowStart;
     const oldEnd = requirement.periodEnd ? inclusiveEnd(requirement.periodEnd) : oldWindowEnd;
-    const candidate = oldBookings.find((booking) => {
-      if (used.has(booking.id) || booking.resourceTypeId !== requirement.resourceTypeId) return false;
+    const shiftedRequirementStart = shift(oldStart);
+    const shiftedRequirementEnd = shift(oldEnd);
+    const targetRequirement = {
+      ...requirement,
+      periodStart: shiftDateOnly(requirement.periodStart),
+      periodEnd: shiftDateOnly(requirement.periodEnd),
+    };
+    let remaining = Number(requirement.requiredCapacity);
+    const usedForRequirement = new Set<string>();
+    const candidates = oldBookings.filter((booking) => {
+      if (usedForRequirement.has(booking.id) || booking.resourceTypeId !== requirement.resourceTypeId) return false;
       if (!overlaps(booking.startAt, booking.endAt, oldStart, oldEnd)) return false;
       const resource = resources.find((item) => item.id === booking.resourceId);
       if (!resource?.active || resource.resourceTypeId !== requirement.resourceTypeId) return false;
-      const shiftedStart = shift(booking.startAt);
-      const shiftedEnd = shift(booking.endAt);
       return !otherConfirmedBookings.some((other) =>
         other.resourceId === booking.resourceId &&
-        overlaps(shiftedStart, shiftedEnd, other.startAt, other.endAt));
+        overlaps(shiftedRequirementStart, shiftedRequirementEnd, other.startAt, other.endAt)) &&
+        !assignedIntervals.some((assigned) =>
+          assigned.resourceId === booking.resourceId &&
+          overlaps(shiftedRequirementStart, shiftedRequirementEnd, assigned.startAt, assigned.endAt));
     });
-    if (!candidate) {
+
+    for (const candidate of candidates) {
+      if (remaining <= 0) break;
+      const resource = resources.find((item) => item.id === candidate.resourceId)!;
+      const covered = (resource.capacity ?? 1) * (candidate.utilizationPercent / 100);
+      if (covered <= 0) continue;
+      usedForRequirement.add(candidate.id);
+      assignedIntervals.push({
+        resourceId: candidate.resourceId,
+        startAt: shiftedRequirementStart,
+        endAt: shiftedRequirementEnd,
+      });
+      const residual = Math.max(0, remaining - covered);
+      output.push({ ...targetRequirement, resourceId: candidate.resourceId, quantity: 0 });
+      remaining = residual;
+    }
+
+    if (remaining > 0) {
       if (options.requireConcreteAssignments) {
         throw Object.assign(
           new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"),
           { code: "CHANGE_PROPOSAL_NOT_FEASIBLE", statusCode: 409 },
         );
       }
-      output.push({ ...requirement, resourceId: null, quantity: Number(requirement.requiredCapacity) });
-      continue;
+      output.push({ ...targetRequirement, resourceId: null, quantity: remaining });
     }
-    used.add(candidate.id);
-    const resource = resources.find((item) => item.id === candidate.resourceId)!;
-    const utilization = requirement.utilizationPercent / 100;
-    const covered = (resource.capacity ?? 1) * utilization;
-    const required = Number(requirement.requiredCapacity);
-    output.push({
-      ...requirement,
-      resourceId: candidate.resourceId,
-      quantity: Math.max(0, required - covered),
-    });
   }
   return output;
 }

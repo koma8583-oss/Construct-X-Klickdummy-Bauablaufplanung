@@ -8,6 +8,7 @@ import {
   projectMembershipsTable,
   resourceTypesTable,
   resourceBookingsTable,
+  resourcesTable,
   leistungsanfragenTable,
   taktRequestsTable,
 } from "@workspace/db";
@@ -30,6 +31,7 @@ import { createAnServiceResponse } from "../nu-response-service";
 import { runAnAvailabilityCheck } from "../an-leistungsanfrage-service";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
 import { applyIncomingAnScheduleChangeProposalOnAg } from "../service-change-proposal-service";
+import { applyAcceptedAnScheduleChange } from "../an-schedule-change-booking-service";
 
 /**
  * Domain boundary for Dataspace deliveries. Transport code only validates the
@@ -162,26 +164,34 @@ export async function processIncomingServiceRequest(
     }
   });
   if (payload.requestKind !== "SCHEDULE_CHANGE" || !projectionId) return;
-  // Interactive AN coordination uses the projection as the user's work item.
-  // Callers that explicitly disable automatic responses can now resolve it
-  // through /api/an instead of racing an availability worker.
-  // Schedule changes are interactive work items. No implicit availability
-  // check or response may race the AN user's review.
-  if (options.automaticResponse !== true) return;
+  const chainExternalRequestId = payload.sourceRequestId ?? payload.requestId;
+  const chainProjections = await anDb.select({
+    id: anLeistungsanfragenTable.id,
+    externalLeistungsanfrageId: anLeistungsanfragenTable.externalLeistungsanfrageId,
+    payloadSnapshot: anLeistungsanfragenTable.payloadSnapshot,
+  }).from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+  ));
+  const previousProjectionIds = chainProjections
+    .filter((candidate) => {
+      const snapshot = candidate.payloadSnapshot as { sourceRequestId?: string } | null;
+      return candidate.externalLeistungsanfrageId === chainExternalRequestId ||
+        snapshot?.sourceRequestId === chainExternalRequestId;
+    })
+    .map((candidate) => candidate.id);
 
-  const [previousProjection] = payload.sourceRequestId
-    ? await anDb.select({ id: anLeistungsanfragenTable.id }).from(anLeistungsanfragenTable).where(and(
-      eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
-      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.sourceRequestId),
-    )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1)
-    : [];
+  // Every newly materialised schedule projection gets its own availability
+  // history entry. Automatic response remains opt-in, but checking the
+  // proposed window must not depend on that option.
   const availability = await runAnAvailabilityCheck(
-    payload.requestId,
+    payload.sourceRequestId ?? payload.requestId,
     metadata.receiverOrgId,
     null,
-    { excludeSourceReferenceIds: previousProjection ? [previousProjection.id] : [] },
+    { excludeSourceReferenceIds: previousProjectionIds, projectionId },
   );
   if (!availability) throw new Error("Schedule-change AN projection could not be evaluated");
+  if (options.automaticResponse !== true) return;
+
   const decision = availability.publicResultPayload?.recommendedDecision === "ACCEPTED"
     ? "ACCEPTED"
     : "REJECTED";
@@ -241,74 +251,14 @@ export async function processIncomingCoordinationDecision(
 
     if (acceptance) {
       const timeWindow = payload.confirmedTimeWindow!;
-      const requirements = await tx.select().from(anLeistungsanfrageResourceRequirementsTable)
-        .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id));
-      const projectionSnapshot = projection.payloadSnapshot as { requestKind?: string; sourceRequestId?: string } | null;
-      const rootExternalRequestId = projectionSnapshot?.requestKind === "SCHEDULE_CHANGE"
-        ? projectionSnapshot.sourceRequestId
-        : payload.requestId;
-      const chainExternalRequestIds = [...new Set([rootExternalRequestId, payload.requestId].filter(
-        (value): value is string => Boolean(value),
-      ))];
-      const chainProjections = await tx.select({
-        id: anLeistungsanfragenTable.id,
-        externalLeistungsanfrageId: anLeistungsanfragenTable.externalLeistungsanfrageId,
-      }).from(anLeistungsanfragenTable).where(and(
-        eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
-        inArray(anLeistungsanfragenTable.externalLeistungsanfrageId, chainExternalRequestIds),
-      ));
-      const localProjectionIds = chainProjections.map((item) => item.id);
-      const previousBookings = localProjectionIds.length
-        ? await tx.select({
-          resourceTypeId: resourceBookingsTable.resourceTypeId,
-          resourceId: resourceBookingsTable.resourceId,
-        }).from(resourceBookingsTable).where(and(
-          eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
-          eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
-          inArray(resourceBookingsTable.sourceReferenceId, localProjectionIds),
-          eq(resourceBookingsTable.status, "CONFIRMED"),
-        ))
-        : [];
-      const preservedResourceIds = new Map<string, string[]>();
-      for (const booking of previousBookings) {
-        if (!booking.resourceTypeId || !booking.resourceId) continue;
-        const resources = preservedResourceIds.get(booking.resourceTypeId) ?? [];
-        resources.push(booking.resourceId);
-        preservedResourceIds.set(booking.resourceTypeId, resources);
-      }
-      if (localProjectionIds.length === 0) {
-        localProjectionIds.push(projection.id);
-      }
-      await tx.delete(resourceBookingsTable).where(and(
-        eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
-        eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
-        inArray(resourceBookingsTable.sourceReferenceId, localProjectionIds),
-        eq(resourceBookingsTable.status, "CONFIRMED"),
-      ));
-      const bookingValues = requirements
-        .filter((requirement) => Boolean(requirement.localResourceTypeId) && Number(requirement.requiredCapacity ?? 0) > 0)
-        .map((requirement) => {
-          const resourceIds = preservedResourceIds.get(requirement.localResourceTypeId!) ?? [];
-          const resourceId = resourceIds.shift() ?? null;
-          return {
-            nuOrgId: metadata.receiverOrgId,
-            resourceId,
-            resourceTypeId: requirement.localResourceTypeId!,
-            quantity: resourceId ? null : Number(requirement.requiredCapacity ?? 1),
-            sourceType: "TAKT_REQUEST" as const,
-            sourceReferenceId: projection.id,
-            startAt: new Date(timeWindow.start),
-            endAt: new Date(timeWindow.end),
-            utilizationPercent: requirement.utilizationPercent,
-            status: "CONFIRMED" as const,
-            note: `AG decision ${payload.decisionType}`,
-          };
-        });
-      if (bookingValues.length) await tx.insert(resourceBookingsTable).values(bookingValues);
-      await tx.update(anLeistungsanfragenTable).set({
-        status: "CONFIRMED",
-        updatedAt: now,
-      }).where(eq(anLeistungsanfragenTable.id, projection.id));
+      const projectionSnapshot = projection.payloadSnapshot as { requestKind?: string } | null;
+      await applyAcceptedAnScheduleChange(tx, {
+        projectionId: projection.id,
+        targetStart: new Date(timeWindow.start),
+        targetEnd: new Date(timeWindow.end),
+        note: `AG decision ${payload.decisionType}`,
+        useRequirementPeriods: projectionSnapshot?.requestKind === "SCHEDULE_CHANGE",
+      });
       return;
     }
 

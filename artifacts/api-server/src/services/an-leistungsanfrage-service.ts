@@ -6,8 +6,10 @@ import {
   anLeistungsantwortenTable,
   resourceBookingsTable,
   resourcesTable,
+  resourceTypesTable,
 } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   InvalidRequirementPeriodError,
@@ -577,12 +579,14 @@ export async function runAnAvailabilityCheck(
   externalLeistungsanfrageId: string,
   anOrgId: string,
   userId: string | null,
-  options: { excludeSourceReferenceIds?: string[] } = {},
+  options: { excludeSourceReferenceIds?: string[]; projectionId?: string } = {},
 ) {
   const projections = await anDb.select().from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
     .orderBy(desc(anLeistungsanfragenTable.externalRequestVersion));
-  const projection = projections.find((row) =>
+  const projection = options.projectionId
+    ? projections.find((row) => row.id === options.projectionId)
+    : projections.find((row) =>
     coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
     coordinationSourceRequestId(row) === externalLeistungsanfrageId &&
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
@@ -847,6 +851,17 @@ async function responseForProjection(projectionId: string) {
   return response ?? null;
 }
 
+function stablePayloadHash(payload: unknown): string {
+  return createHash("sha256").update(JSON.stringify(payload, (_, value) => {
+    if (_ === "createdAt") return undefined;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.keys(value).sort().reduce<Record<string, unknown>>((sorted, key) => {
+      sorted[key] = value[key];
+      return sorted;
+    }, {});
+  })).digest("hex");
+}
+
 /**
  * Read-only AN coordination view. It is intentionally assembled exclusively
  * from the AN projection and its local response rows.
@@ -865,22 +880,37 @@ export async function getAnCoordination(
   const scheduleProposals = projections
     .filter((projection) =>
       coordinationRequestKind(projection) === "SCHEDULE_CHANGE" &&
-      coordinationSourceRequestId(projection) === requestId &&
-      actionableStatuses.includes(projection.status as typeof actionableStatuses[number]),
+      coordinationSourceRequestId(projection) === requestId
     )
     .map((projection) => ({
       id: projection.externalLeistungsanfrageId,
       requestId,
       start: projection.plannedStart,
       end: projection.plannedEnd,
-      proposerOrgId: projection.senderAgOrgId,
-      proposer: projection.senderAgOrgId === anOrgId ? "AN" : "AG",
-      canAct: projection.senderAgOrgId !== anOrgId,
+      status: projection.status,
+      proposerOrgId: objectRecord(snapshotValue(coordinationSnapshot(projection), "metadata")).senderOrgId === anOrgId
+        ? anOrgId
+        : projection.senderAgOrgId,
+      proposer: objectRecord(snapshotValue(coordinationSnapshot(projection), "metadata")).senderOrgId === anOrgId ? "AN" : "AG",
+      canAct: objectRecord(snapshotValue(coordinationSnapshot(projection), "metadata")).senderOrgId !== anOrgId &&
+        actionableStatuses.includes(projection.status as typeof actionableStatuses[number]),
       localProjectionId: projection.id,
     }));
-  const openProposal = scheduleProposals[0] ?? null;
+  const openProposal = scheduleProposals.find((proposal) => proposal.canAct) ?? null;
   const rootResponse = await responseForProjection(root.id);
-  const currentAgreement: CoordinationWindow | null = rootResponse?.decision === "ACCEPTED" &&
+  const acceptedSchedule = (await Promise.all(scheduleProposals.map(async (proposal) => {
+    const projection = projections.find((candidate) => candidate.id === proposal.localProjectionId);
+    const response = projection ? await responseForProjection(projection.id) : null;
+    return {
+      proposal,
+      accepted: proposal.status === "CONFIRMED" ||
+        (response?.decision === "ACCEPTED" && response.acceptedStart && response.acceptedEnd),
+      window: response?.decision === "ACCEPTED" && response.acceptedStart && response.acceptedEnd
+        ? { start: response.acceptedStart.toISOString(), end: response.acceptedEnd.toISOString() }
+        : { start: proposal.start, end: proposal.end },
+    };
+  }))).find((item) => item.accepted);
+  const currentAgreement: CoordinationWindow | null = acceptedSchedule?.window ?? (rootResponse?.decision === "ACCEPTED" &&
       rootResponse.acceptedStart && rootResponse.acceptedEnd
     ? { start: rootResponse.acceptedStart.toISOString(), end: rootResponse.acceptedEnd.toISOString() }
     : openProposal
@@ -892,7 +922,7 @@ export async function getAnCoordination(
           ? { start: baseTimeWindow.start, end: baseTimeWindow.end }
           : null;
       })()
-      : null;
+      : null);
   const nextActionOwner: WorkflowOwner | null = openProposal
     ? openProposal.canAct ? "AN" : "AG"
     : root.status === "RESPONDED"
@@ -975,7 +1005,13 @@ export async function createAnScheduleChangeProposal(input: {
     coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
   );
   if (!root) return null;
-  const proposalId = crypto.randomUUID();
+  const proposalId = createHash("sha256").update(JSON.stringify([
+    input.requestId,
+    input.anOrgId,
+    input.start,
+    input.end,
+    input.comment ?? null,
+  ])).digest("hex");
   const snapshot = coordinationSnapshot(root);
   const projectName = snapshotValue(snapshot, "projectName");
   const payload: ExternalServiceRequest = toExternalServiceRequest({
@@ -998,15 +1034,87 @@ export async function createAnScheduleChangeProposal(input: {
     messageId: `an-schedule-change:${proposalId}`,
     resourceRequirements: proposalResourceRequirements(root, input.start, input.end),
   });
-  const delivery = await deliverLocalServiceRequest(payload);
+  const payloadHash = stablePayloadHash(payload);
+  const existing = projections.find((projection) =>
+    projection.externalLeistungsanfrageId === proposalId,
+  );
+  let localProjectionId: string | undefined;
+  if (!existing) {
+    await anDb.transaction(async (tx) => {
+      if (input.supersedesProposalId) {
+        await tx.update(anLeistungsanfragenTable).set({
+          status: "SUPERSEDED",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(anLeistungsanfragenTable.externalLeistungsanfrageId, input.supersedesProposalId!),
+          eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
+          inArray(anLeistungsanfragenTable.status, ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
+        ));
+      }
+      const [projection] = await tx.insert(anLeistungsanfragenTable).values({
+        externalLeistungsanfrageId: proposalId,
+        externalRequestVersion: 1,
+        sourceMessageId: payload.metadata.messageId,
+        payloadHash,
+        correlationId: payload.metadata.correlationId,
+        senderAgOrgId: root.senderAgOrgId,
+        receiverAnOrgId: input.anOrgId,
+        projectReference: root.projectReference,
+        leistungReference: root.leistungReference,
+        plannedStart: input.start,
+        plannedEnd: input.end,
+        policySnapshot: payload.policySnapshot ?? null,
+        payloadSnapshot: payload as unknown as Record<string, unknown>,
+        status: "RESPONDED",
+        receivedAt: new Date(payload.metadata.createdAt),
+      }).returning();
+      if (!projection) throw new Error("AN schedule-change projection could not be created");
+      localProjectionId = projection.id;
+      if (payload.resourceRequirements.length) {
+        const localTypes = await tx.select({
+          id: resourceTypesTable.id,
+          code: resourceTypesTable.code,
+        }).from(resourceTypesTable).where(eq(resourceTypesTable.anOrgId, input.anOrgId));
+        const typeByCode = new Map(localTypes.map((type) => [type.code, type.id]));
+        await tx.insert(anLeistungsanfrageResourceRequirementsTable).values(
+          payload.resourceRequirements.map((requirement) => ({
+            anLeistungsanfrageId: projection.id,
+            externalResourceTypeCode: requirement.resourceTypeCode,
+            externalResourceTypeName: requirement.resourceTypeName,
+            requiredCapacity: String(requirement.requiredCapacity),
+            capacityUnit: requirement.capacityUnit,
+            utilizationPercent: requirement.utilizationPercent,
+            periodStart: requirement.periodStart,
+            periodEnd: requirement.periodEnd,
+            requiredQualification: requirement.requiredQualification ?? null,
+            localResourceTypeId: typeByCode.get(requirement.resourceTypeCode) ?? null,
+            notes: null,
+          })),
+        );
+      }
+    });
+    await runAnAvailabilityCheck(input.requestId, input.anOrgId, input.userId, {
+      projectionId: localProjectionId,
+      excludeSourceReferenceIds: projections
+        .filter((candidate) =>
+          candidate.externalLeistungsanfrageId === input.requestId ||
+          coordinationSourceRequestId(candidate) === input.requestId,
+        )
+        .map((candidate) => candidate.id),
+    });
+  }
+  const outboundPayload = existing
+    ? existing.payloadSnapshot as unknown as ExternalServiceRequest
+    : payload;
+  const delivery = await deliverLocalServiceRequest(outboundPayload);
   return {
     proposalId,
     requestId: input.requestId,
-    start: input.start,
-    end: input.end,
-    comment: input.comment ?? null,
+    start: outboundPayload.plannedStart,
+    end: outboundPayload.plannedEnd,
+    comment: outboundPayload.comment ?? null,
     transportStatus: delivery.status,
-    transportMessageId: payload.metadata.messageId,
+    transportMessageId: outboundPayload.metadata.messageId,
   };
 }
 
@@ -1025,8 +1133,7 @@ export async function resolveAnScheduleChangeProposal(input: {
   const proposal = projections.find((projection) =>
     projection.externalLeistungsanfrageId === input.proposalId &&
     coordinationRequestKind(projection) === "SCHEDULE_CHANGE" &&
-    coordinationSourceRequestId(projection) === input.requestId &&
-    actionableStatuses.includes(projection.status as typeof actionableStatuses[number]),
+    coordinationSourceRequestId(projection) === input.requestId,
   );
   if (!proposal || proposal.senderAgOrgId === input.anOrgId) return null;
   const window = coordinationWindow(proposal);

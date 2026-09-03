@@ -109,6 +109,45 @@ describe("restoreConcreteResourceAssignments", () => {
       { requireConcreteAssignments: true },
     )).toThrow("CHANGE_PROPOSAL_NOT_FEASIBLE");
   });
+
+  it("splits a multi-unit requirement across preserved concrete resources", () => {
+    const result = restoreConcreteResourceAssignments(
+      [requirement({ requiredCapacity: 2 })],
+      [
+        booking("booking-a", "resource-a", "2026-09-01T00:00:00Z", "2026-09-06T00:00:00Z"),
+        booking("booking-b", "resource-b", "2026-09-01T00:00:00Z", "2026-09-06T00:00:00Z"),
+      ],
+      resources,
+      [],
+      oldStart,
+      oldEnd,
+      newStart,
+    );
+
+    expect(result.map((item) => item.resourceId)).toEqual(["resource-a", "resource-b"]);
+    expect(result.every((item) => item.quantity === 0)).toBe(true);
+  });
+
+  it("reuses one concrete booking for non-overlapping requirement segments", () => {
+    const result = restoreConcreteResourceAssignments(
+      [
+        requirement({ id: "segment-a", periodStart: "2026-09-01", periodEnd: "2026-09-02" }),
+        requirement({ id: "segment-b", periodStart: "2026-09-03", periodEnd: "2026-09-05" }),
+      ],
+      [booking("booking-a", "resource-a", "2026-09-01T00:00:00Z", "2026-09-06T00:00:00Z")],
+      resources,
+      [],
+      oldStart,
+      oldEnd,
+      newStart,
+    );
+
+    expect(result.map((item) => item.resourceId)).toEqual(["resource-a", "resource-a"]);
+    expect(result.map((item) => [item.periodStart, item.periodEnd])).toEqual([
+      ["2026-09-08", "2026-09-09"],
+      ["2026-09-10", "2026-09-12"],
+    ]);
+  });
 });
 
 describe("shiftRequirementsToWindow", () => {

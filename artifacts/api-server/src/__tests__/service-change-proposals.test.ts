@@ -9,16 +9,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { agDb as db, anDb, runWithDatabaseRole } from "@workspace/db";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { agDb as db, anDb, hubDb, runWithDatabaseRole } from "@workspace/db";
 import {
+  anAvailabilityChecksTable,
   anLeistungsanfragenTable,
   anLeistungsantwortenTable,
+  dataspaceExchangesTable,
+  messageDeliveryAttemptsTable,
+  messageInboxTable,
   leistungsanfragenTable,
   leistungsanfrageSnapshotsTable,
   leistungenTable,
   organizationsTable,
   projectsTable,
+  messageOutboxTable,
   serviceChangeProposalsTable,
   usersTable,
 } from "@workspace/db";
@@ -51,6 +56,7 @@ const REQUEST_IDS = [
   "t212-request-published-labels",
   ROUNDTRIP_REQUEST,
   "t212-request-an-local",
+  "t212-request-an-init",
 ];
 
 const publishedSnapshot = {
@@ -94,6 +100,27 @@ const originalStart = new Date("2026-09-01T08:00:00.000Z");
 const originalEnd = new Date("2026-09-05T17:00:00.000Z");
 
 async function cleanupFixtures() {
+  await hubDb.delete(messageDeliveryAttemptsTable)
+    .where(sql`message_id LIKE 'an-schedule-change:%' OR message_id LIKE 'coordination-decision:%'`)
+    .catch(() => {});
+  await hubDb.delete(messageInboxTable).where(or(
+    eq(messageInboxTable.senderOrgId, GU_ORG),
+    eq(messageInboxTable.recipientOrgId, GU_ORG),
+    eq(messageInboxTable.senderOrgId, NU_ORG),
+    eq(messageInboxTable.recipientOrgId, NU_ORG),
+  )).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(or(
+    eq(messageOutboxTable.senderOrgId, GU_ORG),
+    eq(messageOutboxTable.recipientOrgId, GU_ORG),
+    eq(messageOutboxTable.senderOrgId, NU_ORG),
+    eq(messageOutboxTable.recipientOrgId, NU_ORG),
+  )).catch(() => {});
+  await hubDb.delete(dataspaceExchangesTable).where(or(
+    eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
+    eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
+    eq(dataspaceExchangesTable.receiverOrgId, NU_ORG),
+  )).catch(() => {});
   // Keep reruns independent from a previous interrupted Vitest process. The
   // AN projection is filtered by its fixture organisation because schedule
   // change projections use generated proposal IDs rather than request IDs.
@@ -167,6 +194,7 @@ beforeAll(async () => {
   await insertRequest(REQUEST_IDS[6], "PUBLISHED-LABELS");
   await insertRequest(ROUNDTRIP_REQUEST, "ROUNDTRIP");
   await insertRequest("t212-request-an-local", "AN-LOCAL");
+  await insertRequest("t212-request-an-init", "AN-INIT");
   await db.insert(leistungsanfrageSnapshotsTable).values({
     leistungsanfrageId: REQUEST_IDS[6],
     schemaVersion: publishedSnapshot.schemaVersion,
@@ -200,6 +228,36 @@ beforeAll(async () => {
     acceptedEnd: originalEnd,
     payloadHash: "t212-an-local-response-hash",
     outboundMessageId: "t212-an-local-response",
+    createdByUserId: NU_USER,
+  });
+  await anDb.insert(anLeistungsanfragenTable).values({
+    id: "t212-an-init-projection",
+    externalLeistungsanfrageId: "t212-request-an-init",
+    externalRequestVersion: 1,
+    sourceMessageId: "t212-an-init-message",
+    payloadHash: "t212-an-init-hash",
+    correlationId: "t212-request-an-init",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT,
+    leistungReference: LEISTUNG,
+    plannedStart: "2026-09-01",
+    plannedEnd: "2026-09-05",
+    payloadSnapshot: {
+      requestKind: "INITIAL",
+      publicSnapshot: publishedSnapshot,
+    },
+    status: "RESPONDED",
+  });
+  await anDb.insert(anLeistungsantwortenTable).values({
+    anLeistungsanfrageId: "t212-an-init-projection",
+    sourceRequestId: "t212-request-an-init",
+    requestVersion: 1,
+    decision: "ACCEPTED",
+    acceptedStart: originalStart,
+    acceptedEnd: originalEnd,
+    payloadHash: "t212-an-init-response-hash",
+    outboundMessageId: "t212-an-init-response",
     createdByUserId: NU_USER,
   });
 });
@@ -454,6 +512,54 @@ describe("bilateral change proposals", () => {
       .set("Authorization", `Bearer ${nuToken}`);
     expect([200, 201]).toContain(accepted.status);
     expect(accepted.body.decision).toBe("ACCEPTED");
+    const retried = await request(app)
+      .post(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposal.id}/accept`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(retried.status).toBe(200);
+    const afterAcceptance = await request(app)
+      .get(`/api/an/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(afterAcceptance.body.openProposal).toBeNull();
+    expect(afterAcceptance.body.currentAgreement.start).toContain("2026-09-03");
+  });
+
+  it("delivers and confirms an AN-initiated proposal exactly once", async () => {
+    const requestId = "t212-request-an-init";
+    const first = await request(app)
+      .post(`/api/an/leistungsanfragen/${requestId}/change-proposals`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({ start: "2026-09-03T08:00:00.000Z", end: "2026-09-07T17:00:00.000Z", reasonCode: "SEQUENCING" });
+    expect(first.status).toBe(201);
+
+    const retry = await request(app)
+      .post(`/api/an/leistungsanfragen/${requestId}/change-proposals`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({ start: "2026-09-03T08:00:00.000Z", end: "2026-09-07T17:00:00.000Z", reasonCode: "SEQUENCING" });
+    expect(retry.status).toBe(201);
+    expect(retry.body.proposalId).toBe(first.body.proposalId);
+    const [localProjection] = await anDb.select().from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, first.body.proposalId));
+    const checks = await anDb.select().from(anAvailabilityChecksTable)
+      .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, localProjection.id));
+    expect(checks).toHaveLength(1);
+
+    const agView = await request(app)
+      .get(`/api/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect(agView.status).toBe(200);
+    expect(agView.body.openProposal.id).toBe(first.body.proposalId);
+
+    const accepted = await request(app)
+      .post(`/api/leistungsanfragen/${requestId}/change-proposals/${first.body.proposalId}/accept`)
+      .set("Authorization", `Bearer ${guToken}`);
+    expect([200, 201]).toContain(accepted.status);
+
+    const anView = await request(app)
+      .get(`/api/an/leistungsanfragen/${requestId}/coordination`)
+      .set("Authorization", `Bearer ${nuToken}`);
+    expect(anView.status).toBe(200);
+    expect(anView.body.openProposal).toBeNull();
+    expect(anView.body.currentAgreement.start).toContain("2026-09-03");
   });
 
   it("leaves at most one open proposal when two submissions race", async () => {
