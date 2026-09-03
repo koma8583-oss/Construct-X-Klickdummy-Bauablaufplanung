@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
-import LeistungsanfragenInboxPage, { filterInboxItems, inboxViewFor, nextActionOwner, type InboxItem } from "../leistungsanfragen-inbox";
+import LeistungsanfragenInboxPage, { filterInboxItems, inboxItemType, inboxViewFor, nextActionOwner, type InboxItem } from "../leistungsanfragen-inbox";
 
 const request = {
   id: "request-1",
@@ -102,6 +102,30 @@ describe("AN-Leistungsanfragen-Inbox", () => {
     expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("Zu erledigen");
     expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("2");
     expect(screen.getByTestId("link-open-project-invitation-invitation-1")).toHaveAttribute("href", "/project-invitations");
+  });
+
+  it("kennzeichnet Terminänderungen getrennt von Leistungsanfragen", () => {
+    const proposal = { ...request, openProposal: { id: "proposal-1", start: "2030-10-18T00:00:00.000Z", end: "2030-10-20T00:00:00.000Z", proposerRole: "AG" as const } };
+    expect(inboxItemType(request)).toBe("SERVICE_REQUEST");
+    expect(inboxItemType(proposal)).toBe("SCHEDULE_CHANGE");
+    expect(inboxItemType(invitation)).toBe("PROJECT_JOIN");
+    expect(inboxViewFor(invitation)).toBe("OPEN");
+    expect(inboxViewFor({ ...invitation, status: "ACCEPTED" as const })).toBe("DONE");
+  });
+
+  it("filtert die gemeinsame Liste nach Vorgangstyp", () => {
+    const proposal = { ...request, openProposal: { id: "proposal-1", start: "2030-10-18T00:00:00.000Z", end: "2030-10-20T00:00:00.000Z", proposerRole: "AG" as const } };
+    const result = filterInboxItems([request, proposal, invitation], {
+      inboxFilter: "ALL",
+      typeFilter: "PROJECT_JOIN",
+      deadlineFilter: "ALL",
+      statusFilter: "ALL",
+      coordinationFilter: "ALL",
+      proposalFilter: "ALL",
+      actionOwnerFilter: "ALL",
+      scheduleFilter: "ALL",
+    });
+    expect(result).toEqual([invitation]);
   });
 
   it("ordnet die Ansichten anhand der nächsten Aktion statt anhand des technischen Status", () => {

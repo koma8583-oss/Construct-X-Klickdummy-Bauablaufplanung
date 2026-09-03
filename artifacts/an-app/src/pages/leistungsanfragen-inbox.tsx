@@ -51,6 +51,8 @@ const STATUS_TONE: Record<AnLeistungsanfrageListItemStatus, string> = {
 
 export type InboxView = "OPEN" | "WAITING" | "DONE";
 export type InboxItem = AnLeistungsanfrageListItem;
+export type InboxItemType = "PROJECT_JOIN" | "SERVICE_REQUEST" | "SCHEDULE_CHANGE";
+export type InboxRecord = InboxItem | AnProjectInvitation;
 
 function dateText(value?: string | null, withTime = false) {
   if (!value) return "Nicht veröffentlicht";
@@ -80,7 +82,17 @@ export function nextActionOwner(item: InboxItem): "AG" | "AN" | null {
   return null;
 }
 
-export function inboxViewFor(item: InboxItem): InboxView {
+export function inboxItemType(item: InboxRecord): InboxItemType {
+  if ("invitationId" in item) return "PROJECT_JOIN";
+  return item.openProposal ? "SCHEDULE_CHANGE" : "SERVICE_REQUEST";
+}
+
+function inboxViewForInvitation(invitation: AnProjectInvitation): InboxView {
+  return invitation.status === "PENDING" ? "OPEN" : "DONE";
+}
+
+export function inboxViewFor(item: InboxRecord): InboxView {
+  if ("invitationId" in item) return inboxViewForInvitation(item);
   const owner = nextActionOwner(item);
   if (owner === "AN") return "OPEN";
   if (owner === "AG") return "WAITING";
@@ -89,6 +101,7 @@ export function inboxViewFor(item: InboxItem): InboxView {
 
 export interface InboxFilterState {
   inboxFilter: "ALL" | InboxView;
+  typeFilter?: "ALL" | InboxItemType;
   deadlineFilter: "ALL" | "DUE_SOON" | "OVERDUE" | "EXPIRED";
   statusFilter: string;
   coordinationFilter: string;
@@ -97,19 +110,27 @@ export interface InboxFilterState {
   scheduleFilter: string;
 }
 
-export function filterInboxItems(items: InboxItem[], filters: InboxFilterState) {
+export function filterInboxItems(items: InboxRecord[], filters: InboxFilterState) {
   return items.filter((item) => {
     if (filters.inboxFilter !== "ALL" && inboxViewFor(item) !== filters.inboxFilter) return false;
-    if (filters.statusFilter !== "ALL" && item.status !== filters.statusFilter) return false;
-    if (filters.coordinationFilter !== "ALL" && item.coordinationState !== filters.coordinationFilter) return false;
-    if (filters.proposalFilter === "OPEN" && !item.openProposal) return false;
-    if (filters.proposalFilter === "NONE" && item.openProposal) return false;
+    if (filters.typeFilter && filters.typeFilter !== "ALL" && inboxItemType(item) !== filters.typeFilter) return false;
+    if ("invitationId" in item) {
+      if (filters.statusFilter !== "ALL") return false;
+      if (filters.coordinationFilter !== "ALL" || filters.proposalFilter !== "ALL") return false;
+    } else {
+      if (filters.statusFilter !== "ALL" && item.status !== filters.statusFilter) return false;
+      if (filters.coordinationFilter !== "ALL" && item.coordinationState !== filters.coordinationFilter) return false;
+      if (filters.proposalFilter === "OPEN" && !item.openProposal) return false;
+      if (filters.proposalFilter === "NONE" && item.openProposal) return false;
+    }
     if (filters.actionOwnerFilter !== "ALL") {
-      const owner = nextActionOwner(item);
+      const owner = "invitationId" in item ? "AN" : nextActionOwner(item);
       if (filters.actionOwnerFilter === "NONE" ? owner !== null : owner !== filters.actionOwnerFilter) return false;
     }
     if (filters.deadlineFilter !== "ALL") {
-      const due = item.responseRequiredBy ? new Date(item.responseRequiredBy) : null;
+      const due = "invitationId" in item
+        ? item.invitationExpiresAt ? new Date(item.invitationExpiresAt) : null
+        : item.responseRequiredBy ? new Date(item.responseRequiredBy) : null;
       const expired = !!due && due.getTime() < Date.now();
       if (filters.deadlineFilter === "EXPIRED" && !expired) return false;
       if (filters.deadlineFilter === "OVERDUE" && !expired) return false;
@@ -122,6 +143,12 @@ export function filterInboxItems(items: InboxItem[], filters: InboxFilterState) 
 function StatusBadge({ status }: { status: AnLeistungsanfrageListItemStatus }) {
   return <Badge variant="outline" className={`font-medium ${STATUS_TONE[status]}`}>{STATUS_LABELS[status]}</Badge>;
 }
+
+const TYPE_LABELS: Record<InboxItemType, string> = {
+  PROJECT_JOIN: "Projektbeitritt",
+  SERVICE_REQUEST: "Leistungsanfrage",
+  SCHEDULE_CHANGE: "Terminänderung",
+};
 
 function ActionBadge({ item }: { item: InboxItem }) {
   const owner = nextActionOwner(item);
@@ -141,12 +168,14 @@ function ActionBadge({ item }: { item: InboxItem }) {
 function RequestCard({ item }: { item: InboxItem }) {
   const due = deadline(item);
   const title = item.takt.kurzbezeichnung || item.takt.taktBezeichnung || "Leistung ohne Bezeichnung";
+  const itemType = inboxItemType(item);
   return (
     <article data-testid={`card-request-${item.id}`} className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className={`h-1 ${due.urgent ? "bg-accent" : "bg-primary/70"}`} />
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
+            <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary">{TYPE_LABELS[itemType]}</Badge>
             <h2 data-testid={`text-request-title-${item.id}`} className="line-clamp-2 break-words text-lg font-semibold">{title}</h2>
             <p className="mt-1 text-xs text-muted-foreground">Nächster Schritt: <span className="font-medium text-foreground">{nextActionOwner(item) === "AN" ? "AN" : nextActionOwner(item) === "AG" ? "AG" : "keiner"}</span></p>
           </div>
@@ -171,6 +200,8 @@ function RequestCard({ item }: { item: InboxItem }) {
 }
 
 function ProjectInvitationRequestCard({ invitation }: { invitation: AnProjectInvitation }) {
+  const isPending = invitation.status === "PENDING";
+  const statusLabel = isPending ? "Offen" : invitation.status === "ACCEPTED" ? "Angenommen" : "Abgelehnt";
   return (
     <article
       data-testid={`card-project-invitation-${invitation.id}`}
@@ -180,7 +211,7 @@ function ProjectInvitationRequestCard({ invitation }: { invitation: AnProjectInv
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Projektzugang</p>
+            <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary">{TYPE_LABELS.PROJECT_JOIN}</Badge>
             <h2 data-testid={`text-project-invitation-title-${invitation.id}`} className="mt-1 line-clamp-2 break-words text-lg font-semibold">
               {invitation.projectName || "Projektname nicht veröffentlicht"}
             </h2>
@@ -188,7 +219,9 @@ function ProjectInvitationRequestCard({ invitation }: { invitation: AnProjectInv
               Von {invitation.senderAgOrgName || "Auftraggebername nicht veröffentlicht"}
             </p>
           </div>
-          <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">Ihre Aktion</Badge>
+          <Badge className={isPending ? "border-primary/20 bg-primary/10 text-primary hover:bg-primary/10" : "border-border text-muted-foreground"}>
+            {isPending ? "Ihre Aktion" : statusLabel}
+          </Badge>
         </div>
         <div className="mt-5 grid gap-4 border-y border-border/70 py-4 text-sm">
           <div className="flex min-w-0 items-start gap-2">
@@ -207,21 +240,29 @@ function ProjectInvitationRequestCard({ invitation }: { invitation: AnProjectInv
               </div>
             </div>
           )}
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div><p className="text-[11px] text-muted-foreground">Eingegangen</p><p className="mt-0.5 font-medium">{dateText(invitation.createdAt)}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Frist</p><p className="mt-0.5 font-medium">{dateText(invitation.invitationExpiresAt)}</p></div>
+          </div>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Der Auftraggeber lädt Sie zur Zusammenarbeit in diesem Projekt ein. Prüfen Sie die Einladung und entscheiden Sie über den Projektzugang.
+            {isPending
+              ? "Der Auftraggeber lädt Sie zur Zusammenarbeit in diesem Projekt ein. Prüfen Sie die Einladung und entscheiden Sie über den Projektzugang."
+              : invitation.status === "ACCEPTED"
+                ? "Der Projektbeitritt wurde angenommen."
+                : "Der Projektbeitritt wurde abgelehnt."}
           </p>
         </div>
-        <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+        {isPending && <div className="mt-auto flex items-center justify-between gap-3 pt-5">
           <Link
             aria-label={`Projekteinladung ${invitation.projectName || "prüfen"}`}
             data-testid={`link-open-project-invitation-${invitation.id}`}
             href="/project-invitations"
             className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Einladung prüfen<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            Projekteinladung prüfen<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
           <Badge variant="outline" className="border-amber-600/30 bg-amber-500/10 text-amber-800">Offen</Badge>
-        </div>
+        </div>}
       </div>
     </article>
   );
@@ -231,6 +272,7 @@ export default function LeistungsanfragenInboxPage() {
   const [view, setView] = useState<InboxView>("OPEN");
   const [showFilters, setShowFilters] = useState(false);
   const [status, setStatus] = useState<"ALL" | AnLeistungsanfrageListItemStatus>("ALL");
+  const [typeFilter, setTypeFilter] = useState<"ALL" | InboxItemType>("ALL");
   const requestQuery = useListAnLeistungsanfragen(
     status === "ALL" ? undefined : { status },
     { query: { queryKey: getListAnLeistungsanfragenQueryKey(status === "ALL" ? undefined : { status }), refetchInterval: 15000, refetchIntervalInBackground: false } },
@@ -240,13 +282,24 @@ export default function LeistungsanfragenInboxPage() {
   );
   const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
   const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
-  const openInvitations = invitations.filter((invitation) => invitation.status === "PENDING");
-  const shownRequests = requests.filter((item) => inboxViewFor(item) === view);
-  const shownInvitations = view === "OPEN" && status === "ALL" ? openInvitations : [];
-  const todoCount = requests.filter((item) => inboxViewFor(item) === "OPEN").length + openInvitations.length;
-  const waitingCount = requests.filter((item) => inboxViewFor(item) === "WAITING").length;
-  const doneCount = requests.filter((item) => inboxViewFor(item) === "DONE").length;
-  const hasVisibleItems = shownRequests.length > 0 || shownInvitations.length > 0;
+  const records: InboxRecord[] = status === "ALL"
+    ? [...invitations, ...requests]
+    : requests;
+  const filteredRecords = filterInboxItems(records, {
+    inboxFilter: "ALL",
+    typeFilter,
+    deadlineFilter: "ALL",
+    statusFilter: status,
+    coordinationFilter: "ALL",
+    proposalFilter: "ALL",
+    actionOwnerFilter: "ALL",
+    scheduleFilter: "ALL",
+  });
+  const shownRecords = filteredRecords.filter((item) => inboxViewFor(item) === view);
+  const todoCount = filteredRecords.filter((item) => inboxViewFor(item) === "OPEN").length;
+  const waitingCount = filteredRecords.filter((item) => inboxViewFor(item) === "WAITING").length;
+  const doneCount = filteredRecords.filter((item) => inboxViewFor(item) === "DONE").length;
+  const hasVisibleItems = shownRecords.length > 0;
 
   if (requestQuery.isLoading || invitationQuery.isLoading) return <div className="mx-auto w-full max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-10 w-80" /><Skeleton className="h-16 w-full" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-96" /><Skeleton className="h-96" /></div></div>;
   if (requestQuery.isError || invitationQuery.isError) return <div className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Anfragen konnten nicht geladen werden</h1><p className="text-sm text-muted-foreground">Leistungsanfragen oder Projekteinladungen sind gerade nicht erreichbar.</p><Button data-testid="button-retry-inbox" variant="outline" onClick={() => { void requestQuery.refetch(); void invitationQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div>;
@@ -266,10 +319,10 @@ export default function LeistungsanfragenInboxPage() {
           ] as const).map(([value, label, count]) => <button role="tab" aria-selected={view === value} data-testid={`button-inbox-tab-${value.toLowerCase()}`} key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-2 py-2.5 text-sm font-medium transition-colors sm:px-3 ${view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{label}<span className="ml-1.5 font-mono text-[10px] text-muted-foreground">{count}</span></button>)}
         </div>
         <div className="mt-3 flex justify-end"><Button data-testid="button-toggle-filters" type="button" variant="ghost" size="sm" onClick={() => setShowFilters((current) => !current)}><ChevronDown className={`mr-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />Detailfilter</Button></div>
-        {showFilters && <div data-testid="detail-filters" className="grid gap-3 border-t border-border/70 pt-3 sm:grid-cols-2"><div><label className="text-xs font-medium text-muted-foreground" htmlFor="status-filter">Technischer Status</label><Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" id="status-filter" className="mt-1 w-full"><SelectValue placeholder="Alle Leistungsstatus" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div><p className="self-end text-xs text-muted-foreground">Die drei Hauptansichten werden nicht aus diesem technischen Status abgeleitet.</p></div>}
+         {showFilters && <div data-testid="detail-filters" className="grid gap-3 border-t border-border/70 pt-3 sm:grid-cols-2"><div><label className="text-xs font-medium text-muted-foreground" htmlFor="type-filter">Vorgangstyp</label><Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as typeof typeFilter)}><SelectTrigger data-testid="select-type-filter" id="type-filter" className="mt-1 w-full"><SelectValue placeholder="Alle Vorgangstypen" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Vorgangstypen</SelectItem><SelectItem value="PROJECT_JOIN">Projektbeitritt</SelectItem><SelectItem value="SERVICE_REQUEST">Leistungsanfrage</SelectItem><SelectItem value="SCHEDULE_CHANGE">Terminänderung</SelectItem></SelectContent></Select></div><div><label className="text-xs font-medium text-muted-foreground" htmlFor="status-filter">Technischer Status</label><Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" id="status-filter" className="mt-1 w-full"><SelectValue placeholder="Alle Leistungsstatus" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div><p className="self-end text-xs text-muted-foreground">Die drei Hauptansichten werden nach nächster Aktion gruppiert; der Vorgangstyp filtert alle Karten.</p></div>}
       </section>
-      {!hasVisibleItems ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Nichts zu erledigen" : view === "WAITING" ? "Keine Anfragen warten auf den Auftraggeber" : "Keine erledigten Anfragen"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Leistungsanfragen, Projekteinladungen und neue AG-Terminvorschläge erscheinen hier, sobald Sie handeln müssen." : "Passen Sie den Status im Detailfilter an, wenn Sie eine bestimmte Anfrage suchen."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((invitation) => <ProjectInvitationRequestCard key={invitation.id} invitation={invitation} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length + shownInvitations.length} Elemente in dieser Ansicht</p>
+      {!hasVisibleItems ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Nichts zu erledigen" : view === "WAITING" ? "Keine Anfragen warten auf den Auftraggeber" : "Keine erledigten Vorgänge"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Leistungsanfragen, Projekteinladungen und neue AG-Terminvorschläge erscheinen hier, sobald Sie handeln müssen." : "Passen Sie den Vorgangstyp oder technischen Status im Detailfilter an, wenn Sie einen bestimmten Vorgang suchen."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownRecords.map((record) => "invitationId" in record ? <ProjectInvitationRequestCard key={`invitation-${record.id}`} invitation={record} /> : <RequestCard key={`request-${record.id}`} item={record} />)}</div>}
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRecords.length} Vorgänge in dieser Ansicht</p>
     </main>
   );
 }
