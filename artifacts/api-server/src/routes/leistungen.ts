@@ -1488,7 +1488,7 @@ router.post(
         requestVersion: existing.taktVersion,
         projectReference: String(snapPayload.projectReference ?? existing.taktId),
         projectName: project[0]?.name,
-        taktReference: existing.taktId,
+        leistungReference: existing.taktId,
         plannedStart: plannedTimeWindow.start,
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,

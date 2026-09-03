@@ -335,7 +335,9 @@ describe("bilateral change proposals", () => {
         location: "Published T212 site",
       },
       takt: {
-        id: LEISTUNG,
+        // The AN projection owns its local identifier; the published AG
+        // reference remains in publicSnapshot above.
+        id: expect.any(String),
         taktBezeichnung: "Published T212 work package",
         kurzbezeichnung: "Published T212 service",
         gewerk: "Published T212 trade",
@@ -348,6 +350,7 @@ describe("bilateral change proposals", () => {
         kurzbezeichnung: "Published T212 service",
       }),
     });
+    expect(detail?.takt?.id).not.toBe(LEISTUNG);
   });
 
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {

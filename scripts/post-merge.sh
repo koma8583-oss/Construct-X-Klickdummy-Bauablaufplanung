@@ -30,6 +30,8 @@ apply_hub_migrations() {
     -f lib/db/migrations/0006_dataspace_exchange_payload_hash.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0017_message_delivery_attempts.sql
+  psql "$database_url" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0022_dataspace_access_grants.sql
 }
 
 apply_shared_post_migration() {

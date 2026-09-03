@@ -1,7 +1,7 @@
 export * from "./generated/api";
 
-// Dataspace transport contracts remain Takt-named on the wire until a
-// versioned external dataspace contract is introduced.
+// Internal message types remain compatible with the local adapter. The public
+// connector envelope uses the versioned Construct-X registry below.
 export { DataspaceMessageType } from "./generated/types/dataspaceMessageType";
 export type { DataspaceMessageStatus } from "./generated/types/dataspaceMessageStatus";
 export type { MessageEnvelope } from "./generated/types/messageEnvelope";
@@ -15,6 +15,8 @@ export {
 export type { TaktRequestSnapshotPayload } from "./taktRequestSnapshotPayload";
 export {
   CATENA_X_MESSAGE_HEADER_VERSION,
+  CONSTRUCT_X_NOTIFICATION_OPERATIONS,
+  CONSTRUCT_X_NOTIFICATION_CONTEXTS,
   TAKTKOORD_NOTIFICATION_OPERATIONS,
   TAKTKOORD_NOTIFICATION_CONTEXTS,
   notificationOperationForContext,
@@ -23,5 +25,6 @@ export {
 } from "./notification-envelope";
 export type {
   NotificationEnvelope,
+  ConstructXNotificationType,
   TaktKoordNotificationType,
 } from "./notification-envelope";

@@ -50,106 +50,118 @@ export const CATENA_X_MESSAGE_HEADER_VERSION = "3.0.0";
  * version above is the Catena-X MessageHeaderAspect version and is deliberately
  * independent from the version of a business operation.
  */
-export const TAKTKOORD_NOTIFICATION_OPERATIONS = {
+export const CONSTRUCT_X_NOTIFICATION_OPERATIONS = {
   TAKT_REQUEST_NOTIFICATION: {
     api: "Notification API",
     operation: "service-request",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request:v1",
   },
   TAKT_REQUEST_REVISED: {
     api: "Notification API",
     operation: "service-request-revision",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-revision:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request-revision:v1",
   },
   TAKT_REQUEST_CANCELLED: {
     api: "Notification API",
     operation: "service-request-cancellation",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-cancellation:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request-cancellation:v1",
   },
   TAKT_DETAILS_RETRIEVED: {
     api: "Notification API",
     operation: "service-request-details-retrieved",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-details-retrieved:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request-details-retrieved:v1",
   },
   TAKT_RESPONSE_SUBMITTED: {
     api: "Notification API",
     operation: "service-response",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-response:v1",
   },
   TAKT_RESPONSE_ACCEPTED: {
     api: "Notification API",
     operation: "service-response-accepted",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response-accepted:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-response-accepted:v1",
   },
   TAKT_RESPONSE_REVISION_REQUESTED: {
     api: "Notification API",
     operation: "service-response-revision-requested",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response-revision-requested:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-response-revision-requested:v1",
   },
   TAKT_REQUEST_EXPIRED: {
     api: "Notification API",
     operation: "service-request-expired",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-expired:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request-expired:v1",
   },
   TAKT_REQUEST_REMINDER: {
     api: "Notification API",
     operation: "service-request-reminder",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-reminder:v1",
+     context: "urn:construct-x:construction-service-coordination:notification:service-request-reminder:v1",
   },
   DATA_OFFER_PUBLISHED: {
     api: "Notification API",
     operation: "data-offer-published",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:data-publication:data-offer-published:v1",
+     context: "urn:construct-x:data-publication:notification:data-offer-published:v1",
   },
   DATA_OFFER_RESPONSE: {
     api: "Notification API",
     operation: "data-offer-response",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:data-publication:data-offer-response:v1",
+     context: "urn:construct-x:data-publication:notification:data-offer-response:v1",
   },
   PROJECT_INVITATION: {
     api: "Notification API",
     operation: "project-invitation",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:project-membership:project-invitation:v1",
+     context: "urn:construct-x:project-membership:notification:project-invitation:v1",
   },
   PROJECT_INVITATION_RESPONSE: {
     api: "Notification API",
     operation: "project-invitation-response",
     majorVersion: 1,
-    context: "urn:taktkoord:notification-api:project-membership:project-invitation-response:v1",
+     context: "urn:construct-x:project-membership:notification:project-invitation-response:v1",
   },
+   SCHEDULE_CHANGE_REQUEST: {
+     api: "Construction Service Coordination Notification API",
+     operation: "schedule-change-request",
+     majorVersion: 1,
+     context: "urn:construct-x:construction-service-coordination:notification:schedule-change-request:v1",
+   },
+   SCHEDULE_CHANGE_RESPONSE: {
+     api: "Construction Service Coordination Notification API",
+     operation: "schedule-change-response",
+     majorVersion: 1,
+     context: "urn:construct-x:construction-service-coordination:notification:schedule-change-response:v1",
+   },
 } as const;
 
-export const TAKTKOORD_NOTIFICATION_CONTEXTS = Object.fromEntries(
-  Object.entries(TAKTKOORD_NOTIFICATION_OPERATIONS).map(([type, definition]) => [
+export const CONSTRUCT_X_NOTIFICATION_CONTEXTS = Object.fromEntries(
+  Object.entries(CONSTRUCT_X_NOTIFICATION_OPERATIONS).map(([type, definition]) => [
     type,
     definition.context,
   ]),
-) as { [K in keyof typeof TAKTKOORD_NOTIFICATION_OPERATIONS]: string };
+) as { [K in keyof typeof CONSTRUCT_X_NOTIFICATION_OPERATIONS]: string };
 
-export type TaktKoordNotificationType = keyof typeof TAKTKOORD_NOTIFICATION_OPERATIONS;
-export type NotificationOperation = typeof TAKTKOORD_NOTIFICATION_OPERATIONS[TaktKoordNotificationType];
+export type ConstructXNotificationType = keyof typeof CONSTRUCT_X_NOTIFICATION_OPERATIONS;
+export type NotificationOperation = typeof CONSTRUCT_X_NOTIFICATION_OPERATIONS[ConstructXNotificationType];
 
-export function notificationOperationForContext(context: string): TaktKoordNotificationType | null {
-  const entry = Object.entries(TAKTKOORD_NOTIFICATION_OPERATIONS)
+export function notificationOperationForContext(context: string): ConstructXNotificationType | null {
+  const entry = Object.entries(CONSTRUCT_X_NOTIFICATION_OPERATIONS)
     .find(([, definition]) => definition.context === context);
-  return (entry?.[0] as TaktKoordNotificationType | undefined) ?? null;
+  return (entry?.[0] as ConstructXNotificationType | undefined) ?? null;
 }
 
 export function createNotificationEnvelope(input: {
   messageId: NotificationHeader["messageId"];
-  messageType: TaktKoordNotificationType;
+  messageType: ConstructXNotificationType;
   senderBpn: string;
   receiverBpn: string;
   content: Record<string, unknown>;
@@ -161,7 +173,7 @@ export function createNotificationEnvelope(input: {
   return NotificationEnvelopeSchema.parse({
     header: {
       messageId: input.messageId,
-      context: input.context ?? TAKTKOORD_NOTIFICATION_CONTEXTS[input.messageType],
+      context: input.context ?? CONSTRUCT_X_NOTIFICATION_CONTEXTS[input.messageType],
       sentDateTime: input.sentDateTime ?? new Date().toISOString(),
       senderBpn: input.senderBpn,
       receiverBpn: input.receiverBpn,
@@ -172,3 +184,11 @@ export function createNotificationEnvelope(input: {
     content: input.content,
   });
 }
+
+/**
+ * Compatibility exports for internal callers. They point to the Construct-X
+ * registry and must not be used as public identifiers or contexts.
+ */
+export const TAKTKOORD_NOTIFICATION_OPERATIONS = CONSTRUCT_X_NOTIFICATION_OPERATIONS;
+export const TAKTKOORD_NOTIFICATION_CONTEXTS = CONSTRUCT_X_NOTIFICATION_CONTEXTS;
+export type TaktKoordNotificationType = ConstructXNotificationType;

@@ -26,7 +26,7 @@ describe("Tractus-X notification envelope", () => {
 
     expect(envelope.header).toEqual({
       messageId,
-      context: "urn:taktkoord:notification-api:construction-service-coordination:service-request:v1",
+      context: "urn:construct-x:construction-service-coordination:notification:service-request:v1",
       sentDateTime: "2026-09-01T13:00:00.000Z",
       senderBpn,
       receiverBpn,
@@ -67,6 +67,10 @@ describe("Tractus-X notification envelope", () => {
 
     expect(parseNotificationEnvelope(envelope).content).toEqual({ decision: "ACCEPTED" });
     expect(notificationTypeForMessageType("TAKT_RESPONSE_SUBMITTED")).toBe("TAKT_RESPONSE_SUBMITTED");
+    expect(notificationTypeForMessageType("TAKT_REQUEST_NOTIFICATION", { requestKind: "SCHEDULE_CHANGE" }))
+      .toBe("SCHEDULE_CHANGE_REQUEST");
+    expect(notificationTypeForMessageType("TAKT_RESPONSE_SUBMITTED", { requestKind: "SCHEDULE_CHANGE" }))
+      .toBe("SCHEDULE_CHANGE_RESPONSE");
     expect(() => notificationTypeForMessageType("UNREGISTERED_EVENT")).toThrow(
       "No versioned notification context registered",
     );

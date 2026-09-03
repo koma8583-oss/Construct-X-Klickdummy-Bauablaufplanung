@@ -18,7 +18,7 @@ import {
   acceptChangeProposal,
   rejectChangeProposal,
 } from '@workspace/api-client-react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -182,24 +182,33 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
   );
 }
 
-function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
-  const coordination = detail as TaktRequestDetail & {
-    currentAgreement?: { start: string; end: string } | null;
-    openProposal?: { id: string; start: string; end: string; proposerOrgId: string; comment?: string | null } | null;
-    nextActionOwner?: 'AG' | 'AN' | null;
-    scheduleDelta?: { startDays: number; endDays: number; durationDays: number; hasChange: boolean };
-    coordinationTimeline?: Array<{ type: string; at: string; start?: string; end?: string }>;
-  };
+type CoordinationData = {
+  currentAgreement?: { start: string; end: string } | null;
+  openProposal?: {
+    id: string;
+    start: string;
+    end: string;
+    proposerRole?: 'AG' | 'AN';
+    reasonCode?: string | null;
+    comment?: string | null;
+  } | null;
+  scheduleDelta?: { startDays: number; endDays: number; durationDays: number; hasChange: boolean };
+  timeline?: Array<{ type: string; at: string; start?: string; end?: string }>;
+};
+
+function CoordinationSummary({ coordination }: { coordination?: CoordinationData }) {
+  if (!coordination) return null;
   const agreement = coordination.currentAgreement;
   const proposal = coordination.openProposal;
   const delta = coordination.scheduleDelta;
   return (
-    <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+    <section className={`rounded-xl border p-5 space-y-4 ${proposal?.proposerRole === 'AN' ? 'border-amber-400/60 bg-amber-500/10' : 'border-primary/20 bg-primary/5'}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold">Terminabstimmung</h2>
-          <p className="text-xs text-muted-foreground">Vereinbarung und offener Änderungsvorschlag bleiben getrennt.</p>
+          <h2 className="font-semibold">{proposal?.proposerRole === 'AN' ? 'Neue Terminänderung vom Nachunternehmen' : 'Terminabstimmung'}</h2>
+          <p className="text-xs text-muted-foreground">Die aktuelle Vereinbarung bleibt bestehen, bis beide Seiten den neuen Zeitraum bestätigt haben.</p>
         </div>
+        {proposal?.proposerRole === 'AN' && <Badge variant="secondary">Aktion erforderlich</Badge>}
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="rounded-lg border bg-background p-3">
@@ -212,16 +221,30 @@ function CoordinationSummary({ detail }: { detail: TaktRequestDetail }) {
           {proposal?.comment && <p className="text-xs text-muted-foreground mt-1">{proposal.comment}</p>}
         </div>
       </div>
+      {proposal?.proposerRole === 'AN' && (
+        <div className="grid gap-2 rounded-lg border border-amber-400/30 bg-background/70 p-3 text-sm">
+          <div>
+            <span className="text-xs font-medium text-muted-foreground">Grund</span>
+            <p>{proposal.reasonCode ?? 'Terminliche Machbarkeit und Ressourcenplanung'}</p>
+          </div>
+          <div>
+            <span className="text-xs font-medium text-muted-foreground">Auswirkungen</span>
+            <p>{delta?.hasChange
+              ? `Beginn ${delta.startDays >= 0 ? '+' : ''}${delta.startDays} Tage, Ende ${delta.endDays >= 0 ? '+' : ''}${delta.endDays} Tage. Abhängigkeiten und Ressourcen werden nach der Einigung neu geprüft.`
+              : 'Keine zeitliche Abweichung zur aktuellen Vereinbarung.'}</p>
+          </div>
+        </div>
+      )}
       {delta?.hasChange && (
         <p className="text-sm text-amber-700 dark:text-amber-300">
           Delta: Beginn {delta.startDays >= 0 ? '+' : ''}{delta.startDays} Tage, Ende {delta.endDays >= 0 ? '+' : ''}{delta.endDays} Tage
         </p>
       )}
-      {coordination.coordinationTimeline && coordination.coordinationTimeline.length > 0 && (
+      {coordination.timeline && coordination.timeline.length > 0 && (
         <div className="border-t pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Verlauf</p>
           <div className="space-y-1.5">
-            {coordination.coordinationTimeline.slice(-5).map((event, index) => (
+             {coordination.timeline.slice(-5).map((event, index) => (
               <div key={`${event.type}-${index}`} className="flex justify-between gap-3 text-xs">
                 <span>{event.type === 'PROPOSED' ? 'Änderung vorgeschlagen' : event.type === 'COUNTER_PROPOSED' ? 'Gegenvorschlag' : event.type === 'ACCEPTED' ? 'Änderung angenommen' : event.type}</span>
                 <span className="text-muted-foreground">{format(new Date(event.at), 'dd.MM.yyyy HH:mm')}</span>
@@ -247,20 +270,32 @@ function SnapshotPreview({ snapshot }: { snapshot: TaktRequestDetail['snapshot']
 
   const p = snapshot.snapshotPayload as Record<string, unknown>;
 
+  const PUBLIC_OBJECT_KEYS = new Set([
+    'name', 'label', 'type', 'resourceType', 'quantity', 'unit', 'utilization',
+    'start', 'end', 'date', 'value', 'description', 'reference',
+  ]);
+
   function renderValue(v: unknown): React.ReactNode {
     if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
     if (Array.isArray(v)) {
       if (v.length === 0) return <span className="text-muted-foreground">—</span>;
       return (
         <ul className="list-disc list-inside space-y-0.5">
-          {v.map((item, i) => (
-            <li key={i} className="text-sm">{typeof item === 'object' ? JSON.stringify(item) : String(item)}</li>
-          ))}
+           {v.map((item, i) => <li key={i} className="text-sm">{renderValue(item)}</li>)}
         </ul>
       );
     }
     if (typeof v === 'object') {
-      return <pre className="text-xs bg-muted/40 rounded p-2 overflow-x-auto">{JSON.stringify(v, null, 2)}</pre>;
+      const publicEntries = Object.entries(v as Record<string, unknown>)
+        .filter(([key]) => PUBLIC_OBJECT_KEYS.has(key));
+      if (publicEntries.length === 0) return <span className="text-muted-foreground">Keine öffentlichen Angaben</span>;
+      return (
+        <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+          {publicEntries.map(([key, value]) => (
+            <span key={key}><span className="text-muted-foreground">{key}:</span> {renderValue(value)}</span>
+          ))}
+        </span>
+      );
     }
     return <span>{String(v)}</span>;
   }
@@ -318,7 +353,6 @@ function NotificationPreview({ detail }: { detail: TaktRequestDetail }) {
     { label: t('taktRequestDetail.notification.subject'), value: np.subject },
     { label: t('taktRequestDetail.notification.message'), value: np.message },
     { label: t('taktRequestDetail.notification.projectRef'), value: np.projectReference },
-    { label: t('taktRequestDetail.notification.taktRef'), value: np.taktReference },
     { label: t('taktRequestDetail.notification.responseRequiredBy'), value: np.responseRequiredBy ? format(new Date(np.responseRequiredBy as string), 'dd.MM.yyyy HH:mm') : null },
     { label: t('taktRequestDetail.notification.detailsRef'), value: np.detailsRef },
   ];
@@ -551,6 +585,15 @@ export default function LeistungsanfragenDetailPage() {
       queryKey: getListTaktDependenciesQueryKey(detail?.projectId ?? ''),
     },
   });
+  const { data: coordination } = useQuery({
+    queryKey: ['/api/leistungsanfragen', detail?.id, 'coordination'],
+    enabled: !!detail?.id,
+    queryFn: async () => {
+      const response = await fetch(`/api/leistungsanfragen/${detail!.id}/coordination`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Terminabstimmung konnte nicht geladen werden.');
+      return response.json() as Promise<CoordinationData>;
+    },
+  });
   const requestTaktNames = useMemo(
     () => new Map((requestTakte ?? []).map(takt => [takt.id, `${takt.taktBezeichnung} · ${takt.gewerk}`])),
     [requestTakte],
@@ -731,6 +774,7 @@ export default function LeistungsanfragenDetailPage() {
       {/* One fachlicher Abstimmungsbereich */}
       <Section icon={<ArrowRightLeft className="w-4 h-4" />} title="Abstimmung">
         <div id="coordination" className="min-w-0 space-y-5">
+           <CoordinationSummary coordination={coordination} />
           <ResponsePanel detail={detail} />
           <ProposalActions
             requestId={requestId ?? ''}

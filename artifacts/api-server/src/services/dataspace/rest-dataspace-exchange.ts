@@ -256,9 +256,6 @@ export class RestDataspaceExchange implements DataspaceExchange {
       ...(payload.senderOrganizationName ? { senderOrganizationName: payload.senderOrganizationName } : {}),
       ...(payload.senderUserId ? { senderUserId: payload.senderUserId } : {}),
       ...(payload.comment ? { comment: payload.comment } : {}),
-      // Legacy inbox consumers use the Takt reference while Dataspace payloads
-      // call the same identifier projectReference. Keep both public aliases.
-      taktReference: payload.taktReference ?? payload.projectReference,
       projectReference: payload.projectReference,
       ...(payload.projectName ? { projectName: payload.projectName } : {}),
       ...(payload.leistungReference ? { leistungReference: payload.leistungReference } : {}),

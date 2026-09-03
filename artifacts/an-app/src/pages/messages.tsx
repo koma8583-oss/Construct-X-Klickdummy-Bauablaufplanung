@@ -71,7 +71,7 @@ function messageTitle(message: InboxMessageItem): string {
   return (
     stringValue(payload.subject) ??
     stringValue(payload.title) ??
-    stringValue(payload.taktReference) ??
+    stringValue(payload.leistungReference) ??
     MESSAGE_LABELS[message.messageType] ??
     "Nachricht"
   );

@@ -989,7 +989,6 @@ export async function createAnScheduleChangeProposal(input: {
     projectReference: root.projectReference,
     projectName: typeof projectName === "string" ? projectName : undefined,
     leistungReference: root.leistungReference,
-    taktReference: root.leistungReference,
     plannedStart: input.start,
     plannedEnd: input.end,
     senderOrgId: input.anOrgId,

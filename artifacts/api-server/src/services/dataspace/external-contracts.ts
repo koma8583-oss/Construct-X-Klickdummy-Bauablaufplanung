@@ -265,7 +265,6 @@ export const externalServiceRequestSchema = z.object({
   projectReference: nonEmpty(200),
   projectName: nonEmpty(500).optional(),
   leistungReference: nonEmpty(200).optional(),
-  taktReference: nonEmpty(200).optional(),
   plannedStart: externalDate,
   plannedEnd: externalDate,
   resourceRequirements: z.array(resourceRequirementSchema).max(100),
@@ -678,7 +677,6 @@ export type ExternalServiceRequest = {
   projectReference: string;
   projectName?: string;
   leistungReference?: string;
-  taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   resourceRequirements: ExternalResourceRequirement[];

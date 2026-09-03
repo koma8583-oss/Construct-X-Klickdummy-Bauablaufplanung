@@ -222,7 +222,9 @@ describe("GET /messages/inbox", () => {
     const payload = msg.payload as Record<string, unknown>;
     // Must contain minimal fields
     expect(payload.taktRequestId).toBe(requestId);
-    expect(payload.taktReference).toBe(TAKT_ID);
+    expect(payload.leistungReference).toBe(TAKT_ID);
+    // The local hub adapter keeps its internal compatibility field; the
+    // external connector contract uses requestVersion instead.
     expect(payload.taktVersion).toBe(1);
     // Must NOT contain full snapshot fields
     expect(payload.trade).toBeUndefined();

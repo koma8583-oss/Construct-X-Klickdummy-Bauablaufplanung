@@ -306,7 +306,6 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       changeProposalId: proposal.id,
       baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
       projectReference: service.projectId,
-      taktReference: service.id,
       plannedStart: proposal.start.toISOString(),
       plannedEnd: proposal.end.toISOString(),
       projectName: project?.name,

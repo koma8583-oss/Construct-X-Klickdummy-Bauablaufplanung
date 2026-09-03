@@ -3,11 +3,11 @@ import {
   createNotificationEnvelope,
   notificationOperationForContext,
   NotificationEnvelopeSchema,
-  TAKTKOORD_NOTIFICATION_OPERATIONS,
-  TAKTKOORD_NOTIFICATION_CONTEXTS,
+  CONSTRUCT_X_NOTIFICATION_OPERATIONS,
+  CONSTRUCT_X_NOTIFICATION_CONTEXTS,
   type MessageEnvelope,
   type NotificationEnvelope,
-  type TaktKoordNotificationType,
+  type ConstructXNotificationType,
 } from "@workspace/api-zod";
 
 /**
@@ -15,7 +15,7 @@ import {
  * context names. The map is intentionally explicit: adding a new event must
  * result in a reviewed, versioned context rather than an accidental fallback.
  */
-const MESSAGE_TYPE_TO_NOTIFICATION_TYPE: Partial<Record<string, TaktKoordNotificationType>> = {
+const MESSAGE_TYPE_TO_NOTIFICATION_TYPE: Partial<Record<string, ConstructXNotificationType>> = {
   TAKT_REQUEST_NOTIFICATION: "TAKT_REQUEST_NOTIFICATION",
   TAKT_REQUEST_REVISED: "TAKT_REQUEST_REVISED",
   TAKT_REQUEST_CANCELLED: "TAKT_REQUEST_CANCELLED",
@@ -32,7 +32,22 @@ const MESSAGE_TYPE_TO_NOTIFICATION_TYPE: Partial<Record<string, TaktKoordNotific
   SERVICE_RESPONSE: "TAKT_RESPONSE_SUBMITTED",
 };
 
-export function notificationTypeForMessageType(messageType: string): TaktKoordNotificationType {
+export function notificationTypeForMessageType(
+  messageType: string,
+  payload?: Record<string, unknown>,
+): ConstructXNotificationType {
+  if (
+    (messageType === "TAKT_REQUEST_NOTIFICATION" || messageType === "SERVICE_REQUEST") &&
+    payload?.requestKind === "SCHEDULE_CHANGE"
+  ) {
+    return "SCHEDULE_CHANGE_REQUEST";
+  }
+  if (
+    (messageType === "TAKT_RESPONSE_SUBMITTED" || messageType === "SERVICE_RESPONSE") &&
+    payload?.requestKind === "SCHEDULE_CHANGE"
+  ) {
+    return "SCHEDULE_CHANGE_RESPONSE";
+  }
   const notificationType = MESSAGE_TYPE_TO_NOTIFICATION_TYPE[messageType];
   if (!notificationType) {
     throw new Error(`No versioned notification context registered for message type: ${messageType}`);
@@ -51,7 +66,10 @@ export function toNotificationEnvelope(input: {
   expectedResponseBy?: string;
   relatedMessageId?: string;
 }): NotificationEnvelope {
-  const messageType = notificationTypeForMessageType(input.message.messageType);
+  const messageType = notificationTypeForMessageType(
+    input.message.messageType,
+    input.message.payload,
+  );
   return createNotificationEnvelope({
     messageId: input.message.messageId,
     messageType,
@@ -78,6 +96,6 @@ export function messageTypeForNotificationContext(context: string): string {
 
 export {
   CATENA_X_MESSAGE_HEADER_VERSION,
-  TAKTKOORD_NOTIFICATION_CONTEXTS,
-  TAKTKOORD_NOTIFICATION_OPERATIONS,
+  CONSTRUCT_X_NOTIFICATION_CONTEXTS,
+  CONSTRUCT_X_NOTIFICATION_OPERATIONS,
 };

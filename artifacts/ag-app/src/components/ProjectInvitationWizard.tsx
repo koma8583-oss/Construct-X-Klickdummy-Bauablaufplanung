@@ -47,24 +47,24 @@ function buildInvitationOdrl(policyCode: string): Record<string, unknown> {
   return {
     "@context": "http://www.w3.org/ns/odrl.jsonld",
     "@type": "Set",
-     uid: "urn:taktkoord:project-invitation-policy-preview",
+     uid: "urn:construct-x:project-membership:policy-preview",
     permission: [{
-       target: "taktkoord:project-invitation-policy-preview",
+        target: "urn:construct-x:project-membership:policy-preview",
       assigner: "organization:<ag-org-id>",
       assignee: "organization:<nu-org-id>",
       action: "use",
       constraint: [
         { leftOperand: "purpose", operator: "eq", rightOperand: policyCode === "SCHEDULE_COORDINATION" ? "scheduleCoordination" : policyCode },
-        { leftOperand: "taktkoord:scope", operator: "eq", rightOperand: "taktkoord:projectSpecific" },
-        { leftOperand: "taktkoord:internalUse", operator: "eq", rightOperand: "taktkoord:restrictedToRecipient" },
-       { leftOperand: "taktkoord:contentScope", operator: "eq", rightOperand: "taktkoord:projectMembershipOnly" },
+         { leftOperand: "construct-x:scope", operator: "eq", rightOperand: "construct-x:projectSpecific" },
+         { leftOperand: "construct-x:internalUse", operator: "eq", rightOperand: "construct-x:restrictedToRecipient" },
+         { leftOperand: "construct-x:contentScope", operator: "eq", rightOperand: "construct-x:projectMembershipOnly" },
       ],
     }],
     prohibition: [
-       { target: "taktkoord:project-invitation-policy-preview", action: "distribute" },
-       { target: "taktkoord:project-invitation-policy-preview", action: "derive" },
-       { target: "taktkoord:project-invitation-policy-preview", action: "modify" },
-       { target: "taktkoord:project-invitation-policy-preview", action: "commercialize" },
+        { target: "urn:construct-x:project-membership:policy-preview", action: "distribute" },
+        { target: "urn:construct-x:project-membership:policy-preview", action: "derive" },
+        { target: "urn:construct-x:project-membership:policy-preview", action: "modify" },
+        { target: "urn:construct-x:project-membership:policy-preview", action: "commercialize" },
     ],
   };
 }

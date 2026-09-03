@@ -1,8 +1,9 @@
 # Dataspace Readiness
 
-This document describes the current neutral exchange boundary for construction
-service coordination and project data offers. No EDC, DSP, RDF, AAS, DTR,
-catalog, negotiation, or data-plane implementation is included.
+This document describes the current Construct-X exchange boundary for
+construction service coordination and project data offers. The local adapter
+remains available for the PoC; the Tractus-X adapter uses explicit connector
+phases and never simulates an external success.
 
 ## Current architecture
 
@@ -18,18 +19,33 @@ createDataspaceExchange()
 │ → LocalHubTransport (REST PoC)       │
 └──────────────────────────────────────┘
 
-or explicitly unavailable
+or the explicitly configured Tractus-X adapter
 
 ┌──────────────────────────────────────┐
 │ TractusXEdcExchange                  │
-│ → explicit NOT_CONFIGURED boundary   │
+│ → catalog → agreement → EDR → POST   │
 └──────────────────────────────────────┘
 ```
 
 The active implementation is selected by `DATASPACE_TRANSPORT`. The default
-is `rest`. The `tractusx-edc` setting reaches the intentional
-`NOT_CONFIGURED` error. It never falls back to the local transport, calls a
-generic `/messages` endpoint, or reports simulated delivery success.
+is `rest`. With `tractusx-edc`, missing or invalid connector configuration
+fails explicitly with `NOT_CONFIGURED`; it never falls back to the local
+transport, calls a generic `/messages` endpoint, or reports simulated delivery
+success.
+
+For a configured connector, every send has these distinct phases:
+
+1. Catalog discovery of the shared Notification API asset.
+2. Reuse of a valid Contract Agreement, or Contract Negotiation if absent,
+   expired, invalid, or revoked.
+3. Transfer-process creation and EDR retrieval when no valid access grant is
+   stored.
+4. Data-plane authorization using the persisted EDR.
+5. Notification POST with the shared `{ header, content }` envelope.
+
+The `dataspace_access_grants` table stores only agreement/EDR transport state.
+It is keyed by sender BPN, receiver BPN, and asset ID and is never a source of
+business data.
 
 ## Exchange contract
 
@@ -57,8 +73,8 @@ messageId
 `messageId` identifies one exchange message. `correlationId` remains stable
 for the complete request/response workflow. The local organisation identifier
 is used only by the local preparation directory; it is not emitted as a BPNL
-or DID. Participant discovery and connector identifiers are intentionally not
-implemented.
+or DID. Participant discovery is explicit through the configured BPN mapping;
+connector identifiers are never exposed as business references.
 
 The policy purpose is centralized as:
 
@@ -76,6 +92,8 @@ costs, or internal notes.
 |---|---|---|
 | Service Request | AG → AN | `publishServiceRequest()` → REST adapter → local hub |
 | Service Response | AN → AG | `publishServiceResponse()` → REST adapter → local hub |
+| Schedule-change request | AN → AG | same service contract with `requestKind=SCHEDULE_CHANGE` and a dedicated Construct-X context |
+| Schedule-change response | AG → AN | same service contract with `requestKind=SCHEDULE_CHANGE` and a dedicated Construct-X context |
 | Project invitation | AG → AN | `publishProjectInvitation()` → REST adapter → local hub |
 | Project invitation response | AN → AG | `publishProjectInvitationResponse()` → REST adapter → local hub |
 | Data offer | AG → AN | `publishDataOffer()` → REST adapter → local hub |
@@ -132,18 +150,28 @@ These functions validate metadata, apply message-ID idempotency, create the
 inbound audit record, call the supplied domain handler, and record
 `PROCESSED` or `FAILED`.
 
+## Construct-X Notification API
+
+The versioned notification registry is defined in the OpenAPI document and in
+the shared envelope package. The four coordination operations are:
+
+| Operation | Context |
+|---|---|
+| service-request | `urn:construct-x:construction-service-coordination:notification:service-request:v1` |
+| service-response | `urn:construct-x:construction-service-coordination:notification:service-response:v1` |
+| schedule-change-request | `urn:construct-x:construction-service-coordination:notification:schedule-change-request:v1` |
+| schedule-change-response | `urn:construct-x:construction-service-coordination:notification:schedule-change-response:v1` |
+
+All operations use Construct-X public references, BPNs, correlation, version,
+and immutable snapshot data. Internal organisation IDs and local resource
+records do not cross the connector boundary.
+
 ## Explicitly out of scope
 
 - Asset registration
 - Policy definitions
 - Contract definitions
-- Catalog discovery
-- Contract negotiation
-- EDRs
-- Transfer processes
-- Data-plane communication
-- BPN/DID discovery
-- Production connector configuration and notification delivery
+- Production connector credentials and participant onboarding
 - Digital Twin Registry
 - AAS
 - Legacy route or database renaming

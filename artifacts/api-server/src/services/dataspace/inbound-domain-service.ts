@@ -72,7 +72,7 @@ export async function processIncomingServiceRequest(
     }, {});
   });
   const hash = createHash("sha256").update(canonical).digest("hex");
-  const leistungReference = payload.leistungReference ?? payload.taktReference ?? payload.requestId;
+  const leistungReference = payload.leistungReference ?? payload.requestId;
 
   const [sameMessage] = await anDb.select().from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.sourceMessageId, metadata.messageId)).limit(1);

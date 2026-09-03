@@ -114,7 +114,7 @@ router.post("/dataspace/inbound/notifications", requireDataspaceConnector, async
         externalDataOfferResponseSchema.parse({ ...content, metadata }),
         processIncomingDataOfferResponse,
       );
-    } else if (operation === "TAKT_RESPONSE_SUBMITTED") {
+    } else if (operation === "TAKT_RESPONSE_SUBMITTED" || operation === "SCHEDULE_CHANGE_RESPONSE") {
       result = await exchange.receiveServiceResponse(
         externalServiceResponseSchema.parse({ ...content, metadata }) as ExternalServiceResponse,
         processIncomingServiceResponse,
@@ -124,7 +124,11 @@ router.post("/dataspace/inbound/notifications", requireDataspaceConnector, async
         externalCoordinationDecisionSchema.parse({ ...content, metadata }) as ExternalCoordinationDecision,
         undefined,
       );
-    } else if (operation === "TAKT_REQUEST_NOTIFICATION" || operation === "TAKT_REQUEST_REVISED") {
+    } else if (
+      operation === "TAKT_REQUEST_NOTIFICATION" ||
+      operation === "TAKT_REQUEST_REVISED" ||
+      operation === "SCHEDULE_CHANGE_REQUEST"
+    ) {
       result = await exchange.receiveServiceRequest(
         externalServiceRequestSchema.parse({ ...content, metadata }) as ExternalServiceRequest,
         processIncomingServiceRequest,

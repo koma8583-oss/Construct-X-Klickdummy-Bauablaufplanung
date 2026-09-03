@@ -2,8 +2,25 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: TaktKoord API – Schedule coordination between clients (AG) and subcontractors (AN)
+  version: 0.2.0
+  description: Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
+x-construct-x-notification-api:
+  name: Construct-X Construction Service Coordination Notification API
+  version: "1.0"
+  contextNamespace: "urn:construct-x:construction-service-coordination:notification"
+  operations:
+    - name: service-request
+      direction: AG_TO_AN
+      context: "urn:construct-x:construction-service-coordination:notification:service-request:v1"
+    - name: service-response
+      direction: AN_TO_AG
+      context: "urn:construct-x:construction-service-coordination:notification:service-response:v1"
+    - name: schedule-change-request
+      direction: AN_TO_AG
+      context: "urn:construct-x:construction-service-coordination:notification:schedule-change-request:v1"
+    - name: schedule-change-response
+      direction: AG_TO_AN
+      context: "urn:construct-x:construction-service-coordination:notification:schedule-change-response:v1"
 servers:
   - url: /api
     description: Base API path
@@ -57,7 +74,7 @@ paths:
     post:
       operationId: receiveInboundNotification
       tags: [dataspace-inbound]
-      summary: Receive a Catena-X Notification API envelope
+      summary: Receive a Construct-X Notification API envelope
       description: >
         The MessageHeaderAspect selects a registered operation. The operation
         content is validated and dispatched only after the sender and receiver
@@ -3749,15 +3766,19 @@ components:
     NotificationOperation:
       type: object
       description: >
-        Registry entry for one versioned operation of the shared Catena-X
+        Registry entry for one versioned operation of the shared Construct-X
         Notification API. All operations use the same asset and contract
         agreement; the operation is identified by the context URI.
       required: [api, operation, majorVersion, context]
       properties:
-        api: { type: string, enum: ["Notification API"] }
-        operation: { type: string }
+        api: { type: string, enum: ["Construct-X Construction Service Coordination Notification API"] }
+        operation:
+          type: string
+          enum: [service-request, service-response, schedule-change-request, schedule-change-response]
         majorVersion: { type: integer, minimum: 1 }
-        context: { type: string, pattern: '^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$' }
+        context:
+          type: string
+          pattern: '^urn:construct-x:(?:construction-service-coordination|data-publication|project-membership):notification:[a-z-]+:v[0-9]+$'
 
     NotificationHeader:
       type: object
@@ -3766,7 +3787,9 @@ components:
       additionalProperties: false
       properties:
         messageId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
-        context: { type: string, pattern: '^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$' }
+        context:
+          type: string
+          pattern: '^urn:construct-x:(?:construction-service-coordination|data-publication|project-membership):notification:[a-z-]+:v[0-9]+$'
         sentDateTime: { type: string, format: date-time }
         senderBpn:
           type: string
@@ -4091,7 +4114,6 @@ components:
         requestId: { type: string }
         requestVersion: { type: integer }
         projectReference: { type: string }
-        taktReference: { type: string }
         plannedStart: { type: string, format: date-time }
         plannedEnd: { type: string, format: date-time }
         resourceRequirements:
@@ -5877,7 +5899,7 @@ components:
           type: object
           description: >
             Typed payload. For TAKT_REQUEST_NOTIFICATION: contains taktRequestId,
-            projectReference, taktReference, taktVersion, responseRequiredBy,
+            projectReference, leistungReference, requestVersion, responseRequiredBy,
             detailsRef, subject, message. No full Takt data.
           additionalProperties: true
         receivedAt:
@@ -6078,13 +6100,13 @@ components:
         projectReference:
           type: string
           description: "Opaque project reference — no internal GU project details"
-        taktReference:
+        leistungReference:
           type: string
-          description: "Opaque Takt reference — no full schedule context"
-        taktVersion:
+          description: "Opaque public Leistung reference"
+        requestVersion:
           type: integer
           minimum: 1
-          description: "Monotonically increasing version of the Takt snapshot"
+          description: "Monotonically increasing request version"
         responseRequiredBy:
           type: string
           format: date-time
@@ -6101,8 +6123,8 @@ components:
       required:
         - taktRequestId
         - projectReference
-        - taktReference
-        - taktVersion
+        - leistungReference
+        - requestVersion
         - responseRequiredBy
         - detailsRef
 
@@ -7506,15 +7528,13 @@ components:
         supersedesRequestId:
           type: string
           description: The old TaktRequest that was superseded
-        previousTaktVersion:
+        previousRequestVersion:
           type: integer
-          description: Takt version before the revision
-        taktVersion:
+          description: Request version before the revision
+        requestVersion:
           type: integer
-          description: New Takt version after the revision
+          description: New request version after the revision
         projectReference:
-          type: string
-        taktReference:
           type: string
         responseRequiredBy:
           type: string
@@ -7531,9 +7551,8 @@ components:
       required:
         - taktRequestId
         - supersedesRequestId
-        - previousTaktVersion
-        - taktVersion
-        - taktReference
+        - previousRequestVersion
+        - requestVersion
 
     TaktRequestCancelledPayload:
       type: object

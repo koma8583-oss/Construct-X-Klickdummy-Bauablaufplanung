@@ -106,7 +106,6 @@ export function toExternalServiceRequest(input: {
   projectReference: string;
   projectName?: string;
   leistungReference?: string;
-  taktReference?: string;
   plannedStart: string;
   plannedEnd: string;
   senderOrgId: string;
@@ -149,7 +148,6 @@ export function toExternalServiceRequest(input: {
     projectReference: input.projectReference,
     projectName: input.projectName,
     leistungReference: input.leistungReference,
-    taktReference: input.taktReference,
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
     resourceRequirements: input.resourceRequirements ?? [],
@@ -233,7 +231,7 @@ export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope):
     sourceRequestId: typeof payload.sourceRequestId === "string" ? payload.sourceRequestId : undefined,
     changeProposalId: typeof payload.changeProposalId === "string" ? payload.changeProposalId : undefined,
     baseTimeWindow: payload.baseTimeWindow as { start: string; end: string } | undefined,
-    projectReference: String(payload.projectReference ?? payload.taktReference ?? ""),
+    projectReference: String(payload.projectReference ?? payload.leistungReference ?? payload.requestId ?? ""),
     leistungReference: typeof payload.leistungReference === "string" ? payload.leistungReference : undefined,
     plannedStart: payload.plannedStart,
     plannedEnd: payload.plannedEnd,

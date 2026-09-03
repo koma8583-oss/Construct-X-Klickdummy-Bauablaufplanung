@@ -180,7 +180,7 @@ export class TractusXEdcExchange implements DataspaceExchange {
       delete externalPayload.metadata;
       const envelope = notificationEnvelopeForConnector({
         messageId,
-        messageType: notificationTypeForMessageType(messageType),
+        messageType: notificationTypeForMessageType(messageType, externalPayload),
         sentDateTime: metadata.createdAt,
         expectedResponseBy: metadata.expectedResponseBy,
         relatedMessageId: metadata.causationId ?? undefined,
