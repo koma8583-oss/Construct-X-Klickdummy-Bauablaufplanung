@@ -44,6 +44,31 @@ const request = {
   project: { id: "project-1", name: "Neubau Bochum", location: null },
 } satisfies InboxItem;
 
+const invitation = {
+  id: "invitation-1",
+  invitationId: "project-invitation-1",
+  correlationId: "correlation-1",
+  senderAgOrgId: "ag-1",
+  senderAgOrgName: "Bau AG",
+  receiverAnOrgId: "an-1",
+  projectReference: "PROJ-001",
+  projectName: "ANiib rohbau",
+  projectDescription: "Rohbauarbeiten",
+  projectLocation: "Bochum",
+  invitationMessage: "Bitte treten Sie dem Projekt bei.",
+  invitationExpiresAt: null,
+  dataPublicationId: null,
+  dataPublicationTitle: null,
+  selectedFields: null,
+  policySnapshot: {},
+  status: "PENDING" as const,
+  policyAcceptedAt: null,
+  respondedAt: null,
+  rejectedAt: null,
+  createdAt: "2026-10-10T09:00:00.000Z",
+  updatedAt: "2026-10-10T09:00:00.000Z",
+};
+
 function renderInbox() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><Router base=""><LeistungsanfragenInboxPage /></Router></QueryClientProvider>);
@@ -60,17 +85,23 @@ afterEach(() => {
 });
 
 describe("AN-Leistungsanfragen-Inbox", () => {
-  it("zeigt ausschließlich Leistungsanfragen und ruft keine Projekteinladungen ab", async () => {
+  it("zeigt Projekteinladungen als offene Elemente in den Anfragen", async () => {
     setAuthTokenGetter(() => "authenticated-an-test-token");
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/an/leistungsanfragen" ? json([request]) : json({}));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/an/leistungsanfragen") return json([request]);
+      if (url === "/api/an/project-invitations") return json([invitation]);
+      return json({});
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     renderInbox();
 
     expect(await screen.findByTestId("text-request-title-request-1")).toHaveTextContent("Trockenbau 2. OG");
+    expect(screen.getByTestId("text-project-invitation-title-invitation-1")).toHaveTextContent("ANiib rohbau");
     expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("Zu erledigen");
-    expect(screen.queryByText(/Projekteinladung/i)).not.toBeInTheDocument();
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain("/api/an/project-invitations");
+    expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("2");
+    expect(screen.getByTestId("link-open-project-invitation-invitation-1")).toHaveAttribute("href", "/project-invitations");
   });
 
   it("ordnet die Ansichten anhand der nächsten Aktion statt anhand des technischen Status", () => {

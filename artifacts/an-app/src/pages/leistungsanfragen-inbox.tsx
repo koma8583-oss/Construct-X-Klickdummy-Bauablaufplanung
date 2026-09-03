@@ -17,7 +17,10 @@ import {
   getListAnLeistungsanfragenQueryKey,
   type AnLeistungsanfrageListItem,
   type AnLeistungsanfrageListItemStatus,
+  type AnProjectInvitation,
+  getListAnProjectInvitationsQueryKey,
   useListAnLeistungsanfragen,
+  useListAnProjectInvitations,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,6 +170,63 @@ function RequestCard({ item }: { item: InboxItem }) {
   );
 }
 
+function ProjectInvitationRequestCard({ invitation }: { invitation: AnProjectInvitation }) {
+  return (
+    <article
+      data-testid={`card-project-invitation-${invitation.id}`}
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <div className="h-1 bg-accent" />
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Projektzugang</p>
+            <h2 data-testid={`text-project-invitation-title-${invitation.id}`} className="mt-1 line-clamp-2 break-words text-lg font-semibold">
+              {invitation.projectName || "Projektname nicht veröffentlicht"}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Von {invitation.senderAgOrgName || "Auftraggebername nicht veröffentlicht"}
+            </p>
+          </div>
+          <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">Ihre Aktion</Badge>
+        </div>
+        <div className="mt-5 grid gap-4 border-y border-border/70 py-4 text-sm">
+          <div className="flex min-w-0 items-start gap-2">
+            <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-[11px] text-muted-foreground">Projekt</p>
+              <p className="mt-0.5 break-words font-medium">{invitation.projectName || "Nicht veröffentlicht"}</p>
+            </div>
+          </div>
+          {invitation.projectLocation && (
+            <div className="flex min-w-0 items-start gap-2">
+              <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">Ort</p>
+                <p className="mt-0.5 break-words font-medium">{invitation.projectLocation}</p>
+              </div>
+            </div>
+          )}
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Der Auftraggeber lädt Sie zur Zusammenarbeit in diesem Projekt ein. Prüfen Sie die Einladung und entscheiden Sie über den Projektzugang.
+          </p>
+        </div>
+        <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+          <Link
+            aria-label={`Projekteinladung ${invitation.projectName || "prüfen"}`}
+            data-testid={`link-open-project-invitation-${invitation.id}`}
+            href="/project-invitations"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Einladung prüfen<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+          <Badge variant="outline" className="border-amber-600/30 bg-amber-500/10 text-amber-800">Offen</Badge>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function LeistungsanfragenInboxPage() {
   const [view, setView] = useState<InboxView>("OPEN");
   const [showFilters, setShowFilters] = useState(false);
@@ -175,14 +235,21 @@ export default function LeistungsanfragenInboxPage() {
     status === "ALL" ? undefined : { status },
     { query: { queryKey: getListAnLeistungsanfragenQueryKey(status === "ALL" ? undefined : { status }), refetchInterval: 15000, refetchIntervalInBackground: false } },
   );
+  const invitationQuery = useListAnProjectInvitations(
+    { query: { queryKey: getListAnProjectInvitationsQueryKey(), refetchInterval: 15000, refetchIntervalInBackground: false } },
+  );
   const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
+  const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
+  const openInvitations = invitations.filter((invitation) => invitation.status === "PENDING");
   const shownRequests = requests.filter((item) => inboxViewFor(item) === view);
-  const todoCount = requests.filter((item) => inboxViewFor(item) === "OPEN").length;
+  const shownInvitations = view === "OPEN" && status === "ALL" ? openInvitations : [];
+  const todoCount = requests.filter((item) => inboxViewFor(item) === "OPEN").length + openInvitations.length;
   const waitingCount = requests.filter((item) => inboxViewFor(item) === "WAITING").length;
   const doneCount = requests.filter((item) => inboxViewFor(item) === "DONE").length;
+  const hasVisibleItems = shownRequests.length > 0 || shownInvitations.length > 0;
 
-  if (requestQuery.isLoading) return <div className="mx-auto w-full max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-10 w-80" /><Skeleton className="h-16 w-full" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-96" /><Skeleton className="h-96" /></div></div>;
-  if (requestQuery.isError) return <div className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Anfragen konnten nicht geladen werden</h1><p className="text-sm text-muted-foreground">Die Leistungsanfragen sind gerade nicht erreichbar.</p><Button data-testid="button-retry-inbox" variant="outline" onClick={() => void requestQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div>;
+  if (requestQuery.isLoading || invitationQuery.isLoading) return <div className="mx-auto w-full max-w-7xl space-y-6 p-5 lg:p-8"><Skeleton className="h-10 w-80" /><Skeleton className="h-16 w-full" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-96" /><Skeleton className="h-96" /></div></div>;
+  if (requestQuery.isError || invitationQuery.isError) return <div className="mx-auto flex min-h-[60dvh] max-w-lg flex-col items-center justify-center gap-4 p-6 text-center"><AlertTriangle className="h-10 w-10 text-destructive" /><h1 className="text-lg font-semibold">Anfragen konnten nicht geladen werden</h1><p className="text-sm text-muted-foreground">Leistungsanfragen oder Projekteinladungen sind gerade nicht erreichbar.</p><Button data-testid="button-retry-inbox" variant="outline" onClick={() => { void requestQuery.refetch(); void invitationQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />Erneut laden</Button></div>;
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-7 p-5 pb-12 lg:p-8">
@@ -201,8 +268,8 @@ export default function LeistungsanfragenInboxPage() {
         <div className="mt-3 flex justify-end"><Button data-testid="button-toggle-filters" type="button" variant="ghost" size="sm" onClick={() => setShowFilters((current) => !current)}><ChevronDown className={`mr-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />Detailfilter</Button></div>
         {showFilters && <div data-testid="detail-filters" className="grid gap-3 border-t border-border/70 pt-3 sm:grid-cols-2"><div><label className="text-xs font-medium text-muted-foreground" htmlFor="status-filter">Technischer Status</label><Select value={status} onValueChange={(value) => setStatus(value as typeof status)}><SelectTrigger data-testid="select-status-filter" id="status-filter" className="mt-1 w-full"><SelectValue placeholder="Alle Leistungsstatus" /></SelectTrigger><SelectContent><SelectItem value="ALL">Alle Leistungsstatus</SelectItem>{Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div><p className="self-end text-xs text-muted-foreground">Die drei Hauptansichten werden nicht aus diesem technischen Status abgeleitet.</p></div>}
       </section>
-      {shownRequests.length === 0 ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Nichts zu erledigen" : view === "WAITING" ? "Keine Anfragen warten auf den Auftraggeber" : "Keine erledigten Anfragen"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Leistungsanfragen und neue AG-Terminvorschläge erscheinen hier, sobald Sie handeln müssen." : "Passen Sie den Status im Detailfilter an, wenn Sie eine bestimmte Anfrage suchen."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length} Leistungsanfragen in dieser Ansicht</p>
+      {!hasVisibleItems ? <div data-testid="empty-inbox" className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center"><Inbox className="h-11 w-11 text-primary/60" /><h2 className="mt-4 text-lg font-semibold">{view === "OPEN" ? "Nichts zu erledigen" : view === "WAITING" ? "Keine Anfragen warten auf den Auftraggeber" : "Keine erledigten Anfragen"}</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{view === "OPEN" ? "Neue Leistungsanfragen, Projekteinladungen und neue AG-Terminvorschläge erscheinen hier, sobald Sie handeln müssen." : "Passen Sie den Status im Detailfilter an, wenn Sie eine bestimmte Anfrage suchen."}</p></div> : <div className="grid gap-5 lg:grid-cols-2">{shownInvitations.map((invitation) => <ProjectInvitationRequestCard key={invitation.id} invitation={invitation} />)}{shownRequests.map((item) => <RequestCard key={item.id} item={item} />)}</div>}
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{shownRequests.length + shownInvitations.length} Elemente in dieser Ansicht</p>
     </main>
   );
 }
