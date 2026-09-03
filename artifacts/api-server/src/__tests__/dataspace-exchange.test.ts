@@ -24,6 +24,10 @@ import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exch
 const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
 const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
 const DATA_OFFER_MESSAGE_ID = "data-offer-not-configured-message-1";
+const SERVICE_REQUEST_MESSAGE_IDS = [
+  "edc-not-configured-service-request-message-1",
+  "tractusx-not-configured-service-request-message-1",
+];
 const PROJECT_INVITATION_MESSAGE_IDS = [
   "project-invitation-message-1",
   "project-invitation-serialization-mutation",
@@ -39,10 +43,14 @@ const TEST_MESSAGE_IDS = [
 
 async function cleanupMessageFixtures() {
   await db.delete(messageDeliveryAttemptsTable)
-    .where(inArray(messageDeliveryAttemptsTable.messageId, TEST_MESSAGE_IDS))
+    .where(inArray(messageDeliveryAttemptsTable.messageId, [...TEST_MESSAGE_IDS, ...SERVICE_REQUEST_MESSAGE_IDS]))
     .catch(() => {});
   await db.delete(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, [...PROJECT_INVITATION_MESSAGE_IDS, DATA_OFFER_MESSAGE_ID]))
+    .where(inArray(messageOutboxTable.messageId, [
+      ...PROJECT_INVITATION_MESSAGE_IDS,
+      DATA_OFFER_MESSAGE_ID,
+      ...SERVICE_REQUEST_MESSAGE_IDS,
+    ]))
     .catch(() => {});
   await db.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
@@ -181,10 +189,11 @@ describe("dataspace exchange boundary", () => {
     process.env.DATASPACE_TRANSPORT = "tractusx-edc";
     const exchange = createDataspaceExchange();
     await expect(exchange.publishServiceRequest(toExternalServiceRequest({
-      requestId: "request-1", requestVersion: 1, projectReference: "project-1",
+      requestId: "request-1", requestVersion: 1, messageId: SERVICE_REQUEST_MESSAGE_IDS[0],
+      projectReference: "project-1",
       plannedStart: "2026-09-01", plannedEnd: "2026-09-03",
-      senderOrgId: "ag-1", receiverOrgId: "an-1",
-    }))).rejects.toThrow(/Tractus-X EDC adapter not configured.*NOT_CONFIGURED/);
+      senderOrgId: TRACTUSX_TEST_ORG_IDS[0], receiverOrgId: TRACTUSX_TEST_ORG_IDS[1],
+    }))).rejects.toThrow(/Tractus-X Notification API is not configured.*NOT_CONFIGURED/);
     if (previous === undefined) delete process.env.DATASPACE_TRANSPORT;
     else process.env.DATASPACE_TRANSPORT = previous;
   });
@@ -195,6 +204,7 @@ describe("dataspace exchange boundary", () => {
     const payload = toExternalServiceRequest({
       requestId: "tractusx-not-configured-request",
       requestVersion: 1,
+      messageId: SERVICE_REQUEST_MESSAGE_IDS[1],
       projectReference: "project-1",
       plannedStart: "2026-09-01",
       plannedEnd: "2026-09-03",
@@ -733,7 +743,7 @@ describe("dataspace exchange boundary", () => {
       expect(first).toMatchObject({
         status: "FAILED",
         messageType: "DATA_OFFER_PUBLISHED",
-        attemptCount: 0,
+        attemptCount: 1,
         payload,
       });
 

@@ -279,7 +279,13 @@ describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event",
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${REQUEST_ID}/details/review`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
 
     // Verify audit event was written to DB
     const events = await db
@@ -297,7 +303,7 @@ describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event",
     expect(evt.actorOrgId).toBe(NU_ORG);
     expect(evt.actorUserId).toBe(NU_USER);
     expect(evt.actorRole).toBe("NU");
-    expect(evt.metadata).toMatchObject({ firstAccess: true });
+    expect(evt.metadata).toMatchObject({ explicitReview: true });
   });
 
   it("NU subsequent access does NOT add a second DETAILS_RETRIEVED event", async () => {
@@ -456,13 +462,13 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
       .set({ status: "RECEIVED", detailsRetrievedAt: null })
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, REQUEST_ID));
 
-    // Fire 10 concurrent NU requests — the atomic UPDATE ensures exactly one
+    // Fire 10 concurrent NU review actions — the atomic UPDATE ensures exactly one
     // wins the DELIVERED→DETAILS_RETRIEVED transition and writes the event.
     const CONCURRENCY = 10;
     const responses = await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
         request(app)
-          .get(`/api/an/takt-requests/${REQUEST_ID}/details`)
+          .post(`/api/an/takt-requests/${REQUEST_ID}/details/review`)
           .set("Authorization", `Bearer ${nuToken}`),
       ),
     );
@@ -486,7 +492,7 @@ describe("GET /api/takt-requests/:id/audit-trail — access control", () => {
       );
     expect(events.length).toBe(1);
     expect(events[0].actorRole).toBe("NU");
-    expect(events[0].metadata).toMatchObject({ firstAccess: true });
+    expect(events[0].metadata).toMatchObject({ explicitReview: true });
   });
 
   it("Events are returned in ascending chronological order", async () => {

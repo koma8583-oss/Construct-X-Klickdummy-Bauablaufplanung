@@ -321,18 +321,9 @@ export async function getAnLeistungsanfrageDetail(
     : undefined;
   const projection = activeSchedule ?? rootProjection;
 
-  let current = projection;
-  if (projection.status === "RECEIVED") {
-    const [updated] = await anDb.update(anLeistungsanfragenTable).set({
-      status: "DETAILS_RETRIEVED",
-      detailsRetrievedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(and(
-      eq(anLeistungsanfragenTable.id, projection.id),
-      eq(anLeistungsanfragenTable.status, "RECEIVED"),
-    )).returning();
-    current = updated ?? projection;
-  }
+  // Reading a projection is intentionally side-effect free. The first
+  // coordination phase is completed only by the explicit review action below.
+  const current = projection;
 
   const requirements = await anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
     .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, current.id));
@@ -357,9 +348,37 @@ export async function getAnLeistungsanfrageDetail(
       notes: requirement.notes,
     })),
      revision: revisionView(current, allRelated),
-     detailsRetrievedNow: Boolean(
-       projection.status === "RECEIVED" && current !== projection,
-     ),
+     detailsRetrievedNow: false,
+  };
+}
+
+/**
+ * Explicitly completes phase 1 for the AN. A GET of the details page must not
+ * silently acknowledge the request or advance the coordination workflow.
+ */
+export async function reviewAnLeistungsanfrageDetails(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+) {
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  if (projection.status !== "RECEIVED") {
+    return { view: toRequestView(projection, 0), reviewedNow: false };
+  }
+  const [updated] = await anDb.update(anLeistungsanfragenTable).set({
+    status: "DETAILS_RETRIEVED",
+    detailsRetrievedAt: new Date(),
+    updatedAt: new Date(),
+  }).where(and(
+    eq(anLeistungsanfragenTable.id, projection.id),
+    eq(anLeistungsanfragenTable.status, "RECEIVED"),
+  )).returning();
+  return {
+    view: toRequestView(updated ?? projection, 0),
+    reviewedNow: Boolean(updated),
   };
 }
 

@@ -125,7 +125,9 @@ describe("AN Leistungsanfrage detail", () => {
   });
 
   it("bestätigt ohne erneute Datumseingabe exakt das angefragte Zeitfenster", async () => {
-    const fetchMock = renderDetail();
+    const noProposal = initialCoordination();
+    noProposal.openProposal = null;
+    const fetchMock = renderDetail(noProposal);
     const user = userEvent.setup();
     await user.click(await screen.findByTestId("button-continue-without-availability"));
     await user.click(await screen.findByTestId("button-decision-accepted"));
@@ -139,7 +141,9 @@ describe("AN Leistungsanfrage detail", () => {
   });
 
   it("zeigt Datumsfelder ausschließlich bei einer vorgeschlagenen Alternative", async () => {
-    renderDetail();
+    const noProposal = initialCoordination();
+    noProposal.openProposal = null;
+    renderDetail(noProposal);
     const user = userEvent.setup();
     expect(screen.queryByTestId("input-alternative-start-0")).not.toBeInTheDocument();
     await user.click(await screen.findByTestId("button-continue-without-availability"));
@@ -154,6 +158,8 @@ describe("AN Leistungsanfrage detail", () => {
 
   it("zeigt die dauerhafte Zeitraum-Abstimmung nur bei einem offenen Vorschlag des AG", async () => {
     renderDetail();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-continue-without-availability"));
     expect(await screen.findByRole("heading", { name: "Neuer Terminvorschlag" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bestätigen" })).toBeInTheDocument();
 
@@ -198,6 +204,7 @@ describe("AN Leistungsanfrage detail", () => {
   it("sendet Gegenentscheidungen über den AN-lokalen Pfad", async () => {
     const fetchMock = renderDetail();
     const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-continue-without-availability"));
     await screen.findByRole("heading", { name: "Neuer Terminvorschlag" });
     const section = screen.getByRole("heading", { name: "Neuer Terminvorschlag" }).closest("section");
     if (!section) throw new Error("proposal section missing");

@@ -1,7 +1,9 @@
 import {
   CATENA_X_MESSAGE_HEADER_VERSION,
   createNotificationEnvelope,
+  notificationOperationForContext,
   NotificationEnvelopeSchema,
+  TAKTKOORD_NOTIFICATION_OPERATIONS,
   TAKTKOORD_NOTIFICATION_CONTEXTS,
   type MessageEnvelope,
   type NotificationEnvelope,
@@ -26,6 +28,8 @@ const MESSAGE_TYPE_TO_NOTIFICATION_TYPE: Partial<Record<string, TaktKoordNotific
   DATA_OFFER_PUBLISHED: "DATA_OFFER_PUBLISHED",
   PROJECT_INVITATION: "PROJECT_INVITATION",
   PROJECT_INVITATION_RESPONSE: "PROJECT_INVITATION_RESPONSE",
+  SERVICE_REQUEST: "TAKT_REQUEST_NOTIFICATION",
+  SERVICE_RESPONSE: "TAKT_RESPONSE_SUBMITTED",
 };
 
 export function notificationTypeForMessageType(messageType: string): TaktKoordNotificationType {
@@ -64,4 +68,16 @@ export function parseNotificationEnvelope(value: unknown): NotificationEnvelope 
   return NotificationEnvelopeSchema.parse(value);
 }
 
-export { CATENA_X_MESSAGE_HEADER_VERSION, TAKTKOORD_NOTIFICATION_CONTEXTS };
+export function messageTypeForNotificationContext(context: string): string {
+  const messageType = notificationOperationForContext(context);
+  if (!messageType) {
+    throw new Error(`No registered Notification API operation for context: ${context}`);
+  }
+  return messageType;
+}
+
+export {
+  CATENA_X_MESSAGE_HEADER_VERSION,
+  TAKTKOORD_NOTIFICATION_CONTEXTS,
+  TAKTKOORD_NOTIFICATION_OPERATIONS,
+};

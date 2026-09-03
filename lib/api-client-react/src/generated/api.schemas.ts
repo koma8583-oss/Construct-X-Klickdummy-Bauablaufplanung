@@ -19,6 +19,58 @@ export interface InboundExchangeMetadata {
   senderOrgId: string;
   receiverOrgId: string;
   createdAt: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  causationId?: string | null;
+  expectedResponseBy?: string;
+}
+
+export type NotificationOperationApi = typeof NotificationOperationApi[keyof typeof NotificationOperationApi];
+
+
+export const NotificationOperationApi = {
+  Notification_API: 'Notification API',
+} as const;
+
+/**
+ * Registry entry for one versioned operation of the shared Catena-X Notification API. All operations use the same asset and contract agreement; the operation is identified by the context URI.
+ */
+export interface NotificationOperation {
+  api: NotificationOperationApi;
+  operation: string;
+  /** @minimum 1 */
+  majorVersion: number;
+  /** @pattern ^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$ */
+  context: string;
+}
+
+/**
+ * Catena-X MessageHeaderAspect carried separately from use-case content.
+ */
+export interface NotificationHeader {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  messageId: string;
+  /** @pattern ^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$ */
+  context: string;
+  sentDateTime: string;
+  /** @pattern ^BPNL[A-Za-z0-9]{12}$ */
+  senderBpn: string;
+  /** @pattern ^BPNL[A-Za-z0-9]{12}$ */
+  receiverBpn: string;
+  expectedResponseBy?: string;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  relatedMessageId?: string;
+  /** Version of the Catena-X MessageHeaderAspect. */
+  version: string;
+}
+
+export type NotificationEnvelopeContent = { [key: string]: unknown };
+
+/**
+ * Shared Notification API body; content is operation-specific and versioned by context.
+ */
+export interface NotificationEnvelope {
+  header: NotificationHeader;
+  content: NotificationEnvelopeContent;
 }
 
 export type ProjectMembershipStatus = typeof ProjectMembershipStatus[keyof typeof ProjectMembershipStatus];

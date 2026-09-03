@@ -209,7 +209,13 @@ describe("independent AG–AN coordination flow", () => {
       .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
     expect(details.status).toBe(200);
-    expect(details.body.status).toBe("DETAILS_RETRIEVED");
+    expect(details.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
+      .set("Authorization", `Bearer ${anToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     const agStatusBeforeAvailability = agRequestBefore.status;
     const [localProjection] = await db.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)

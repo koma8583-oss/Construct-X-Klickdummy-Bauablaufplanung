@@ -8,9 +8,9 @@ standardisiert die technische Zustellung, ohne fachliche Ergebnisse mit
 Zustellstatus zu vermischen.
 
 In diesem Schritt wird kein Datenraum, kein Connector-Asset und kein neuer
-Service provisioniert. Die lokale Outbox-/Inbox-Zustellung bleibt der laufende
-Transport und kann später hinter derselben Schnittstelle durch einen
-Connector-Adapter ersetzt werden.
+Service provisioniert. Die lokale Outbox-/Inbox-Zustellung bleibt der
+ausführbare PoC-Transport; der Tractus-X-Adapter bildet bereits die echte
+Connector-Grenze ab und bleibt ohne Konfiguration explizit `NOT_CONFIGURED`.
 
 ## Nachrichtenstruktur
 
@@ -19,7 +19,7 @@ Der standardisierte Header enthält:
 - `messageId`: UUID beziehungsweise `urn:uuid:`-UUID; bei einem technischen
   Retry bleibt sie gleich.
 - `context`: versionierter Use-Case-Kontext, zum Beispiel
-  `TaktKoord-ServiceCoordination-TaktRequest:1.0.0`.
+  `urn:taktkoord:notification-api:construction-service-coordination:service-request:v1`.
 - `sentDateTime`: Zeitpunkt des Versands.
 - `senderBpn` und `receiverBpn`: explizite BPNL-Werte. Lokale Organisations-IDs
   werden nicht als BPN missbraucht.
@@ -37,7 +37,9 @@ Die bestehende `MessageEnvelope`-Schicht bleibt die interne Persistenz- und
 Idempotenzgrenze. Eine explizite, zentrale Zuordnung verbindet die vorhandenen
 Nachrichtentypen mit stabilen Notification-Kontexten. Die Umwandlung in das
 Tractus-X-Format erfolgt erst an der Connector-Grenze, sobald für beide
-Teilnehmer echte BPNLs konfiguriert sind.
+Teilnehmer echte BPNLs konfiguriert sind. Der Versand läuft dort über
+Asset-Suche, Contract Negotiation und Data-Plane-POST auf dem gemeinsamen
+Notification-API-Asset.
 
 Damit gelten weiterhin:
 
@@ -85,7 +87,9 @@ Der lokale REST-/Hub-Adapter ist der einzige aktive PoC-Transport. Der
 Tractus-X-Adapter bleibt bis zur Konfiguration echter Teilnehmeridentitäten,
 Connector-Discovery, Notification API, Contract Negotiation und Transfer
 Phasen bewusst `NOT_CONFIGURED`. Er fällt nicht auf lokalen Transport zurück
-und simuliert keinen Erfolg.
+und simuliert keinen Erfolg. Der Inbound-Einstieg akzeptiert ausschließlich das
+`{ header, content }`-Format, löst die Operation über den Header-Kontext auf
+und prüft die BPN-Zuordnung vor dem fachlichen Dispatch.
 
 ## Noch bewusst nicht enthalten
 

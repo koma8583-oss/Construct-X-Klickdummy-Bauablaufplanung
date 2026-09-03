@@ -14,4 +14,7 @@ export interface InboundExchangeMetadata {
   senderOrgId: string;
   receiverOrgId: string;
   createdAt: Date;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  causationId?: string | null;
+  expectedResponseBy?: Date;
 }

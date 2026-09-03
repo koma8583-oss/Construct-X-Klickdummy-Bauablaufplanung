@@ -17,8 +17,42 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * The MessageHeaderAspect selects a registered operation. The operation content is validated and dispatched only after the sender and receiver BPNs have been resolved by the connector boundary.
+ * @summary Receive a Catena-X Notification API envelope
+ */
+export const receiveInboundNotificationBodyHeaderMessageIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const receiveInboundNotificationBodyHeaderContextRegExp = new RegExp('^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$');
+export const receiveInboundNotificationBodyHeaderSenderBpnRegExp = new RegExp('^BPNL[A-Za-z0-9]{12}$');
+export const receiveInboundNotificationBodyHeaderReceiverBpnRegExp = new RegExp('^BPNL[A-Za-z0-9]{12}$');
+export const receiveInboundNotificationBodyHeaderRelatedMessageIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ReceiveInboundNotificationBody = zod.object({
+  "header": zod.object({
+  "messageId": zod.string().regex(receiveInboundNotificationBodyHeaderMessageIdRegExp),
+  "context": zod.string().regex(receiveInboundNotificationBodyHeaderContextRegExp),
+  "sentDateTime": zod.coerce.date(),
+  "senderBpn": zod.string().regex(receiveInboundNotificationBodyHeaderSenderBpnRegExp),
+  "receiverBpn": zod.string().regex(receiveInboundNotificationBodyHeaderReceiverBpnRegExp),
+  "expectedResponseBy": zod.coerce.date().optional(),
+  "relatedMessageId": zod.string().regex(receiveInboundNotificationBodyHeaderRelatedMessageIdRegExp).optional(),
+  "version": zod.string().describe('Version of the Catena-X MessageHeaderAspect.')
+}).describe('Catena-X MessageHeaderAspect carried separately from use-case content.'),
+  "content": zod.record(zod.string(), zod.unknown())
+}).describe('Shared Notification API body; content is operation-specific and versioned by context.')
+
+export const ReceiveInboundNotificationResponse = zod.object({
+  "messageId": zod.string(),
+  "status": zod.enum(['PROCESSED', 'DUPLICATE'])
+})
+
+
+/**
  * @summary Receive an inbound service request
  */
+export const receiveInboundServiceRequestBodyMetadataCausationIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
 export const ReceiveInboundServiceRequestBody = zod.object({
   "metadata": zod.object({
   "messageId": zod.string(),
@@ -26,7 +60,9 @@ export const ReceiveInboundServiceRequestBody = zod.object({
   "schemaVersion": zod.enum(['1.0']),
   "senderOrgId": zod.string(),
   "receiverOrgId": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "causationId": zod.string().regex(receiveInboundServiceRequestBodyMetadataCausationIdRegExp).nullish(),
+  "expectedResponseBy": zod.coerce.date().optional()
 }),
   "requestId": zod.string(),
   "requestVersion": zod.number(),
@@ -47,6 +83,7 @@ export const ReceiveInboundServiceRequestResponse = zod.object({
 /**
  * @summary Receive an inbound project invitation
  */
+export const receiveInboundProjectInvitationBodyMetadataCausationIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
 
@@ -57,7 +94,9 @@ export const ReceiveInboundProjectInvitationBody = zod.object({
   "schemaVersion": zod.enum(['1.0']),
   "senderOrgId": zod.string(),
   "receiverOrgId": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "causationId": zod.string().regex(receiveInboundProjectInvitationBodyMetadataCausationIdRegExp).nullish(),
+  "expectedResponseBy": zod.coerce.date().optional()
 }),
   "invitationId": zod.string().min(1),
   "project": zod.object({
@@ -109,6 +148,7 @@ export const ReceiveInboundProjectInvitationResponse = zod.object({
 /**
  * @summary Receive an inbound project invitation response
  */
+export const receiveInboundProjectInvitationResponseBodyMetadataCausationIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 
 
 
@@ -119,7 +159,9 @@ export const ReceiveInboundProjectInvitationResponseBody = zod.object({
   "schemaVersion": zod.enum(['1.0']),
   "senderOrgId": zod.string(),
   "receiverOrgId": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "causationId": zod.string().regex(receiveInboundProjectInvitationResponseBodyMetadataCausationIdRegExp).nullish(),
+  "expectedResponseBy": zod.coerce.date().optional()
 }),
   "invitationId": zod.string().min(1),
   "projectReference": zod.string(),
@@ -138,6 +180,9 @@ export const ReceiveInboundProjectInvitationResponseResponse = zod.object({
 /**
  * @summary Receive an inbound service response
  */
+export const receiveInboundServiceResponseBodyMetadataCausationIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
 export const ReceiveInboundServiceResponseBody = zod.object({
   "metadata": zod.object({
   "messageId": zod.string(),
@@ -145,7 +190,9 @@ export const ReceiveInboundServiceResponseBody = zod.object({
   "schemaVersion": zod.enum(['1.0']),
   "senderOrgId": zod.string(),
   "receiverOrgId": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "causationId": zod.string().regex(receiveInboundServiceResponseBodyMetadataCausationIdRegExp).nullish(),
+  "expectedResponseBy": zod.coerce.date().optional()
 }),
   "requestId": zod.string(),
   "requestVersion": zod.number(),
@@ -1061,6 +1108,70 @@ export const GetAnLeistungsanfrageDetailsResponse = zod.object({
   "notes": zod.string().nullable()
 }))
 }))
+
+
+/**
+ * Completes phase 1 for the authenticated AN. Reading the details remains side-effect free; this action records the review and advances RECEIVED to DETAILS_RETRIEVED.
+ * @summary Mark the published Leistungsanfrage details as consciously reviewed
+ */
+export const ReviewAnLeistungsanfrageDetailsParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+
+
+export const reviewAnLeistungsanfrageDetailsResponseResourceRequirementCountMin = 0;
+
+
+
+export const ReviewAnLeistungsanfrageDetailsResponse = zod.object({
+  "id": zod.string(),
+  "leistungsanfrageId": zod.string(),
+  "taktRequestId": zod.string(),
+  "localProjectionId": zod.string(),
+  "requestNumber": zod.string(),
+  "status": zod.enum(['RECEIVED', 'DETAILS_RETRIEVED', 'UNDER_REVIEW', 'RESPONDED', 'REVISION_REQUIRED', 'CONFIRMED', 'CANCELLED', 'SUPERSEDED']),
+  "leistungVersion": zod.number().min(1).optional(),
+  "taktVersion": zod.number().min(1).optional(),
+  "guOrgId": zod.string(),
+  "guOrgName": zod.string().nullish(),
+  "nuOrgId": zod.string(),
+  "projektId": zod.string(),
+  "projectId": zod.string(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string(),
+  "responseRequiredBy": zod.coerce.date().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "detailsRetrievedAt": zod.coerce.date().nullish(),
+  "policySnapshot": zod.record(zod.string(), zod.unknown()).nullish(),
+  "resourceRequirementCount": zod.number().min(reviewAnLeistungsanfrageDetailsResponseResourceRequirementCountMin).optional(),
+  "nextActionOwner": zod.union([zod.literal('AG'),zod.literal('AN'),zod.literal(null)]).nullish(),
+  "nextAction": zod.enum(['RESPOND_TO_REQUEST', 'DECIDE_RESPONSE', 'RESPOND_TO_CHANGE_PROPOSAL', 'NO_ACTION']).optional(),
+  "coordinationState": zod.enum(['AGREED', 'AG_ACTION_REQUIRED', 'AN_ACTION_REQUIRED', 'NO_AGREEMENT']).optional(),
+  "openProposal": zod.object({
+  "id": zod.string(),
+  "start": zod.coerce.date(),
+  "end": zod.coerce.date(),
+  "proposerRole": zod.enum(['AG', 'AN']),
+  "comment": zod.string().nullish()
+}).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "takt": zod.object({
+  "id": zod.string(),
+  "taktBezeichnung": zod.string().nullable(),
+  "kurzbezeichnung": zod.string().nullable(),
+  "gewerk": zod.string().nullable(),
+  "zone": zod.string().nullable(),
+  "plannedStart": zod.string(),
+  "plannedEnd": zod.string()
+}),
+  "project": zod.object({
+  "id": zod.string(),
+  "name": zod.string().nullable(),
+  "location": zod.string().nullable()
+})
+}).describe('Local AN projection used by the AN worklist; distinct from AG coordination DTOs.')
 
 
 /**

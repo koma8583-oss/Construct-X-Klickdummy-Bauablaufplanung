@@ -120,7 +120,7 @@ export default function RequestDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Panel 1: Takt Info */}
+        {/* Panel 1: Leistungsinformationen */}
         <Card className="bg-card border-border lg:col-span-1">
           <CardHeader>
             <CardTitle>{t("requests.detail.taktInfo")}</CardTitle>

@@ -316,22 +316,17 @@ describe("GET /takt-requests/:id/details — response shape", () => {
 
 // ── C. Status transition ──────────────────────────────────────────────────────
 
-describe("GET /takt-requests/:id/details — status transition", () => {
-  it("first NU access transitions DELIVERED → DETAILS_RETRIEVED", async () => {
-    // We need a fresh request in DELIVERED state for this test.
-    // Re-use requestId — if it was already accessed in section A, it may
-    // already be DETAILS_RETRIEVED. Both DELIVERED and DETAILS_RETRIEVED are
-    // valid — we verify the final state is DETAILS_RETRIEVED.
+describe("AN details review — explicit status transition", () => {
+  it("explicit review transitions RECEIVED → DETAILS_RETRIEVED", async () => {
     const res = await request(app)
-      .get(`/api/an/takt-requests/${requestId}/details`)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("DETAILS_RETRIEVED");
-    expect(res.body.detailsRetrievedAt).toBeTruthy();
   });
 
-  it("repeated NU access is idempotent — status stays DETAILS_RETRIEVED", async () => {
+  it("repeated NU access is read-only — status stays DETAILS_RETRIEVED", async () => {
     const res1 = await request(app)
       .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);

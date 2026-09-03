@@ -44,23 +44,108 @@ export type NotificationEnvelope = z.infer<typeof NotificationEnvelopeSchema>;
  * version of an individual business payload.
  */
 export const CATENA_X_MESSAGE_HEADER_VERSION = "3.0.0";
-export const TAKTKOORD_NOTIFICATION_CONTEXTS = {
-  TAKT_REQUEST_NOTIFICATION: "TaktKoord-ServiceCoordination-TaktRequest:1.0.0",
-  TAKT_REQUEST_REVISED: "TaktKoord-ServiceCoordination-TaktRequestRevision:1.0.0",
-  TAKT_REQUEST_CANCELLED: "TaktKoord-ServiceCoordination-TaktRequestCancellation:1.0.0",
-  TAKT_DETAILS_RETRIEVED: "TaktKoord-ServiceCoordination-TaktDetailsRetrieved:1.0.0",
-  TAKT_RESPONSE_SUBMITTED: "TaktKoord-ServiceCoordination-TaktResponse:1.0.0",
-  TAKT_RESPONSE_ACCEPTED: "TaktKoord-ServiceCoordination-TaktDecision:1.0.0",
-  TAKT_RESPONSE_REVISION_REQUESTED: "TaktKoord-ServiceCoordination-TaktRevisionRequest:1.0.0",
-  TAKT_REQUEST_EXPIRED: "TaktKoord-ServiceCoordination-TaktRequestExpired:1.0.0",
-  TAKT_REQUEST_REMINDER: "TaktKoord-ServiceCoordination-TaktRequestReminder:1.0.0",
-  DATA_OFFER_PUBLISHED: "TaktKoord-DataPublication-DataOffer:1.0.0",
-  DATA_OFFER_RESPONSE: "TaktKoord-DataPublication-DataOfferResponse:1.0.0",
-  PROJECT_INVITATION: "TaktKoord-ProjectMembership-Invitation:1.0.0",
-  PROJECT_INVITATION_RESPONSE: "TaktKoord-ProjectMembership-InvitationResponse:1.0.0",
+/**
+ * The registry is the single source of truth for the Notification API
+ * operation, its public context, and the use-case major version. The header
+ * version above is the Catena-X MessageHeaderAspect version and is deliberately
+ * independent from the version of a business operation.
+ */
+export const TAKTKOORD_NOTIFICATION_OPERATIONS = {
+  TAKT_REQUEST_NOTIFICATION: {
+    api: "Notification API",
+    operation: "service-request",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request:v1",
+  },
+  TAKT_REQUEST_REVISED: {
+    api: "Notification API",
+    operation: "service-request-revision",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-revision:v1",
+  },
+  TAKT_REQUEST_CANCELLED: {
+    api: "Notification API",
+    operation: "service-request-cancellation",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-cancellation:v1",
+  },
+  TAKT_DETAILS_RETRIEVED: {
+    api: "Notification API",
+    operation: "service-request-details-retrieved",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-details-retrieved:v1",
+  },
+  TAKT_RESPONSE_SUBMITTED: {
+    api: "Notification API",
+    operation: "service-response",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response:v1",
+  },
+  TAKT_RESPONSE_ACCEPTED: {
+    api: "Notification API",
+    operation: "service-response-accepted",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response-accepted:v1",
+  },
+  TAKT_RESPONSE_REVISION_REQUESTED: {
+    api: "Notification API",
+    operation: "service-response-revision-requested",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-response-revision-requested:v1",
+  },
+  TAKT_REQUEST_EXPIRED: {
+    api: "Notification API",
+    operation: "service-request-expired",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-expired:v1",
+  },
+  TAKT_REQUEST_REMINDER: {
+    api: "Notification API",
+    operation: "service-request-reminder",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:construction-service-coordination:service-request-reminder:v1",
+  },
+  DATA_OFFER_PUBLISHED: {
+    api: "Notification API",
+    operation: "data-offer-published",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:data-publication:data-offer-published:v1",
+  },
+  DATA_OFFER_RESPONSE: {
+    api: "Notification API",
+    operation: "data-offer-response",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:data-publication:data-offer-response:v1",
+  },
+  PROJECT_INVITATION: {
+    api: "Notification API",
+    operation: "project-invitation",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:project-membership:project-invitation:v1",
+  },
+  PROJECT_INVITATION_RESPONSE: {
+    api: "Notification API",
+    operation: "project-invitation-response",
+    majorVersion: 1,
+    context: "urn:taktkoord:notification-api:project-membership:project-invitation-response:v1",
+  },
 } as const;
 
-export type TaktKoordNotificationType = keyof typeof TAKTKOORD_NOTIFICATION_CONTEXTS;
+export const TAKTKOORD_NOTIFICATION_CONTEXTS = Object.fromEntries(
+  Object.entries(TAKTKOORD_NOTIFICATION_OPERATIONS).map(([type, definition]) => [
+    type,
+    definition.context,
+  ]),
+) as { [K in keyof typeof TAKTKOORD_NOTIFICATION_OPERATIONS]: string };
+
+export type TaktKoordNotificationType = keyof typeof TAKTKOORD_NOTIFICATION_OPERATIONS;
+export type NotificationOperation = typeof TAKTKOORD_NOTIFICATION_OPERATIONS[TaktKoordNotificationType];
+
+export function notificationOperationForContext(context: string): TaktKoordNotificationType | null {
+  const entry = Object.entries(TAKTKOORD_NOTIFICATION_OPERATIONS)
+    .find(([, definition]) => definition.context === context);
+  return (entry?.[0] as TaktKoordNotificationType | undefined) ?? null;
+}
 
 export function createNotificationEnvelope(input: {
   messageId: NotificationHeader["messageId"];
@@ -71,11 +156,12 @@ export function createNotificationEnvelope(input: {
   sentDateTime?: string;
   expectedResponseBy?: string;
   relatedMessageId?: NotificationHeader["relatedMessageId"];
+  context?: string;
 }): NotificationEnvelope {
   return NotificationEnvelopeSchema.parse({
     header: {
       messageId: input.messageId,
-      context: TAKTKOORD_NOTIFICATION_CONTEXTS[input.messageType],
+      context: input.context ?? TAKTKOORD_NOTIFICATION_CONTEXTS[input.messageType],
       sentDateTime: input.sentDateTime ?? new Date().toISOString(),
       senderBpn: input.senderBpn,
       receiverBpn: input.receiverBpn,

@@ -411,10 +411,17 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
+    expect(reviewed.body.detailsRetrievedAt).toBeTruthy();
     expect(res.body.taktRequestId).toBe(requestId);
     expect(res.body.snapshotPayload).toBeDefined();
-    expect(res.body.detailsRetrievedAt).toBeTruthy();
+    expect(res.body.detailsRetrievedAt).toBeNull();
   });
 
   it("t68-A3b: Second GET /details call is idempotent (stays DETAILS_RETRIEVED)", async () => {
@@ -527,7 +534,13 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     // Snapshot payload must not leak NU-internal data
     const payload = JSON.stringify(res.body.snapshotPayload ?? {});
     expect(payload).not.toContain("localProjectId");

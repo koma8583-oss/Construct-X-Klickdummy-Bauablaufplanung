@@ -283,8 +283,15 @@ describe("W1 – policy accepted then navigate away and return", () => {
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.detailsRetrievedAt).toBeTruthy();
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.detailsRetrievedAt).toBeNull();
+    expect(res.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
+      .set("Authorization", `Bearer ${anToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.detailsRetrievedAt).toBeTruthy();
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     expect(res.body.snapshotPayload).toBeDefined();
   });
 

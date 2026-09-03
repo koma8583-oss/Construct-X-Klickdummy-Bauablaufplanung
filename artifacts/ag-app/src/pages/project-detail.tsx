@@ -2873,6 +2873,14 @@ export default function ProjectDetail() {
                             </Button>
                           </Link>
                         )}
+                        {String(activeTaktRequest.status) === 'CONFIRMED' && (
+                          <Link href={`/leistungsanfragen/${activeTaktRequest.id}#coordination`}>
+                            <Button data-testid="button-propose-schedule-change" variant="outline" size="sm" className="w-full mt-3">
+                              <ArrowRightLeft className="mr-2 h-4 w-4" />
+                              Terminänderung vorschlagen
+                            </Button>
+                          </Link>
+                        )}
                       </div>
 
                       {['ACCEPTED', 'ALTERNATIVES_PROPOSED', 'REJECTED'].includes(activeTaktRequest.status) && (

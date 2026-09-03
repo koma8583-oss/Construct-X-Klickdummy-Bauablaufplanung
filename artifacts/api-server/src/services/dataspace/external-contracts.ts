@@ -7,12 +7,16 @@ const externalDate = nonEmpty(80).refine((value) => {
   return dateOnly ? !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) : !Number.isNaN(Date.parse(value));
 }, "Must be a valid ISO date or datetime");
 const metadataSchema = z.object({
+  // Metadata is an internal projection used before the connector boundary.
+  // The external connector receives only NotificationEnvelope.header.
   messageId: nonEmpty(200),
   correlationId: nonEmpty(200),
   schemaVersion: z.literal("1.0"),
   senderOrgId: nonEmpty(200),
   receiverOrgId: nonEmpty(200),
   createdAt: z.string().datetime({ offset: true }),
+  causationId: z.string().uuid().nullable().optional(),
+  expectedResponseBy: z.string().datetime({ offset: true }).optional(),
 }).strict();
 
 const policySchema = z.object({
@@ -359,6 +363,8 @@ export type ExchangeMetadata = {
   senderOrgId: string;
   receiverOrgId: string;
   createdAt: string;
+  causationId?: string | null;
+  expectedResponseBy?: string;
 };
 
 export type ExchangePolicy = {

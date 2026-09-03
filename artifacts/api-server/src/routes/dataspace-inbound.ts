@@ -16,6 +16,7 @@
  */
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { NotificationEnvelopeSchema } from "@workspace/api-zod";
 import { requireDataspaceConnector } from "../middlewares/requireDataspaceConnector";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
 import type {
@@ -24,19 +25,125 @@ import type {
   ExternalDataOfferResponse,
   ExternalServiceRequest,
   ExternalServiceResponse,
+  ExternalCoordinationDecision,
 } from "../services/dataspace/external-contracts";
 import {
   externalProjectInvitationSchema,
   externalProjectInvitationResponseSchema,
   externalDataOfferResponseSchema,
+  externalDataOfferSchema,
+  externalCoordinationDecisionSchema,
   externalServiceRequestSchema,
   externalServiceResponseSchema,
 } from "../services/dataspace/external-contracts";
 import pino from "pino";
 import { processIncomingDataOfferResponse, processIncomingProjectInvitation, processIncomingProjectInvitationResponse, processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
+import { messageTypeForNotificationContext } from "../services/dataspace/notification-envelope";
 
 const logger = pino({ name: "dataspace-inbound" });
 const router = Router();
+
+function localOrgForBpn(bpn: string): string | null {
+  const raw = process.env.DATASPACE_PARTICIPANT_BPN_MAP;
+  if (!raw) return null;
+  try {
+    const mapping = JSON.parse(raw) as Record<string, unknown>;
+    const match = Object.entries(mapping).find(([, value]) => value === bpn);
+    return match?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Canonical connector ingress. Header context selects the registered operation;
+ * only then is the operation-specific content reconstructed for the existing
+ * idempotent domain pipeline. Local organisation IDs never cross this route.
+ */
+router.post("/dataspace/inbound/notifications", requireDataspaceConnector, async (req, res): Promise<void> => {
+  const parsed = NotificationEnvelopeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Invalid Notification API envelope", issues: parsed.error.issues });
+    return;
+  }
+  const envelope = parsed.data;
+  let operation: string;
+  try {
+    operation = messageTypeForNotificationContext(envelope.header.context);
+  } catch {
+    res.status(422).json({ error: "Notification context is not registered" });
+    return;
+  }
+  const senderOrgId = localOrgForBpn(envelope.header.senderBpn);
+  const receiverOrgId = localOrgForBpn(envelope.header.receiverBpn);
+  const connectorOrgId = (req as Request & { dataspaceConnectorOrgId?: string }).dataspaceConnectorOrgId;
+  if (!senderOrgId || !receiverOrgId || !connectorOrgId || connectorOrgId !== receiverOrgId) {
+    res.status(403).json({ error: "Notification participants are not mapped to the addressed connector" });
+    return;
+  }
+  const { correlationId, ...content } = envelope.content;
+  const metadata = {
+    messageId: envelope.header.messageId,
+    correlationId: typeof correlationId === "string" ? correlationId : String(content.requestId ?? content.invitationId ?? content.publicationId ?? envelope.header.messageId),
+    schemaVersion: "1.0" as const,
+    senderOrgId,
+    receiverOrgId,
+    createdAt: envelope.header.sentDateTime,
+    ...(envelope.header.relatedMessageId ? { causationId: envelope.header.relatedMessageId } : {}),
+    ...(envelope.header.expectedResponseBy ? { expectedResponseBy: envelope.header.expectedResponseBy } : {}),
+  };
+  try {
+    let result;
+    if (operation === "PROJECT_INVITATION") {
+      result = await exchange.receiveProjectInvitation(
+        externalProjectInvitationSchema.parse({ ...content, metadata }) as ExternalProjectInvitation,
+        processIncomingProjectInvitation,
+      );
+    } else if (operation === "PROJECT_INVITATION_RESPONSE") {
+      result = await exchange.receiveProjectInvitationResponse(
+        externalProjectInvitationResponseSchema.parse({ ...content, metadata }) as ExternalProjectInvitationResponse,
+        processIncomingProjectInvitationResponse,
+      );
+    } else if (operation === "DATA_OFFER_PUBLISHED") {
+      result = await exchange.receiveDataOffer(
+        externalDataOfferSchema.parse({ ...content, metadata }),
+        undefined,
+      );
+    } else if (operation === "DATA_OFFER_RESPONSE") {
+      result = await exchange.receiveDataOfferResponse(
+        externalDataOfferResponseSchema.parse({ ...content, metadata }),
+        processIncomingDataOfferResponse,
+      );
+    } else if (operation === "TAKT_RESPONSE_SUBMITTED") {
+      result = await exchange.receiveServiceResponse(
+        externalServiceResponseSchema.parse({ ...content, metadata }) as ExternalServiceResponse,
+        processIncomingServiceResponse,
+      );
+    } else if (operation === "TAKT_RESPONSE_ACCEPTED" || operation === "TAKT_RESPONSE_REVISION_REQUESTED" || operation === "TAKT_REQUEST_CANCELLED") {
+      result = await exchange.receiveCoordinationDecision(
+        externalCoordinationDecisionSchema.parse({ ...content, metadata }) as ExternalCoordinationDecision,
+        undefined,
+      );
+    } else if (operation === "TAKT_REQUEST_NOTIFICATION" || operation === "TAKT_REQUEST_REVISED") {
+      result = await exchange.receiveServiceRequest(
+        externalServiceRequestSchema.parse({ ...content, metadata }) as ExternalServiceRequest,
+        processIncomingServiceRequest,
+      );
+    } else {
+      res.status(422).json({ error: `Notification operation is not inbound-capable: ${operation}` });
+      return;
+    }
+    res.status(result.duplicate ? 200 : 202).json({
+      messageId: envelope.header.messageId,
+      status: result.status,
+      operation,
+    });
+  } catch (error) {
+    logger.error({ err: error, messageId: envelope.header.messageId, operation }, "Notification API inbound processing failed");
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(message.includes("conflicts") ? 409 : 422).json({ error: message });
+  }
+});
 
 // Module-level exchange singleton (RestDataspaceExchange or TractusXEdcExchange
 // depending on DATASPACE_TRANSPORT env var).

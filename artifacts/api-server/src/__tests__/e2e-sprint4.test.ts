@@ -675,7 +675,13 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("RECEIVED");
+    const reviewed = await request(app)
+      .post(`/api/an/takt-requests/${requestId}/details/review`)
+      .set("Authorization", `Bearer ${nuToken}`)
+      .send({});
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     expect(res.body.snapshotPayload).toBeTruthy();
     // GU identity must NOT be exposed in snapshot (data sovereignty)
     expect(res.body.snapshotPayload).not.toHaveProperty("guName");

@@ -53,6 +53,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /dataspace/inbound/notifications:
+    post:
+      operationId: receiveInboundNotification
+      tags: [dataspace-inbound]
+      summary: Receive a Catena-X Notification API envelope
+      description: >
+        The MessageHeaderAspect selects a registered operation. The operation
+        content is validated and dispatched only after the sender and receiver
+        BPNs have been resolved by the connector boundary.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationEnvelope"
+      responses:
+        "202":
+          description: Accepted and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "200":
+          description: Duplicate delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboundExchangeResult"
+        "403":
+          description: Receiver BPN is not addressed to this connector
+        "422":
+          description: Invalid envelope or operation content
+
   /dataspace/inbound/service-requests:
     post:
       operationId: receiveInboundServiceRequest
@@ -729,6 +764,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnLeistungsanfrageDetails"
+        "403":
+          description: Only AN organisations may access local projections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Leistungsanfrage was not received in the AN context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: reviewAnLeistungsanfrageDetails
+      tags: [an, leistungsanfragen]
+      summary: Mark the published Leistungsanfrage details as consciously reviewed
+      description: >
+        Completes phase 1 for the authenticated AN. Reading the details remains
+        side-effect free; this action records the review and advances RECEIVED
+        to DETAILS_RETRIEVED.
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Details were reviewed or had already been reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnLeistungsanfrageListItem"
         "403":
           description: Only AN organisations may access local projections
           content:
@@ -3676,6 +3743,54 @@ components:
         senderOrgId: { type: string }
         receiverOrgId: { type: string }
         createdAt: { type: string, format: date-time }
+        causationId: { type: string, pattern: '^[0-9a-fA-F-]{36}$', nullable: true }
+        expectedResponseBy: { type: string, format: date-time }
+
+    NotificationOperation:
+      type: object
+      description: >
+        Registry entry for one versioned operation of the shared Catena-X
+        Notification API. All operations use the same asset and contract
+        agreement; the operation is identified by the context URI.
+      required: [api, operation, majorVersion, context]
+      properties:
+        api: { type: string, enum: ["Notification API"] }
+        operation: { type: string }
+        majorVersion: { type: integer, minimum: 1 }
+        context: { type: string, pattern: '^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$' }
+
+    NotificationHeader:
+      type: object
+      description: Catena-X MessageHeaderAspect carried separately from use-case content.
+      required: [messageId, context, sentDateTime, senderBpn, receiverBpn, version]
+      additionalProperties: false
+      properties:
+        messageId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        context: { type: string, pattern: '^urn:cx:notification-api:v[0-9]+:[A-Z0-9_]+$' }
+        sentDateTime: { type: string, format: date-time }
+        senderBpn:
+          type: string
+          pattern: '^BPNL[A-Za-z0-9]{12}$'
+        receiverBpn:
+          type: string
+          pattern: '^BPNL[A-Za-z0-9]{12}$'
+        expectedResponseBy: { type: string, format: date-time }
+        relatedMessageId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        version:
+          type: string
+          description: Version of the Catena-X MessageHeaderAspect.
+
+    NotificationEnvelope:
+      type: object
+      description: Shared Notification API body; content is operation-specific and versioned by context.
+      required: [header, content]
+      additionalProperties: false
+      properties:
+        header:
+          $ref: "#/components/schemas/NotificationHeader"
+        content:
+          type: object
+          additionalProperties: true
 
     ProjectMembership:
       type: object

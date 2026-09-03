@@ -75,6 +75,7 @@ import type {
   ListResourcesParams,
   ListTaktRequestsParams,
   ListWebhookEventsParams,
+  NotificationEnvelope,
   NuLocalProject,
   NuLocalProjectCreate,
   NuLocalProjectListResponse,
@@ -236,6 +237,78 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getReceiveInboundNotificationUrl = () => {
+
+
+
+
+  return `/api/dataspace/inbound/notifications`
+}
+
+/**
+ * The MessageHeaderAspect selects a registered operation. The operation content is validated and dispatched only after the sender and receiver BPNs have been resolved by the connector boundary.
+ * @summary Receive a Catena-X Notification API envelope
+ */
+export const receiveInboundNotification = async (notificationEnvelope: NotificationEnvelope, options?: RequestInit): Promise<InboundExchangeResult> => {
+
+  return customFetch<InboundExchangeResult>(getReceiveInboundNotificationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(notificationEnvelope)
+  }
+);}
+
+
+
+
+
+export const getReceiveInboundNotificationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundNotification>>, TError,{data: BodyType<NotificationEnvelope>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof receiveInboundNotification>>, TError,{data: BodyType<NotificationEnvelope>}, TContext> => {
+
+const mutationKey = ['receiveInboundNotification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof receiveInboundNotification>>, {data: BodyType<NotificationEnvelope>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  receiveInboundNotification(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReceiveInboundNotificationMutationResult = NonNullable<Awaited<ReturnType<typeof receiveInboundNotification>>>
+    export type ReceiveInboundNotificationMutationBody = BodyType<NotificationEnvelope>
+    export type ReceiveInboundNotificationMutationError = ErrorType<void>
+
+    /**
+ * @summary Receive a Catena-X Notification API envelope
+ */
+export const useReceiveInboundNotification = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveInboundNotification>>, TError,{data: BodyType<NotificationEnvelope>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof receiveInboundNotification>>,
+        TError,
+        {data: BodyType<NotificationEnvelope>},
+        TContext
+      > => {
+      return useMutation(getReceiveInboundNotificationMutationOptions(options));
+    }
 
 export const getReceiveInboundServiceRequestUrl = () => {
 
@@ -2547,6 +2620,78 @@ export function useGetAnLeistungsanfrageDetails<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getReviewAnLeistungsanfrageDetailsUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/an/leistungsanfragen/${leistungsanfrageId}/details`
+}
+
+/**
+ * Completes phase 1 for the authenticated AN. Reading the details remains side-effect free; this action records the review and advances RECEIVED to DETAILS_RETRIEVED.
+ * @summary Mark the published Leistungsanfrage details as consciously reviewed
+ */
+export const reviewAnLeistungsanfrageDetails = async (leistungsanfrageId: string, options?: RequestInit): Promise<AnLeistungsanfrageListItem> => {
+
+  return customFetch<AnLeistungsanfrageListItem>(getReviewAnLeistungsanfrageDetailsUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReviewAnLeistungsanfrageDetailsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>, TError,{leistungsanfrageId: string}, TContext> => {
+
+const mutationKey = ['reviewAnLeistungsanfrageDetails'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>, {leistungsanfrageId: string}> = (props) => {
+          const {leistungsanfrageId} = props ?? {};
+
+          return  reviewAnLeistungsanfrageDetails(leistungsanfrageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewAnLeistungsanfrageDetailsMutationResult = NonNullable<Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>>
+
+    export type ReviewAnLeistungsanfrageDetailsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Mark the published Leistungsanfrage details as consciously reviewed
+ */
+export const useReviewAnLeistungsanfrageDetails = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewAnLeistungsanfrageDetails>>,
+        TError,
+        {leistungsanfrageId: string},
+        TContext
+      > => {
+      return useMutation(getReviewAnLeistungsanfrageDetailsMutationOptions(options));
+    }
 
 export const getAcceptAnProjectInvitationUrl = (id: string,) => {
 

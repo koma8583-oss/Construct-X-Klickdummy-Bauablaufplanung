@@ -115,6 +115,8 @@ export function toExternalServiceRequest(input: {
   receiverOrgId: string;
   correlationId?: string;
   messageId?: string;
+  causationId?: string | null;
+  expectedResponseBy?: string;
   resourceRequirements?: ExternalResourceRequirement[];
   publicSnapshot?: TaktRequestSnapshotPayload;
   policySnapshot?: ExternalPolicySnapshot;
@@ -129,6 +131,8 @@ export function toExternalServiceRequest(input: {
     senderOrgId: input.senderOrgId,
     receiverOrgId: input.receiverOrgId,
     createdAt: new Date().toISOString(),
+    ...(input.causationId ? { causationId: input.causationId } : {}),
+    ...(input.expectedResponseBy ? { expectedResponseBy: input.expectedResponseBy } : {}),
   };
   return {
     metadata,
@@ -183,6 +187,8 @@ export function toExternalServiceResponse(input: {
   receiverOrgId: string;
   correlationId?: string;
   messageId?: string;
+  causationId?: string | null;
+  expectedResponseBy?: string;
   acceptedTimeWindow?: { start: string; end: string };
   reasonCode?: string;
   comment?: string;
@@ -197,6 +203,8 @@ export function toExternalServiceResponse(input: {
       senderOrgId: input.senderOrgId,
       receiverOrgId: input.receiverOrgId,
       createdAt: new Date().toISOString(),
+      ...(input.causationId ? { causationId: input.causationId } : {}),
+      ...(input.expectedResponseBy ? { expectedResponseBy: input.expectedResponseBy } : {}),
     },
     requestId: input.requestId,
     requestVersion: input.requestVersion,

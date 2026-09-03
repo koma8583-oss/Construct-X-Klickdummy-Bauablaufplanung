@@ -26,7 +26,7 @@ describe("Tractus-X notification envelope", () => {
 
     expect(envelope.header).toEqual({
       messageId,
-      context: "TaktKoord-ServiceCoordination-TaktRequest:1.0.0",
+      context: "urn:taktkoord:notification-api:construction-service-coordination:service-request:v1",
       sentDateTime: "2026-09-01T13:00:00.000Z",
       senderBpn,
       receiverBpn,

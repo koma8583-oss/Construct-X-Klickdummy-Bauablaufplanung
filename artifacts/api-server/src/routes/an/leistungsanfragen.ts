@@ -11,6 +11,7 @@ import {
   formatAnAvailabilityCheck,
   getLatestAnAvailabilityCheck,
   getAnLeistungsanfrageDetail,
+  reviewAnLeistungsanfrageDetails,
   listAnLeistungsanfragen,
   runAnAvailabilityCheck,
   updateAnResourceRequirement,
@@ -92,6 +93,27 @@ async function details(req: any, res: any) {
   }
   const { detailsRetrievedNow: _detailsRetrievedNow, ...publicResult } = result;
   res.json(publicResult);
+}
+
+async function reviewDetails(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const result = await reviewAnLeistungsanfrageDetails(req.params.id as string, anOrgId);
+  if (!result) {
+    res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+    return;
+  }
+  if (result.reviewedNow) {
+    await writeAuditEvent({
+      requestId: req.params.id as string,
+      eventType: "DETAILS_RETRIEVED",
+      actorOrgId: anOrgId,
+      actorUserId: req.user?.userId ?? null,
+      actorRole: "NU",
+      metadata: { explicitReview: true },
+    });
+  }
+  res.json(result.view);
 }
 
 async function updateRequirement(req: any, res: any) {
@@ -319,6 +341,8 @@ router.get("/leistungsanfragen", requireJwt, list);
 router.get("/takt-requests/:id/snapshot", requireJwt, details);
 router.get("/takt-requests/:id/details", requireJwt, details);
 router.get("/leistungsanfragen/:id/details", requireJwt, details);
+router.post("/takt-requests/:id/details/review", requireJwt, reviewDetails);
+router.post("/leistungsanfragen/:id/details/review", requireJwt, reviewDetails);
 router.patch("/takt-requests/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.patch("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.get("/takt-requests/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
