@@ -8,3 +8,9 @@ A Project Agreement must publish the capabilities and child-policy types that it
 **Why:** Project admission and performance coordination have different technical permissions, while the business model intentionally allows ordinary performance requests within the active membership without a second project consent.
 
 **How to apply:** Resolve child policies against the agreement's effective policy. Treat work-package/purpose specialization as normal child refinement, validity expansion as consent-required, and identity or ungranted capability changes as not permitted.
+
+Invitation transactions must persist the Project Agreement policy before inserting the membership that references it, then create the outbox message.
+
+**Why:** PostgreSQL checks the membership foreign key immediately; inserting the membership first fails even inside the same transaction.
+
+**How to apply:** Keep the invitation transaction ordered as policy, membership, outbox, and insert each policy exactly once.
