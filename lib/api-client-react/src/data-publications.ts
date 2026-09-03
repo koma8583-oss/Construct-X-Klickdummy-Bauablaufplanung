@@ -332,6 +332,8 @@ export function useGetProjectDataPublications(
         { method: "GET" },
       ),
     enabled: !!projectId,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
