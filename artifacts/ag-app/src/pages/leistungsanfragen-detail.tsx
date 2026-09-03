@@ -37,6 +37,7 @@ import {
   Activity,
   GitBranch,
   History,
+  ShieldCheck,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -336,6 +337,42 @@ function SnapshotPreview({ snapshot }: { snapshot: TaktRequestDetail['snapshot']
         })}
       </dl>
     </div>
+  );
+}
+
+function PolicyResolutionCard({ detail }: { detail: TaktRequestDetail }) {
+  const policy = detail as TaktRequestDetail & {
+    policyDeltaClass?: 'WITHIN_BASELINE' | 'REQUIRES_CONSENT' | 'NOT_PERMITTED' | null;
+    policyDiff?: { summary?: unknown; changed?: unknown } | null;
+    policyDetailsAvailable?: boolean;
+  };
+  if (!policy.policyDeltaClass) return null;
+  const diff = (policy.policyDiff && typeof policy.policyDiff === 'object' ? policy.policyDiff : {}) as Record<string, unknown>;
+  const summary = Array.isArray(diff.summary) ? diff.summary.filter((item): item is string => typeof item === 'string') : [];
+  const changed = Array.isArray(diff.changed) ? diff.changed.filter((item): item is string => typeof item === 'string') : [];
+  if (policy.policyDeltaClass === 'NOT_PERMITTED') {
+    return (
+      <section data-testid="policy-resolution-not-permitted" className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 space-y-2">
+        <div className="flex items-center gap-2 font-semibold text-destructive"><Ban className="w-4 h-4" />Versand durch Policy blockiert</div>
+        <p className="text-sm text-muted-foreground">Die Leistungsanfrage liegt außerhalb der Project Policy. Ändern Sie zuerst die Projektvereinbarung; eine DataOffer-Bestätigung ersetzt diese Änderung nicht.</p>
+        {summary.length > 0 && <ul className="list-disc pl-5 text-sm text-muted-foreground">{summary.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>}
+      </section>
+    );
+  }
+  if (policy.policyDeltaClass === 'REQUIRES_CONSENT') {
+    return (
+      <section data-testid="policy-resolution-consent" className="rounded-xl border border-amber-600/25 bg-amber-500/10 p-5 space-y-2">
+        <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-200"><ShieldCheck className="w-4 h-4" />Zusätzliche Leistungsfreigabe erforderlich</div>
+        <p className="text-sm text-muted-foreground">Die Anfrage konkretisiert den vereinbarten Rahmen, weicht aber davon ab. Der AN sieht vorerst nur Metadaten und Diff und muss die Abweichung ausdrücklich bestätigen.</p>
+        {changed.length > 0 && <p className="text-xs text-muted-foreground">Geänderte Bereiche: {changed.join(', ')}</p>}
+      </section>
+    );
+  }
+  return (
+    <section data-testid="policy-resolution-within-baseline" className="rounded-xl border border-emerald-700/20 bg-emerald-600/5 p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200"><ShieldCheck className="w-4 h-4" />Innerhalb der Project Policy</div>
+      <p className="mt-1 text-sm text-muted-foreground">Die Leistungsdetails können ohne zweite Project- oder DataOffer-Bestätigung koordiniert werden.</p>
+    </section>
   );
 }
 
@@ -647,6 +684,7 @@ export default function LeistungsanfragenDetailPage() {
   // ── Timeline events ────────────────────────────────────────────────────────
   const tl = detail.timeline;
   const outboxFailed = detail.transport.status === 'FAILED';
+  const policyDeltaClass = (detail as TaktRequestDetail & { policyDeltaClass?: string | null }).policyDeltaClass;
   const sendMutation = useSendTaktRequest({
     mutation: {
       onSuccess: async () => {
@@ -691,7 +729,7 @@ export default function LeistungsanfragenDetailPage() {
         {/* Quick send / resend actions */}
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {detail.status === 'DRAFT' && (
-            <Button size="sm" className="w-full sm:w-auto" onClick={() => sendMutation.mutate({ requestId: detail.id })} disabled={sendMutation.isPending}>
+            <Button size="sm" className="w-full sm:w-auto" onClick={() => sendMutation.mutate({ requestId: detail.id })} disabled={sendMutation.isPending || policyDeltaClass === 'NOT_PERMITTED'}>
               <Send className="w-4 h-4 mr-2" />
               {sendMutation.isPending ? 'Wird gesendet …' : t('taktRequestDetail.actions.send')}
             </Button>
@@ -709,6 +747,8 @@ export default function LeistungsanfragenDetailPage() {
           {sendMutation.error instanceof Error ? sendMutation.error.message : 'Die Übertragung konnte nicht gestartet werden.'}
         </p>
       )}
+
+      <PolicyResolutionCard detail={detail} />
 
       <CurrentActionCard requestId={detail.id} onFocus={() => {
         const nextAction = (detail as TaktRequestDetail & { nextAction?: string }).nextAction;

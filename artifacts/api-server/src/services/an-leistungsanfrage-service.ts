@@ -116,6 +116,12 @@ function toRequestView(projection: Projection, requirementCount = 0, workflow?: 
     createdAt: projection.createdAt.toISOString(),
     updatedAt: projection.updatedAt.toISOString(),
     policySnapshot: projection.policySnapshot,
+    policyDeltaClass: projection.policyDeltaClass,
+    policyConsentStatus: projection.policyConsentStatus,
+    policyDiff: projection.policyDiff,
+    effectivePolicy: projection.effectivePolicy,
+    policyDetailsAvailable: projection.policyConsentStatus === "NOT_REQUIRED" ||
+      projection.policyConsentStatus === "ACCEPTED",
     resourceRequirementCount: requirementCount,
     nextActionOwner: workflow?.nextActionOwner ?? null,
     nextAction: workflow?.nextAction ?? "NO_ACTION",
@@ -327,6 +333,25 @@ export async function getAnLeistungsanfrageDetail(
   // coordination phase is completed only by the explicit review action below.
   const current = projection;
 
+  const policyRestricted =
+    current.policyDeltaClass === "NOT_PERMITTED" ||
+    (current.policyDeltaClass === "REQUIRES_CONSENT" &&
+      current.policyConsentStatus !== "ACCEPTED");
+  if (policyRestricted) {
+    return {
+      ...toRequestView(current, 0),
+      schemaVersion: String(snapshotValue(snapshotOf(current), "schemaVersion") ?? "1.0"),
+      snapshotPayload: null,
+      resourceRequirements: [],
+      revision: revisionView(current, allRelated),
+      detailsRetrievedNow: false,
+      policyDetailsAvailable: false,
+      policyBlockedReason: current.policyDeltaClass === "NOT_PERMITTED"
+        ? "NOT_PERMITTED"
+        : "POLICY_CONSENT_REQUIRED",
+    };
+  }
+
   const requirements = await anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
     .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, current.id));
   const publicSnapshot = objectRecord(snapshotValue(snapshotOf(current), "publicSnapshot"));
@@ -367,6 +392,24 @@ export async function reviewAnLeistungsanfrageDetails(
     eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
   )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
   if (!projection) return null;
+  if (
+    projection.policyDeltaClass === "NOT_PERMITTED" ||
+    (projection.policyDeltaClass === "REQUIRES_CONSENT" &&
+      projection.policyConsentStatus !== "ACCEPTED")
+  ) {
+    return {
+      reviewedNow: false,
+      view: {
+        ...toRequestView(projection, 0),
+        snapshotPayload: null,
+        resourceRequirements: [],
+        policyDetailsAvailable: false,
+        policyBlockedReason: projection.policyDeltaClass === "NOT_PERMITTED"
+          ? "NOT_PERMITTED"
+          : "POLICY_CONSENT_REQUIRED",
+      },
+    };
+  }
   if (projection.status !== "RECEIVED") {
     return { view: toRequestView(projection, 0), reviewedNow: false };
   }
@@ -381,6 +424,39 @@ export async function reviewAnLeistungsanfrageDetails(
   return {
     view: toRequestView(updated ?? projection, 0),
     reviewedNow: Boolean(updated),
+  };
+}
+
+export async function decideAnLeistungsanfragePolicy(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+  decision: "ACCEPT" | "REJECT",
+) {
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  if (projection.policyDeltaClass !== "REQUIRES_CONSENT") {
+    throw new Error("This Leistungsanfrage does not require a separate policy consent.");
+  }
+  if (projection.policyConsentStatus !== "PENDING") {
+    return {
+      ...toRequestView(projection, 0),
+      policyDecisionApplied: false,
+    };
+  }
+  const [updated] = await anDb.update(anLeistungsanfragenTable).set({
+    policyConsentStatus: decision === "ACCEPT" ? "ACCEPTED" : "REJECTED",
+    updatedAt: new Date(),
+  }).where(and(
+    eq(anLeistungsanfragenTable.id, projection.id),
+    eq(anLeistungsanfragenTable.policyConsentStatus, "PENDING"),
+  )).returning();
+  const current = updated ?? projection;
+  return {
+    ...toRequestView(current, 0),
+    policyDecisionApplied: Boolean(updated),
   };
 }
 

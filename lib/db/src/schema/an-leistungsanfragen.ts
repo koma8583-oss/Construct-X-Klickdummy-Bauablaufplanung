@@ -29,6 +29,19 @@ export const anLeistungsanfrageStatusEnum = pgEnum("an_leistungsanfrage_status",
   "SUPERSEDED",
 ]);
 
+export const anPolicyDeltaClassEnum = pgEnum("an_policy_delta_class", [
+  "WITHIN_BASELINE",
+  "REQUIRES_CONSENT",
+  "NOT_PERMITTED",
+]);
+
+export const anPolicyConsentStatusEnum = pgEnum("an_policy_consent_status", [
+  "NOT_REQUIRED",
+  "PENDING",
+  "ACCEPTED",
+  "REJECTED",
+]);
+
 export const anLeistungsanfragenTable = pgTable(
   "an_leistungsanfragen",
   {
@@ -45,6 +58,12 @@ export const anLeistungsanfragenTable = pgTable(
     plannedStart: text("planned_start").notNull(),
     plannedEnd: text("planned_end").notNull(),
     policySnapshot: jsonb("policy_snapshot").$type<Record<string, unknown> | null>(),
+    policyDeltaClass: anPolicyDeltaClassEnum("policy_delta_class"),
+    policyConsentStatus: anPolicyConsentStatusEnum("policy_consent_status")
+      .notNull()
+      .default("NOT_REQUIRED"),
+    policyDiff: jsonb("policy_diff").$type<Record<string, unknown> | null>(),
+    effectivePolicy: jsonb("effective_policy").$type<Record<string, unknown> | null>(),
     payloadSnapshot: jsonb("payload_snapshot").$type<Record<string, unknown>>().notNull(),
     status: anLeistungsanfrageStatusEnum("status").notNull().default("RECEIVED"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
@@ -125,3 +144,5 @@ export type AnLeistungsanfrage = typeof anLeistungsanfragenTable.$inferSelect;
 export type AnLeistungsanfrageResourceRequirement =
   typeof anLeistungsanfrageResourceRequirementsTable.$inferSelect;
 export type AnAvailabilityCheck = typeof anAvailabilityChecksTable.$inferSelect;
+export type AnPolicyDeltaClass = typeof anPolicyDeltaClassEnum.enumValues[number];
+export type AnPolicyConsentStatus = typeof anPolicyConsentStatusEnum.enumValues[number];

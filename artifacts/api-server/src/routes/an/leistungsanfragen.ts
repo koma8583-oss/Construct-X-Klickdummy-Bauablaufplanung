@@ -18,6 +18,7 @@ import {
   getAnCoordination,
   createAnScheduleChangeProposal,
   resolveAnScheduleChangeProposal,
+  decideAnLeistungsanfragePolicy,
 } from "../../services/an-leistungsanfrage-service";
 import {
   InvalidRequirementPeriodError,
@@ -116,9 +117,32 @@ async function reviewDetails(req: any, res: any) {
   res.json(result.view);
 }
 
+async function ensurePolicyDetailsAvailable(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+  res: any,
+): Promise<boolean> {
+  const result = await getAnLeistungsanfrageDetail(externalLeistungsanfrageId, anOrgId);
+  if (!result) {
+    res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+    return false;
+  }
+  if (!result.policyDetailsAvailable) {
+    const blockedReason = "policyBlockedReason" in result ? result.policyBlockedReason : undefined;
+    res.status(409).json({
+      error: blockedReason ?? "POLICY_CONSENT_REQUIRED",
+      policyDeltaClass: result.policyDeltaClass,
+      policyDiff: result.policyDiff,
+    });
+    return false;
+  }
+  return true;
+}
+
 async function updateRequirement(req: any, res: any) {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
   const parsed = requirementUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -163,6 +187,17 @@ async function respond(req: any, res: any) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
     return;
   }
+  if (!projection.policyDetailsAvailable) {
+    const blockedReason = "policyBlockedReason" in projection
+      ? projection.policyBlockedReason
+      : undefined;
+    res.status(409).json({
+      error: blockedReason ?? "POLICY_CONSENT_REQUIRED",
+      policyDeltaClass: projection.policyDeltaClass,
+      policyDiff: projection.policyDiff,
+    });
+    return;
+  }
   try {
     const result = await createAnServiceResponse({
       anLeistungsanfrageId: projection.localProjectionId,
@@ -199,6 +234,26 @@ async function respond(req: any, res: any) {
       return;
     }
     throw error;
+  }
+}
+
+async function decidePolicy(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  const decision = req.body?.decision;
+  if (decision !== "ACCEPT" && decision !== "REJECT") {
+    res.status(400).json({ error: "decision must be ACCEPT or REJECT" });
+    return;
+  }
+  try {
+    const result = await decideAnLeistungsanfragePolicy(req.params.id as string, anOrgId, decision);
+    if (!result) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.json(result);
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : "Policy decision failed" });
   }
 }
 
@@ -343,11 +398,14 @@ router.get("/takt-requests/:id/details", requireJwt, details);
 router.get("/leistungsanfragen/:id/details", requireJwt, details);
 router.post("/takt-requests/:id/details/review", requireJwt, reviewDetails);
 router.post("/leistungsanfragen/:id/details/review", requireJwt, reviewDetails);
+router.post("/takt-requests/:id/policy-consent", requireJwt, decidePolicy);
+router.post("/leistungsanfragen/:id/policy-consent", requireJwt, decidePolicy);
 router.patch("/takt-requests/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.patch("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, updateRequirement);
 router.get("/takt-requests/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
   const rows = await listResourceRequirements(req.params.id as string, anOrgId);
   if (rows === null) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
@@ -358,6 +416,7 @@ router.get("/takt-requests/:id/resource-requirements", requireJwt, async (req: a
 router.get("/leistungsanfragen/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
   const rows = await listResourceRequirements(req.params.id as string, anOrgId);
   if (rows === null) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
@@ -368,6 +427,7 @@ router.get("/leistungsanfragen/:id/resource-requirements", requireJwt, async (re
 router.post("/takt-requests/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
   const parsed = requirementCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -391,6 +451,7 @@ router.post("/takt-requests/:id/resource-requirements", requireJwt, async (req: 
 router.post("/leistungsanfragen/:id/resource-requirements", requireJwt, async (req: any, res: any) => {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
   const parsed = requirementCreateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

@@ -9,6 +9,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import {
@@ -24,6 +25,7 @@ import type { ExternalProjectInvitation, ExternalProjectInvitationResponse } fro
 import { createPolicySnapshot } from "./policy-snapshot-service";
 import { toInvitationPolicy } from "./policy-contract-adapters";
 import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
+import { createConstructXPolicy } from "./construct-x-policy-service";
 
 export class ProjectMembershipError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -246,7 +248,10 @@ export async function listPendingProjectInvitations(anOrgId: string) {
 }
 
 export async function assertActiveProjectMembership(projectId: string, anOrgId: string) {
-  const [membership] = await db.select({ id: projectMembershipsTable.id })
+  const [membership] = await db.select({
+    id: projectMembershipsTable.id,
+    projectAgreementPolicyId: projectMembershipsTable.projectAgreementPolicyId,
+  })
     .from(projectMembershipsTable)
     .where(and(
       eq(projectMembershipsTable.projectId, projectId),
@@ -314,6 +319,12 @@ export async function inviteParticipant(input: {
       ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
     },
   });
+  const projectAgreement = createConstructXPolicy({
+    baseSnapshot: policySnapshot,
+    policyType: "PROJECT_AGREEMENT",
+    policyVersion: policySnapshot.templateVersion,
+    lifecycleStatus: "PUBLISHED",
+  });
   const invitationPayload: ExternalProjectInvitation = {
     metadata: {
       messageId,
@@ -337,7 +348,7 @@ export async function inviteParticipant(input: {
     policy: {
       ...toInvitationPolicy(policySnapshot, participant.participantId),
     },
-    policySnapshot,
+    policySnapshot: projectAgreement,
   };
   const [membership] = await db.transaction(async (tx) => {
     const [created] = await tx.insert(projectMembershipsTable).values({
@@ -350,6 +361,7 @@ export async function inviteParticipant(input: {
       correlationId,
       invitationMessage: input.invitationMessage ?? null,
       invitationExpiresAt: input.validUntil ?? null,
+        projectAgreementPolicyId: projectAgreement.policyId,
       invitedAt: now,
     }).returning();
     await tx.insert(messageOutboxTable).values({
@@ -541,6 +553,28 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           ...(input.validUntil ? { validUntil: input.validUntil.toISOString() } : {}),
         },
       });
+      const projectAgreement = createConstructXPolicy({
+        baseSnapshot: policySnapshot,
+        policyType: "PROJECT_AGREEMENT",
+        policyVersion: policySnapshot.templateVersion,
+        lifecycleStatus: "PUBLISHED",
+        effectivePolicy: {
+          ...policySnapshot,
+          childPolicyTypes: [
+            "PERFORMANCE_REQUEST",
+            "SCHEDULE_CHANGE",
+            "DATA_OFFER",
+          ],
+          childPermissions: [
+            "READ",
+            "DOWNLOAD",
+            "USE_FOR_PERFORMANCE_COORDINATION",
+            "USE_FOR_SCHEDULE_COORDINATION",
+            "USE_FOR_RESOURCE_COORDINATION",
+            "USE_FOR_EXECUTION_COORDINATION",
+          ],
+        },
+      });
       const previousMembership = existingMemberships.find((membership) => membership.anOrgId === anOrgId);
       const [membership] = previousMembership
         ? await tx.update(projectMembershipsTable).set({
@@ -550,6 +584,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
             correlationId,
             invitationMessage: input.invitationMessage ?? null,
             invitationExpiresAt: input.validUntil ?? null,
+            projectAgreementPolicyId: projectAgreement.policyId,
             invitedAt: now,
             respondedAt: null,
             acceptedAt: null,
@@ -570,6 +605,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
             correlationId,
             invitationMessage: input.invitationMessage ?? null,
             invitationExpiresAt: input.validUntil ?? null,
+            projectAgreementPolicyId: projectAgreement.policyId,
             invitedAt: now,
           }).returning();
       if (!membership) {
@@ -604,7 +640,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         policy: {
           ...toInvitationPolicy(policySnapshot, participant.participantId),
         },
-        policySnapshot,
+        policySnapshot: projectAgreement,
          dataspacePreparation: {
            mode: "LOCAL_PREPARED",
            participantId: participant.participantId,
@@ -623,6 +659,34 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         correlationId,
         payload: invitationPayload as unknown as Record<string, unknown>,
         status: "PENDING",
+      });
+      await tx.insert(coordinationPoliciesTable).values({
+        id: projectAgreement.policyId,
+        policyKey: `${input.projectId}:agreement:${anOrgId}:${invitationId}`,
+        version: projectAgreement.policyVersion,
+        kind: projectAgreement.policyType,
+        projectId: input.projectId,
+        providerOrgId: input.agOrgId,
+        recipientOrgId: anOrgId,
+        lifecycleStatus: projectAgreement.lifecycleStatus,
+        deltaClass: projectAgreement.deltaClass,
+        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
+        diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
+        effectivePolicy: projectAgreement.effectivePolicy,
+      });
+      await tx.insert(coordinationPoliciesTable).values({
+        id: projectAgreement.policyId,
+        policyKey: `${input.projectId}:agreement:${anOrgId}:${invitationId}`,
+        version: projectAgreement.policyVersion,
+        kind: projectAgreement.policyType,
+        projectId: input.projectId,
+        providerOrgId: input.agOrgId,
+        recipientOrgId: anOrgId,
+        lifecycleStatus: projectAgreement.lifecycleStatus,
+        deltaClass: projectAgreement.deltaClass,
+        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
+        diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
+        effectivePolicy: projectAgreement.effectivePolicy,
       });
       invitationRows.push({ membership, payload: invitationPayload });
     }
@@ -734,9 +798,12 @@ async function resolveInvitation(
     if (linkedPublication.validFrom && linkedPublication.validFrom > now) {
       throw new ProjectMembershipError("PROJECT_INVITATION_NOT_YET_VALID", "Die Projekteinladung kann erst ab Beginn der Datenfreigabe angenommen werden.");
     }
-    if (decision === "ACTIVE" && policyAccepted !== true) {
-      throw new ProjectMembershipError("PROJECT_POLICY_CONFIRMATION_REQUIRED", "Bitte bestätigen Sie die Nutzungsrichtlinie ausdrücklich, bevor Sie die Einladung annehmen.");
-    }
+  }
+  if (decision === "ACTIVE" && membership.projectAgreementPolicyId && policyAccepted !== true) {
+    throw new ProjectMembershipError(
+      "PROJECT_POLICY_CONFIRMATION_REQUIRED",
+      "Bitte bestätigen Sie die Project Policy ausdrücklich, bevor Sie die Einladung annehmen.",
+    );
   }
   const responseMessageId = `project-invitation-response-${membership.invitationId}-${decision}`;
   const responsePayload: ExternalProjectInvitationResponse = {
@@ -767,6 +834,14 @@ async function resolveInvitation(
       eq(projectMembershipsTable.status, "INVITED"),
     )).returning();
     if (!row) throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
+    if (membership.projectAgreementPolicyId) {
+      await tx.update(coordinationPoliciesTable).set({
+        lifecycleStatus: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
+        consentedAt: decision === "ACTIVE" ? now : null,
+        consentedByOrgId: decision === "ACTIVE" ? anOrgId : null,
+        updatedAt: now,
+      }).where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId));
+    }
     if (linkedRecipient) {
       const [recipient] = await tx.update(dataPublicationRecipientsTable).set({
         status: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",

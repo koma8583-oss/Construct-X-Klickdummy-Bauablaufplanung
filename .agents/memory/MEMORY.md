@@ -59,3 +59,4 @@
 - [Wizard draft retry state](wizard-draft-retry-state.md) — after creating a draft, form initialization must not overwrite the active retry state.
 - [Independent data-offer responses](independent-data-offer-responses.md) — publication decisions use their own contract and never mutate project membership.
 - [Tractus-X access grants](tractusx-access-grants.md) — reuse only active, unexpired agreement/EDR pairs; a transfer ID alone is not data-plane authorization.
+- [Construct-X policy hierarchy](construct-x-policy-hierarchy.md) — resolve child policies against explicit inherited capabilities, not project-admission permissions.

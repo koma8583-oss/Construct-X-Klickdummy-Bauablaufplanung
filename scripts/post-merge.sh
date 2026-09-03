@@ -10,6 +10,8 @@ apply_ag_migrations() {
     -f lib/db/migrations/0002_project_memberships.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0004_project_membership_data_publication_link.sql
+  psql "$database_url" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0023_construct_x_coordination_policies.sql
 }
 
 apply_an_migrations() {
@@ -22,6 +24,8 @@ apply_an_migrations() {
     -f lib/db/migrations/0005_an_leistungsanfragen.sql
   psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0007_an_leistungsantworten.sql
+  psql "$database_url" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0024_an_policy_consent.sql
 }
 
 apply_hub_migrations() {
@@ -110,6 +114,8 @@ if [[ -n "${AG_DATABASE_URL:-}" && -n "${AN_DATABASE_URL:-}" && -n "${HUB_DATABA
 elif [[ -n "${DATABASE_URL:-}" && -z "${AG_DATABASE_URL:-}" && -z "${AN_DATABASE_URL:-}" && -z "${HUB_DATABASE_URL:-}" ]]; then
   echo "Applying the complete shared PoC schema to DATABASE_URL"
   apply_ag_migrations "$DATABASE_URL"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0024_an_policy_consent.sql
   DB_ROLE=shared DATABASE_URL="$DATABASE_URL" pnpm --filter @workspace/db run push-force
   apply_shared_post_migration "$DATABASE_URL"
 fi

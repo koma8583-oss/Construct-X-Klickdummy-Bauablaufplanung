@@ -122,6 +122,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  coordinationPoliciesTable,
   messageOutboxTable,
   hubMessagesTable,
 } from "@workspace/db";
@@ -1393,7 +1394,23 @@ router.post(
 
     let pubPolicyCode: string | null = null;
 
-    if (existing.dataPublicationId) {
+    const performancePolicyId = (existing as typeof existing & { performancePolicyId?: string | null }).performancePolicyId;
+    const [performancePolicy] = performancePolicyId
+      ? await db.select({ deltaClass: coordinationPoliciesTable.deltaClass })
+        .from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.id, performancePolicyId))
+        .limit(1)
+      : [];
+    if (performancePolicy?.deltaClass === "NOT_PERMITTED") {
+      res.status(409).json({
+        error: "POLICY_NOT_PERMITTED",
+        message: "Die Leistungsanfrage überschreitet die Project Policy und darf noch nicht versendet werden.",
+        policyDeltaClass: performancePolicy.deltaClass,
+      });
+      return;
+    }
+
+    if (existing.dataPublicationId && !performancePolicy) {
       const [pub] = await db
         .select()
         .from(dataPublicationsTable)
@@ -1663,6 +1680,12 @@ router.get(
       return;
     }
     const { request, snapshot } = result;
+    const performancePolicyId = (request as typeof request & { performancePolicyId?: string | null }).performancePolicyId;
+    const [performancePolicy] = performancePolicyId
+      ? await db.select().from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.id, performancePolicyId))
+        .limit(1)
+      : [];
 
     const isAddressedNu = callerOrgId === request.nuOrgId;
     const isOwnerGu = callerOrgId === request.guOrgId;
@@ -1695,7 +1718,8 @@ router.get(
       return;
     }
 
-    if (isAddressedNu && !request.dataPublicationId) {
+    const usesPerformancePolicy = Boolean(performancePolicy);
+    if (isAddressedNu && !usesPerformancePolicy && !request.dataPublicationId) {
       res.status(403).json({
         error: "LEGACY_NO_PUBLICATION",
         message:
@@ -1704,7 +1728,7 @@ router.get(
       return;
     }
 
-    if (isAddressedNu && request.dataPublicationId) {
+    if (isAddressedNu && !usesPerformancePolicy && request.dataPublicationId) {
       const [gatePub] = await db
         .select({ status: dataPublicationsTable.status })
         .from(dataPublicationsTable)
@@ -1799,6 +1823,11 @@ router.get(
         responseRequiredBy: updatedRequest.responseRequiredBy?.toISOString() ?? null,
         detailsRetrievedAt: updatedRequest.detailsRetrievedAt?.toISOString() ?? null,
         snapshotPayload:    snapshot.snapshotPayload,
+         policySnapshot:     performancePolicy?.policySnapshot ?? snapshot.snapshotPayload.policySnapshot ?? null,
+         policyDeltaClass:   performancePolicy?.deltaClass ?? null,
+         policyDiff:         performancePolicy?.diff ?? null,
+         effectivePolicy:    performancePolicy?.effectivePolicy ?? null,
+         policyDetailsAvailable: performancePolicy?.deltaClass !== "NOT_PERMITTED",
         createdAt:          snapshot.createdAt.toISOString(),
       }),
     );

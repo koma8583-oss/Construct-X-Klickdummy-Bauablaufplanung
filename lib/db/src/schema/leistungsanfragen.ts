@@ -28,6 +28,7 @@ import { leistungenTable } from "./leistungen";
 import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 import { dataPublicationsTable } from "./data-publications";
+import { coordinationPoliciesTable } from "./coordination-policies";
 
 export const leistungsanfrageStatusEnum = pgEnum("leistungsanfrage_status", [
   "DRAFT",
@@ -124,6 +125,16 @@ export const leistungsanfragenTable = pgTable(
      */
     dataPublicationId: text("data_publication_id").references(
       () => dataPublicationsTable.id,
+    ),
+    /** Versioned Construct-X Performance Request Policy for this request. */
+    performancePolicyId: text("performance_policy_id").references(
+      () => coordinationPoliciesTable.id,
+      { onDelete: "restrict" },
+    ),
+    /** Set for schedule-change revisions; independent DataOffers are not used here. */
+    scheduleChangePolicyId: text("schedule_change_policy_id").references(
+      () => coordinationPoliciesTable.id,
+      { onDelete: "restrict" },
     ),
 
     /**

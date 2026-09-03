@@ -38,6 +38,8 @@ export interface PolicySnapshot {
   readonly createdAt: string;
 }
 
+export type { PolicySnapshot as ConstructXBasePolicySnapshot };
+
 export class PolicySnapshotError extends Error {
   constructor(
     public readonly code:

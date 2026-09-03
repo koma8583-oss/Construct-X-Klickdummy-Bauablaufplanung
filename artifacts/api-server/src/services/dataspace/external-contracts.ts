@@ -45,6 +45,17 @@ const policySnapshotSchema = z.object({
   validFrom: externalDate.nullable(),
   validUntil: externalDate.nullable(),
   createdAt: z.string().datetime({ offset: true }),
+  policyType: z.enum(["PROJECT_AGREEMENT", "PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"]).optional(),
+  policyVersion: z.number().int().positive().optional(),
+  parentPolicyId: nonEmpty(200).nullable().optional(),
+  inheritFrom: nonEmpty(200).nullable().optional(),
+  lifecycleStatus: z.enum([
+    "DRAFT", "PUBLISHED", "CONSENT_REQUIRED", "ACCEPTED",
+    "REJECTED", "SUPERSEDED", "REVOKED",
+  ]).optional(),
+  deltaClass: z.enum(["WITHIN_BASELINE", "REQUIRES_CONSENT", "NOT_PERMITTED"]).nullable().optional(),
+  diff: z.record(z.string(), z.unknown()).nullable().optional(),
+  effectivePolicy: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 type PolicySnapshotParticipantInput = {
@@ -389,6 +400,14 @@ export type ExternalPolicySnapshot = {
   validFrom: string | null;
   validUntil: string | null;
   createdAt: string;
+  policyType?: "PROJECT_AGREEMENT" | "PERFORMANCE_REQUEST" | "SCHEDULE_CHANGE" | "DATA_OFFER";
+  policyVersion?: number;
+  parentPolicyId?: string | null;
+  inheritFrom?: string | null;
+  lifecycleStatus?: "DRAFT" | "PUBLISHED" | "CONSENT_REQUIRED" | "ACCEPTED" | "REJECTED" | "SUPERSEDED" | "REVOKED";
+  deltaClass?: "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED" | null;
+  diff?: Record<string, unknown> | null;
+  effectivePolicy?: Record<string, unknown>;
 };
 
 export function assertPolicySnapshotParticipants(payload: PolicySnapshotParticipantInput): void {

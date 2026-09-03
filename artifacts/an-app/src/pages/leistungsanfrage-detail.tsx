@@ -99,6 +99,92 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge data-testid="status-detail" variant="outline" className={`font-medium ${STATUS_TONE[status] ?? "border-border text-muted-foreground"}`}>{STATUS_LABELS[status] ?? "Status nicht veröffentlicht"}</Badge>;
 }
 
+function PolicyDecisionPanel({ details, onChanged }: { details: AnLeistungsanfrageDetails; onChanged: () => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const policy = details as AnLeistungsanfrageDetails & {
+    policyDeltaClass?: "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED" | null;
+    policyConsentStatus?: "NOT_REQUIRED" | "PENDING" | "ACCEPTED" | "REJECTED";
+    policyDiff?: { summary?: unknown; changed?: unknown } | null;
+    policyDetailsAvailable?: boolean;
+  };
+  if (policy.policyDeltaClass !== "REQUIRES_CONSENT" && policy.policyDeltaClass !== "NOT_PERMITTED") return null;
+  const diff = object(policy.policyDiff);
+  const summary = list(diff.summary);
+  const changed = list(diff.changed);
+  const decide = async (decision: "ACCEPT" | "REJECT") => {
+    setBusy(true);
+    try {
+      await fetchJson(`/api/an/leistungsanfragen/${details.id}/policy-consent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      toast({ title: decision === "ACCEPT" ? "Policy bestätigt" : "Policy abgelehnt" });
+      onChanged();
+    } catch (error) {
+      toast({ title: "Policy-Entscheidung konnte nicht gespeichert werden", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (policy.policyDeltaClass === "NOT_PERMITTED") {
+    return (
+      <section data-testid="policy-not-permitted" className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+          <div>
+            <h2 className="font-semibold">Leistungsanfrage nicht zulässig</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Diese Anfrage verlässt die vereinbarte Project Policy. Die Leistungsdetails bleiben gesperrt, bis der Auftraggeber die Project Policy ändert.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+  if (policy.policyConsentStatus === "REJECTED") {
+    return (
+      <section data-testid="policy-consent-rejected" className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <div className="flex items-start gap-3">
+          <X className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+          <div>
+            <h2 className="font-semibold">Abweichende Leistungsanfrage abgelehnt</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Die Details bleiben gesperrt. Eine Ablehnung der Child-Policy beendet die aktive Projektmitgliedschaft nicht.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+  if (policy.policyConsentStatus === "ACCEPTED") {
+    return (
+      <section data-testid="policy-consent-accepted" className="rounded-2xl border border-emerald-700/20 bg-emerald-600/5 p-4 text-sm">
+        <p className="font-semibold text-emerald-800 dark:text-emerald-200">Abweichung bestätigt</p>
+        <p className="mt-1 text-muted-foreground">Die Leistungsdetails sind jetzt für die Prüfung freigegeben.</p>
+      </section>
+    );
+  }
+  return (
+    <section data-testid="policy-consent-panel" className="rounded-2xl border border-amber-600/25 bg-amber-500/10 p-5">
+      <div className="flex items-start gap-3">
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">Bestätigung für abweichende Leistungsanfrage erforderlich</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Vor der Bestätigung sehen Sie nur die Metadaten und die konkrete Abweichung zur Project Policy.
+          </p>
+          {summary.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{summary.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>}
+          {changed.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Geänderte Bereiche: {changed.join(", ")}</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button data-testid="button-accept-policy" disabled={busy} onClick={() => void decide("ACCEPT")}><Check className="mr-2 h-4 w-4" />Bestätigen und Details öffnen</Button>
+            <Button data-testid="button-reject-policy" disabled={busy} variant="outline" onClick={() => void decide("REJECT")}><X className="mr-2 h-4 w-4" />Ablehnen</Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RequestOverview({ details, requestedStart, requestedEnd, onReview }: { details: AnLeistungsanfrageDetails; requestedStart: string; requestedEnd: string; onReview?: () => void }) {
   const snap = object(details.snapshotPayload);
   const service = object(snap.leistung ?? snap.service ?? snap.workPackage);
@@ -554,7 +640,8 @@ export default function LeistungsanfrageDetailPage() {
   const requirements = (requirementQuery.data ?? details.resourceRequirements) as AnLeistungsanfrageResourceRequirement[];
   const hasAgreement = details.status === "CONFIRMED";
   const terminal = ["RESPONDED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status) && !hasAgreement;
-  const canRespond = !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
+  const policyDetailsAvailable = (details as AnLeistungsanfrageDetails & { policyDetailsAvailable?: boolean }).policyDetailsAvailable !== false;
+  const canRespond = policyDetailsAvailable && !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
   const scheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AG"
     ? coordinationQuery.data.openProposal
     : null;
@@ -592,10 +679,11 @@ export default function LeistungsanfrageDetailPage() {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-5 pb-12 lg:p-8">
       <Button data-testid="button-back-inbox" variant="ghost" className="-ml-3 gap-2 text-muted-foreground" onClick={() => setLocation("/leistungsanfragen")}><ArrowLeft className="h-4 w-4" />Zurück zu Anfragen</Button>
-      <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-3"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">LEISTUNGSANFRAGE / {details.requestNumber}</p><StatusBadge status={details.status} /></div><h1 data-testid="text-detail-title" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{phaseHeading(phase)}</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Nur der nächste erforderliche Schritt ist geöffnet. Abgeschlossene Angaben bleiben als Kontext verfügbar.</p></div><div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm shadow-sm"><p className="text-[11px] text-muted-foreground">Aktuelle Phase</p><p data-testid="current-phase" className="mt-1 font-semibold">{phase} · {phaseHeading(phase)}</p></div></header>
+       <header className="flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-3"><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">LEISTUNGSANFRAGE / {details.requestNumber}</p><StatusBadge status={details.status} /></div><h1 data-testid="text-detail-title" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{phaseHeading(phase)}</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Nur der nächste erforderliche Schritt ist geöffnet. Abgeschlossene Angaben bleiben als Kontext verfügbar.</p></div><div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm shadow-sm"><p className="text-[11px] text-muted-foreground">Aktuelle Phase</p><p data-testid="current-phase" className="mt-1 font-semibold">{phase} · {phaseHeading(phase)}</p></div></header>
+       <PolicyDecisionPanel details={details} onChanged={() => void detailQuery.refetch()} />
 
       <div data-testid="phase-progress" className="grid gap-2 md:grid-cols-3">{[1, 2, 3].map((number) => <div key={number} className={`rounded-xl border px-4 py-3 ${phase === number ? "border-primary/40 bg-primary/5" : phase > number ? "border-emerald-700/20 bg-emerald-600/5" : "border-border bg-card"}`}><p className="text-xs text-muted-foreground">Phase {number}</p><p className="mt-1 text-sm font-semibold">{phaseHeading(number)}</p></div>)}</div>
-      {phase > 1 ? <details data-testid="phase-1" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 1 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Anfrage prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4"><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></div></details> : <section data-testid="phase-1" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 1</p><h2 className="mt-1 text-xl font-semibold">Anfrage prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Prüfen Sie die veröffentlichte Leistung und schließen Sie diese Phase bewusst ab.</p></div><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} onReview={details.status === "RECEIVED" ? () => void reviewDetails() : undefined} /></section>}
+       {phase > 1 ? <details data-testid="phase-1" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 1 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Anfrage prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4"><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></div></details> : <section data-testid="phase-1" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Phase 1</p><h2 className="mt-1 text-xl font-semibold">Anfrage prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Prüfen Sie die veröffentlichte Leistung und schließen Sie diese Phase bewusst ab.</p></div><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} onReview={policyDetailsAvailable && details.status === "RECEIVED" ? () => void reviewDetails() : undefined} /></section>}
 
       {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => undefined} onUseRecommendation={useRecommendation} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören für den angefragten Zeitraum in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
 

@@ -13,6 +13,7 @@ export * from "./leistungsantworten";
 export * from "./leistungsantwort-entscheidungen";
 export * from "./leistungsabhaengigkeiten";
 export * from "./leistungs-versionen";
+export * from "./coordination-policies";
 
 // ── Legacy adapter tables (Task #196) — deprecated, use canonical names above ─
 // Provides old TS property names (taktId, taktBezeichnung, taktRequestId, …)

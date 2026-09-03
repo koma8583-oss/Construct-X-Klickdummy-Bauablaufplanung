@@ -6,6 +6,7 @@ export * from "./organizations";
 export * from "./users";
 export * from "./projects";
 export * from "./project-memberships";
+export * from "./coordination-policies";
 export * from "./project-calendars";
 export * from "./takte";
 export * from "./legacy-takt-adapters";

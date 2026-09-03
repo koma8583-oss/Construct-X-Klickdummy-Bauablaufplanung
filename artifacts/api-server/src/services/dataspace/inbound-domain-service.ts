@@ -130,6 +130,12 @@ export async function processIncomingServiceRequest(
       plannedStart: payload.plannedStart,
       plannedEnd: payload.plannedEnd,
       policySnapshot: payload.policySnapshot ?? payload.policy ?? null,
+      policyDeltaClass: payload.policySnapshot?.deltaClass ?? null,
+      policyConsentStatus: payload.policySnapshot?.deltaClass === "REQUIRES_CONSENT"
+        ? "PENDING"
+        : "NOT_REQUIRED",
+      policyDiff: payload.policySnapshot?.diff ?? null,
+      effectivePolicy: payload.policySnapshot?.effectivePolicy ?? null,
       payloadSnapshot: payload as unknown as Record<string, unknown>,
       status: "RECEIVED",
       receivedAt: new Date(metadata.createdAt),

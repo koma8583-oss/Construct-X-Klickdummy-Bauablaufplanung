@@ -9,6 +9,7 @@ import {
 import { organizationsTable } from "./organizations";
 import { projectsTable } from "./projects";
 import { dataPublicationsTable } from "./data-publications";
+import { coordinationPoliciesTable } from "./coordination-policies";
 
 export const projectMembershipStatusEnum = pgEnum("project_membership_status", [
   "INVITED",
@@ -39,6 +40,9 @@ export const projectMembershipsTable = pgTable(
     /** Publication prepared together with this invitation, if any. */
     dataPublicationId: text("data_publication_id")
       .references(() => dataPublicationsTable.id, { onDelete: "set null" }),
+    /** Explicit Construct-X Project Agreement accepted for this membership. */
+    projectAgreementPolicyId: text("project_agreement_policy_id")
+      .references(() => coordinationPoliciesTable.id, { onDelete: "restrict" }),
     status: projectMembershipStatusEnum("status").notNull().default("INVITED"),
     invitationMessage: text("invitation_message"),
     invitationId: text("invitation_id").notNull().unique(),

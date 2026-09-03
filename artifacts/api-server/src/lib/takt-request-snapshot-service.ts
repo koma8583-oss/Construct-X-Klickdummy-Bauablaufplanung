@@ -23,8 +23,14 @@ import {
   taktDependenciesTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
+  coordinationPoliciesTable,
+  projectMembershipsTable,
 } from "@workspace/db";
 import { createPolicySnapshot } from "../services/policy-snapshot-service";
+import {
+  createConstructXPolicy,
+  resolvePolicyDelta,
+} from "../services/construct-x-policy-service";
 import { eq, and } from "drizzle-orm";
 import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
@@ -310,7 +316,66 @@ export async function createTaktRequestWithSnapshot(
 
   // Membership is the sole project-participation gate. Contractor rows carry
   // trade/work-package assignment data, not a second AN consent decision.
-  await assertActiveProjectMembership(takt.projectId, input.nuOrgId);
+  const membership = await assertActiveProjectMembership(takt.projectId, input.nuOrgId);
+  let [agreement] = membership.projectAgreementPolicyId
+    ? await connection.select().from(coordinationPoliciesTable).where(
+      eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId),
+    ).limit(1)
+    : [];
+  if (!agreement) {
+    // Backfill the explicit agreement for memberships created before policy
+    // versioning. This keeps an existing ACTIVE membership equivalent to the
+    // new model without introducing a second consent step.
+    const legacyAgreementSnapshot = createPolicySnapshot({
+      templateId: "PROJECT_MEMBERSHIP",
+      providerContext: { organizationId: input.guOrgId, organizationType: "AG" },
+      overrides: {
+        recipientOrganizationId: input.nuOrgId,
+        purpose: "PROJECT_MEMBERSHIP",
+        projectReference: project.id,
+      },
+    });
+    const legacyAgreement = createConstructXPolicy({
+      baseSnapshot: legacyAgreementSnapshot,
+      policyType: "PROJECT_AGREEMENT",
+      policyVersion: legacyAgreementSnapshot.templateVersion,
+      lifecycleStatus: "ACCEPTED",
+      effectivePolicy: {
+        ...legacyAgreementSnapshot,
+        childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
+        childPermissions: [
+          "READ",
+          "DOWNLOAD",
+          "USE_FOR_PERFORMANCE_COORDINATION",
+          "USE_FOR_SCHEDULE_COORDINATION",
+          "USE_FOR_RESOURCE_COORDINATION",
+          "USE_FOR_EXECUTION_COORDINATION",
+        ],
+      },
+    });
+    await connection.insert(coordinationPoliciesTable).values({
+      id: legacyAgreement.policyId,
+      policyKey: `${project.id}:agreement:${input.nuOrgId}:legacy-${membership.id}`,
+      version: legacyAgreement.policyVersion,
+      kind: legacyAgreement.policyType,
+      projectId: project.id,
+      providerOrgId: input.guOrgId,
+      recipientOrgId: input.nuOrgId,
+      parentPolicyId: null,
+      lifecycleStatus: legacyAgreement.lifecycleStatus,
+      deltaClass: null,
+      policySnapshot: legacyAgreement as unknown as Record<string, unknown>,
+      diff: null,
+      effectivePolicy: legacyAgreement.effectivePolicy,
+      createdByUserId: input.createdByUserId,
+    }).onConflictDoNothing();
+    await connection.update(projectMembershipsTable)
+      .set({ projectAgreementPolicyId: legacyAgreement.policyId })
+      .where(eq(projectMembershipsTable.id, membership.id));
+    [agreement] = await connection.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, legacyAgreement.policyId))
+      .limit(1);
+  }
 
   // ── Step 4: Load dependencies ─────────────────────────────────────────────
   const predecessors = await connection
@@ -337,18 +402,35 @@ export async function createTaktRequestWithSnapshot(
   // subject/message are GU-to-NU communication metadata; they are stored
   // here so the send endpoint can include them in the notification without
   // needing a separate DB lookup or a schema change to takt_requests.
+  const candidateSnapshot = createPolicySnapshot({
+    templateId: "PERFORMANCE_COORDINATION",
+    providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
+    overrides: {
+      recipientOrganizationId: input.nuOrgId,
+      purpose: "construction-service-coordination",
+      projectReference: project.id,
+      workPackageReference: input.taktId,
+    },
+  });
+  const resolution = resolvePolicyDelta(
+    agreement?.effectivePolicy as Record<string, unknown> | undefined,
+    candidateSnapshot,
+  );
+  const performancePolicy = createConstructXPolicy({
+    baseSnapshot: candidateSnapshot,
+    policyType: "PERFORMANCE_REQUEST",
+    policyVersion: takt.version,
+    parentPolicyId: agreement?.id ?? null,
+    lifecycleStatus: resolution.deltaClass === "REQUIRES_CONSENT"
+      ? "CONSENT_REQUIRED"
+      : resolution.deltaClass === "NOT_PERMITTED" ? "DRAFT" : "PUBLISHED",
+    deltaClass: resolution.deltaClass,
+    diff: resolution.diff,
+  });
+
   const snapshotPayload: Record<string, unknown> = {
     ...(basePayload as unknown as Record<string, unknown>),
-    policySnapshot: createPolicySnapshot({
-      templateId: "PERFORMANCE_COORDINATION",
-      providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
-      overrides: {
-        recipientOrganizationId: input.nuOrgId,
-        purpose: "construction-service-coordination",
-        projectReference: project.id,
-        workPackageReference: input.taktId,
-      },
-    }),
+    policySnapshot: performancePolicy,
     ...(input.subject != null || input.message != null
       ? {
           coordinationContext: {
@@ -379,10 +461,28 @@ export async function createTaktRequestWithSnapshot(
         responseRequiredBy: input.responseRequiredBy ?? null,
         createdByUserId: input.createdByUserId,
         dataPublicationId: input.dataPublicationId ?? null,
+        performancePolicyId: performancePolicy.policyId,
         createdAt: now,
         updatedAt: now,
       })
       .returning();
+
+    await tx.insert(coordinationPoliciesTable).values({
+      id: performancePolicy.policyId,
+      policyKey: `${input.requestNumber}:performance`,
+      version: performancePolicy.policyVersion,
+      kind: performancePolicy.policyType,
+      projectId: project.id,
+      providerOrgId: input.guOrgId,
+      recipientOrgId: input.nuOrgId,
+      parentPolicyId: performancePolicy.parentPolicyId,
+      lifecycleStatus: performancePolicy.lifecycleStatus,
+      deltaClass: performancePolicy.deltaClass,
+      policySnapshot: performancePolicy as unknown as Record<string, unknown>,
+      diff: performancePolicy.diff as unknown as Record<string, unknown> | null,
+      effectivePolicy: performancePolicy.effectivePolicy,
+      createdByUserId: input.createdByUserId,
+    });
 
     const [snapshotRow] = await tx
       .insert(taktRequestSnapshotsTable)
