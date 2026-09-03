@@ -575,6 +575,20 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           ],
         },
       });
+      await tx.insert(coordinationPoliciesTable).values({
+        id: projectAgreement.policyId,
+        policyKey: `${input.projectId}:agreement:${anOrgId}:${invitationId}`,
+        version: projectAgreement.policyVersion,
+        kind: projectAgreement.policyType,
+        projectId: input.projectId,
+        providerOrgId: input.agOrgId,
+        recipientOrgId: anOrgId,
+        lifecycleStatus: projectAgreement.lifecycleStatus,
+        deltaClass: projectAgreement.deltaClass,
+        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
+        diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
+        effectivePolicy: projectAgreement.effectivePolicy,
+      });
       const previousMembership = existingMemberships.find((membership) => membership.anOrgId === anOrgId);
       const [membership] = previousMembership
         ? await tx.update(projectMembershipsTable).set({
@@ -659,34 +673,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         correlationId,
         payload: invitationPayload as unknown as Record<string, unknown>,
         status: "PENDING",
-      });
-      await tx.insert(coordinationPoliciesTable).values({
-        id: projectAgreement.policyId,
-        policyKey: `${input.projectId}:agreement:${anOrgId}:${invitationId}`,
-        version: projectAgreement.policyVersion,
-        kind: projectAgreement.policyType,
-        projectId: input.projectId,
-        providerOrgId: input.agOrgId,
-        recipientOrgId: anOrgId,
-        lifecycleStatus: projectAgreement.lifecycleStatus,
-        deltaClass: projectAgreement.deltaClass,
-        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
-        diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
-        effectivePolicy: projectAgreement.effectivePolicy,
-      });
-      await tx.insert(coordinationPoliciesTable).values({
-        id: projectAgreement.policyId,
-        policyKey: `${input.projectId}:agreement:${anOrgId}:${invitationId}`,
-        version: projectAgreement.policyVersion,
-        kind: projectAgreement.policyType,
-        projectId: input.projectId,
-        providerOrgId: input.agOrgId,
-        recipientOrgId: anOrgId,
-        lifecycleStatus: projectAgreement.lifecycleStatus,
-        deltaClass: projectAgreement.deltaClass,
-        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
-        diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
-        effectivePolicy: projectAgreement.effectivePolicy,
       });
       invitationRows.push({ membership, payload: invitationPayload });
     }
