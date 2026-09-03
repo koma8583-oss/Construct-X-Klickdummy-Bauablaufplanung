@@ -140,7 +140,7 @@ describe("AN-Leistungsanfragen-Inbox", () => {
 
   it("bringt einen neuen AG-Terminvorschlag prominent in Zu erledigen", async () => {
     const proposal = { ...request, status: "RESPONDED" as const, nextActionOwner: "AG" as const, openProposal: { id: "proposal-1", start: "2030-10-18T00:00:00.000Z", end: "2030-10-20T00:00:00.000Z", proposerRole: "AG" as const } };
-    vi.stubGlobal("fetch", vi.fn(async () => json([proposal])));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/an/project-invitations" ? json([]) : json([proposal])));
     renderInbox();
     const card = await screen.findByTestId("card-request-request-1");
     expect(within(card).getByTestId("next-action-request-1")).toHaveTextContent("Neuer AG-Terminvorschlag");
