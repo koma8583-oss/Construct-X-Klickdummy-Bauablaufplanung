@@ -88,7 +88,6 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
       </div>
       <div className="mt-4 space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
         <div className="flex items-center gap-2 font-medium"><Lock className="h-4 w-4 text-primary" />Policy-Vorschau</div>
-        <p className="text-muted-foreground">Diese Einladung enthält nur minimale Projektbasisdaten. Sie ist keine Leistungsfreigabe und erzeugt keinen EDC-Vertrag oder Datentransfer.</p>
       </div>
       <div className="mt-4 space-y-2 rounded-xl border p-3 text-sm">
         <div className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4 text-primary" /><span>{policyName}</span></div>
