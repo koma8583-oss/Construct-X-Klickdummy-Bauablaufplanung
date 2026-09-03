@@ -58,11 +58,11 @@ const topics: Topic[] = [
       {
         id: 'start-01',
         title: 'In 10 Minuten arbeitsbereit',
-        summary: 'Prüfen Sie zuerst Organisation, Projekte und Ihre Rolle. Danach können Sie Einladungen und Veröffentlichungen sauber trennen.',
+        summary: 'Prüfen Sie zuerst Organisation, Projekte und Ihre Rolle. Danach können Sie Projekt-Policy, Leistungsanfragen und unabhängige Datenpakete sauber trennen.',
         steps: [
           'Öffnen Sie Projekte und wählen Sie das aktive Bauvorhaben.',
            'Legen Sie Leistungen und die benötigten Leistungsanfragen an.',
-          'Erstellen oder prüfen Sie eine passende Datenraum-Policy.',
+          'Prüfen Sie die Projekt-Policy und lassen Sie für jede Leistungsanfrage automatisch eine passende Child-Policy aus Ihrer Auswahl erzeugen.',
         ],
         tags: ['Onboarding', 'Rolle', 'Projekt'],
       },
@@ -100,12 +100,12 @@ const topics: Topic[] = [
       },
       {
         id: 'projects-02',
-        title: 'Eine Leistung ist noch keine Veröffentlichung',
-        summary: 'Eine angelegte oder veröffentlichte Leistung macht Daten nicht automatisch für alle Beteiligten sichtbar. Sichtbarkeit entsteht erst durch eine explizite Veröffentlichung unter einer Policy.',
+        title: 'Die Leistungsanfrage gibt gezielt Informationen frei',
+        summary: 'Eine Leistung ist der fachliche Bezug. Erst die konkrete Leistungsanfrage beschreibt, welche Informationen für diese Leistung, zu welchem Zweck und in welchem Zeitraum gezielt freigegeben werden.',
         steps: [
-          'Prüfen Sie vor dem Teilen, welche Informationen der Empfänger wirklich braucht.',
-          'Wählen Sie eine passende Policy im Datenraum.',
-          'Veröffentlichen Sie die ausgewählte Leistung oder den Inhalt gezielt.',
+          'Wählen Sie Projekt, AN, Leistung, benötigte Informationen, Zweck, Zeitraum und Antwortfrist aus.',
+          'Lassen Sie daraus automatisch die leistungsbezogene Policy erzeugen, die auf die Projekt-Policy verweist.',
+          'Prüfen Sie die Zusammenfassung und das Delta-Ergebnis vor dem Senden.',
         ],
         tags: ['Sichtbarkeit', 'Policy', 'Leistung'],
       },
@@ -126,10 +126,23 @@ const topics: Topic[] = [
         steps: [
           'Öffnen Sie Leistungsanfragen und wählen Sie Neue Anfrage.',
           'Ordnen Sie die Anfrage einem Projekt und bei Bedarf einer Leistung zu.',
-          'Ergänzen Sie Umfang, Anforderungen, Termin und Empfänger.',
+          'Wählen Sie AN, freigegebene Leistungsinformationen, Nutzungszweck, Zeitraum, Antwortfrist und weitere Bedingungen.',
+          'Prüfen Sie: Innerhalb der Projektvereinbarung ist keine erneute Zustimmung nötig; bei neuen Bedingungen wird das Policy-Delta ausgewiesen.',
           'Senden Sie die Anfrage erst ab, wenn alle Pflichtangaben geprüft sind.',
         ],
         tags: ['Anfrage', 'Anforderung', 'Empfänger'],
+      },
+      {
+        id: 'requests-03',
+        title: 'Beispiel: Bewehrung Decke EG im Neubau Bochum',
+        summary: 'Für Musterbau GmbH erstellt die AG aus ihrer konkreten Auswahl eine nachvollziehbare Leistungs-Child-Policy – ohne technische Policy-Auswahl durch den Nutzer.',
+        steps: [
+          'Wählen Sie Projekt „Neubau Bochum“, AN „Musterbau GmbH“ und die Leistung „Bewehrung Decke EG“.',
+          'Geben Sie nur den erforderlichen Leistungssnapshot, den Zweck „Ausführung vorbereiten“ und den Zeitraum 17.–18.09.2026 frei.',
+          'Setzen Sie die Antwortfrist und prüfen Sie die Zusammenfassung: „innerhalb Projektvereinbarung – keine erneute Zustimmung erforderlich“.',
+          'Senden Sie die Leistungsanfrage. Der AN kann direkt Anfrage prüfen, Machbarkeit prüfen und Rückmeldung senden.',
+        ],
+        tags: ['Neubau Bochum', 'Musterbau GmbH', 'Bewehrung Decke EG', 'Beispiel'],
       },
       {
         id: 'requests-02',
@@ -154,23 +167,23 @@ const topics: Topic[] = [
     articles: [
       {
         id: 'schedule-01',
-        title: 'Mit Alternativvorschlägen arbeiten',
-        summary: 'Wenn ein Nachunternehmen den angefragten Zeitraum nicht bestätigen kann, sehen Sie den Alternativvorschlag direkt am Vorgang.',
+        title: 'Terminänderungen als Revision behandeln',
+        summary: 'Eine Terminänderung ist eine Revision der bestehenden Leistungsvereinbarung und baut auf derselben Policy-Hierarchie auf.',
         steps: [
-          'Prüfen Sie den vorgeschlagenen Termin gegen den Projektablauf.',
-          'Bewerten Sie Voraussetzungen und Auswirkungen auf andere Gewerke.',
-          'Übernehmen Sie den Vorschlag nur, wenn der Ablauf abgestimmt ist.',
+          'Prüfen Sie die Änderung von 17.–18.09.2026 auf 21.–22.09.2026 gegen den Projektablauf.',
+          'Bewerten Sie Voraussetzungen und Auswirkungen auf andere Gewerke; die Projektmitgliedschaft wird nicht erneut angefragt.',
+          'Übernehmen Sie die Revision erst nach beiderseitiger Zustimmung. Bis dahin bleibt 17.–18.09.2026 gültig.',
         ],
         tags: ['Vorschlag', 'Leistung', 'Konflikt'],
       },
       {
         id: 'schedule-02',
         title: 'Was bedeutet „offen“?',
-        summary: 'Offen heißt: Es liegt noch keine abschließende Bestätigung für den Vorgang vor. Es ist kein Fehler, sondern ein Arbeitsstand.',
+        summary: 'Offen heißt: Es liegt noch keine abschließende Bestätigung für die Leistungsanfrage oder Terminänderung vor. Die bisherige Vereinbarung bleibt gültig.',
         steps: [
           'Öffnen Sie die Anfrage, um die letzte Aktivität zu prüfen.',
           'Senden Sie bei Bedarf eine Rückfrage an das Nachunternehmen.',
-          'Aktualisieren Sie die Entscheidung, sobald der Termin geklärt ist.',
+          'Aktualisieren Sie die Entscheidung, sobald die neue Vereinbarung beiderseitig bestätigt ist.',
         ],
         tags: ['Status', 'Offen', 'Entscheidung'],
       },
@@ -186,23 +199,23 @@ const topics: Topic[] = [
     articles: [
       {
         id: 'data-01',
-        title: 'Einladung oder Veröffentlichung?',
-        summary: 'Eine Einladung verbindet einen Nutzer mit dem Projekt. Sie veröffentlicht keine Projektdaten. Datenzugriff folgt erst nach akzeptierter Policy und expliziter Veröffentlichung.',
+        title: 'Projekt-Policy und Leistungs-Child-Policy',
+        summary: 'Die beim Projektbeitritt akzeptierte Projekt-Policy ist die einmalige Rahmenvereinbarung. Jede Leistungsanfrage konkretisiert oder beschränkt diesen Rahmen für genau eine Leistung.',
         steps: [
-          'Laden Sie ein Nachunternehmen als Beteiligten zum Projekt ein.',
-          'Definieren Sie im Datenraum, welche Daten unter welchen Bedingungen geteilt werden.',
-          'Veröffentlichen Sie den ausgewählten Inhalt ausdrücklich.',
+          'Laden Sie das Nachunternehmen ein und legen Sie die Projekt-Policy als Rahmen der Zusammenarbeit fest.',
+          'Wählen Sie für die Leistungsanfrage nur die erforderlichen Informationen, Zweck, Zeitraum und Bedingungen aus.',
+          'Zeigen Sie die automatisch erzeugte Child-Policy und das Delta vor dem Senden an.',
         ],
         tags: ['Einladung', 'Veröffentlichung', 'Zugriff'],
       },
       {
         id: 'data-02',
-        title: 'Policies richtig einsetzen',
-        summary: 'Policies beschreiben Zweck und Grenzen einer Veröffentlichung. Verwenden Sie die restriktivste Policy, die für den Arbeitsschritt ausreicht.',
+        title: 'Policy-Delta richtig bewerten',
+        summary: 'Eine Leistungsanfrage darf die Projekt-Policy konkretisieren oder einschränken. Neue Zwecke, längere Aufbewahrung, weitergehende Weitergabe oder zusätzliche Pflichten sind ein bestätigungspflichtiges Delta.',
         steps: [
-          'Öffnen Sie Datenraum und prüfen Sie vorhandene Policies.',
-          'Lesen Sie Empfänger, Zweck und erlaubten Umfang.',
-          'Veröffentlichen Sie nur die für den nächsten Schritt notwendigen Daten.',
+          'Vergleichen Sie die automatisch erzeugte Leistungs-Policy mit der akzeptierten Projekt-Policy.',
+          'Liegt alles innerhalb des Rahmens, zeigen Sie „keine erneute Zustimmung erforderlich“ an.',
+          'Bei einem zulässigen Delta muss der AN die Erweiterung vor Detaildatenzugriff bestätigen; außerhalb des zulässigen Rahmens ist eine Änderung der Projektvereinbarung nötig.',
         ],
         tags: ['Policy', 'ODRL', 'Datenraum'],
       },
@@ -218,23 +231,23 @@ const topics: Topic[] = [
     articles: [
       {
         id: 'support-01',
-        title: 'Daten sind nicht sichtbar',
-        summary: 'Prüfen Sie zuerst Projektzuordnung, akzeptierte Policy und die explizite Veröffentlichung. Eine Einladung allein reicht nicht aus.',
+        title: 'Leistungsdetails sind noch nicht sichtbar',
+        summary: 'Prüfen Sie Projektmitgliedschaft und Leistungs-Policy. Eine normale Leistungsanfrage innerhalb des Projekt-Rahmens braucht keine zweite Projekt- oder Datenfreigabe.',
         steps: [
-          'Öffnen Sie den Datenraum des betroffenen Projekts.',
-          'Prüfen Sie, ob die Policy akzeptiert und noch gültig ist.',
-          'Kontrollieren Sie, ob der konkrete Inhalt veröffentlicht wurde.',
+          'Prüfen Sie, ob der AN ACTIVE-Projektmitglied ist und die Leistungsanfrage in Phase 1 geöffnet hat.',
+          'Lesen Sie die angezeigte Child-Policy und das Ergebnis der Delta-Prüfung.',
+          'Bei einem echten Delta muss der AN zuerst die Erweiterung bestätigen; bei NOT_PERMITTED muss die AG die Projektvereinbarung ändern.',
         ],
         tags: ['Fehler', 'Sichtbarkeit', 'Policy'],
       },
       {
         id: 'support-02',
         title: 'Wichtige Begriffe',
-        summary: 'AG ist der Auftraggeber, AN das Nachunternehmen. Eine Leistungsanfrage beschreibt eine benötigte Leistung und ihren koordinierten Zeitraum.',
+        summary: 'AG ist der Auftraggeber, AN das Nachunternehmen. Die Projekt-Policy ist der Rahmen; die Leistungsanfrage ist die fachliche, versionierte Child-Policy für eine konkrete Leistung.',
         steps: [
           'AG: steuert Projekt, Veröffentlichungen und Entscheidungen.',
-          'AN: erhält freigegebene Informationen und antwortet auf Anfragen.',
-          'Policy: legt fest, unter welchen Bedingungen Daten zugänglich sind.',
+          'AN: erhält den erforderlichen Leistungssnapshot und antwortet im 3-Phasen-Prozess.',
+          'DataOffer: bleibt ein unabhängiges Datenpaket, etwa BIM-Modell, Logistikkonzept oder Dokumentenpaket.',
         ],
         tags: ['AG', 'AN', 'Glossar'],
       },
@@ -246,25 +259,25 @@ const faqs: FAQ[] = [
   {
     id: 'faq-invite',
     question: 'Werden durch eine Einladung automatisch Projektdaten geteilt?',
-    answer: 'Nein. Eine Einladung stellt die Verbindung zum Projekt her, veröffentlicht aber keine Daten. Der Datenzugriff folgt einer akzeptierten Policy und einer ausdrücklichen Veröffentlichung des konkreten Inhalts.',
+    answer: 'Die Einladung ist der einmalige Projektbeitritt mit der Projekt-Policy als Rahmenvereinbarung. Nach Annahme wird die Projektmitgliedschaft ACTIVE. Eine normale Leistungsanfrage erzeugt daraus eine gezielte Child-Policy für den erforderlichen Leistungssnapshot; eine zweite Projektzugehörigkeit oder separate DataOffer-Bestätigung ist dafür nicht nötig.',
     topic: 'Datenraum & Policies',
   },
   {
     id: 'faq-policy',
     question: 'Was prüfe ich, wenn ein AN eine Information nicht sieht?',
-     answer: 'Prüfen Sie, ob der AN im richtigen Projekt eingeladen ist, die Policy akzeptiert wurde und der konkrete Inhalt unter dieser Policy veröffentlicht wurde. Leistungs- oder Projektdaten bleiben intern, bis Sie sie explizit freigeben.',
+     answer: 'Prüfen Sie, ob der AN ACTIVE-Projektmitglied ist, welche Informationen die Leistungsanfrage freigibt und ob das Policy-Delta innerhalb des Projekt-Rahmens liegt. Bei einem echten, zulässigen Delta muss der AN die Erweiterung vor dem Detaildatenzugriff bestätigen; bei NOT_PERMITTED muss die Projektvereinbarung geändert werden.',
     topic: 'Datenraum & Policies',
   },
   {
     id: 'faq-request',
     question: 'Kann ich eine Leistungsanfrage nach dem Versand noch einordnen?',
-    answer: 'Öffnen Sie den Vorgang und prüfen Sie Status, Antwort und mögliche Alternativvorschläge. Die Anfrage bleibt der beste Bezugspunkt, um Rückfragen und eine Terminentscheidung im Kontext zu halten.',
+    answer: 'Öffnen Sie den Vorgang und prüfen Sie Status, Policy-Zusammenfassung und Delta-Ergebnis. Der AN sieht bei einem passenden Projekt-Rahmen direkt die drei Phasen Anfrage prüfen, Machbarkeit prüfen und Rückmeldung senden.',
     topic: 'Leistungsanfragen',
   },
   {
-    id: 'faq-takt',
+    id: 'faq-service',
     question: 'Wie hängen Leistungen und Leistungsanfragen zusammen?',
-    answer: 'Eine Leistung beschreibt den koordinierten Zeitraum. Eine Leistungsanfrage kann dieser Leistung zugeordnet werden, damit Voraussetzungen und Rückmeldung am richtigen Abschnitt des Bauablaufs zusammenbleiben.',
+    answer: 'Eine Leistung ist der fachliche Bezug. Die Leistungsanfrage beschreibt dazu den erforderlichen Leistungssnapshot, Zweck, Zeitraum, Antwortfrist und Bedingungen als versionierte Child-Policy der Projekt-Policy.',
     topic: 'Projekte & Leistungen',
   },
   {
@@ -272,6 +285,12 @@ const faqs: FAQ[] = [
     question: 'Was ist der nächste Schritt bei einer offenen Antwort?',
     answer: 'Lesen Sie den Vorschlag vollständig, vergleichen Sie ihn mit dem Projektablauf und klären Sie offene Voraussetzungen. Erst danach sollten Sie die Terminentscheidung weitergeben oder den Alternativvorschlag übernehmen.',
     topic: 'Termin & Vorschläge',
+  },
+  {
+    id: 'faq-data-offer',
+    question: 'Wann brauche ich ein separates DataOffer?',
+    answer: 'Nur für unabhängige zusätzliche Datenpakete, zum Beispiel ein BIM-Modell, ein Logistikkonzept oder ein Dokumentenpaket. Ein DataOffer ist kein Pflichtschritt für eine normale Leistungsanfrage und ersetzt deren leistungsbezogene Child-Policy nicht.',
+    topic: 'Datenraum & Policies',
   },
 ];
 
@@ -373,8 +392,8 @@ export default function Hilfe() {
         </div>
         <div>
           <p className="text-sm font-bold text-amber-100">Wichtig: Einladung ist nicht gleich Veröffentlichung</p>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-amber-100/65">
-            Eine Einladung gibt dem AN noch keinen Datenzugriff. Erst eine akzeptierte Policy und Ihre explizite Veröffentlichung machen ausgewählte Projektinformationen zugänglich.
+           <p className="mt-1 max-w-3xl text-xs leading-5 text-amber-100/65">
+             Die Projekt-Policy wird beim Projektbeitritt einmalig akzeptiert. Eine Leistungsanfrage erzeugt daraus automatisch die gezielte Child-Policy für den erforderlichen Leistungssnapshot; ein separates DataOffer bleibt unabhängigen Datenpaketen vorbehalten.
           </p>
         </div>
         <Link href="/data-room" data-testid="link-help-data-room" className="inline-flex items-center gap-2 text-xs font-bold text-amber-300 transition-colors hover:text-amber-100">

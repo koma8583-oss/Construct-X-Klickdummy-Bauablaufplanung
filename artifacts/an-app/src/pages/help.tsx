@@ -55,8 +55,8 @@ const articles: HelpArticle[] = [
       "Nach der Registrierung führt dich der Arbeitsbereich von der Einladung bis zur ersten Rückmeldung.",
     steps: [
       "Profil und Zuständigkeit prüfen: Hinterlege die Ansprechperson für dein Nachunternehmen und kontrolliere die Benachrichtigungsadresse.",
-      "Einladung öffnen: Prüfe Bauvorhaben, einladende Organisation und Rolle. Erst mit deiner Bestätigung wirst du aktives Mitglied.",
-      "Leistungsfreigaben prüfen: Öffne anschließend den Datenraum und akzeptiere nur Freigaben, die du für deine Arbeit brauchst.",
+      "Einladung öffnen: Prüfe Bauvorhaben, einladende Organisation, Rolle und Projekt-Policy. Nach deiner Annahme bist du ACTIVE-Projektmitglied.",
+      "Leistungsanfrage öffnen: Eine normale Anfrage ist die gezielte Freigabe des erforderlichen Leistungssnapshots – ohne zweite Projekt- oder DataOffer-Bestätigung.",
     ],
     keywords: "registrierung profil arbeitsbereich zugang rolle",
     icon: BookOpen,
@@ -64,13 +64,13 @@ const articles: HelpArticle[] = [
   {
     id: "invitations",
     group: "projects",
-    title: "Projekteinladungen und Mitgliedschaft",
+    title: "Projekteinladung als Rahmenvereinbarung",
     summary:
-      "Eine Einladung verbindet dein Nachunternehmen mit einem Projekt. Du entscheidest, ob du die Zusammenarbeit annimmst.",
+      "Die Projekteinladung ist der einmalige Projektbeitritt. Mit deiner Annahme der Projekt-Policy wird deine Projektmitgliedschaft ACTIVE; spätere Leistungsanfragen ändern diese Mitgliedschaft nicht.",
     steps: [
-      "Öffne die Einladung aus dem Bereich Leistungsanfragen oder über den Link in deiner E-Mail.",
-      "Lies Projektname, Bauherrschaft, einladende Organisation und vorgesehene Rolle vollständig.",
-      "Wähle Einladung annehmen oder ablehnen. Eine angenommene Einladung macht dich zum aktiven Projektmitglied.",
+      "Öffne die Einladung aus Anfragen oder über den Link in deiner E-Mail. Beispiel: Projekt „Neubau Bochum“, einladende AG und AN „Musterbau GmbH“.",
+      "Lies Projekt-Policy, Zweck der Zusammenarbeit und vorgesehene Rolle vollständig.",
+      "Wähle Einladung annehmen oder ablehnen. Nur bei Annahme wird die Projektmitgliedschaft ACTIVE; eine spätere Leistungsablehnung beendet sie nicht.",
     ],
     keywords: "einladung projektmitglied aktiv ablehnen annehmen projekt",
     icon: Users,
@@ -78,13 +78,13 @@ const articles: HelpArticle[] = [
   {
     id: "data-policies",
     group: "projects",
-    title: "Leistungsfreigaben und Nutzungsbedingungen",
+    title: "Projekt-Policy und Leistungs-Child-Policy",
     summary:
-      "Datenhoheit bleibt beim Herausgeber. Du siehst ausschließlich Informationen, die ausdrücklich unter einer von dir akzeptierten Regel veröffentlicht wurden.",
+      "Die Projekt-Policy ist dein einmaliger Rahmen. Eine Leistungsanfrage konkretisiert oder beschränkt ihn für eine konkrete Leistung und gibt genau den dafür erforderlichen Leistungssnapshot frei.",
     steps: [
-      "Öffne den Datenraum und wähle eine Leistungsfreigabe. Lies Umfang, Zweck, Gültigkeit und Einschränkungen der Nutzungsbedingungen.",
-      "Bestätige die Leistungsfreigabe separat, wenn du die Veröffentlichung annehmen möchtest.",
-      "Prüfe danach die freigegebenen Leistungen. Wird eine Freigabe zurückgezogen oder läuft sie ab, entfällt der Zugriff.",
+      "Öffne die Leistungsanfrage und lies in Phase 1 Leistung, freigegebene Informationen, Zweck, Zeitraum, Antwortfrist und fachliche Bedingungen.",
+      "Liegt die Child-Policy vollständig innerhalb der akzeptierten Projekt-Policy, ist keine neue ausdrückliche Zustimmung nötig.",
+      "Prüfe danach den Leistungssnapshot und fahre direkt mit Machbarkeit prüfen und Rückmeldung senden fort.",
     ],
     keywords: "datenraum leistungsfreigabe datenangebot policy veröffentlichung sichtbar datenschutz odrl",
     icon: ShieldCheck,
@@ -94,11 +94,11 @@ const articles: HelpArticle[] = [
     group: "coordination",
     title: "Leistungsanfragen beantworten",
     summary:
-      "Leistungsanfragen bündeln die Angaben, die die Baukoordination für einen abgestimmten Zeitraum von dir braucht.",
+      "Leistungsanfragen sind versionierte fachliche Child-Policies. Sie bündeln die gezielte Freigabe für eine Leistung und führen dich direkt durch drei Phasen.",
     steps: [
-      "Öffne eine Anfrage und lies Leistung, Bereich, gewünschtes Zeitfenster und Rückgabefrist.",
-      "Trage deine Rückmeldung ein: verfügbar, bedingt verfügbar oder nicht verfügbar. Ergänze einen konkreten Hinweis, wenn etwas abweicht.",
-      "Sende die Antwort ab. Deine Rückmeldung wird im Verlauf der Anfrage mit Zeitstempel sichtbar.",
+      "Öffne zum Beispiel die Anfrage für „Bewehrung Decke EG“ im Projekt „Neubau Bochum“ von „Musterbau GmbH“ und prüfe Phase 1: Informationen, Zweck und Zeitraum 17.–18.09.2026.",
+      "Prüfe in Phase 2 deine Machbarkeit und trage verfügbar, bedingt verfügbar oder nicht verfügbar ein.",
+      "Sende in Phase 3 die Rückmeldung. Sie wird mit Version und Zeitstempel im Anfrageverlauf sichtbar.",
     ],
     keywords: "leistungsanfrage antwort status rückmeldung frist verfügbar",
     icon: ClipboardList,
@@ -106,13 +106,13 @@ const articles: HelpArticle[] = [
   {
     id: "time-window",
     group: "coordination",
-    title: "Alternativen Zeitraum vorschlagen",
+    title: "Policy-Delta und zusätzliche Bestätigung",
     summary:
-      "Wenn der veröffentlichte Zeitraum nicht passt, kannst du eine belastbare Alternative mit Begründung vorschlagen.",
+      "Neue Zwecke, weitergehende Weitergabe, längere Aufbewahrung oder zusätzliche Pflichten sind eine echte Policy-Erweiterung. Dann wird zuerst nur das Delta angezeigt.",
     steps: [
-      "Wähle in der Anfrage einen alternativen Zeitraum und kontrolliere Start, Ende und betroffenen Bereich.",
-      "Erkläre knapp den Grund: Vorleistung, Personal, Material oder Zugang zur Fläche.",
-      "Sende den Vorschlag und beobachte den Status im Anfrageverlauf. Eine Freigabe oder Rückfrage kommt als neue Nachricht.",
+      "Lies das Delta in Phase 1 und vergleiche es mit der Projekt-Policy. Die eigentlichen Leistungsdetaildaten bleiben bis zur Entscheidung geschützt.",
+      "Bestätige die zulässige Policy-Erweiterung ausdrücklich, wenn du sie für die Leistung akzeptierst.",
+      "Bei NOT_PERMITTED kannst du nicht fortfahren: Dann muss die Projektvereinbarung geändert werden. Deine Projektmitgliedschaft bleibt dabei ACTIVE.",
     ],
     keywords: "alternativer zeitraum vorschlag vorleistung personal material",
     icon: CalendarDays,
@@ -134,13 +134,13 @@ const articles: HelpArticle[] = [
   {
     id: "schedule",
     group: "resources",
-    title: "Terminübersicht und Buchungen",
+    title: "Terminänderung als Revision",
     summary:
-      "Die Terminübersicht zeigt deine bestätigten Buchungen und veröffentlichte Zeiträume an einem Ort.",
+      "Eine Terminänderung ist eine Revision der bestehenden Leistungsvereinbarung und verlangt keine erneute Bestätigung des Projektbeitritts.",
     steps: [
-      "Filtere nach Projekt oder Zeitraum, um den relevanten Ausschnitt zu öffnen.",
-      "Öffne einen Termin, um Bereich, Leistung, Status und beteiligte Ressourcen zu prüfen.",
-      "Melde Konflikte früh über die zugehörige Anfrage oder Nachricht. Ändere keine bestätigte Buchung stillschweigend.",
+      "Öffne die Revision für „Bewehrung Decke EG“ und vergleiche 17.–18.09.2026 mit dem neuen Vorschlag 21.–22.09.2026.",
+      "Prüfe Voraussetzungen und Auswirkungen. Die bisherige Leistungsvereinbarung bleibt gültig, solange du und die AG nicht beide zugestimmt haben.",
+      "Bestätige oder beantworte die Änderung über die zugehörige Leistungsanfrage; die Projektmitgliedschaft wird nicht erneut angefragt.",
     ],
     keywords: "terminübersicht buchung kalender konflikt bestätigung zeitraum",
     icon: CalendarDays,
@@ -167,14 +167,14 @@ const faqs: Faq[] = [
     group: "projects",
     question: "Ist die Projekt-Einladung dasselbe wie eine Leistungsfreigabe?",
     answer:
-      "Nein. Eine Einladung betrifft deine Mitgliedschaft im Projekt. Eine Leistungsfreigabe betrifft konkrete Leistungen und ihre Nutzungsbedingungen. Du kannst die Einladung annehmen, ohne jede Freigabe zu akzeptieren. Du siehst nur Leistungen, die ausdrücklich unter einer akzeptierten Regel veröffentlicht wurden.",
+      "Die Einladung ist der einmalige Projektbeitritt mit Projekt-Policy. Nach Annahme wird die Mitgliedschaft ACTIVE. Eine normale Leistungsanfrage ist danach eine konkrete Child-Policy und gezielte Freigabe des erforderlichen Leistungssnapshots – ohne zweite Projekt- oder DataOffer-Bestätigung.",
   },
   {
     id: "not-seeing-data",
     group: "projects",
     question: "Warum sehe ich Projektdaten nicht?",
     answer:
-      "Prüfe zuerst, ob du aktives Projektmitglied bist. Öffne danach den Datenraum und kontrolliere, ob für die gesuchten Leistungen eine Freigabe vorliegt und von dir akzeptiert wurde. Fehlt die Freigabe oder ist sie abgelaufen, kann nur der Herausgeber sie prüfen oder neu bereitstellen.",
+      "Prüfe zuerst, ob du ACTIVE-Projektmitglied bist. Öffne danach die Leistungsanfrage und lies die Projekt-Policy, die Child-Policy und das Delta-Ergebnis. Bei einer normalen Anfrage ist keine neue Zustimmung nötig; bei einem zulässigen Delta musst du zuerst die Erweiterung bestätigen. Bei NOT_PERMITTED muss die AG die Projektvereinbarung ändern.",
   },
   {
     id: "request-status",
@@ -182,6 +182,13 @@ const faqs: Faq[] = [
     question: "Was bedeuten die Status einer Leistungsanfrage?",
     answer:
       "Offen bedeutet, dass deine Rückmeldung erwartet wird. Beantwortet zeigt, dass du eine Antwort gesendet hast. In Klärung gibt es eine Rückfrage oder einen Alternativvorschlag. Abgeschlossen bedeutet, dass die Koordination die Anfrage beendet hat.",
+  },
+  {
+    id: "policy-delta",
+    group: "coordination",
+    question: "Wann muss ich ein Policy-Delta bestätigen?",
+    answer:
+      "Wenn die Leistungsanfrage vollständig im bereits akzeptierten Projekt-Rahmen liegt, siehst du in Phase 1 „innerhalb Projektvereinbarung – keine erneute Zustimmung erforderlich“. Enthält sie einen neuen Nutzungszweck, weitergehende Weitergabe, längere Aufbewahrung oder zusätzliche Pflichten, musst du genau diese Erweiterung vor dem Abruf der Detaildaten ausdrücklich bestätigen. Außerhalb des zulässigen Rahmens steht NOT_PERMITTED; dann ist eine Änderung der Projektvereinbarung nötig.",
   },
   {
     id: "change-response",
@@ -196,6 +203,13 @@ const faqs: Faq[] = [
     question: "Wer kann meine lokalen Ressourcen sehen?",
     answer:
       "Lokale Ressourcen gehören zu deinen Projektdaten. Sie werden nicht automatisch mit anderen Projektbeteiligten geteilt. Sichtbar wird nur, was du selbst im vorgesehenen Projektkontext veröffentlichst oder auf eine konkrete Anfrage hin übermittelst.",
+  },
+  {
+    id: "data-offer",
+    group: "projects",
+    question: "Wann brauche ich ein separates DataOffer?",
+    answer:
+      "Nur für unabhängige zusätzliche Datenpakete, etwa ein BIM-Modell, ein Logistikkonzept oder ein Dokumentenpaket. Eine normale Leistungsanfrage enthält ihre gezielte Informationsfreigabe selbst und darf nicht von der Annahme eines separaten DataOffers abhängig gemacht werden.",
   },
   {
     id: "technical-problem",
@@ -277,16 +291,16 @@ export default function Help() {
           <div className="mt-6 grid max-w-2xl gap-2 sm:grid-cols-2" data-testid="callout-help-separate-decisions">
             <div className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2.5">
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Schritt 1 · Einladung</p>
-              <p className="mt-1 text-xs leading-5 text-foreground/80">Du wirst aktives Mitglied eines Projekts.</p>
+              <p className="mt-1 text-xs leading-5 text-foreground/80">Du akzeptierst die Projekt-Policy und wirst ACTIVE-Projektmitglied.</p>
             </div>
             <div className="rounded-lg border border-accent/35 bg-accent/10 px-3 py-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Schritt 2 · Leistungsfreigabe</p>
-              <p className="mt-1 text-xs leading-5 text-foreground/80">Du akzeptierst eine konkrete Veröffentlichung separat.</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Schritt 2 · Leistungsanfrage</p>
+              <p className="mt-1 text-xs leading-5 text-foreground/80">Du prüfst die Child-Policy; nur echte Erweiterungen brauchen Zustimmung.</p>
             </div>
           </div>
           <p className="mt-3 flex max-w-2xl items-start gap-2 text-xs leading-5 text-muted-foreground" data-testid="text-help-publication-rule">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            Wichtig: Als AN siehst du nur Daten, die ausdrücklich unter einer von dir akzeptierten Regel veröffentlicht wurden.
+            Wichtig: Die Leistungsanfrage gibt genau den erforderlichen Leistungssnapshot frei. Die technische Tractus-X/EDC-Policy transportiert ihn; die fachliche Vererbung von Projekt- zu Leistungs-Policy wird im Construct-X-Modell bewertet.
           </p>
         </div>
       </section>
