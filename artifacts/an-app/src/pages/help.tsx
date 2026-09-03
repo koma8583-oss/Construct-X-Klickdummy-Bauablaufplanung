@@ -86,7 +86,7 @@ const articles: HelpArticle[] = [
       "Liegt die Child-Policy vollständig innerhalb der akzeptierten Projekt-Policy, ist keine neue ausdrückliche Zustimmung nötig.",
       "Prüfe danach den Leistungssnapshot und fahre direkt mit Machbarkeit prüfen und Rückmeldung senden fort.",
     ],
-    keywords: "datenraum leistungsfreigabe datenangebot policy veröffentlichung sichtbar datenschutz odrl",
+    keywords: "datenraum leistungsanfrage child-policy projekt-policy policy-delta dataoffer bim logistikkonzept dokumentenpaket sichtbar datenschutz",
     icon: ShieldCheck,
   },
   {
@@ -165,7 +165,7 @@ const faqs: Faq[] = [
   {
     id: "invitation-vs-data",
     group: "projects",
-    question: "Ist die Projekt-Einladung dasselbe wie eine Leistungsfreigabe?",
+    question: "Ist die Projekt-Einladung dasselbe wie eine Leistungsanfrage?",
     answer:
       "Die Einladung ist der einmalige Projektbeitritt mit Projekt-Policy. Nach Annahme wird die Mitgliedschaft ACTIVE. Eine normale Leistungsanfrage ist danach eine konkrete Child-Policy und gezielte Freigabe des erforderlichen Leistungssnapshots – ohne zweite Projekt- oder DataOffer-Bestätigung.",
   },
@@ -270,7 +270,7 @@ export default function Help() {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Hilfe durchsuchen, z. B. „Leistungsfreigabe“"
+               placeholder="Hilfe durchsuchen, z. B. „Leistungsanfrage“"
               aria-label="Hilfe durchsuchen"
               data-testid="input-help-search"
               className="h-14 w-full rounded-xl border border-primary/20 bg-background/90 pl-12 pr-12 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15"

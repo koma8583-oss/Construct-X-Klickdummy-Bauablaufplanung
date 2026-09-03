@@ -23,13 +23,15 @@ describe('AN-Hilfe', () => {
     expect(screen.getByRole('heading', { name: /Sicher durch die nächste Abstimmung/i })).toBeInTheDocument();
     expect(screen.getByTestId('callout-help-separate-decisions')).toBeInTheDocument();
     expect(screen.getByTestId('button-help-topic-projects')).toBeInTheDocument();
+    expect(screen.getByTestId('card-help-article-invitations')).toHaveTextContent('ACTIVE');
+    expect(screen.getByTestId('card-help-article-requests')).toHaveTextContent('Bewehrung Decke EG');
   });
 
   it('filtert den Leitfaden über die Hilfesuche', async () => {
     const user = userEvent.setup();
     renderHelp();
 
-    await user.type(screen.getByTestId('input-help-search'), 'Datenangebot');
+    await user.type(screen.getByTestId('input-help-search'), 'DataOffer');
 
     expect(screen.getByTestId('card-help-article-data-policies')).toBeInTheDocument();
     expect(screen.queryByTestId('card-help-article-requests')).not.toBeInTheDocument();
@@ -42,5 +44,16 @@ describe('AN-Hilfe', () => {
     await user.click(screen.getByTestId('button-help-faq-invitation-vs-data'));
 
     expect(screen.getByTestId('text-help-faq-answer-invitation-vs-data')).toBeInTheDocument();
+  });
+
+  it('erklärt Policy-Delta und NOT_PERMITTED verständlich', async () => {
+    const user = userEvent.setup();
+    renderHelp();
+
+    await user.type(screen.getByTestId('input-help-search'), 'NOT_PERMITTED');
+
+    expect(screen.getByTestId('card-help-article-time-window')).toHaveTextContent('Projektvereinbarung');
+    await user.click(screen.getByTestId('button-help-faq-policy-delta'));
+    expect(screen.getByTestId('text-help-faq-answer-policy-delta')).toHaveTextContent('NOT_PERMITTED');
   });
 });

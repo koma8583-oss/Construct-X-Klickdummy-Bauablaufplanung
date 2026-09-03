@@ -147,7 +147,7 @@ const topics: Topic[] = [
       {
         id: 'requests-02',
         title: 'Antworten einordnen',
-        summary: 'Eine Antwort kann den angefragten Ablauf bestätigen oder einen Alternativvorschlag enthalten. Prüfen Sie immer Termin, Voraussetzungen und offene Punkte gemeinsam.',
+        summary: 'Eine Antwort kann den angefragten Ablauf bestätigen oder eine Terminänderung enthalten. Prüfen Sie immer Termin, Voraussetzungen und offene Punkte gemeinsam.',
         steps: [
           'Öffnen Sie die Anfrage und lesen Sie die Rückmeldung im Kontext.',
           'Vergleichen Sie vorgeschlagenes Zeitfenster und Anforderungen.',
@@ -159,7 +159,7 @@ const topics: Topic[] = [
   },
   {
     id: 'schedule',
-    label: 'Termin & Vorschläge',
+    label: 'Termine & Änderungen',
     kicker: 'Abstimmung',
     description: 'Vorschläge prüfen, Konflikte sichtbar machen und Termine verlässlich abstimmen.',
     icon: Timer,
@@ -216,6 +216,7 @@ const topics: Topic[] = [
           'Vergleichen Sie die automatisch erzeugte Leistungs-Policy mit der akzeptierten Projekt-Policy.',
           'Liegt alles innerhalb des Rahmens, zeigen Sie „keine erneute Zustimmung erforderlich“ an.',
           'Bei einem zulässigen Delta muss der AN die Erweiterung vor Detaildatenzugriff bestätigen; außerhalb des zulässigen Rahmens ist eine Änderung der Projektvereinbarung nötig.',
+          'Das Construct-X-Modell beschreibt diese fachliche Hierarchie; Tractus-X/EDC transportiert an der technischen Grenze nur die vollständig aufgelöste effektive Policy.',
         ],
         tags: ['Policy', 'ODRL', 'Datenraum'],
       },
@@ -283,8 +284,8 @@ const faqs: FAQ[] = [
   {
     id: 'faq-open',
     question: 'Was ist der nächste Schritt bei einer offenen Antwort?',
-    answer: 'Lesen Sie den Vorschlag vollständig, vergleichen Sie ihn mit dem Projektablauf und klären Sie offene Voraussetzungen. Erst danach sollten Sie die Terminentscheidung weitergeben oder den Alternativvorschlag übernehmen.',
-    topic: 'Termin & Vorschläge',
+    answer: 'Lesen Sie die Terminänderung vollständig, vergleichen Sie sie mit dem Projektablauf und klären Sie offene Voraussetzungen. Erst danach sollten Sie die Terminentscheidung weitergeben.',
+    topic: 'Termine & Änderungen',
   },
   {
     id: 'faq-data-offer',
@@ -354,7 +355,7 @@ export default function Hilfe() {
             <span className="block text-primary">Auch wenn es schnell gehen muss.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-             Praktische Antworten für Projektsteuerung, Leistungen und kontrollierte Leistungsfreigaben. Suchen Sie nach einem Begriff oder wählen Sie ein Thema.
+             Praktische Antworten für Projektsteuerung, Leistungen und Policy-geprüfte Leistungsanfragen. Suchen Sie nach einem Begriff oder wählen Sie ein Thema.
           </p>
 
           <div className="relative mt-7 max-w-2xl">
@@ -362,7 +363,7 @@ export default function Hilfe() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Zum Beispiel: Einladung, Policy oder Alternativvorschlag"
+              placeholder="Zum Beispiel: Einladung, Policy oder Terminänderung"
               aria-label="Hilfe durchsuchen"
               data-testid="input-help-search"
               className="h-14 w-full rounded-xl border border-primary/30 bg-background/80 pl-12 pr-12 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -391,7 +392,7 @@ export default function Hilfe() {
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-bold text-amber-100">Wichtig: Einladung ist nicht gleich Veröffentlichung</p>
+          <p className="text-sm font-bold text-amber-100">Wichtig: Rahmenvereinbarung und Leistungsanfrage sind nicht dasselbe</p>
            <p className="mt-1 max-w-3xl text-xs leading-5 text-amber-100/65">
              Die Projekt-Policy wird beim Projektbeitritt einmalig akzeptiert. Eine Leistungsanfrage erzeugt daraus automatisch die gezielte Child-Policy für den erforderlichen Leistungssnapshot; ein separates DataOffer bleibt unabhängigen Datenpaketen vorbehalten.
           </p>

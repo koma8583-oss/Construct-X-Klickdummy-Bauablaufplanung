@@ -23,13 +23,15 @@ describe('AG-Hilfe', () => {
     expect(screen.getByRole('heading', { name: /Sicher koordinieren/i })).toBeInTheDocument();
     expect(screen.getByTestId('callout-invitation-publication')).toBeInTheDocument();
     expect(screen.getByTestId('button-topic-data')).toBeInTheDocument();
+    expect(screen.getByTestId('card-help-article-requests-03')).toHaveTextContent('Neubau Bochum');
+    expect(screen.getByTestId('card-help-article-requests-03')).toHaveTextContent('keine erneute Zustimmung erforderlich');
   });
 
   it('filtert Inhalte über die Hilfesuche', async () => {
     const user = userEvent.setup();
     renderHilfe();
 
-    await user.type(screen.getByTestId('input-help-search'), 'Alternativvorschlag');
+    await user.type(screen.getByTestId('input-help-search'), 'Terminänderung');
 
     expect(screen.getByTestId('card-help-article-schedule-01')).toBeInTheDocument();
     expect(screen.queryByTestId('card-help-article-start-01')).not.toBeInTheDocument();
@@ -45,5 +47,16 @@ describe('AG-Hilfe', () => {
 
     await user.click(faqButton);
     expect(screen.queryByTestId('answer-faq-faq-policy')).not.toBeInTheDocument();
+  });
+
+  it('erklärt DataOffers als unabhängige Datenpakete', async () => {
+    const user = userEvent.setup();
+    renderHilfe();
+
+    await user.type(screen.getByTestId('input-help-search'), 'DataOffer');
+
+    expect(screen.getByTestId('faq-item-faq-data-offer')).toBeInTheDocument();
+    await user.click(screen.getByTestId('button-faq-faq-data-offer'));
+    expect(screen.getByTestId('answer-faq-faq-data-offer')).toHaveTextContent('BIM-Modell');
   });
 });
