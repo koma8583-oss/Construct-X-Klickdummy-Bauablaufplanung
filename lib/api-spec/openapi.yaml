@@ -1991,6 +1991,28 @@ paths:
         "422":
           description: Takt has invalid time window or version
 
+  /leistungsanfragen/policy-preview:
+    post:
+      operationId: previewLeistungsanfragePolicy
+      tags: [leistungsanfragen]
+      summary: Preview child policy deltas for selected Leistungen
+      description: Evaluates every selected Leistung against the selected AN's accepted effective project agreement without creating requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeistungsanfragePolicyPreviewInput"
+      responses:
+        "200":
+          description: One explicit policy evaluation per requested Leistung
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeistungsanfragePolicyPreviewResponse"
+        "400": { description: Invalid preview request }
+        "422": { description: Selected field is not permitted for the purpose }
+
   /takt-requests/{requestId}:
     get:
       operationId: getTaktRequestDetail
@@ -3815,6 +3837,58 @@ components:
           type: object
           additionalProperties: true
 
+    LeistungsanfragePolicyPreviewInput:
+      type: object
+      required: [taktIds, nuOrgId, purpose, selectedFields]
+      properties:
+        taktIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+        nuOrgId: { type: string }
+        purpose:
+          type: string
+          enum: [RAHMENTERMINE, LEISTUNGSKOORDINATION, AUSFUEHRUNGSINFORMATIONEN, INDIVIDUELLE_FREIGABE]
+        selectedFields:
+          type: array
+          minItems: 1
+          items: { type: string }
+    LeistungsanfragePolicyPreviewItem:
+      type: object
+      required: [taktId, deltaClass, inheritedEffectivePolicy, diff]
+      properties:
+        taktId: { type: string }
+        deltaClass:
+          type: string
+          enum: [WITHIN_BASELINE, REQUIRES_CONSENT, NOT_PERMITTED]
+        error: { type: string }
+        inheritedEffectivePolicy:
+          type: object
+          nullable: true
+          additionalProperties: true
+        diff:
+          type: object
+          additionalProperties: true
+    LeistungsanfragePolicyPreviewResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeistungsanfragePolicyPreviewItem"
+
+    EffectiveProjectAgreement:
+      type: object
+      description: Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.
+      required: [id, lifecycleStatus, effectivePolicy]
+      properties:
+        id: { type: string }
+        lifecycleStatus: { type: string, enum: [ACCEPTED] }
+        effectivePolicy:
+          type: object
+          additionalProperties: true
+
     ProjectMembership:
       type: object
       description: Bilateral project relationship and invitation lifecycle state
@@ -3829,6 +3903,11 @@ components:
           type: string
           nullable: true
           description: Accepted parent project-agreement policy for child Leistungsfreigaben.
+        projectAgreement:
+          allOf:
+            - $ref: "#/components/schemas/EffectiveProjectAgreement"
+          nullable: true
+          description: Effective accepted parent policy. Null while the membership or policy is pending.
         anParticipantId: { type: string, nullable: true }
         status: { type: string, enum: [INVITED, ACTIVE, REJECTED, REVOKED] }
         invitationMessage: { type: string, nullable: true }

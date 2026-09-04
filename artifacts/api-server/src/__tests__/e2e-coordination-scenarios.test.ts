@@ -24,6 +24,8 @@ import {
   usersTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
+  coordinationPoliciesTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -34,7 +36,7 @@ import {
   messageOutboxTable,
   messageInboxTable,
 } from "@workspace/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -45,6 +47,7 @@ const GU_USER_ID   = "t69-gu-user";
 const NU_USER_ID   = "t69-nu-user";
 const PROJECT_ID   = "t69-project";
 const TAKT_ID      = "t69-takt";
+const PROJECT_AGREEMENT_ID = "t69-project-agreement";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function sign(p: { userId: string; orgId: string | null; orgType: "AG" | "AN" | null; hubAdmin?: boolean; roles?: string[] }): string {
@@ -101,6 +104,10 @@ async function flushRelated() {
     await db.delete(takteTable).where(inArray(takteTable.id, myTaktIds)).catch(() => {});
   await db.delete(projectContractorsTable)
     .where(eq(projectContractorsTable.projectId, PROJECT_ID)).catch(() => {});
+  await db.delete(projectMembershipsTable)
+    .where(eq(projectMembershipsTable.projectId, PROJECT_ID)).catch(() => {});
+  await db.delete(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.projectId, PROJECT_ID)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT_ID)).catch(() => {});
   await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
   await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID)).catch(() => {});
@@ -133,13 +140,37 @@ beforeAll(async () => {
     assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
 
-  await db.execute(sql`
-    INSERT INTO project_memberships
-      (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status)
-    VALUES (${`t69-membership`}, ${PROJECT_ID}, ${GU_ORG_ID}, ${NU_ORG_ID},
-      ${`t69-invitation`}, ${`t69-correlation`}, 'ACTIVE')
-    ON CONFLICT DO NOTHING
-  `);
+  await db.insert(coordinationPoliciesTable).values({
+    id: PROJECT_AGREEMENT_ID,
+    policyKey: PROJECT_AGREEMENT_ID,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID,
+    providerOrgId: GU_ORG_ID,
+    recipientOrgId: NU_ORG_ID,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {},
+    effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG_ID,
+      projectReference: PROJECT_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
+
+  await db.insert(projectMembershipsTable).values({
+    id: "t69-membership",
+    projectId: PROJECT_ID,
+    agOrgId: GU_ORG_ID,
+    anOrgId: NU_ORG_ID,
+    invitationId: "t69-invitation",
+    correlationId: "t69-correlation",
+    status: "ACTIVE",
+    projectAgreementPolicyId: PROJECT_AGREEMENT_ID,
+  }).onConflictDoNothing();
 });
 
 afterAll(async () => {

@@ -26,6 +26,8 @@ import request from "supertest";
 import app from "../app";
 import { agDb as db } from "@workspace/db";
 import {
+  anDb,
+  anLeistungsanfragenTable,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -39,6 +41,7 @@ import {
   policyTemplatesTable,
   messageOutboxTable,
   messageInboxTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import * as jwt from "jsonwebtoken";
@@ -170,6 +173,81 @@ async function createDraftRequest(
   return (res.body as { id: string }).id;
 }
 
+type ChildPolicyDelta = "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED";
+
+async function createRootPolicyGateRequest(deltaClass: ChildPolicyDelta): Promise<{
+  requestId: string;
+  policyId: string;
+}> {
+  const requestId = await createDraftRequest(taktId, agOrgId, anOrgId, agToken);
+  const [requestRow] = await db
+    .select({ performancePolicyId: taktRequestsTable.performancePolicyId })
+    .from(taktRequestsTable)
+    .where(eq(taktRequestsTable.id, requestId));
+  if (!requestRow?.performancePolicyId) {
+    throw new Error("Expected a new TaktRequest to be linked to a performance policy");
+  }
+  const performancePolicyId = requestRow.performancePolicyId;
+
+  const lifecycleStatus = deltaClass === "REQUIRES_CONSENT"
+    ? "CONSENT_REQUIRED"
+    : deltaClass === "NOT_PERMITTED" ? "DRAFT" : "PUBLISHED";
+  const applyPolicyState = async () => {
+    await db
+      .update(coordinationPoliciesTable)
+      .set({ deltaClass, lifecycleStatus })
+       .where(eq(coordinationPoliciesTable.id, performancePolicyId));
+
+    // The delivery snapshot is the source of the AN-local projection. Keep it
+    // aligned with the linked policy so response aliases exercise pending consent.
+    const [snapshot] = await db
+      .select({ snapshotPayload: taktRequestSnapshotsTable.snapshotPayload })
+      .from(taktRequestSnapshotsTable)
+      .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId));
+    if (!snapshot) throw new Error("Expected a new TaktRequest snapshot");
+    const snapshotPayload = snapshot.snapshotPayload as Record<string, unknown>;
+    await db
+      .update(taktRequestSnapshotsTable)
+      .set({
+        snapshotPayload: {
+          ...snapshotPayload,
+          policySnapshot: {
+            ...(snapshotPayload.policySnapshot as Record<string, unknown>),
+            deltaClass,
+            lifecycleStatus,
+          },
+        },
+      })
+      .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId));
+  };
+
+  // NOT_PERMITTED policies correctly prevent delivery. Send while the real
+  // linked policy is still baseline, then revoke it to exercise read-time
+  // enforcement without requiring an invalid outbound delivery.
+  if (deltaClass !== "NOT_PERMITTED") await applyPolicyState();
+
+  const sent = await request(app)
+    .post(`/api/takt-requests/${requestId}/send`)
+    .set("Authorization", `Bearer ${agToken}`);
+  if (sent.status !== 200) {
+    throw new Error(`send policy-gated request failed ${sent.status}: ${JSON.stringify(sent.body)}`);
+  }
+  if (deltaClass === "NOT_PERMITTED") await applyPolicyState();
+
+  return { requestId, policyId: requestRow.performancePolicyId };
+}
+
+async function cleanupRootPolicyGateRequest(requestId: string, policyId: string) {
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId))
+    .catch(() => {});
+  await db.delete(taktRequestSnapshotsTable)
+    .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId))
+    .catch(() => {});
+  await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, requestId)).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, policyId)).catch(() => {});
+}
+
 // ── Setup / Teardown ──────────────────────────────────────────────────────────
 
 beforeAll(async () => {
@@ -200,6 +278,20 @@ beforeAll(async () => {
     anOrgId,
     assignmentStatus: "ACTIVE",
   });
+  const agreementId = `t116-agreement-${crypto.randomUUID()}`;
+  await db.insert(coordinationPoliciesTable).values({
+    id: agreementId, policyKey: agreementId, version: 1, kind: "PROJECT_AGREEMENT",
+    projectId, providerOrgId: agOrgId, recipientOrgId: anOrgId,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: anOrgId,
+      projectReference: projectId,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  });
   await db.insert(projectMembershipsTable).values({
     id: `t116-membership-${crypto.randomUUID()}`,
     projectId,
@@ -208,6 +300,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: `t116-invitation-${crypto.randomUUID()}`,
     correlationId: `t116-correlation-${crypto.randomUUID()}`,
+    projectAgreementPolicyId: agreementId,
   });
 
   const [takt] = await db
@@ -244,6 +337,7 @@ afterAll(async () => {
   await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.agOrgId, agOrgId)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.projectId, projectId)).catch(() => {});
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, projectId)).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, projectId)).catch(() => {});
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId)).catch(() => {});
   // Clear outbox/inbox rows before deleting users/orgs (FK constraints)
@@ -295,7 +389,7 @@ describe("S1 – send without dataPublicationId (legacy mode)", () => {
 // ── S2: Send with non-PUBLISHED publication ────────────────────────────────────
 
 describe("S2 – send with non-PUBLISHED publication", () => {
-  it("should reject with 409 DATA_PUBLICATION_NOT_PUBLISHED", async () => {
+  it("normal child-policy request ignores an unpublished stale DataPublication reference", async () => {
     const now = new Date();
 
     // Create a DRAFT publication
@@ -335,8 +429,7 @@ describe("S2 – send with non-PUBLISHED publication", () => {
         .post(`/api/takt-requests/${reqId}/send`)
         .set("Authorization", `Bearer ${agToken}`);
 
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe("DATA_PUBLICATION_NOT_PUBLISHED");
+      expect(res.status).toBe(200);
     } finally {
       // TaktRequest must be deleted before the publication (FK constraint)
       if (reqId) await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, reqId)).catch(() => {});
@@ -349,7 +442,7 @@ describe("S2 – send with non-PUBLISHED publication", () => {
 // ── S3: Send with publication from different project ──────────────────────────
 
 describe("S3 – send with publication from different project", () => {
-  it("should reject with 409 DATA_PUBLICATION_WRONG_PROJECT", async () => {
+  it("normal child-policy request ignores a stale cross-project DataPublication reference", async () => {
     const now = new Date();
 
     // Create a second project (for otherAgOrgId) and takt
@@ -394,8 +487,7 @@ describe("S3 – send with publication from different project", () => {
         .post(`/api/takt-requests/${reqId}/send`)
         .set("Authorization", `Bearer ${agToken}`);
 
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe("DATA_PUBLICATION_WRONG_PROJECT");
+      expect(res.status).toBe(200);
     } finally {
       if (reqId) await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, reqId)).catch(() => {});
       await db.delete(dataPublicationRecipientsTable).where(eq(dataPublicationRecipientsTable.publicationId, otherPub.id)).catch(() => {});
@@ -408,7 +500,7 @@ describe("S3 – send with publication from different project", () => {
 // ── S4: Send with AN not a recipient ──────────────────────────────────────────
 
 describe("S4 – send when AN is not a recipient", () => {
-  it("should reject with 409 DATA_PUBLICATION_AN_NOT_RECIPIENT", async () => {
+  it("normal child-policy request ignores a stale DataPublication recipient link", async () => {
     const now = new Date();
 
     // Create a publication WITHOUT this AN as recipient
@@ -440,8 +532,7 @@ describe("S4 – send when AN is not a recipient", () => {
         .post(`/api/takt-requests/${reqId}/send`)
         .set("Authorization", `Bearer ${agToken}`);
 
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe("DATA_PUBLICATION_AN_NOT_RECIPIENT");
+      expect(res.status).toBe(200);
     } finally {
       if (reqId) await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, reqId)).catch(() => {});
       await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.id, pub.id)).catch(() => {});
@@ -638,5 +729,98 @@ describe("D1/D2 – downstream endpoints require DETAILS_RETRIEVED", () => {
       });
 
     expect(res.status).toBe(201);
+  });
+});
+
+// ── Root-route child-policy regressions ───────────────────────────────────────
+//
+// These routes predate the AN-local projection URLs. They must still enforce the
+// linked Construct-X child policy before returning an immutable snapshot.
+describe("root details, snapshot, and response aliases enforce linked child policy", () => {
+  it("blocks root details and snapshot for pending REQUIRES_CONSENT without exposing a snapshot", async () => {
+    const { requestId, policyId } = await createRootPolicyGateRequest("REQUIRES_CONSENT");
+    try {
+      const [details, snapshot] = await Promise.all([
+        request(app)
+          .get(`/api/takt-requests/${requestId}/details`)
+          .set("Authorization", `Bearer ${anToken}`),
+        request(app)
+          .get(`/api/takt-requests/${requestId}/snapshot`)
+          .set("Authorization", `Bearer ${anToken}`),
+      ]);
+
+      for (const res of [details, snapshot]) {
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe("POLICY_CONSENT_REQUIRED");
+        expect(res.body.snapshotPayload).toBeUndefined();
+        expect(res.body.snapshot).toBeUndefined();
+      }
+    } finally {
+      await cleanupRootPolicyGateRequest(requestId, policyId);
+    }
+  });
+
+  it("blocks root details and snapshot for NOT_PERMITTED without exposing a snapshot", async () => {
+    const { requestId, policyId } = await createRootPolicyGateRequest("NOT_PERMITTED");
+    try {
+      const [details, snapshot] = await Promise.all([
+        request(app)
+          .get(`/api/takt-requests/${requestId}/details`)
+          .set("Authorization", `Bearer ${anToken}`),
+        request(app)
+          .get(`/api/takt-requests/${requestId}/snapshot`)
+          .set("Authorization", `Bearer ${anToken}`),
+      ]);
+
+      for (const res of [details, snapshot]) {
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe("NOT_PERMITTED");
+        expect(res.body.snapshotPayload).toBeUndefined();
+        expect(res.body.snapshot).toBeUndefined();
+      }
+    } finally {
+      await cleanupRootPolicyGateRequest(requestId, policyId);
+    }
+  });
+
+  it("allows root details and snapshot for WITHIN_BASELINE without second consent", async () => {
+    const { requestId, policyId } = await createRootPolicyGateRequest("WITHIN_BASELINE");
+    try {
+      const details = await request(app)
+        .get(`/api/takt-requests/${requestId}/details`)
+        .set("Authorization", `Bearer ${anToken}`);
+      expect(details.status).toBe(200);
+      expect(details.body.snapshotPayload).toBeDefined();
+
+      const snapshot = await request(app)
+        .get(`/api/takt-requests/${requestId}/snapshot`)
+        .set("Authorization", `Bearer ${anToken}`);
+      expect(snapshot.status).toBe(200);
+      expect(snapshot.body.snapshot).toBeDefined();
+    } finally {
+      await cleanupRootPolicyGateRequest(requestId, policyId);
+    }
+  });
+
+  it("blocks both legacy root response aliases while child-policy consent is pending", async () => {
+    const { requestId, policyId } = await createRootPolicyGateRequest("REQUIRES_CONSENT");
+    try {
+      const legacy = await request(app)
+        .post(`/api/takt-requests/${requestId}/response`)
+        .set("Authorization", `Bearer ${anToken}`)
+        .send({ decision: "REJECTED" });
+      const canonical = await request(app)
+        .post(`/api/takt-requests/${requestId}/responses`)
+        .set("Authorization", `Bearer ${anToken}`)
+        .send({ decision: "REJECTED" });
+
+      for (const res of [legacy, canonical]) {
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe("POLICY_CONSENT_REQUIRED");
+        expect(res.body.action).toBe("ANSWER");
+      }
+    } finally {
+      await cleanupRootPolicyGateRequest(requestId, policyId);
+    }
   });
 });

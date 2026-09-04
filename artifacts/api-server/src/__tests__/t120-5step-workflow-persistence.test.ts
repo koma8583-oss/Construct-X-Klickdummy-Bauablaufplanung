@@ -30,6 +30,7 @@ import {
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -69,6 +70,7 @@ const AG_USER   = `${PREFIX}-ag-user`;
 const AN_USER   = `${PREFIX}-an-user`;
 const PROJECT   = `${PREFIX}-project`;
 const TAKT      = `${PREFIX}-takt`;
+const PROJECT_AGREEMENT = `${PREFIX}-project-agreement`;
 
 let agToken: string;
 let anToken: string;
@@ -166,6 +168,26 @@ beforeAll(async () => {
     .insert(projectContractorsTable)
     .values({ projectId: PROJECT, anOrgId: AN_ORG, assignmentStatus: "ACTIVE" })
     .onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: PROJECT_AGREEMENT,
+    policyKey: PROJECT_AGREEMENT,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT,
+    providerOrgId: AG_ORG,
+    recipientOrgId: AN_ORG,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {},
+    effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: AN_ORG,
+      projectReference: PROJECT,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: `${PREFIX}-membership`,
     projectId: PROJECT,
@@ -174,6 +196,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: `${PREFIX}-invitation`,
     correlationId: `${PREFIX}-correlation`,
+    projectAgreementPolicyId: PROJECT_AGREEMENT,
   }).onConflictDoNothing();
 
   // Takt
@@ -252,6 +275,8 @@ afterAll(async () => {
   await db
     .execute(sql`DELETE FROM project_memberships WHERE project_id = ${PROJECT}`).catch(() => {});
   await db
+    .execute(sql`DELETE FROM coordination_policies WHERE project_id = ${PROJECT}`).catch(() => {});
+  await db
     .execute(sql`DELETE FROM projects WHERE id = ${PROJECT}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM users WHERE id IN (${sql.raw(`'${AG_USER}', '${AN_USER}'`)})`).catch(() => {});
@@ -275,7 +300,7 @@ describe("W1 – policy accepted then navigate away and return", () => {
     expect(res.body.snapshotPayload).toBeDefined();
   });
 
-  it("W1b – after accepting policy: /details returns 200, detailsRetrievedAt set (Step 1 done, Step 2 active)", async () => {
+  it("W1b – publication acceptance does not regress access granted by the accepted project agreement", async () => {
     await acceptPolicy(pubId);
 
     const res = await request(app)
@@ -283,14 +308,14 @@ describe("W1 – policy accepted then navigate away and return", () => {
       .set("Authorization", `Bearer ${anToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.detailsRetrievedAt).toBeNull();
-    expect(res.body.status).toBe("RECEIVED");
+    expect(res.body.detailsRetrievedAt).toBeTruthy();
+    expect(res.body.status).toBe("DETAILS_RETRIEVED");
     const reviewed = await request(app)
       .post(`/api/an/takt-requests/${requestId}/details/review`)
       .set("Authorization", `Bearer ${anToken}`)
       .send({});
     expect(reviewed.status).toBe(200);
-    expect(reviewed.body.detailsRetrievedAt).toBeTruthy();
+    expect(reviewed.body.detailsRetrievedAt).toBe(res.body.detailsRetrievedAt);
     expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     expect(res.body.snapshotPayload).toBeDefined();
   });

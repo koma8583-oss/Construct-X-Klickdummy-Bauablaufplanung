@@ -118,6 +118,7 @@ import {
   getCoordination,
   resolveChangeProposal,
 } from "../services/service-change-proposal-service";
+import { LeistungsanfragePolicyAccessError } from "../services/leistungsanfrage-policy-guard";
 import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
@@ -1012,6 +1013,10 @@ router.post("/leistungsanfragen/:id/change-proposals", requireJwt, async (req, r
     });
     res.status(201).json(proposal);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, code: error.code, action: error.action });
+      return;
+    }
     const status = (error as { statusCode?: number }).statusCode ?? 500;
     const message = error instanceof Error ? error.message : "Vorschlag konnte nicht erstellt werden";
     res.status(status).json({
@@ -1032,6 +1037,10 @@ router.post("/leistungsanfragen/:id/change-proposals/:proposalId/accept", requir
     });
     res.json(proposal);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, code: error.code, action: error.action });
+      return;
+    }
     const status = (error as { statusCode?: number }).statusCode ?? 500;
     res.status(status).json({ error: error instanceof Error ? error.message : "Vorschlag konnte nicht angenommen werden" });
   }

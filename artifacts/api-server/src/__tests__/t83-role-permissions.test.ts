@@ -44,6 +44,7 @@ import {
   projectContractorsTable,
   projectMembershipsTable,
   taktRequestSnapshotsTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import app from "../app";
@@ -120,6 +121,19 @@ beforeAll(async () => {
       eq(projectContractorsTable.anOrgId, NU_ORG),
     ));
   await db.insert(projectContractorsTable).values({ projectId: PROJ_ID, anOrgId: NU_ORG });
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t83-agreement", policyKey: "t83-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJ_ID, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJ_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t83-membership",
     projectId: PROJ_ID,
@@ -128,6 +142,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t83-invitation",
     correlationId: "t83-correlation",
+    projectAgreementPolicyId: "t83-agreement",
   }).onConflictDoNothing();
 
   // Upsert with DO UPDATE so repeated runs reset lifecycleStatus back to PLANNED
@@ -156,6 +171,7 @@ afterAll(async () => {
   await db.delete(projectMembershipsTable)
     .where(eq(projectMembershipsTable.projectId, PROJ_ID));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT_ID));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJ_ID));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJ_ID));
   await db.delete(usersTable)
     .where(inArray(usersTable.id, [HUB_USER_ID, GENERIC_USER_ID]));

@@ -63,6 +63,8 @@ import type {
   LeistungUpdateResult,
   LeistungsanfrageDraftResponse,
   LeistungsanfrageListItem,
+  LeistungsanfragePolicyPreviewInput,
+  LeistungsanfragePolicyPreviewResponse,
   ListAnLeistungsanfragenParams,
   ListDelegationsParams,
   ListInboxMessagesParams,
@@ -6143,6 +6145,78 @@ export const useCreateTaktRequestBatchWithSnapshot = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateTaktRequestBatchWithSnapshotMutationOptions(options));
+    }
+
+export const getPreviewLeistungsanfragePolicyUrl = () => {
+
+
+
+
+  return `/api/leistungsanfragen/policy-preview`
+}
+
+/**
+ * Evaluates every selected Leistung against the selected AN's accepted effective project agreement without creating requests.
+ * @summary Preview child policy deltas for selected Leistungen
+ */
+export const previewLeistungsanfragePolicy = async (leistungsanfragePolicyPreviewInput: LeistungsanfragePolicyPreviewInput, options?: RequestInit): Promise<LeistungsanfragePolicyPreviewResponse> => {
+
+  return customFetch<LeistungsanfragePolicyPreviewResponse>(getPreviewLeistungsanfragePolicyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(leistungsanfragePolicyPreviewInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewLeistungsanfragePolicyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>, TError,{data: BodyType<LeistungsanfragePolicyPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>, TError,{data: BodyType<LeistungsanfragePolicyPreviewInput>}, TContext> => {
+
+const mutationKey = ['previewLeistungsanfragePolicy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>, {data: BodyType<LeistungsanfragePolicyPreviewInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewLeistungsanfragePolicy(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewLeistungsanfragePolicyMutationResult = NonNullable<Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>>
+    export type PreviewLeistungsanfragePolicyMutationBody = BodyType<LeistungsanfragePolicyPreviewInput>
+    export type PreviewLeistungsanfragePolicyMutationError = ErrorType<void>
+
+    /**
+ * @summary Preview child policy deltas for selected Leistungen
+ */
+export const usePreviewLeistungsanfragePolicy = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>, TError,{data: BodyType<LeistungsanfragePolicyPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewLeistungsanfragePolicy>>,
+        TError,
+        {data: BodyType<LeistungsanfragePolicyPreviewInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewLeistungsanfragePolicyMutationOptions(options));
     }
 
 export const getGetTaktRequestDetailUrl = (requestId: string,) => {

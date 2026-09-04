@@ -18,6 +18,7 @@ import {
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
+   coordinationPoliciesTable,
   usersTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
@@ -104,6 +105,19 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG,
   }).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t35-agreement", policyKey: "t35-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t35-membership-nu",
     projectId: PROJECT_ID,
@@ -112,6 +126,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t35-invitation-nu",
     correlationId: "t35-correlation-nu",
+    projectAgreementPolicyId: "t35-agreement",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({

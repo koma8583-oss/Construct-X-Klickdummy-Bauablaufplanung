@@ -43,6 +43,7 @@ import { organizationsTable } from "./organizations";
 import { usersTable } from "./users";
 import { dataPublicationsTable } from "./data-publications";
 import { resourceTypesTable } from "./resources";
+import { coordinationPoliciesTable } from "./coordination-policies";
 
 // ── Re-use the same enum pg-type names (enum values defined once in canonical files)
 // We import the enum objects from canonical so there's exactly one pgEnum() call
@@ -152,6 +153,15 @@ export const taktRequestsTable = pgTable(
       .references(() => usersTable.id),
     dataPublicationId: text("data_publication_id").references(
       () => dataPublicationsTable.id,
+    ),
+    /** Construct-X child policies are retained on legacy views as well. */
+    performancePolicyId: text("performance_policy_id").references(
+      () => coordinationPoliciesTable.id,
+      { onDelete: "restrict" },
+    ),
+    scheduleChangePolicyId: text("schedule_change_policy_id").references(
+      () => coordinationPoliciesTable.id,
+      { onDelete: "restrict" },
     ),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     expiredAt: timestamp("expired_at", { withTimezone: true }),

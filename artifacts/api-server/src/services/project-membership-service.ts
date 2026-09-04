@@ -83,6 +83,21 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
     eq(projectMembershipsTable.projectId, projectId),
     eq(projectMembershipsTable.agOrgId, agOrgId),
   ));
+  const agreementIds = memberships
+    .filter((membership) => membership.status === "ACTIVE" && membership.projectAgreementPolicyId)
+    .map((membership) => membership.projectAgreementPolicyId!);
+  const agreements = agreementIds.length
+    ? await db.select({
+      id: coordinationPoliciesTable.id,
+      lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+      effectivePolicy: coordinationPoliciesTable.effectivePolicy,
+    }).from(coordinationPoliciesTable).where(inArray(coordinationPoliciesTable.id, agreementIds))
+    : [];
+  const agreementById = new Map(
+    agreements
+      .filter((agreement) => agreement.lifecycleStatus === "ACCEPTED")
+      .map((agreement) => [agreement.id, agreement]),
+  );
   const messageIds = memberships.flatMap((m) => [
     `project-invitation-${m.invitationId}`,
     `project-invitation-response-${m.invitationId}-ACTIVE`,
@@ -113,6 +128,11 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
   };
   return memberships.map((membership) => ({
     ...membership,
+    // Only expose an effective parent policy once it is accepted. Pending
+    // invitations must not disclose policy content to the AG wizard.
+    projectAgreement: membership.projectAgreementPolicyId
+      ? agreementById.get(membership.projectAgreementPolicyId) ?? null
+      : null,
     invitationDelivery: toDelivery(`project-invitation-${membership.invitationId}`),
     responseDelivery: toDelivery(
       byMessageId.has(`project-invitation-response-${membership.invitationId}-ACTIVE`)

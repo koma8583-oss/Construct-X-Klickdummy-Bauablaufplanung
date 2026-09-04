@@ -25,6 +25,7 @@ import {
   projectsTable,
   messageOutboxTable,
   serviceChangeProposalsTable,
+  coordinationPoliciesTable,
   usersTable,
 } from "@workspace/db";
 import app from "../app";
@@ -33,6 +34,7 @@ import {
   calculateScheduleDelta,
   createChangeProposal,
   resolveChangeProposal,
+  applyIncomingScheduleChangeResponseOnAg,
 } from "../services/service-change-proposal-service";
 import { getAnLeistungsanfrageDetail } from "../services/an-leistungsanfrage-service";
 
@@ -57,6 +59,7 @@ const REQUEST_IDS = [
   ROUNDTRIP_REQUEST,
   "t212-request-an-local",
   "t212-request-an-init",
+  "t212-request-policy-chain",
 ];
 
 const publishedSnapshot = {
@@ -98,6 +101,8 @@ function createAgChangeProposal(input: Parameters<typeof createChangeProposal>[0
 
 const originalStart = new Date("2026-09-01T08:00:00.000Z");
 const originalEnd = new Date("2026-09-05T17:00:00.000Z");
+const POLICY_AGREEMENT = "t212-policy-agreement";
+const POLICY_PERFORMANCE = "t212-policy-performance";
 
 async function cleanupFixtures() {
   await hubDb.delete(messageDeliveryAttemptsTable)
@@ -130,6 +135,16 @@ async function cleanupFixtures() {
   await db.delete(serviceChangeProposalsTable)
     .where(inArray(serviceChangeProposalsTable.leistungsanfrageId, REQUEST_IDS))
     .catch(() => {});
+  await db.update(leistungsanfragenTable).set({
+    performancePolicyId: null, scheduleChangePolicyId: null,
+  }).where(inArray(leistungsanfragenTable.id, REQUEST_IDS)).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(and(
+    eq(coordinationPoliciesTable.projectId, PROJECT),
+    eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+  )).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(inArray(coordinationPoliciesTable.id, [
+    POLICY_PERFORMANCE, POLICY_AGREEMENT,
+  ])).catch(() => {});
   await db.delete(leistungsanfrageSnapshotsTable)
     .where(inArray(leistungsanfrageSnapshotsTable.leistungsanfrageId, REQUEST_IDS))
     .catch(() => {});
@@ -195,6 +210,32 @@ beforeAll(async () => {
   await insertRequest(ROUNDTRIP_REQUEST, "ROUNDTRIP");
   await insertRequest("t212-request-an-local", "AN-LOCAL");
   await insertRequest("t212-request-an-init", "AN-INIT");
+  await insertRequest("t212-request-policy-chain", "POLICY-CHAIN");
+  await db.insert(coordinationPoliciesTable).values([
+    {
+      id: POLICY_AGREEMENT, policyKey: "t212:agreement", version: 1, kind: "PROJECT_AGREEMENT",
+      projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG, lifecycleStatus: "ACCEPTED",
+      policySnapshot: {}, effectivePolicy: {
+        policyType: "PROJECT_AGREEMENT", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
+        childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE"],
+        childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: [],
+      },
+    },
+    {
+      id: POLICY_PERFORMANCE, policyKey: "t212:performance", version: 1, kind: "PERFORMANCE_REQUEST",
+      projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG, parentPolicyId: POLICY_AGREEMENT,
+      lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+        policyType: "PERFORMANCE_REQUEST", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
+        childPolicyTypes: ["SCHEDULE_CHANGE"], childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: [],
+      },
+    },
+  ]);
+  await db.update(leistungsanfragenTable).set({ performancePolicyId: POLICY_PERFORMANCE })
+    .where(inArray(leistungsanfragenTable.id, [
+      "t212-request-policy-chain",
+    ]));
   await db.insert(leistungsanfrageSnapshotsTable).values({
     leistungsanfrageId: REQUEST_IDS[6],
     schemaVersion: publishedSnapshot.schemaVersion,
@@ -582,6 +623,277 @@ describe("bilateral change proposals", () => {
     const rows = await db.select().from(serviceChangeProposalsTable)
       .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId));
     expect(rows.filter((row) => row.status === "OPEN")).toHaveLength(1);
+  });
+
+  it("versions schedule policies without replacing the agreed period until consent", async () => {
+    const requestId = "t212-request-policy-chain";
+    const first = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-03T08:00:00Z"), end: new Date("2026-09-07T17:00:00Z"),
+    });
+    const pending = await db.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+      eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+    ));
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ version: 1, lifecycleStatus: "PUBLISHED" });
+    expect((pending[0]?.policySnapshot as Record<string, unknown>).parentPolicyId).toBe(POLICY_PERFORMANCE);
+    expect((await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId)))[0]?.agreedStart)
+      .toEqual(originalStart);
+
+    await runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId, proposalId: first.id, orgId: NU_ORG, userId: NU_USER, status: "ACCEPTED",
+    }));
+    const accepted = await db.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+      eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+    ));
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]).toMatchObject({ version: 1, lifecycleStatus: "ACCEPTED" });
+
+    const second = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-04T08:00:00Z"), end: new Date("2026-09-08T17:00:00Z"),
+    });
+    await runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId, proposalId: second.id, orgId: NU_ORG, userId: NU_USER, status: "REJECTED",
+    }));
+    const afterReject = await db.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+      eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+    )).orderBy(coordinationPoliciesTable.version);
+    expect(afterReject.map((row) => row.lifecycleStatus)).toEqual(["ACCEPTED", "REJECTED"]);
+    expect((await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId)))[0]?.agreedStart)
+      .toEqual(new Date("2026-09-03T08:00:00.000Z"));
+
+    const third = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-05T08:00:00Z"), end: new Date("2026-09-09T17:00:00Z"),
+    });
+    const counter = await createAgChangeProposal({
+      requestId, orgId: NU_ORG, userId: NU_USER, action: "COUNTER", supersedesProposalId: third.id,
+      start: new Date("2026-09-06T08:00:00Z"), end: new Date("2026-09-10T17:00:00Z"),
+    });
+    await runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId, proposalId: counter.id, orgId: GU_ORG, userId: GU_USER, status: "ACCEPTED",
+    }));
+    const chain = await db.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+      eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+    ));
+    expect(chain.filter((row) => row.lifecycleStatus === "ACCEPTED")).toHaveLength(1);
+    expect(chain.filter((row) => row.lifecycleStatus === "SUPERSEDED")).toHaveLength(2);
+    expect(chain.map((row) => (row.policySnapshot as Record<string, unknown>).inheritFrom))
+      .toEqual(expect.arrayContaining([POLICY_PERFORMANCE]));
+  });
+
+  it("rejects an inbound acceptance whose window differs from the open proposal", async () => {
+    const requestId = "t212-request-policy-chain";
+    const proposal = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-11T08:00:00Z"), end: new Date("2026-09-15T17:00:00Z"),
+    });
+    await expect(applyIncomingScheduleChangeResponseOnAg({
+      metadata: { messageId: `mismatch-${proposal.id}`, correlationId: proposal.id, schemaVersion: "1.0", senderOrgId: NU_ORG, receiverOrgId: GU_ORG, createdAt: new Date().toISOString() },
+      requestId: proposal.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: requestId,
+      changeProposalId: proposal.id, decision: "ACCEPTED",
+      acceptedTimeWindow: { start: "2026-09-12T08:00:00.000Z", end: "2026-09-16T17:00:00.000Z" },
+    })).rejects.toMatchObject({ statusCode: 409 });
+    const [unchanged] = await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId));
+    const [stillOpen] = await db.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, proposal.id));
+    expect(stillOpen?.status).toBe("OPEN");
+    expect(unchanged?.agreedStart?.toISOString()).toContain("2026-09-06");
+
+    // Close the invalid candidate, then race opposite inbound decisions for
+    // one new candidate.  Only the conditional OPEN->resolved claim may win.
+    await applyIncomingScheduleChangeResponseOnAg({
+      metadata: { messageId: `reject-${proposal.id}`, correlationId: proposal.id, schemaVersion: "1.0", senderOrgId: NU_ORG, receiverOrgId: GU_ORG, createdAt: new Date().toISOString() },
+      requestId: proposal.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: requestId,
+      changeProposalId: proposal.id, decision: "REJECTED",
+    });
+    const raced = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-12T08:00:00Z"), end: new Date("2026-09-16T17:00:00Z"),
+    });
+    const response = (decision: "ACCEPTED" | "REJECTED") => applyIncomingScheduleChangeResponseOnAg({
+      metadata: { messageId: `race-${decision}-${raced.id}`, correlationId: raced.id, schemaVersion: "1.0", senderOrgId: NU_ORG, receiverOrgId: GU_ORG, createdAt: new Date().toISOString() },
+      requestId: raced.id, requestVersion: 1, requestKind: "SCHEDULE_CHANGE", sourceRequestId: requestId,
+      changeProposalId: raced.id, decision,
+      ...(decision === "ACCEPTED" ? { acceptedTimeWindow: { start: raced.start.toISOString(), end: raced.end.toISOString() } } : {}),
+    });
+    const results = await Promise.all([response("ACCEPTED"), response("REJECTED")]);
+    expect(results.filter((result) => !result.idempotent)).toHaveLength(1);
+    const [resolved] = await db.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, raced.id));
+    const [afterRace] = await db.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, requestId));
+    expect(["ACCEPTED", "REJECTED"]).toContain(resolved?.status);
+    expect(afterRace?.agreedStart?.toISOString()).toContain(
+      resolved?.status === "ACCEPTED" ? "2026-09-12" : "2026-09-06",
+    );
+  });
+
+  it("rechecks an expired root policy when accepting an already-created proposal", async () => {
+    const requestId = "t212-request-policy-chain";
+    const proposal = await createAgChangeProposal({
+      requestId, orgId: GU_ORG, userId: GU_USER,
+      start: new Date("2026-09-17T08:00:00Z"), end: new Date("2026-09-21T17:00:00Z"),
+    });
+    const [root] = await db.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+    await db.update(coordinationPoliciesTable).set({
+      effectivePolicy: {
+        policyType: "PERFORMANCE_REQUEST", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
+        childPolicyTypes: ["SCHEDULE_CHANGE"], childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: [],
+        validUntil: "2020-01-01T00:00:00.000Z",
+      },
+    }).where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+    await expect(runWithDatabaseRole("ag", () => resolveChangeProposal({
+      requestId, proposalId: proposal.id, orgId: NU_ORG, userId: NU_USER, status: "ACCEPTED",
+    }))).rejects.toMatchObject({ statusCode: 409 });
+    const [stillOpen] = await db.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, proposal.id));
+    expect(stillOpen?.status).toBe("OPEN");
+    await db.update(coordinationPoliciesTable).set({ effectivePolicy: root!.effectivePolicy })
+      .where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+  });
+
+  it("blocks AG and AN proposal and counter entry points at every root-policy gate before writes or delivery", async () => {
+    const requestId = "t212-request-an-init";
+    await db.update(leistungsanfragenTable).set({ performancePolicyId: POLICY_PERFORMANCE })
+      .where(eq(leistungsanfragenTable.id, requestId));
+    const [basePolicy] = await db.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+    const [baseProjection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+      eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId),
+      eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG),
+    ));
+    expect(basePolicy).toBeDefined();
+    expect(baseProjection).toBeDefined();
+
+    const baseEffectivePolicy = basePolicy!.effectivePolicy as Record<string, unknown>;
+    const baseProjectionEffectivePolicy = baseProjection!.effectivePolicy as Record<string, unknown>;
+    const sideEffects = async () => Promise.all([
+      db.select({
+        id: serviceChangeProposalsTable.id,
+        status: serviceChangeProposalsTable.status,
+      }).from(serviceChangeProposalsTable)
+        .where(eq(serviceChangeProposalsTable.leistungsanfrageId, requestId))
+        .orderBy(serviceChangeProposalsTable.id),
+      anDb.select({ count: sql<number>`count(*)::int` }).from(anAvailabilityChecksTable)
+        .where(eq(anAvailabilityChecksTable.anOrgId, NU_ORG)),
+      hubDb.select({ count: sql<number>`count(*)::int` }).from(messageOutboxTable).where(or(
+        eq(messageOutboxTable.senderOrgId, GU_ORG),
+        eq(messageOutboxTable.senderOrgId, NU_ORG),
+      )),
+      hubDb.select({ count: sql<number>`count(*)::int` }).from(dataspaceExchangesTable).where(or(
+        eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
+        eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
+      )),
+    ]);
+    const restoreRootPolicy = async () => {
+      await db.update(coordinationPoliciesTable).set({
+        deltaClass: "WITHIN_BASELINE",
+        lifecycleStatus: "ACCEPTED",
+        effectivePolicy: baseEffectivePolicy,
+      }).where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+      await anDb.update(anLeistungsanfragenTable).set({
+        policyDeltaClass: "WITHIN_BASELINE",
+        policyConsentStatus: "NOT_REQUIRED",
+        effectivePolicy: baseProjectionEffectivePolicy,
+      }).where(eq(anLeistungsanfragenTable.id, baseProjection!.id));
+    };
+
+    const cases = [
+      {
+        name: "REQUIRES_CONSENT",
+        ag: { deltaClass: "REQUIRES_CONSENT" as const, lifecycleStatus: "PUBLISHED" as const },
+        an: { policyDeltaClass: "REQUIRES_CONSENT" as const, policyConsentStatus: "PENDING" as const },
+        error: "POLICY_CONSENT_REQUIRED",
+        effective: {},
+      },
+      {
+        name: "NOT_PERMITTED",
+        ag: { deltaClass: "NOT_PERMITTED" as const, lifecycleStatus: "ACCEPTED" as const },
+        an: { policyDeltaClass: "NOT_PERMITTED" as const, policyConsentStatus: "NOT_REQUIRED" as const },
+        error: "NOT_PERMITTED",
+        effective: {},
+      },
+      {
+        name: "expired validity",
+        ag: { deltaClass: "WITHIN_BASELINE" as const, lifecycleStatus: "ACCEPTED" as const },
+        an: { policyDeltaClass: "WITHIN_BASELINE" as const, policyConsentStatus: "NOT_REQUIRED" as const },
+        error: "NOT_PERMITTED",
+        effective: { validUntil: "2000-01-01T00:00:00.000Z" },
+      },
+      {
+        name: "expired retention",
+        ag: { deltaClass: "WITHIN_BASELINE" as const, lifecycleStatus: "ACCEPTED" as const },
+        an: { policyDeltaClass: "WITHIN_BASELINE" as const, policyConsentStatus: "NOT_REQUIRED" as const },
+        error: "NOT_PERMITTED",
+        effective: { retentionUntil: "2000-01-01T00:00:00.000Z" },
+      },
+    ];
+
+    for (const policyCase of cases) {
+      const effective = { ...baseEffectivePolicy, ...policyCase.effective };
+      const projectionEffective = { ...baseProjectionEffectivePolicy, ...policyCase.effective };
+      await db.update(coordinationPoliciesTable).set({
+        ...policyCase.ag,
+        effectivePolicy: effective,
+      }).where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+      await anDb.update(anLeistungsanfragenTable).set({
+        ...policyCase.an,
+        effectivePolicy: projectionEffective,
+      }).where(eq(anLeistungsanfragenTable.id, baseProjection!.id));
+
+      const beforeProposal = await sideEffects();
+      const agProposal = await request(app)
+        .post(`/api/leistungsanfragen/${requestId}/change-proposals`)
+        .set("Authorization", `Bearer ${guToken}`)
+        .send({ start: "2026-09-03T08:00:00.000Z", end: "2026-09-07T17:00:00.000Z" });
+      const anProposal = await request(app)
+        .post(`/api/an/leistungsanfragen/${requestId}/change-proposals`)
+        .set("Authorization", `Bearer ${nuToken}`)
+        .send({ start: "2026-09-03T08:00:00.000Z", end: "2026-09-07T17:00:00.000Z" });
+      expect(agProposal.status, policyCase.name).toBe(409);
+      expect(anProposal.status, policyCase.name).toBe(409);
+      expect(agProposal.body.error ?? agProposal.body.code).toBe(policyCase.error);
+      expect(anProposal.body.error).toBe(policyCase.error);
+      expect(await sideEffects()).toEqual(beforeProposal);
+
+      await restoreRootPolicy();
+      const open = await request(app)
+        .post(`/api/leistungsanfragen/${requestId}/change-proposals`)
+        .set("Authorization", `Bearer ${guToken}`)
+        .send({ start: "2026-09-03T08:00:00.000Z", end: "2026-09-07T17:00:00.000Z" });
+      expect(open.status).toBe(201);
+
+      await db.update(coordinationPoliciesTable).set({
+        ...policyCase.ag,
+        effectivePolicy: effective,
+      }).where(eq(coordinationPoliciesTable.id, POLICY_PERFORMANCE));
+      await anDb.update(anLeistungsanfragenTable).set({
+        ...policyCase.an,
+        effectivePolicy: projectionEffective,
+      }).where(eq(anLeistungsanfragenTable.id, baseProjection!.id));
+      const beforeCounter = await sideEffects();
+      const agCounter = await request(app)
+        .post(`/api/leistungsanfragen/${requestId}/change-proposals/${open.body.id}/counter`)
+        .set("Authorization", `Bearer ${guToken}`)
+        .send({ start: "2026-09-04T08:00:00.000Z", end: "2026-09-08T17:00:00.000Z" });
+      const anCounter = await request(app)
+        .post(`/api/an/leistungsanfragen/${requestId}/change-proposals/${open.body.id}/counter`)
+        .set("Authorization", `Bearer ${nuToken}`)
+        .send({ start: "2026-09-04T08:00:00.000Z", end: "2026-09-08T17:00:00.000Z" });
+      expect(agCounter.status, `${policyCase.name} counter`).toBe(409);
+      expect(anCounter.status, `${policyCase.name} counter`).toBe(409);
+      expect(await sideEffects()).toEqual(beforeCounter);
+
+      await anDb.delete(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, open.body.id));
+      await db.delete(serviceChangeProposalsTable)
+        .where(eq(serviceChangeProposalsTable.id, open.body.id));
+      await restoreRootPolicy();
+    }
   });
 });
 

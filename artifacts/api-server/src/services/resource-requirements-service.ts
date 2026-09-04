@@ -14,6 +14,8 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   leistungsanfrageResourceRequirementsTable,
+  leistungsanfragenTable,
+  coordinationPoliciesTable,
   resourceTypesTable,
 } from "@workspace/db";
 import {
@@ -21,6 +23,29 @@ import {
   getTaktRequestWithSnapshot,
 } from "../lib/takt-request-repository";
 import { validateResourceTypeForOrg } from "./resource-domain-service";
+import { assertLeistungsanfragePolicyAccess } from "./leistungsanfrage-policy-guard";
+
+async function assertLegacyRequestResourceAccess(
+  leistungsanfrageId: string,
+  nuOrgId: string,
+): Promise<void> {
+  const [request] = await db.select({
+    nuOrgId: leistungsanfragenTable.nuOrgId,
+    performancePolicyId: leistungsanfragenTable.performancePolicyId,
+  }).from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, leistungsanfrageId)).limit(1);
+  if (!request || request.nuOrgId !== nuOrgId || !request.performancePolicyId) return;
+  const [policy] = await db.select({
+    deltaClass: coordinationPoliciesTable.deltaClass,
+    lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+  }).from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
+  assertLeistungsanfragePolicyAccess({
+    policyDeltaClass: policy?.deltaClass ?? "NOT_PERMITTED",
+    policyConsentStatus: policy?.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+      policy?.lifecycleStatus === "REJECTED" ? "REJECTED" :
+      policy?.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+  }, "RESOURCE");
+}
 
 // ── Validation schemas ────────────────────────────────────────────────────────
 
@@ -128,6 +153,7 @@ export async function listResourceRequirements(
 ): Promise<ReturnType<typeof formatRow>[] | null> {
   const request = await getTaktRequestById(leistungsanfrageId);
   if (!request || request.nuOrgId !== nuOrgId) return null;
+  await assertLegacyRequestResourceAccess(leistungsanfrageId, nuOrgId);
 
   const rows = await db
     .select({
@@ -172,6 +198,7 @@ export async function createResourceRequirement(
 ): Promise<ReturnType<typeof formatRow> | null> {
   const request = await getTaktRequestById(leistungsanfrageId);
   if (!request || request.nuOrgId !== nuOrgId) return null;
+  await assertLegacyRequestResourceAccess(leistungsanfrageId, nuOrgId);
 
   if (data.resourceTypeId) {
     try {
@@ -229,6 +256,7 @@ export async function updateResourceRequirement(
 ): Promise<ReturnType<typeof formatRow> | null> {
   const request = await getTaktRequestById(leistungsanfrageId);
   if (!request || request.nuOrgId !== nuOrgId) return null;
+  await assertLegacyRequestResourceAccess(leistungsanfrageId, nuOrgId);
 
   // Load the existing row to validate period consistency
   const [existing] = await db
@@ -316,6 +344,7 @@ export async function deleteResourceRequirement(
   if (!request || request.nuOrgId !== nuOrgId) {
     throw new ResourceRequirementNotFoundError("Leistungsanfrage not found");
   }
+  await assertLegacyRequestResourceAccess(leistungsanfrageId, nuOrgId);
 
   const [deleted] = await db
     .delete(leistungsanfrageResourceRequirementsTable)

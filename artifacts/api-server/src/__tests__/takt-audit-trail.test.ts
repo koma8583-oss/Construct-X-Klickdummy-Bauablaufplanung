@@ -279,13 +279,7 @@ describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event",
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("RECEIVED");
-    const reviewed = await request(app)
-      .post(`/api/an/takt-requests/${REQUEST_ID}/details/review`)
-      .set("Authorization", `Bearer ${nuToken}`)
-      .send({});
-    expect(reviewed.status).toBe(200);
-    expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
+    expect(res.body.status).toBe("DETAILS_RETRIEVED");
 
     // Verify audit event was written to DB
     const events = await db
@@ -303,7 +297,7 @@ describe("GET /api/takt-requests/:id/details — DETAILS_RETRIEVED audit event",
     expect(evt.actorOrgId).toBe(NU_ORG);
     expect(evt.actorUserId).toBe(NU_USER);
     expect(evt.actorRole).toBe("NU");
-    expect(evt.metadata).toMatchObject({ explicitReview: true });
+    expect(evt.metadata).toMatchObject({ firstAccess: true });
   });
 
   it("NU subsequent access does NOT add a second DETAILS_RETRIEVED event", async () => {

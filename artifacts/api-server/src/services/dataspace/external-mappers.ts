@@ -100,6 +100,7 @@ export function toExternalServiceRequest(input: {
   requestKind?: ExternalServiceRequest["requestKind"];
   sourceRequestId?: string;
   changeProposalId?: string;
+  supersedesProposalId?: string;
   comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
   revisionContext?: ExternalServiceRequest["revisionContext"];
@@ -142,6 +143,7 @@ export function toExternalServiceRequest(input: {
     requestKind: input.requestKind,
     sourceRequestId: input.sourceRequestId,
     changeProposalId: input.changeProposalId,
+    supersedesProposalId: input.supersedesProposalId,
     comment: input.comment,
     baseTimeWindow: input.baseTimeWindow,
     revisionContext: input.revisionContext,
@@ -233,6 +235,7 @@ export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope):
     requestKind: payload.requestKind === "SCHEDULE_CHANGE" ? "SCHEDULE_CHANGE" : "INITIAL",
     sourceRequestId: typeof payload.sourceRequestId === "string" ? payload.sourceRequestId : undefined,
     changeProposalId: typeof payload.changeProposalId === "string" ? payload.changeProposalId : undefined,
+    supersedesProposalId: typeof payload.supersedesProposalId === "string" ? payload.supersedesProposalId : undefined,
     baseTimeWindow: payload.baseTimeWindow as { start: string; end: string } | undefined,
     projectReference: String(payload.projectReference ?? payload.leistungReference ?? payload.requestId ?? ""),
     leistungReference: typeof payload.leistungReference === "string" ? payload.leistungReference : undefined,

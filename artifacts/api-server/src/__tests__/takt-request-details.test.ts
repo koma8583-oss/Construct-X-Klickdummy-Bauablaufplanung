@@ -27,6 +27,7 @@ import {
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   takteTable,
   usersTable,
   dataPublicationsTable,
@@ -66,6 +67,7 @@ const PROJECT_ID  = "t38-project-001";
 const TAKT_ID     = "t38-takt-001";
 const GU_USER     = "t38-user-gu";
 const NU_USER     = "t38-user-nu";
+const PROJECT_AGREEMENT_ID = "t38-project-agreement";
 
 let guToken:   string;
 let nuToken:   string;
@@ -99,6 +101,26 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG,
   }).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: PROJECT_AGREEMENT_ID,
+    policyKey: PROJECT_AGREEMENT_ID,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID,
+    providerOrgId: GU_ORG,
+    recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {},
+    effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t38-membership",
     projectId: PROJECT_ID,
@@ -107,6 +129,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t38-invitation",
     correlationId: "t38-correlation",
+    projectAgreementPolicyId: PROJECT_AGREEMENT_ID,
   }).onConflictDoNothing();
 
   // Takt (version 1)
@@ -195,6 +218,8 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM data_publications WHERE id = 't38-publication-001'`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
+  await db.execute(sql`DELETE FROM coordination_policies WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}'])`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});

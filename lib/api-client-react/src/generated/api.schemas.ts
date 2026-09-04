@@ -83,6 +83,68 @@ export interface NotificationEnvelope {
   content: NotificationEnvelopeContent;
 }
 
+export type LeistungsanfragePolicyPreviewInputPurpose = typeof LeistungsanfragePolicyPreviewInputPurpose[keyof typeof LeistungsanfragePolicyPreviewInputPurpose];
+
+
+export const LeistungsanfragePolicyPreviewInputPurpose = {
+  RAHMENTERMINE: 'RAHMENTERMINE',
+  LEISTUNGSKOORDINATION: 'LEISTUNGSKOORDINATION',
+  AUSFUEHRUNGSINFORMATIONEN: 'AUSFUEHRUNGSINFORMATIONEN',
+  INDIVIDUELLE_FREIGABE: 'INDIVIDUELLE_FREIGABE',
+} as const;
+
+export interface LeistungsanfragePolicyPreviewInput {
+  /** @minItems 1 */
+  taktIds: string[];
+  nuOrgId: string;
+  purpose: LeistungsanfragePolicyPreviewInputPurpose;
+  /** @minItems 1 */
+  selectedFields: string[];
+}
+
+export type LeistungsanfragePolicyPreviewItemDeltaClass = typeof LeistungsanfragePolicyPreviewItemDeltaClass[keyof typeof LeistungsanfragePolicyPreviewItemDeltaClass];
+
+
+export const LeistungsanfragePolicyPreviewItemDeltaClass = {
+  WITHIN_BASELINE: 'WITHIN_BASELINE',
+  REQUIRES_CONSENT: 'REQUIRES_CONSENT',
+  NOT_PERMITTED: 'NOT_PERMITTED',
+} as const;
+
+export type LeistungsanfragePolicyPreviewItemInheritedEffectivePolicy = { [key: string]: unknown } | null;
+
+export type LeistungsanfragePolicyPreviewItemDiff = { [key: string]: unknown };
+
+export interface LeistungsanfragePolicyPreviewItem {
+  taktId: string;
+  deltaClass: LeistungsanfragePolicyPreviewItemDeltaClass;
+  error?: string;
+  inheritedEffectivePolicy: LeistungsanfragePolicyPreviewItemInheritedEffectivePolicy;
+  diff: LeistungsanfragePolicyPreviewItemDiff;
+}
+
+export interface LeistungsanfragePolicyPreviewResponse {
+  items: LeistungsanfragePolicyPreviewItem[];
+}
+
+export type EffectiveProjectAgreementLifecycleStatus = typeof EffectiveProjectAgreementLifecycleStatus[keyof typeof EffectiveProjectAgreementLifecycleStatus];
+
+
+export const EffectiveProjectAgreementLifecycleStatus = {
+  ACCEPTED: 'ACCEPTED',
+} as const;
+
+export type EffectiveProjectAgreementEffectivePolicy = { [key: string]: unknown };
+
+/**
+ * Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.
+ */
+export interface EffectiveProjectAgreement {
+  id: string;
+  lifecycleStatus: EffectiveProjectAgreementLifecycleStatus;
+  effectivePolicy: EffectiveProjectAgreementEffectivePolicy;
+}
+
 export type ProjectMembershipStatus = typeof ProjectMembershipStatus[keyof typeof ProjectMembershipStatus];
 
 
@@ -151,6 +213,8 @@ export interface ProjectMembership {
   dataPublicationId?: string | null;
   /** Accepted parent project-agreement policy for child Leistungsfreigaben. */
   projectAgreementPolicyId?: string | null;
+  /** Effective accepted parent policy. Null while the membership or policy is pending. */
+  projectAgreement?: EffectiveProjectAgreement | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;

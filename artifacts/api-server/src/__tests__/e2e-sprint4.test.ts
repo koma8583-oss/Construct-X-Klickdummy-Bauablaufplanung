@@ -51,6 +51,7 @@ import {
   dataPublicationRecipientsTable,
   policyTemplatesTable,
   dataspaceExchangesTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import app from "../app";
@@ -82,6 +83,7 @@ const GU_USER = "t49-gu-user";
 const NU_USER = "t49-nu-user";
 const PROJECT = "t49-project";
 const TAKT    = "t49-takt";
+const PROJECT_AGREEMENT = "t49-project-agreement";
 const CREW_1  = "t49-crew-1";   // fully booked in window (causes conflict)
 const CREW_2  = "t49-crew-2";   // available (triggers FEASIBLE_WITH_ALTERNATIVES)
 const REQUIRED_CREW_CAPACITY = 8; // two four-person resources; one is blocked in the original window
@@ -212,6 +214,26 @@ beforeAll(async () => {
   // Register NU as a contractor on the project (required by createTaktRequestWithSnapshot)
   await db.insert(projectContractorsTable).values({ projectId: PROJECT, anOrgId: NU_ORG })
     .onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: PROJECT_AGREEMENT,
+    policyKey: PROJECT_AGREEMENT,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT,
+    providerOrgId: GU_ORG,
+    recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {},
+    effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t49-membership",
     projectId: PROJECT,
@@ -220,7 +242,14 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t49-invitation",
     correlationId: "t49-correlation",
+    projectAgreementPolicyId: PROJECT_AGREEMENT,
   }).onConflictDoNothing();
+  await db.update(projectMembershipsTable)
+    .set({ projectAgreementPolicyId: PROJECT_AGREEMENT })
+    .where(and(
+      eq(projectMembershipsTable.projectId, PROJECT),
+      eq(projectMembershipsTable.anOrgId, NU_ORG),
+    ));
   await anDb.insert(resourceTypesTable).values({
     id: "t49-crew-type",
     anOrgId: NU_ORG,
@@ -366,6 +395,8 @@ afterAll(async () => {
     .where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(projectMembershipsTable)
     .where(eq(projectMembershipsTable.projectId, PROJECT));
+  await db.delete(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.projectId, PROJECT));
   await db.execute(sql`DELETE FROM leistungen WHERE project_id = ${PROJECT}`);
   await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
@@ -675,7 +706,7 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
       .set("Authorization", `Bearer ${nuToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("RECEIVED");
+    expect(res.body.status).toBe("DETAILS_RETRIEVED");
     const reviewed = await request(app)
       .post(`/api/an/takt-requests/${requestId}/details/review`)
       .set("Authorization", `Bearer ${nuToken}`)

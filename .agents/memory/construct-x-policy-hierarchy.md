@@ -14,3 +14,9 @@ Invitation transactions must persist the Project Agreement policy before inserti
 **Why:** PostgreSQL checks the membership foreign key immediately; inserting the membership first fails even inside the same transaction.
 
 **How to apply:** Keep the invitation transaction ordered as policy, membership, outbox, and insert each policy exactly once.
+
+Every protected performance-request operation must pass one domain-level policy guard, including legacy route aliases and direct service calls. Policy-linked revisions must mint a fresh child policy and can never fall back into the legacy DataOffer path.
+
+**Why:** Route-only enforcement left snapshot, response, resource, and revision paths able to disclose or mutate data without the same consent, validity, and retention checks.
+
+**How to apply:** Require a current ACTIVE membership, matching accepted and currently valid project agreement, and actionable child policy before details, resources, availability, responses, schedule proposals, or revisions. Keep DataOffer compatibility only for records that genuinely have no performance policy.

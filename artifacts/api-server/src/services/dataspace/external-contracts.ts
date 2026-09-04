@@ -179,6 +179,9 @@ export const externalProjectInvitationResponseSchema = z.object({
   invitationId: nonEmpty(200),
   projectReference: nonEmpty(200),
   dataPublicationId: nonEmpty(200).optional(),
+  /** A separate consent for a PERFORMANCE_REQUEST child policy. This does not
+   * decide project membership or a DataOffer. */
+  performancePolicyId: nonEmpty(200).optional(),
   decision: z.enum(["ACCEPTED", "REJECTED"]),
   policyAccepted: z.boolean().optional(),
   message: z.string().trim().max(4000).optional(),
@@ -262,6 +265,7 @@ export const externalServiceRequestSchema = z.object({
   requestKind: z.enum(["INITIAL", "SCHEDULE_CHANGE"]).optional(),
   sourceRequestId: nonEmpty(200).optional(),
   changeProposalId: nonEmpty(200).optional(),
+  supersedesProposalId: nonEmpty(200).optional(),
   comment: z.string().trim().max(2000).nullable().optional(),
   baseTimeWindow: timeWindowSchema.optional(),
   revisionContext: z.object({
@@ -611,6 +615,7 @@ export type ExternalProjectInvitationResponse = {
   invitationId: string;
   projectReference: string;
   dataPublicationId?: string;
+  performancePolicyId?: string;
   decision: "ACCEPTED" | "REJECTED";
   policyAccepted?: boolean;
   message?: string;
@@ -682,6 +687,7 @@ export type ExternalServiceRequest = {
   requestKind?: "INITIAL" | "SCHEDULE_CHANGE";
   sourceRequestId?: string;
   changeProposalId?: string;
+  supersedesProposalId?: string;
   comment?: string | null;
   baseTimeWindow?: { start: string; end: string };
   revisionContext?: {

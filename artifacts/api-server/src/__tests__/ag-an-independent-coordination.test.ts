@@ -25,6 +25,8 @@ import {
   messageOutboxTable,
   dataspaceExchangesTable,
   projectContractorsTable,
+  projectMembershipsTable,
+  coordinationPoliciesTable,
   anLeistungsanfragenTable,
   anAvailabilityChecksTable,
   anLeistungsantwortAlternativenTable,
@@ -58,6 +60,8 @@ async function cleanup() {
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN));
   const localRequestIds = localRequests.map(({ id }) => id);
   if (localRequestIds.length) {
+    await db.delete(anAvailabilityChecksTable)
+      .where(inArray(anAvailabilityChecksTable.anLeistungsanfrageId, localRequestIds));
     const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
@@ -98,6 +102,8 @@ async function cleanup() {
     eq(dataspaceExchangesTable.receiverOrgId, AN),
   ));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
   await db.delete(usersTable).where(inArray(usersTable.id, [AG_USER, AN_USER]));
@@ -126,13 +132,61 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: AN, assignmentStatus: "ACTIVE",
   });
-  // The shared test database may not contain the newer optional publication
-  // column, so insert only the physical membership columns.
+  const agreementId = `${PREFIX}-agreement`;
+  await db.insert(coordinationPoliciesTable).values({
+    id: agreementId,
+    policyKey: agreementId,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT,
+    providerOrgId: AG,
+    recipientOrgId: AN,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {
+      policyId: agreementId,
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 1,
+      code: "PROJECT_MEMBERSHIP",
+      name: "Project Membership",
+      description: "Accepted project coordination agreement",
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      prohibitions: [],
+      provider: { organizationId: AG, userId: null },
+      recipientOrganizationId: AN,
+      purpose: "PROJECT_MEMBERSHIP",
+      projectReference: PROJECT,
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+    },
+    effectivePolicy: {
+      policyId: agreementId,
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 1,
+      code: "PROJECT_MEMBERSHIP",
+      name: "Project Membership",
+      description: "Accepted project coordination agreement",
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      prohibitions: [],
+      provider: { organizationId: AG, userId: null },
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: AN,
+      purpose: "PROJECT_MEMBERSHIP",
+      projectReference: PROJECT,
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+    },
+  });
   await db.execute(sql`
     INSERT INTO project_memberships
-      (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status)
+      (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status, project_agreement_policy_id)
     VALUES (${`${PREFIX}-membership`}, ${PROJECT}, ${AG}, ${AN},
-      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE')
+      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${agreementId})
     ON CONFLICT DO NOTHING
   `);
 });
@@ -209,7 +263,7 @@ describe("independent AG–AN coordination flow", () => {
       .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
     expect(details.status).toBe(200);
-    expect(details.body.status).toBe("RECEIVED");
+    expect(details.body.status).toBe("DETAILS_RETRIEVED");
     const reviewed = await request(app)
       .post(`/api/an/takt-requests/${requestId}/details/review`)
       .set("Authorization", `Bearer ${anToken}`)

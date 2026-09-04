@@ -17,7 +17,12 @@ import {
   requirementUpdateSchema,
 } from "./resource-requirements-service";
 import { toExternalResourceRequirementsFromSnapshot, toExternalServiceRequest } from "./dataspace/external-mappers";
-import { deliverLocalServiceRequest, deliverLocalServiceResponse } from "./dataspace/local-dataspace-delivery";
+import {
+  deliverLocalProjectInvitationResponse,
+  deliverLocalServiceRequest,
+  deliverLocalServiceResponse,
+} from "./dataspace/local-dataspace-delivery";
+import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
 import { createAnServiceResponse, type CreateAnServiceResponseResult } from "./nu-response-service";
 import type { ExternalServiceRequest } from "./dataspace/external-contracts";
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
@@ -27,6 +32,10 @@ import {
   type AlternativeRequirement,
   type AlternativeResource,
 } from "./alternative-generator";
+import {
+  assertLeistungsanfragePolicyAccess,
+  policyAccessDecision,
+} from "./leistungsanfrage-policy-guard";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
@@ -329,15 +338,10 @@ export async function getAnLeistungsanfrageDetail(
     : undefined;
   const projection = activeSchedule ?? rootProjection;
 
-  // Reading a projection is intentionally side-effect free. The first
-  // coordination phase is completed only by the explicit review action below.
-  const current = projection;
+  let current = projection;
 
-  const policyRestricted =
-    current.policyDeltaClass === "NOT_PERMITTED" ||
-    (current.policyDeltaClass === "REQUIRES_CONSENT" &&
-      current.policyConsentStatus !== "ACCEPTED");
-  if (policyRestricted) {
+  const policyDecision = policyAccessDecision(current, "DETAILS");
+  if (!policyDecision.allowed) {
     return {
       ...toRequestView(current, 0),
       schemaVersion: String(snapshotValue(snapshotOf(current), "schemaVersion") ?? "1.0"),
@@ -346,10 +350,30 @@ export async function getAnLeistungsanfrageDetail(
       revision: revisionView(current, allRelated),
       detailsRetrievedNow: false,
       policyDetailsAvailable: false,
-      policyBlockedReason: current.policyDeltaClass === "NOT_PERMITTED"
-        ? "NOT_PERMITTED"
-        : "POLICY_CONSENT_REQUIRED",
+      policyBlockedReason: policyDecision.code,
     };
+  }
+  // Detail retrieval is the first AN acknowledgement of an actionable,
+  // baseline-covered request. Keep this local to the AN projection; the AG
+  // request state is advanced only by its own workflow/inbound handlers.
+  let detailsRetrievedNow = false;
+  if (current.status === "RECEIVED") {
+    const [updated] = await anDb.update(anLeistungsanfragenTable).set({
+      status: "DETAILS_RETRIEVED",
+      detailsRetrievedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(anLeistungsanfragenTable.id, current.id),
+      eq(anLeistungsanfragenTable.status, "RECEIVED"),
+    )).returning();
+    if (updated) {
+      current = updated;
+      detailsRetrievedNow = true;
+    } else {
+      const [latest] = await anDb.select().from(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.id, current.id)).limit(1);
+      if (latest) current = latest;
+    }
   }
 
   const requirements = await anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
@@ -375,7 +399,7 @@ export async function getAnLeistungsanfrageDetail(
       notes: requirement.notes,
     })),
      revision: revisionView(current, allRelated),
-     detailsRetrievedNow: false,
+     detailsRetrievedNow,
   };
 }
 
@@ -392,11 +416,8 @@ export async function reviewAnLeistungsanfrageDetails(
     eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
   )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
   if (!projection) return null;
-  if (
-    projection.policyDeltaClass === "NOT_PERMITTED" ||
-    (projection.policyDeltaClass === "REQUIRES_CONSENT" &&
-      projection.policyConsentStatus !== "ACCEPTED")
-  ) {
+  const policyDecision = policyAccessDecision(projection, "REVIEW");
+  if (!policyDecision.allowed) {
     return {
       reviewedNow: false,
       view: {
@@ -404,9 +425,7 @@ export async function reviewAnLeistungsanfrageDetails(
         snapshotPayload: null,
         resourceRequirements: [],
         policyDetailsAvailable: false,
-        policyBlockedReason: projection.policyDeltaClass === "NOT_PERMITTED"
-          ? "NOT_PERMITTED"
-          : "POLICY_CONSENT_REQUIRED",
+        policyBlockedReason: policyDecision.code,
       },
     };
   }
@@ -454,6 +473,30 @@ export async function decideAnLeistungsanfragePolicy(
     eq(anLeistungsanfragenTable.policyConsentStatus, "PENDING"),
   )).returning();
   const current = updated ?? projection;
+  if (updated) {
+    const policyId = objectRecord(projection.policySnapshot).policyId;
+    if (typeof policyId !== "string" || !policyId) {
+      throw new Error("Consent-required Leistungsanfrage has no child policy identifier");
+    }
+    // AN only updates its local projection. The AG-owned child policy changes
+    // exclusively through the normal outbound/inbound Dataspace flow.
+    await deliverLocalProjectInvitationResponse({
+      metadata: {
+        messageId: `performance-policy-consent:${policyId}:${decision}`,
+        correlationId: projection.correlationId,
+        schemaVersion: "1.0",
+        senderOrgId: anOrgId,
+        receiverOrgId: projection.senderAgOrgId,
+        createdAt: new Date().toISOString(),
+      },
+      invitationId: policyId,
+      performancePolicyId: policyId,
+      projectReference: projection.projectReference,
+      decision: decision === "ACCEPT" ? "ACCEPTED" : "REJECTED",
+      policyAccepted: decision === "ACCEPT",
+      respondedAt: new Date().toISOString(),
+    }, createDataspaceExchange());
+  }
   return {
     ...toRequestView(current, 0),
     policyDecisionApplied: Boolean(updated),
@@ -484,6 +527,7 @@ export async function updateAnResourceRequirement(
       actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
     ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
     if (!projection) return null;
+    assertLeistungsanfragePolicyAccess(projection, "RESOURCE");
 
     const [existing] = await tx.select()
       .from(anLeistungsanfrageResourceRequirementsTable)
@@ -668,6 +712,7 @@ export async function runAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return null;
+  assertLeistungsanfragePolicyAccess(projection, "AVAILABILITY");
 
   const [requirements, resources, bookings, previous] = await Promise.all([
     anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
@@ -882,6 +927,7 @@ export async function getLatestAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return { projectionFound: false as const, check: null };
+  assertLeistungsanfragePolicyAccess(projection, "AVAILABILITY");
   const [check] = await anDb.select().from(anAvailabilityChecksTable).where(and(
     eq(anAvailabilityChecksTable.anLeistungsanfrageId, projection.id),
     eq(anAvailabilityChecksTable.anOrgId, anOrgId),
@@ -1081,6 +1127,14 @@ export async function createAnScheduleChangeProposal(input: {
     coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
   );
   if (!root) return null;
+  const effective = objectRecord(root.effectivePolicy);
+  assertLeistungsanfragePolicyAccess({
+    policyDeltaClass: root.policyDeltaClass,
+    policyConsentStatus: root.policyConsentStatus,
+    validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+    validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+    retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+  }, "AVAILABILITY");
   const proposalId = createHash("sha256").update(JSON.stringify([
     input.requestId,
     input.anOrgId,
@@ -1096,6 +1150,7 @@ export async function createAnScheduleChangeProposal(input: {
     requestKind: "SCHEDULE_CHANGE",
     sourceRequestId: input.requestId,
     changeProposalId: proposalId,
+    supersedesProposalId: input.supersedesProposalId,
     comment: input.comment ?? null,
     baseTimeWindow: coordination.currentAgreement,
     projectReference: root.projectReference,

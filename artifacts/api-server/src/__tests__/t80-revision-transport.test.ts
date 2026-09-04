@@ -30,10 +30,12 @@ import {
   messageDeliveryAttemptsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { eq, inArray, sql } from "drizzle-orm";
 import app from "../app";
 import { createRevision } from "../services/revision-service";
+import { createLeistungsanfrageRevision } from "../services/service-change-proposal-service";
 import type { MessageTransport, MessageEnvelope, TransportResult, InboxMessage, InboxQueryOptions } from "../lib/transport/message-transport";
 
 function createAgRevision(input: Parameters<typeof createRevision>[0]) {
@@ -139,6 +141,60 @@ async function insertRevisionRequiredFixture(suffix: string): Promise<{
   return { requestId, responseId: responseRow.id, decisionId: "" };
 }
 
+async function attachPerformancePolicy(
+  requestId: string,
+  suffix: string,
+  options: {
+    lifecycleStatus?: "ACCEPTED" | "CONSENT_REQUIRED";
+    deltaClass?: "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED";
+    validUntil?: string;
+    retentionUntil?: string;
+  } = {},
+) {
+  const id = `t80-performance-${suffix}`;
+  const effectivePolicy = {
+    policyType: "PERFORMANCE_REQUEST",
+    recipientOrganizationId: NU_ORG,
+    projectReference: PROJECT,
+    workPackageReference: TAKT,
+    purpose: "LEISTUNGSKOORDINATION",
+    permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    selectedFields: ["plannedTimeWindow"],
+    prohibitions: [],
+    childPolicyTypes: ["SCHEDULE_CHANGE"],
+    childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+    validFrom: null,
+    validUntil: options.validUntil ?? null,
+    ...(options.retentionUntil ? { retentionUntil: options.retentionUntil } : {}),
+  };
+  await db.insert(coordinationPoliciesTable).values({
+    id,
+    policyKey: `t80-performance-${suffix}`,
+    version: 1,
+    kind: "PERFORMANCE_REQUEST",
+    projectId: PROJECT,
+    providerOrgId: GU_ORG,
+    recipientOrgId: NU_ORG,
+    parentPolicyId: "t80-agreement",
+    lifecycleStatus: options.lifecycleStatus ?? "ACCEPTED",
+    deltaClass: options.deltaClass ?? "WITHIN_BASELINE",
+    policySnapshot: {
+      policyId: id,
+      templateId: "tk-policy-performance-coordination",
+      templateVersion: 1,
+      purpose: "LEISTUNGSKOORDINATION",
+      projectReference: PROJECT,
+      workPackageReference: TAKT,
+      selectedFields: ["plannedTimeWindow"],
+    },
+    effectivePolicy,
+    createdByUserId: GU_USER,
+  });
+  await db.update(taktRequestsTable).set({ performancePolicyId: id })
+    .where(eq(taktRequestsTable.id, requestId));
+  return id;
+}
+
 // ── Global beforeAll / afterAll ────────────────────────────────────────────────
 beforeAll(async () => {
   // Pre-cleanup
@@ -185,11 +241,24 @@ beforeAll(async () => {
     anOrgId: NU_ORG,
     assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t80-agreement", policyKey: "t80-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   // The shared test database predates the optional publication columns in the
   // current Drizzle model, so keep this fixture insert to physical columns.
   await db.execute(sql`
-    INSERT INTO project_memberships (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status)
-    VALUES ('t80-membership', ${PROJECT}, ${GU_ORG}, ${NU_ORG}, 't80-invitation', 't80-correlation', 'ACTIVE')
+    INSERT INTO project_memberships (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status, project_agreement_policy_id)
+    VALUES ('t80-membership', ${PROJECT}, ${GU_ORG}, ${NU_ORG}, 't80-invitation', 't80-correlation', 'ACTIVE', 't80-agreement')
     ON CONFLICT DO NOTHING
   `);
 
@@ -221,6 +290,7 @@ afterAll(async () => {
 
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT)).catch(() => {});
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT)).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, TAKT)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER)).catch(() => {});
@@ -363,6 +433,63 @@ describe("C — Revision transport: FAILED → newRequest.status stays DRAFT", (
       .from(taktRequestSnapshotsTable)
       .where(eq(taktRequestSnapshotsTable.taktRequestId, result.newRequest.id));
     expect(snapshots).toHaveLength(1);
+  });
+});
+
+describe("policy-linked Leistungsanfrage revisions", () => {
+  it("persists a fresh child policy before linking the successor and drops DataPublication inheritance", async () => {
+    const { requestId } = await insertRevisionRequiredFixture("policy-linked");
+    const sourcePolicyId = await attachPerformancePolicy(requestId, "linked");
+    const result = await createLeistungsanfrageRevision({
+      requestId,
+      orgId: GU_ORG,
+      userId: GU_USER,
+      start: new Date("2027-09-01T08:00:00.000Z"),
+      end: new Date("2027-09-07T17:00:00.000Z"),
+    });
+    const [successor] = await db.select().from(taktRequestsTable)
+      .where(eq(taktRequestsTable.id, result.requestId));
+    expect(successor?.performancePolicyId).toBeTruthy();
+    expect(successor?.performancePolicyId).not.toBe(sourcePolicyId);
+    expect(successor?.dataPublicationId).toBeNull();
+    const [policy] = await db.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, successor!.performancePolicyId!));
+    expect(policy).toMatchObject({
+      policyKey: "t80-performance-linked",
+      version: 2,
+      kind: "PERFORMANCE_REQUEST",
+      parentPolicyId: "t80-agreement",
+      lifecycleStatus: "PUBLISHED",
+      deltaClass: "WITHIN_BASELINE",
+    });
+    expect(policy?.effectivePolicy).toBeTruthy();
+    expect(policy?.diff).toBeTruthy();
+    expect(policy?.policySnapshot).toMatchObject({
+      inheritFrom: "t80-agreement",
+      supersedesPolicyId: sourcePolicyId,
+      sourceRequestId: requestId,
+      successorRequestId: result.requestId,
+    });
+  });
+
+  it.each([
+    ["pending", { lifecycleStatus: "CONSENT_REQUIRED" as const, deltaClass: "REQUIRES_CONSENT" as const }, "POLICY_CONSENT_REQUIRED"],
+    ["denied", { lifecycleStatus: "ACCEPTED" as const, deltaClass: "NOT_PERMITTED" as const }, "NOT_PERMITTED"],
+    ["expired", { lifecycleStatus: "ACCEPTED" as const, deltaClass: "WITHIN_BASELINE" as const, validUntil: "2020-01-01T00:00:00.000Z" }, "NOT_PERMITTED"],
+    ["retention-expired", { lifecycleStatus: "ACCEPTED" as const, deltaClass: "WITHIN_BASELINE" as const, retentionUntil: "2020-01-01T00:00:00.000Z" }, "NOT_PERMITTED"],
+  ])("does not create an unguarded legacy successor for a %s source policy", async (suffix, policyOptions, expectedError) => {
+    const { requestId } = await insertRevisionRequiredFixture(`guard-${suffix}`);
+    await attachPerformancePolicy(requestId, `guard-${suffix}`, policyOptions);
+    await expect(createLeistungsanfrageRevision({
+      requestId,
+      orgId: GU_ORG,
+      userId: GU_USER,
+      start: new Date("2027-10-01T08:00:00.000Z"),
+      end: new Date("2027-10-07T17:00:00.000Z"),
+    })).rejects.toMatchObject({ message: expectedError, statusCode: 409 });
+    const successors = await db.select().from(taktRequestsTable)
+      .where(eq(taktRequestsTable.supersedesRequestId, requestId));
+    expect(successors).toHaveLength(0);
   });
 });
 

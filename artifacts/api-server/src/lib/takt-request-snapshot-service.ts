@@ -36,14 +36,18 @@ import type { Takt } from "@workspace/db";
 import type { TaktDependency } from "@workspace/db";
 import type { TaktRequestSnapshotPayload } from "@workspace/api-zod";
 import { withCanonicalTakt } from "./legacy-takt-mappers";
-import { assertActiveProjectMembership } from "../services/project-membership-service";
+import { assertActiveProjectMembership, ProjectMembershipError } from "../services/project-membership-service";
 
 /** Business purposes for a Leistung request.  These are deliberately not
  * policy-template ids: an AG chooses a business purpose, while the server
  * derives the child policy from the accepted project agreement. */
 export const LEISTUNGSFREIGABE_FIELD_WHITELISTS = {
   RAHMENTERMINE: [
-    "taktReference", "taktVersion", "trade", "workPackage", "kurzbezeichnung",
+    // The selectable Rahmentermine scope is intentionally exhaustive:
+    // service name/description, trade, period/buffer, work area and relevant
+    // dependencies. Technical references are added by the serializer below,
+    // never accepted as release fields.
+    "trade", "workPackage", "kurzbezeichnung",
     "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors",
   ],
   LEISTUNGSKOORDINATION: [
@@ -92,6 +96,8 @@ export function selectLeistungsfreigabeFields(
   return Object.fromEntries([
     ["schemaVersion", payload.schemaVersion],
     ["projectReference", payload.projectReference],
+    ["taktReference", payload.taktReference],
+    ["taktVersion", payload.taktVersion],
     ...fields.map((field) => [field, source[field]]),
   ]);
 }
@@ -375,77 +381,43 @@ export async function createTaktRequestWithSnapshot(
   // Membership is the sole project-participation gate. Contractor rows carry
   // trade/work-package assignment data, not a second AN consent decision.
   const membership = await assertActiveProjectMembership(takt.projectId, input.nuOrgId);
-  let [agreement] = membership.projectAgreementPolicyId
+  const [agreement] = membership.projectAgreementPolicyId
     ? await connection.select().from(coordinationPoliciesTable).where(
       eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId),
     ).limit(1)
     : [];
-  if (!agreement) {
-    // Backfill the explicit agreement for memberships created before policy
-    // versioning. This keeps an existing ACTIVE membership equivalent to the
-    // new model without introducing a second consent step.
-    const legacyAgreementSnapshot = createPolicySnapshot({
-      templateId: "PROJECT_MEMBERSHIP",
-      providerContext: { organizationId: input.guOrgId, organizationType: "AG" },
-      overrides: {
-        recipientOrganizationId: input.nuOrgId,
-        purpose: "PROJECT_MEMBERSHIP",
-        projectReference: project.id,
-      },
-    });
-    const legacyAgreement = createConstructXPolicy({
-      baseSnapshot: legacyAgreementSnapshot,
-      policyType: "PROJECT_AGREEMENT",
-      policyVersion: legacyAgreementSnapshot.templateVersion,
-      lifecycleStatus: "ACCEPTED",
-      effectivePolicy: {
-        ...legacyAgreementSnapshot,
-        childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
-        childPermissions: [
-          "READ",
-          "DOWNLOAD",
-          "USE_FOR_PERFORMANCE_COORDINATION",
-          "USE_FOR_SCHEDULE_COORDINATION",
-          "USE_FOR_RESOURCE_COORDINATION",
-          "USE_FOR_EXECUTION_COORDINATION",
-        ],
-      },
-    });
-    const legacyPolicyKey = `${project.id}:agreement:${input.nuOrgId}:legacy-${membership.id}`;
-    const insertedLegacyAgreement = await connection.insert(coordinationPoliciesTable).values({
-      id: legacyAgreement.policyId,
-      policyKey: legacyPolicyKey,
-      version: legacyAgreement.policyVersion,
-      kind: legacyAgreement.policyType,
-      projectId: project.id,
-      providerOrgId: input.guOrgId,
-      recipientOrgId: input.nuOrgId,
-      parentPolicyId: null,
-      lifecycleStatus: legacyAgreement.lifecycleStatus,
-      deltaClass: null,
-      policySnapshot: legacyAgreement as unknown as Record<string, unknown>,
-      diff: null,
-      effectivePolicy: legacyAgreement.effectivePolicy,
-      createdByUserId: input.createdByUserId,
-    }).onConflictDoNothing().returning({ id: coordinationPoliciesTable.id });
-    // A retry can race (or follow a previous failed transaction cleanup) on the
-    // deterministic policy key. Never attach the membership to this attempt's
-    // random UUID unless that row was actually inserted.
-    const persistedAgreementId = insertedLegacyAgreement[0]?.id ?? (
-      await connection.select({ id: coordinationPoliciesTable.id })
-        .from(coordinationPoliciesTable)
-        .where(eq(coordinationPoliciesTable.policyKey, legacyPolicyKey))
-        .limit(1)
-    )[0]?.id;
-    if (!persistedAgreementId) {
-      throw new Error("Accepted project agreement could not be resolved after insert.");
-    }
-    await connection.update(projectMembershipsTable)
-      .set({ projectAgreementPolicyId: persistedAgreementId })
-      .where(eq(projectMembershipsTable.id, membership.id));
-    [agreement] = await connection.select().from(coordinationPoliciesTable)
-      .where(eq(coordinationPoliciesTable.id, persistedAgreementId))
-      .limit(1);
+  if (
+    !agreement ||
+    agreement.kind !== "PROJECT_AGREEMENT" ||
+    agreement.lifecycleStatus !== "ACCEPTED" ||
+    agreement.projectId !== project.id ||
+    agreement.providerOrgId !== input.guOrgId ||
+    agreement.recipientOrgId !== input.nuOrgId
+  ) {
+    throw new ProjectMembershipError(
+      "PROJECT_AGREEMENT_REQUIRED",
+      "Ein aktives Projektmitglied benötigt ein verknüpftes, akzeptiertes Projektabkommen.",
+    );
+  }
+  // Acceptance is not an enduring grant: the agreement's effective window is
+  // enforced before a child can be minted.
+  const agreementEffective = agreement.effectivePolicy as Record<string, unknown>;
+  const now = Date.now();
+  const validFrom = typeof agreementEffective.validFrom === "string"
+    ? Date.parse(agreementEffective.validFrom) : NaN;
+  const validUntil = typeof agreementEffective.validUntil === "string"
+    ? Date.parse(agreementEffective.validUntil) : NaN;
+  const retentionUntil = typeof agreementEffective.retentionUntil === "string"
+    ? Date.parse(agreementEffective.retentionUntil) : NaN;
+  if (
+    (Number.isFinite(validFrom) && now < validFrom) ||
+    (Number.isFinite(validUntil) && now > validUntil) ||
+    (Number.isFinite(retentionUntil) && now > retentionUntil)
+  ) {
+    throw new ProjectMembershipError(
+      "PROJECT_AGREEMENT_REQUIRED",
+      "Das verknüpfte Projektabkommen ist aktuell nicht gültig.",
+    );
   }
 
   // ── Step 4: Load dependencies ─────────────────────────────────────────────
@@ -490,6 +462,7 @@ export async function createTaktRequestWithSnapshot(
   });
   const candidateSnapshot = {
     ...basePolicySnapshot,
+    policyType: "PERFORMANCE_REQUEST" as const,
     selectedFields: input.selectedFields ?? LEISTUNGSFREIGABE_FIELD_WHITELISTS[purpose],
   };
   const resolution = resolvePolicyDelta(
@@ -528,28 +501,6 @@ export async function createTaktRequestWithSnapshot(
     const snapshotId = crypto.randomUUID();
     const now = new Date();
 
-    const [requestRow] = await tx
-      .insert(taktRequestsTable)
-      .values({
-        id: requestId,
-        taktId: input.taktId,
-        taktVersion: takt.version,
-        guOrgId: input.guOrgId,
-        nuOrgId: input.nuOrgId,
-        requestNumber: input.requestNumber,
-        selectionGroupId: input.selectionGroupId ?? requestId,
-        status: "DRAFT",
-        responseRequiredBy: input.responseRequiredBy ?? null,
-        createdByUserId: input.createdByUserId,
-        // Data offers are a separate BIM/logistics/document workflow. A normal
-        // Leistungsanfrage is governed solely by its child performance policy.
-        dataPublicationId: null,
-        performancePolicyId: performancePolicy.policyId,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
     await tx.insert(coordinationPoliciesTable).values({
       id: performancePolicy.policyId,
       policyKey: `${input.requestNumber}:performance`,
@@ -566,6 +517,25 @@ export async function createTaktRequestWithSnapshot(
       effectivePolicy: performancePolicy.effectivePolicy,
       createdByUserId: input.createdByUserId,
     });
+
+    const [requestRow] = await tx.insert(taktRequestsTable).values({
+        id: requestId,
+        taktId: input.taktId,
+        taktVersion: takt.version,
+        guOrgId: input.guOrgId,
+        nuOrgId: input.nuOrgId,
+        requestNumber: input.requestNumber,
+        selectionGroupId: input.selectionGroupId ?? requestId,
+        status: "DRAFT",
+        responseRequiredBy: input.responseRequiredBy ?? null,
+        createdByUserId: input.createdByUserId,
+        // Data offers are a separate BIM/logistics/document workflow. A normal
+        // Leistungsanfrage is governed solely by its child performance policy.
+        dataPublicationId: null,
+        performancePolicyId: performancePolicy.policyId,
+        createdAt: now,
+        updatedAt: now,
+    }).returning();
 
     const [snapshotRow] = await tx
       .insert(taktRequestSnapshotsTable)

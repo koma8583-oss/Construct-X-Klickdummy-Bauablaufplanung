@@ -27,6 +27,7 @@ import {
   taktRequestAuditEventsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import app from "../app";
@@ -46,6 +47,7 @@ const NU_ORG  = "t135-nu-org";
 const GU_USER = "t135-gu-user";
 const PROJECT = "t135-project";
 const TAKT    = "t135-takt";
+const PROJECT_AGREEMENT = "t135-project-agreement";
 
 const guToken = sign({ userId: GU_USER, orgId: GU_ORG, orgType: "AG", roles: ["AG_ADMIN"] });
 
@@ -78,6 +80,8 @@ beforeAll(async () => {
   }
 
   await db.delete(takteTable).where(eq(takteTable.id, TAKT)).catch(() => {});
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT)).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT)).catch(() => {});
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER)).catch(() => {});
@@ -102,6 +106,26 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: NU_ORG,
   });
+  await db.insert(coordinationPoliciesTable).values({
+    id: PROJECT_AGREEMENT,
+    policyKey: PROJECT_AGREEMENT,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT,
+    providerOrgId: GU_ORG,
+    recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {},
+    effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  });
   await db.insert(projectMembershipsTable).values({
     id: "t135-membership",
     projectId: PROJECT,
@@ -110,6 +134,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t135-invitation",
     correlationId: "t135-correlation",
+    projectAgreementPolicyId: PROJECT_AGREEMENT,
   });
 
   await db.insert(takteTable).values({
@@ -135,8 +160,9 @@ afterAll(async () => {
   }
 
   await db.delete(takteTable).where(eq(takteTable.id, TAKT));
-  await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
+  await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG));

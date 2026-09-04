@@ -20,6 +20,7 @@ import {
   resolveAnScheduleChangeProposal,
   decideAnLeistungsanfragePolicy,
 } from "../../services/an-leistungsanfrage-service";
+import { LeistungsanfragePolicyAccessError } from "../../services/leistungsanfrage-policy-guard";
 import {
   InvalidRequirementPeriodError,
   ResourceRequirementNotFoundError,
@@ -162,6 +163,10 @@ async function updateRequirement(req: any, res: any) {
     }
     res.json(result);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, action: error.action });
+      return;
+    }
     if (error instanceof ResourceRequirementNotFoundError) {
       res.status(404).json({ error: error.message });
       return;
@@ -225,6 +230,10 @@ async function respond(req: any, res: any) {
       createdAt: result.response.createdAt.toISOString(),
     });
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, action: error.action });
+      return;
+    }
     if (error instanceof ResponseConflictError) {
       res.status(409).json({ error: error.message });
       return;
@@ -291,6 +300,10 @@ async function propose(req: any, res: any) {
     }
     res.status(201).json(result);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, code: error.code, action: error.action });
+      return;
+    }
     const statusCode = (error as { statusCode?: number }).statusCode;
     if (statusCode) {
       res.status(statusCode).json({ error: error instanceof Error ? error.message : "Coordination action failed" });
@@ -349,6 +362,10 @@ async function resolveProposal(req: any, res: any) {
     }
     res.status(result.idempotent ? 200 : 201).json(result);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, code: error.code, action: error.action });
+      return;
+    }
     if (error instanceof ResponseConflictError) {
       res.status(409).json({ error: error.message });
       return;
@@ -372,7 +389,16 @@ function canRunAvailabilityCheck(req: any, res: any): boolean {
 async function runAvailability(req: any, res: any) {
   const anOrgId = requireAn(req, res);
   if (!anOrgId || !canRunAvailabilityCheck(req, res)) return;
-  const check = await runAnAvailabilityCheck(req.params.id as string, anOrgId, req.user.userId);
+  let check;
+  try {
+    check = await runAnAvailabilityCheck(req.params.id as string, anOrgId, req.user.userId);
+  } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, action: error.action });
+      return;
+    }
+    throw error;
+  }
   if (!check) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
     return;
@@ -383,7 +409,16 @@ async function runAvailability(req: any, res: any) {
 async function latestAvailability(req: any, res: any) {
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
-  const result = await getLatestAnAvailabilityCheck(req.params.id as string, anOrgId);
+  let result;
+  try {
+    result = await getLatestAnAvailabilityCheck(req.params.id as string, anOrgId);
+  } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      res.status(409).json({ error: error.code, action: error.action });
+      return;
+    }
+    throw error;
+  }
   if (!result.projectionFound || !result.check) {
     res.status(404).json({ error: "No local availability checks found for this Leistungsanfrage" });
     return;

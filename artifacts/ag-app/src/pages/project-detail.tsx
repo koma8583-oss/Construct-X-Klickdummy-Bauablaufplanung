@@ -733,7 +733,8 @@ export default function ProjectDetail() {
           assignmentStatus: 'ACTIVE',
           trade: assignment?.trade,
           projectAgreementPolicyId: membership.projectAgreementPolicyId,
-          projectAgreementStatus: membership.projectAgreementPolicyId ? 'ACCEPTED' : null,
+          projectAgreementStatus: membership.projectAgreement ? 'ACCEPTED' : null,
+          parentAgreement: membership.projectAgreement,
         };
       });
   }, [allAnOrgs, assignments, memberships]);

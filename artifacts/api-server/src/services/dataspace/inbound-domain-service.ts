@@ -11,6 +11,7 @@ import {
   resourcesTable,
   leistungsanfragenTable,
   taktRequestsTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { createHash } from "node:crypto";
@@ -131,7 +132,11 @@ export async function processIncomingServiceRequest(
       plannedEnd: payload.plannedEnd,
       policySnapshot: payload.policySnapshot ?? payload.policy ?? null,
       policyDeltaClass: payload.policySnapshot?.deltaClass ?? null,
-      policyConsentStatus: payload.policySnapshot?.deltaClass === "REQUIRES_CONSENT"
+      // A schedule-change's bilateral accept/reject is the consent event for
+      // its candidate child policy.  Do not create a second, impossible AN
+      // policy-consent gate before the AN can evaluate that proposal.
+      policyConsentStatus: payload.policySnapshot?.deltaClass === "REQUIRES_CONSENT" &&
+        payload.requestKind !== "SCHEDULE_CHANGE"
         ? "PENDING"
         : "NOT_REQUIRED",
       policyDiff: payload.policySnapshot?.diff ?? null,
@@ -349,6 +354,40 @@ export async function processIncomingDataOfferResponse(
 }
 
 export async function processIncomingProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<void> {
+  // A PERFORMANCE_REQUEST consent deliberately reuses the established
+  // invitation-response transport/outbox channel, but is distinguished by the
+  // child policy id. It must never flow into membership handling below.
+  if (payload.performancePolicyId) {
+    if (payload.metadata.senderOrgId === payload.metadata.receiverOrgId) {
+      throw new Error("Inbound performance-policy response organisations conflict");
+    }
+    const [policy] = await agDb.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.id, payload.performancePolicyId),
+      eq(coordinationPoliciesTable.projectId, payload.projectReference),
+      eq(coordinationPoliciesTable.providerOrgId, payload.metadata.receiverOrgId),
+      eq(coordinationPoliciesTable.recipientOrgId, payload.metadata.senderOrgId),
+      eq(coordinationPoliciesTable.kind, "PERFORMANCE_REQUEST"),
+    )).limit(1);
+    if (!policy || policy.deltaClass !== "REQUIRES_CONSENT") {
+      throw new Error("Inbound performance-policy response references an unknown consent-required child policy");
+    }
+    const lifecycleStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" : "REJECTED";
+    if (policy.lifecycleStatus === lifecycleStatus) return;
+    if (policy.lifecycleStatus !== "CONSENT_REQUIRED") {
+      throw new Error("Inbound performance-policy response conflicts with the child policy lifecycle");
+    }
+    const [updated] = await agDb.update(coordinationPoliciesTable).set({
+      lifecycleStatus,
+      consentedAt: new Date(payload.respondedAt),
+      consentedByOrgId: payload.metadata.senderOrgId,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(coordinationPoliciesTable.id, policy.id),
+      eq(coordinationPoliciesTable.lifecycleStatus, "CONSENT_REQUIRED"),
+    )).returning({ id: coordinationPoliciesTable.id });
+    if (!updated) throw new Error("Inbound performance-policy response could not update child policy");
+    return;
+  }
   if (payload.dataPublicationId) {
     throw new Error(
       "Project invitation responses cannot decide a data offer; use DATA_OFFER_RESPONSE",

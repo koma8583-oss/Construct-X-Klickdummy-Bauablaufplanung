@@ -8,6 +8,7 @@ import {
   leistungenTable,
   projectsTable,
   organizationsTable,
+  coordinationPoliciesTable,
   serviceChangeProposalsTable,
   serviceClarificationsTable,
   serviceConstraintsTable,
@@ -15,6 +16,9 @@ import {
   type ServiceChangeProposal,
 } from "@workspace/db";
 import { applyAcceptedScheduleChange } from "./schedule-change-service";
+import { createPolicySnapshot } from "./policy-snapshot-service";
+import { createConstructXPolicy, resolvePolicyDelta } from "./construct-x-policy-service";
+import { assertLeistungsanfragePolicyAccess } from "./leistungsanfrage-policy-guard";
 import { deriveServiceCoordinationState } from "./service-coordination-state";
 import { compareCalendarDates, differenceInCalendarDays } from "../lib/calendar-date-utils";
 import {
@@ -35,6 +39,156 @@ export function maxDate(...values: Array<Date | string | null | undefined>): Dat
   return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null;
 }
 function dateOnly(value: Date | string): string { return (value instanceof Date ? value.toISOString() : value).slice(0, 10); }
+
+/**
+ * Schedule changes are their own immutable child-policy versions.  The
+ * proposal id is deliberately retained in the snapshot: it is the durable
+ * correlation between the bilateral proposal history and the policy version
+ * (there is no cross-domain writable foreign key).
+ */
+async function createScheduleChangePolicy(tx: any, input: {
+  request: typeof leistungsanfragenTable.$inferSelect;
+  proposal: ServiceChangeProposal;
+  createdByUserId: string | null;
+}) {
+  if (!input.request.performancePolicyId) return null; // legacy requests predate Construct-X policies
+  const [parent] = await tx.select().from(coordinationPoliciesTable).where(and(
+    eq(coordinationPoliciesTable.id, input.request.performancePolicyId),
+    eq(coordinationPoliciesTable.kind, "PERFORMANCE_REQUEST"),
+  )).limit(1);
+  if (!parent || !["PUBLISHED", "ACCEPTED"].includes(parent.lifecycleStatus)) {
+    throw Object.assign(new Error("Eine wirksame Leistungsrichtlinie ist für die Terminänderung erforderlich"), { statusCode: 422 });
+  }
+  const baseSnapshot = createPolicySnapshot({
+    templateId: "SCHEDULE_COORDINATION",
+    providerContext: { organizationId: input.request.guOrgId, userId: input.createdByUserId ?? undefined, organizationType: "AG" },
+    overrides: {
+      recipientOrganizationId: input.request.nuOrgId,
+      purpose: "scheduleCoordination",
+      projectReference: (parent.effectivePolicy?.projectReference as string | undefined) ?? null,
+      validFrom: dateOnly(input.proposal.start),
+      validUntil: dateOnly(input.proposal.end),
+    },
+  });
+  const candidate = {
+    ...baseSnapshot,
+    policyType: "SCHEDULE_CHANGE" as const,
+    permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+  };
+  const resolution = resolvePolicyDelta(parent.effectivePolicy ?? parent.policySnapshot, candidate);
+  if (resolution.deltaClass === "NOT_PERMITTED") {
+    throw Object.assign(new Error("Die Terminänderungsrichtlinie liegt außerhalb der wirksamen Leistungsrichtlinie"), { statusCode: 403 });
+  }
+  const policyKey = `${input.request.id}:schedule-change`;
+  const [latest] = await tx.select({ version: coordinationPoliciesTable.version })
+    .from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.policyKey, policyKey))
+    .orderBy(desc(coordinationPoliciesTable.version)).limit(1);
+  const policy = createConstructXPolicy({
+    baseSnapshot,
+    policyType: "SCHEDULE_CHANGE",
+    policyVersion: (latest?.version ?? 0) + 1,
+    parentPolicyId: parent.id,
+    lifecycleStatus: resolution.deltaClass === "REQUIRES_CONSENT" ? "CONSENT_REQUIRED" : "PUBLISHED",
+    deltaClass: resolution.deltaClass,
+    diff: resolution.diff,
+    effectivePolicy: resolution.effectivePolicy,
+  });
+  const snapshot = { ...policy, changeProposalId: input.proposal.id };
+  await tx.insert(coordinationPoliciesTable).values({
+    id: policy.policyId, policyKey, version: policy.policyVersion, kind: policy.policyType,
+    projectId: parent.projectId, providerOrgId: input.request.guOrgId, recipientOrgId: input.request.nuOrgId,
+    parentPolicyId: parent.id, lifecycleStatus: policy.lifecycleStatus, deltaClass: policy.deltaClass,
+    policySnapshot: snapshot as Record<string, unknown>, diff: policy.diff,
+    effectivePolicy: policy.effectivePolicy, createdByUserId: input.createdByUserId,
+  });
+  return snapshot;
+}
+
+async function setScheduleChangePolicyLifecycle(tx: any, input: {
+  request: typeof leistungsanfragenTable.$inferSelect;
+  proposal: ServiceChangeProposal;
+  lifecycleStatus: "ACCEPTED" | "REJECTED" | "SUPERSEDED";
+  consentedByOrgId?: string | null;
+}) {
+  const policyKey = `${input.request.id}:schedule-change`;
+  const proposalMatch = sql`${coordinationPoliciesTable.policySnapshot}->>'changeProposalId' = ${input.proposal.id}`;
+  const [candidate] = await tx.select().from(coordinationPoliciesTable).where(and(
+    eq(coordinationPoliciesTable.policyKey, policyKey), proposalMatch,
+  )).limit(1);
+  if (!candidate) return; // legacy request without a Construct-X performance policy
+  if (input.lifecycleStatus === "ACCEPTED") {
+    await tx.update(coordinationPoliciesTable).set({
+      lifecycleStatus: "SUPERSEDED", updatedAt: new Date(),
+    }).where(and(
+      eq(coordinationPoliciesTable.policyKey, policyKey),
+      eq(coordinationPoliciesTable.lifecycleStatus, "ACCEPTED"),
+    ));
+    const [activated] = await tx.update(coordinationPoliciesTable).set({
+      lifecycleStatus: "ACCEPTED", consentedAt: new Date(),
+      consentedByOrgId: input.consentedByOrgId ?? null, updatedAt: new Date(),
+    }).where(and(
+      eq(coordinationPoliciesTable.id, candidate.id),
+      sql`${coordinationPoliciesTable.lifecycleStatus} IN ('PUBLISHED', 'CONSENT_REQUIRED')`,
+    )).returning({ id: coordinationPoliciesTable.id });
+    if (!activated) throw new Error("Schedule-change policy could not be activated");
+    await tx.update(leistungsanfragenTable).set({
+      scheduleChangePolicyId: candidate.id, updatedAt: new Date(),
+    }).where(eq(leistungsanfragenTable.id, input.request.id));
+    return;
+  }
+  await tx.update(coordinationPoliciesTable).set({
+    lifecycleStatus: input.lifecycleStatus, updatedAt: new Date(),
+  }).where(and(
+    eq(coordinationPoliciesTable.id, candidate.id),
+    sql`${coordinationPoliciesTable.lifecycleStatus} IN ('PUBLISHED', 'CONSENT_REQUIRED')`,
+  ));
+}
+
+/** Re-evaluate the effective root policy at the irreversible consent point. */
+async function assertScheduleAcceptancePolicy(tx: any, request: typeof leistungsanfragenTable.$inferSelect) {
+  if (!request.performancePolicyId) return; // legacy requests have no policy chain
+  const [policy] = await tx.select().from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
+  if (!policy) throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+  const effective = policy.effectivePolicy as Record<string, unknown> | null;
+  try {
+    assertLeistungsanfragePolicyAccess({
+      policyDeltaClass: policy.deltaClass,
+      policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+        policy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+      validFrom: effective?.validFrom as string | null | undefined,
+      validUntil: effective?.validUntil as string | null | undefined,
+      retentionUntil: effective?.retentionUntil as string | null | undefined,
+    }, "ANSWER");
+  } catch (error) {
+    if (error instanceof Error) Object.assign(error, { statusCode: 409 });
+    throw error;
+  }
+}
+
+function assertPersistedPolicyUsable(policy: typeof coordinationPoliciesTable.$inferSelect) {
+  const effective = policy.effectivePolicy as Record<string, unknown> | null;
+  const lifecycleDenied = ["DRAFT", "REJECTED", "SUPERSEDED", "REVOKED"].includes(policy.lifecycleStatus);
+  if (lifecycleDenied) {
+    throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+  }
+  if (policy.lifecycleStatus === "CONSENT_REQUIRED") {
+    throw Object.assign(new Error("POLICY_CONSENT_REQUIRED"), { statusCode: 409 });
+  }
+  try {
+    assertLeistungsanfragePolicyAccess({
+      policyDeltaClass: policy.deltaClass,
+      policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+        policy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+      validFrom: effective?.validFrom as string | null | undefined,
+      validUntil: effective?.validUntil as string | null | undefined,
+      retentionUntil: effective?.retentionUntil as string | null | undefined,
+    }, "ANSWER");
+  } catch (error) {
+    if (error instanceof Error) Object.assign(error, { statusCode: 409 });
+    throw error;
+  }
+}
 
 function snapshotWindow(snapshot: Record<string, unknown>): { start?: string; end?: string } {
   const window = snapshot.plannedTimeWindow ?? snapshot.taktWindow ?? snapshot.timeWindow;
@@ -107,6 +261,95 @@ export async function createLeistungsanfrageRevision(input: {
       : 1;
     const now = new Date();
     const newRequestId = crypto.randomUUID();
+    let revisionPolicy: ReturnType<typeof createConstructXPolicy> | null = null;
+    if (request.performancePolicyId) {
+      const [sourcePolicy] = await tx.select().from(coordinationPoliciesTable)
+        .where(and(
+          eq(coordinationPoliciesTable.id, request.performancePolicyId),
+          eq(coordinationPoliciesTable.kind, "PERFORMANCE_REQUEST"),
+        )).limit(1);
+      if (!sourcePolicy) throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+      assertPersistedPolicyUsable(sourcePolicy);
+      if (!sourcePolicy.parentPolicyId) {
+        throw Object.assign(new Error("Die Leistungsrichtlinie hat keine Projektvereinbarung"), { statusCode: 409 });
+      }
+      const [agreement] = await tx.select().from(coordinationPoliciesTable).where(and(
+        eq(coordinationPoliciesTable.id, sourcePolicy.parentPolicyId),
+        eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
+        eq(coordinationPoliciesTable.lifecycleStatus, "ACCEPTED"),
+      )).limit(1);
+      if (!agreement) throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+      assertPersistedPolicyUsable(agreement);
+
+      const sourceSnapshot = sourcePolicy.policySnapshot as Record<string, unknown>;
+      const sourceEffective = sourcePolicy.effectivePolicy as Record<string, unknown> | null;
+      if (!sourceEffective) {
+        throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+      }
+      const baseSnapshot = createPolicySnapshot({
+        templateId: typeof sourceSnapshot.templateId === "string"
+          ? sourceSnapshot.templateId
+          : "PERFORMANCE_COORDINATION",
+        providerContext: { organizationId: request.guOrgId, userId: input.userId, organizationType: "AG" },
+        overrides: {
+          recipientOrganizationId: request.nuOrgId,
+          purpose: String(sourceEffective.purpose ?? sourceSnapshot.purpose ?? "LEISTUNGSKOORDINATION"),
+          projectReference: String(sourceEffective.projectReference ?? sourcePolicy.projectId),
+          workPackageReference: String(sourceEffective.workPackageReference ?? request.leistungId),
+          ...(typeof sourceEffective.validFrom === "string" ? { validFrom: sourceEffective.validFrom } : {}),
+          ...(typeof sourceEffective.validUntil === "string" ? { validUntil: sourceEffective.validUntil } : {}),
+        },
+      });
+      const candidate = {
+        ...baseSnapshot,
+        policyType: "PERFORMANCE_REQUEST" as const,
+        permissions: Array.isArray(sourceEffective.permissions)
+          ? sourceEffective.permissions as string[]
+          : baseSnapshot.permissions,
+        selectedFields: Array.isArray(sourceEffective.selectedFields)
+          ? sourceEffective.selectedFields as string[]
+          : Array.isArray(sourceSnapshot.selectedFields) ? sourceSnapshot.selectedFields as string[] : undefined,
+      };
+      const resolution = resolvePolicyDelta(agreement.effectivePolicy ?? agreement.policySnapshot, candidate);
+      if (resolution.deltaClass === "NOT_PERMITTED") {
+        throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+      }
+      const [latest] = await tx.select({ version: coordinationPoliciesTable.version })
+        .from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.policyKey, sourcePolicy.policyKey))
+        .orderBy(desc(coordinationPoliciesTable.version)).limit(1);
+      revisionPolicy = createConstructXPolicy({
+        baseSnapshot,
+        policyType: "PERFORMANCE_REQUEST",
+        policyVersion: (latest?.version ?? sourcePolicy.version) + 1,
+        parentPolicyId: agreement.id,
+        lifecycleStatus: resolution.deltaClass === "REQUIRES_CONSENT" ? "CONSENT_REQUIRED" : "PUBLISHED",
+        deltaClass: resolution.deltaClass,
+        diff: resolution.diff,
+        effectivePolicy: resolution.effectivePolicy,
+      });
+      await tx.insert(coordinationPoliciesTable).values({
+        id: revisionPolicy.policyId,
+        policyKey: sourcePolicy.policyKey,
+        version: revisionPolicy.policyVersion,
+        kind: revisionPolicy.policyType,
+        projectId: sourcePolicy.projectId,
+        providerOrgId: request.guOrgId,
+        recipientOrgId: request.nuOrgId,
+        parentPolicyId: agreement.id,
+        lifecycleStatus: revisionPolicy.lifecycleStatus,
+        deltaClass: revisionPolicy.deltaClass,
+        policySnapshot: {
+          ...revisionPolicy,
+          supersedesPolicyId: sourcePolicy.id,
+          sourceRequestId: request.id,
+          successorRequestId: newRequestId,
+        } as Record<string, unknown>,
+        diff: revisionPolicy.diff,
+        effectivePolicy: revisionPolicy.effectivePolicy,
+        createdByUserId: input.userId,
+      });
+    }
     const newSnapshotPayload: Record<string, unknown> = {
       ...oldPayload,
       plannedStart: dateOnly(input.start),
@@ -124,6 +367,7 @@ export async function createLeistungsanfrageRevision(input: {
         comment: input.comment ?? null,
         createdAt: now.toISOString(),
       },
+      ...(revisionPolicy ? { policySnapshot: revisionPolicy } : {}),
     };
     const [newRequest] = await tx.insert(leistungsanfragenTable).values({
       id: newRequestId,
@@ -137,7 +381,10 @@ export async function createLeistungsanfrageRevision(input: {
       responseRequiredBy: request.responseRequiredBy,
       supersedesRequestId: request.id,
       createdByUserId: input.userId,
-      dataPublicationId: request.dataPublicationId,
+      // Revisions remain governed by their fresh performance policy. Data
+      // publications are an independent offer workflow and are never inherited.
+      dataPublicationId: null,
+      performancePolicyId: revisionPolicy?.policyId ?? null,
       createdAt: now,
       updatedAt: now,
     }).returning();
@@ -270,14 +517,35 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
     if (!request || !party) throw Object.assign(new Error("Leistungsanfrage nicht gefunden"), { statusCode: 404 });
     if (!request.agreedStart || !request.agreedEnd) throw Object.assign(new Error("CHANGE_PROPOSAL_REQUIRES_AGREEMENT"), { statusCode: 422 });
     if (["CANCELLED", "EXPIRED", "SUPERSEDED", "REJECTED"].includes(request.status)) throw Object.assign(new Error("Für diese Anfrage ist keine Änderung mehr möglich"), { statusCode: 409 });
+    if (request.performancePolicyId) {
+      const [performancePolicy] = await tx.select().from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
+      if (!performancePolicy) throw Object.assign(new Error("NOT_PERMITTED"), { statusCode: 409 });
+      const effective = performancePolicy.effectivePolicy as Record<string, unknown>;
+      try {
+        assertLeistungsanfragePolicyAccess({
+          policyDeltaClass: performancePolicy.deltaClass,
+          policyConsentStatus: performancePolicy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+            performancePolicy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+          validFrom: effective.validFrom as string | null | undefined,
+          validUntil: effective.validUntil as string | null | undefined,
+          retentionUntil: effective.retentionUntil as string | null | undefined,
+        }, "AVAILABILITY");
+      } catch (error) {
+        if (error instanceof Error) Object.assign(error, { statusCode: 409 });
+        throw error;
+      }
+    }
     const [open] = await tx.select().from(serviceChangeProposalsTable).where(and(eq(serviceChangeProposalsTable.leistungsanfrageId, input.requestId), eq(serviceChangeProposalsTable.status, "OPEN"))).limit(1);
     if (open) {
       if (input.action !== "COUNTER" || open.proposerOrgId === input.orgId) throw Object.assign(new Error("Es existiert bereits ein offener Vorschlag"), { statusCode: 409 });
       if (input.supersedesProposalId && input.supersedesProposalId !== open.id) throw Object.assign(new Error("Der Gegenvorschlag bezieht sich nicht auf den offenen Vorschlag"), { statusCode: 409 });
       await tx.update(serviceChangeProposalsTable).set({ status: "SUPERSEDED", resolvedAt: new Date(), resolvedByUserId: input.userId }).where(eq(serviceChangeProposalsTable.id, open.id));
+      await setScheduleChangePolicyLifecycle(tx, { request, proposal: open, lifecycleStatus: "SUPERSEDED" });
     }
     const [proposal] = await tx.insert(serviceChangeProposalsTable).values({ leistungsanfrageId: input.requestId, proposerOrgId: input.orgId, proposerUserId: input.userId, start: input.start, end: input.end, reasonCode: input.reasonCode ?? null, comment: input.comment ?? null, action: input.action ?? "PROPOSE", supersedesProposalId: input.supersedesProposalId ?? open?.id ?? null }).returning();
     if (!proposal) throw new Error("Vorschlag konnte nicht gespeichert werden");
+    const schedulePolicy = await createScheduleChangePolicy(tx, { request, proposal, createdByUserId: input.userId });
 
     // Build the public Dataspace request while the AG transaction still has
     // the request context, but publish only after the transaction commits.
@@ -304,6 +572,7 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       requestKind: "SCHEDULE_CHANGE",
       sourceRequestId: request.id,
       changeProposalId: proposal.id,
+      supersedesProposalId: input.supersedesProposalId ?? open?.id ?? undefined,
       baseTimeWindow: { start: request.agreedStart.toISOString(), end: request.agreedEnd.toISOString() },
       projectReference: service.projectId,
       plannedStart: proposal.start.toISOString(),
@@ -315,6 +584,14 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       correlationId: proposal.id,
       messageId: `schedule-change:${proposal.id}`,
       resourceRequirements: requirements,
+      ...(schedulePolicy ? {
+        // The proposal correlation is AG-internal policy provenance; the
+        // public policy contract remains the strict Construct-X snapshot.
+        policySnapshot: (() => {
+          const { changeProposalId: _proposalId, ...externalPolicy } = schedulePolicy;
+          return externalPolicy;
+        })(),
+      } : {}),
       ...(snapshotPayload ? { publicSnapshot: publicSnapshotFromRecord(snapshotPayload) } : {}),
     });
     return { proposal, payload };
@@ -341,6 +618,7 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
     if (input.status === "REJECTED") {
       const [updated] = await tx.update(serviceChangeProposalsTable).set({ status: "REJECTED", resolvedAt: new Date(), resolvedByUserId: input.userId }).where(and(eq(serviceChangeProposalsTable.id, input.proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).returning();
       if (!updated) throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
+      await setScheduleChangePolicyLifecycle(tx, { request, proposal: updated, lifecycleStatus: "REJECTED" });
       return { proposal: updated, payload: null, request };
     }
     const [updated] = await tx.update(serviceChangeProposalsTable).set({
@@ -352,6 +630,13 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
       eq(serviceChangeProposalsTable.status, "OPEN"),
     )).returning();
     if (!updated) throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
+    await assertScheduleAcceptancePolicy(tx, request);
+    await applyAcceptedScheduleChange(tx, {
+      serviceRequestId: request.id, newStart: updated.start, newEnd: updated.end,
+    });
+    await setScheduleChangePolicyLifecycle(tx, {
+      request, proposal: updated, lifecycleStatus: "ACCEPTED", consentedByOrgId: input.orgId,
+    });
     return { proposal: updated, payload: null, request };
   });
   const decision: ExternalCoordinationDecision = {
@@ -390,16 +675,53 @@ export async function applyIncomingScheduleChangeResponseOnAg(payload: ExternalS
     return { idempotent: false, newStatus: "ALTERNATIVES_PROPOSED", payloadHash };
   }
   const nextStatus = payload.decision === "ACCEPTED" ? "ACCEPTED" : "REJECTED";
-  await agDb.transaction(async (tx) => {
-    const [locked] = await tx.select().from(serviceChangeProposalsTable).where(and(eq(serviceChangeProposalsTable.id, proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).limit(1);
-    if (!locked) return;
+  const outcome = await agDb.transaction(async (tx) => {
+    // Serialise every decision for this agreement before re-reading OPEN state.
+    // The conditional update below remains the definitive claim in case a
+    // caller bypasses the lock in a future integration.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${sourceRequestId}, 0))`);
+    const [open] = await tx.select().from(serviceChangeProposalsTable).where(and(
+      eq(serviceChangeProposalsTable.id, proposalId),
+      eq(serviceChangeProposalsTable.status, "OPEN"),
+    )).limit(1);
+    if (!open) {
+      const [current] = await tx.select({ status: serviceChangeProposalsTable.status })
+        .from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, proposalId)).limit(1);
+      return { won: false, status: current?.status ?? proposal.status };
+    }
     if (nextStatus === "ACCEPTED") {
       if (!payload.acceptedTimeWindow) throw new Error("Accepted schedule-change response has no time window");
-      await applyAcceptedScheduleChange(tx, { serviceRequestId: sourceRequestId, newStart: new Date(payload.acceptedTimeWindow.start), newEnd: new Date(payload.acceptedTimeWindow.end) });
+      const acceptedStart = new Date(payload.acceptedTimeWindow.start);
+      const acceptedEnd = new Date(payload.acceptedTimeWindow.end);
+      if (Number.isNaN(acceptedStart.getTime()) || Number.isNaN(acceptedEnd.getTime()) ||
+          acceptedStart.getTime() !== open.start.getTime() || acceptedEnd.getTime() !== open.end.getTime()) {
+        throw Object.assign(new Error("Accepted schedule-change response must exactly match the open proposal; submit a counterproposal instead"), { statusCode: 409 });
+      }
     }
-    await tx.update(serviceChangeProposalsTable).set({ status: nextStatus, resolvedAt: new Date(), resolvedByUserId: null }).where(and(eq(serviceChangeProposalsTable.id, proposalId), eq(serviceChangeProposalsTable.status, "OPEN")));
+    const [updated] = await tx.update(serviceChangeProposalsTable)
+      .set({ status: nextStatus, resolvedAt: new Date(), resolvedByUserId: null })
+      .where(and(eq(serviceChangeProposalsTable.id, proposalId), eq(serviceChangeProposalsTable.status, "OPEN")))
+      .returning();
+    if (!updated) return { won: false, status: open.status };
+    if (nextStatus === "ACCEPTED") {
+      await assertScheduleAcceptancePolicy(tx, request);
+      await applyAcceptedScheduleChange(tx, {
+        serviceRequestId: sourceRequestId,
+        newStart: updated.start,
+        newEnd: updated.end,
+      });
+    }
+    await setScheduleChangePolicyLifecycle(tx, {
+      request, proposal: updated, lifecycleStatus: nextStatus,
+      consentedByOrgId: payload.metadata.senderOrgId,
+    });
+    return { won: true, status: nextStatus };
   });
-  return { idempotent: false, newStatus: nextStatus, payloadHash };
+  return {
+    idempotent: !outcome.won,
+    newStatus: outcome.status === "ACCEPTED" ? "ACCEPTED" : "REJECTED",
+    payloadHash,
+  };
 }
 
 /**
@@ -454,6 +776,9 @@ export async function applyIncomingAnScheduleChangeProposalOnAg(
       if (open.proposerOrgId !== request.guOrgId) {
         throw Object.assign(new Error("Es existiert bereits ein offener Vorschlag"), { statusCode: 409 });
       }
+      if (payload.supersedesProposalId !== open.id) {
+        throw new Error("Inbound AN counterproposal does not unambiguously reference the open proposal");
+      }
       await tx.update(serviceChangeProposalsTable).set({
         status: "SUPERSEDED",
         resolvedAt: new Date(),
@@ -461,6 +786,7 @@ export async function applyIncomingAnScheduleChangeProposalOnAg(
         // not copy that user id into the AG foreign key.
         resolvedByUserId: null,
       }).where(eq(serviceChangeProposalsTable.id, open.id));
+      await setScheduleChangePolicyLifecycle(tx, { request, proposal: open, lifecycleStatus: "SUPERSEDED" });
     }
 
     // The AG request owner is the only user id guaranteed to exist in this
@@ -480,6 +806,9 @@ export async function applyIncomingAnScheduleChangeProposalOnAg(
       supersedesProposalId: open?.id ?? null,
     }).returning();
     if (!proposal) throw new Error("Inbound AN schedule-change proposal could not be stored");
+    await createScheduleChangePolicy(tx, {
+      request, proposal, createdByUserId: request.createdByUserId,
+    });
     return proposal;
   });
 }

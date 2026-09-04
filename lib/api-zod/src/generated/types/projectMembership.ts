@@ -5,6 +5,7 @@
  * Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.2.0
  */
+import type { EffectiveProjectAgreement } from './effectiveProjectAgreement';
 import type { ProjectInvitationDelivery } from './projectInvitationDelivery';
 import type { ProjectMembershipStatus } from './projectMembershipStatus';
 
@@ -19,6 +20,8 @@ export interface ProjectMembership {
   dataPublicationId?: string | null;
   /** Accepted parent project-agreement policy for child Leistungsfreigaben. */
   projectAgreementPolicyId?: string | null;
+  /** Effective accepted parent policy. Null while the membership or policy is pending. */
+  projectAgreement?: EffectiveProjectAgreement | null;
   anParticipantId?: string | null;
   status: ProjectMembershipStatus;
   invitationMessage?: string | null;

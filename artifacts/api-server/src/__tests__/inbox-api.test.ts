@@ -21,12 +21,13 @@ import {
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
   usersTable,
 } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import app from "../app";
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ async function cleanupFixtures() {
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`);
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
   await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID));
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
@@ -111,6 +113,56 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG, assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
+  const agreementId = "t37-agreement";
+  await db.insert(coordinationPoliciesTable).values({
+    id: agreementId,
+    policyKey: agreementId,
+    version: 1,
+    kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID,
+    providerOrgId: GU_ORG,
+    recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED",
+    policySnapshot: {
+      policyId: agreementId,
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 1,
+      code: "PROJECT_MEMBERSHIP",
+      name: "Project Membership",
+      description: "Accepted project coordination agreement",
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      prohibitions: [],
+      provider: { organizationId: GU_ORG, userId: null },
+      recipientOrganizationId: NU_ORG,
+      purpose: "PROJECT_MEMBERSHIP",
+      projectReference: PROJECT_ID,
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: null,
+      createdAt: "2026-11-01T00:00:00.000Z",
+    },
+    effectivePolicy: {
+      policyId: agreementId,
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 1,
+      code: "PROJECT_MEMBERSHIP",
+      name: "Project Membership",
+      description: "Accepted project coordination agreement",
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      prohibitions: [],
+      provider: { organizationId: GU_ORG, userId: null },
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      purpose: "PROJECT_MEMBERSHIP",
+      projectReference: PROJECT_ID,
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: null,
+      createdAt: "2026-11-01T00:00:00.000Z",
+      childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t37-membership",
     projectId: PROJECT_ID,
@@ -119,6 +171,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t37-invitation",
     correlationId: "t37-correlation",
+    projectAgreementPolicyId: agreementId,
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({

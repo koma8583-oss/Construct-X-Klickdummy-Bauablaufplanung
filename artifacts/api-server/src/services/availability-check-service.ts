@@ -27,7 +27,26 @@ import {
   resourceBookingsTable,
   availabilityChecksTable,
   taktRequestResourceRequirementsTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
+import { assertLeistungsanfragePolicyAccess } from "./leistungsanfrage-policy-guard";
+
+async function assertAvailabilityPolicyAccess(
+  request: { performancePolicyId: string | null },
+): Promise<void> {
+  if (!request.performancePolicyId) return;
+  const [policy] = await db.select({
+    deltaClass: coordinationPoliciesTable.deltaClass,
+    lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+  }).from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
+  assertLeistungsanfragePolicyAccess({
+    policyDeltaClass: policy?.deltaClass ?? "NOT_PERMITTED",
+    policyConsentStatus: policy?.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+      policy?.lifecycleStatus === "REJECTED" ? "REJECTED" :
+      policy?.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+  }, "AVAILABILITY");
+}
 import { addCalendarDays, differenceInCalendarDays, toCalendarDate } from "../lib/calendar-date-utils";
 import { and, eq, lt, gt, ne, max, desc, sql, or, isNull } from "drizzle-orm";
 import type { TaktRequestSnapshotPayload } from "../lib/takt-request-snapshot-service";
@@ -66,6 +85,9 @@ export async function getLatestAvailabilityCheck(
   taktRequestId: string,
   nuOrgId: string,
 ): Promise<AvailabilityCheck | null> {
+  const [request] = await db.select().from(taktRequestsTable)
+    .where(and(eq(taktRequestsTable.id, taktRequestId), eq(taktRequestsTable.nuOrgId, nuOrgId))).limit(1);
+  if (request) await assertAvailabilityPolicyAccess(request);
   // Try COMPLETED first (preferred)
   const [completed] = await db
     .select()
@@ -210,6 +232,7 @@ export async function runAvailabilityCheck(
       "WRONG_NU_ORG",
     );
   }
+  await assertAvailabilityPolicyAccess(request);
 
   // ── Rule 4: Request has a checkable status ───────────────────────────────────
   if (!CHECKABLE_STATUSES.has(request.status)) {

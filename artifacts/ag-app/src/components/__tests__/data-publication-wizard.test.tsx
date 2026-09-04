@@ -126,12 +126,18 @@ describe("DataPublicationWizard", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("uses the ordered Leistungsfreigabe flow without DataPublication", async () => {
     const user = userEvent.setup();
     mocks.createBatch.mockResolvedValue({ requests: [{ id: "request-1" }] });
     mocks.send.mockResolvedValue({ status: "DELIVERED" });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [{ taktId: "takt-1", deltaClass: "WITHIN_BASELINE", inheritedEffectivePolicy: {}, diff: { changed: [], summary: [] } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <DataPublicationWizard
@@ -146,6 +152,15 @@ describe("DataPublicationWizard", () => {
           assignmentStatus: "ACTIVE",
           projectAgreementPolicyId: "agreement-1",
           projectAgreementStatus: "ACCEPTED",
+          parentAgreement: {
+            id: "agreement-1",
+            lifecycleStatus: "ACCEPTED",
+            effectivePolicy: {
+              projectReference: "project-1",
+              allowedPurposes: ["RAHMENTERMINE"],
+              allowedFieldScope: ["kurzbezeichnung", "workPackage", "trade"],
+            },
+          },
         }]}
         takte={[{
           id: "takt-1",
@@ -169,9 +184,11 @@ describe("DataPublicationWizard", () => {
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
-    expect(screen.getByText("Bereits durch Projektvereinbarung abgedeckt")).toBeInTheDocument();
+    expect(screen.getByTestId("inherited-policy-context")).toHaveTextContent("Aus akzeptierter Projektvereinbarung übernommen");
     expect(screen.queryByText("Benötigte Ressourcen")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    expect(await screen.findByTestId("policy-preview")).toHaveTextContent("WITHIN_BASELINE");
+    expect(fetchMock).toHaveBeenCalledWith("/api/leistungsanfragen/policy-preview", expect.objectContaining({ method: "POST" }));
     await user.click(screen.getByRole("button", { name: "Senden" }));
     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       purpose: "RAHMENTERMINE",

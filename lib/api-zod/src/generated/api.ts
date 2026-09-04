@@ -595,6 +595,11 @@ export const ListProjectMembershipsResponseItem = zod.object({
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
+  "projectAgreement": zod.object({
+  "id": zod.string(),
+  "lifecycleStatus": zod.enum(['ACCEPTED']),
+  "effectivePolicy": zod.record(zod.string(), zod.unknown())
+}).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -711,6 +716,11 @@ export const InviteProjectParticipantResponse = zod.object({
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
+  "projectAgreement": zod.object({
+  "id": zod.string(),
+  "lifecycleStatus": zod.enum(['ACCEPTED']),
+  "effectivePolicy": zod.record(zod.string(), zod.unknown())
+}).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -798,6 +808,11 @@ export const CreateProjectInvitationPackageResponse = zod.object({
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
+  "projectAgreement": zod.object({
+  "id": zod.string(),
+  "lifecycleStatus": zod.enum(['ACCEPTED']),
+  "effectivePolicy": zod.record(zod.string(), zod.unknown())
+}).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -893,6 +908,11 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
+  "projectAgreement": zod.object({
+  "id": zod.string(),
+  "lifecycleStatus": zod.enum(['ACCEPTED']),
+  "effectivePolicy": zod.record(zod.string(), zod.unknown())
+}).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -1275,6 +1295,11 @@ export const RevokeProjectMembershipResponse = zod.object({
   "anOrgId": zod.string(),
   "dataPublicationId": zod.string().nullish(),
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
+  "projectAgreement": zod.object({
+  "id": zod.string(),
+  "lifecycleStatus": zod.enum(['ACCEPTED']),
+  "effectivePolicy": zod.record(zod.string(), zod.unknown())
+}).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
   "anParticipantId": zod.string().nullish(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'REJECTED', 'REVOKED']),
   "invitationMessage": zod.string().nullish(),
@@ -3609,6 +3634,32 @@ export const CreateTaktRequestBatchWithSnapshotResponse = zod.object({
   "snapshotId": zod.string().describe('ID of the immutable snapshot created atomically with this request'),
   "createdAt": zod.coerce.date()
 }).describe('Response from POST \/takt-requests — the newly created DRAFT request.'))
+})
+
+
+/**
+ * Evaluates every selected Leistung against the selected AN's accepted effective project agreement without creating requests.
+ * @summary Preview child policy deltas for selected Leistungen
+ */
+
+
+
+
+export const PreviewLeistungsanfragePolicyBody = zod.object({
+  "taktIds": zod.array(zod.string()).min(1),
+  "nuOrgId": zod.string(),
+  "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']),
+  "selectedFields": zod.array(zod.string()).min(1)
+})
+
+export const PreviewLeistungsanfragePolicyResponse = zod.object({
+  "items": zod.array(zod.object({
+  "taktId": zod.string(),
+  "deltaClass": zod.enum(['WITHIN_BASELINE', 'REQUIRES_CONSENT', 'NOT_PERMITTED']),
+  "error": zod.string().optional(),
+  "inheritedEffectivePolicy": zod.record(zod.string(), zod.unknown()).nullable(),
+  "diff": zod.record(zod.string(), zod.unknown())
+}))
 })
 
 

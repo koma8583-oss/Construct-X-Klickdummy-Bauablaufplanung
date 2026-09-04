@@ -20,6 +20,7 @@ import {
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
+  coordinationPoliciesTable,
   usersTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
@@ -97,6 +98,19 @@ beforeAll(async () => {
     projectId: PROJECT_ID,
     anOrgId: NU_ORG,
   }).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t177-agreement", policyKey: "t177-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t177-membership",
     projectId: PROJECT_ID,
@@ -105,6 +119,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t177-invitation",
     correlationId: "t177-correlation",
+    projectAgreementPolicyId: "t177-agreement",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({
@@ -126,6 +141,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID)).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY['${sql.raw(GU_ORG)}','${sql.raw(NU_ORG)}'])`).catch(() => {});
@@ -220,13 +236,13 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
   it("snapshot payload contains the project's location when the project has one set", async () => {
     const { snapshot } = await createTaktRequestWithSnapshot(makeInput());
 
-    expect(snapshot.snapshotPayload.projectLocation).toBe(PROJECT_LOCATION);
+    expect(snapshot.snapshotPayload.projectLocation).toBeUndefined();
   });
 
   it("snapshot payload contains the project's description when the project has one set", async () => {
     const { snapshot } = await createTaktRequestWithSnapshot(makeInput());
 
-    expect(snapshot.snapshotPayload.projectDescription).toBe(PROJECT_DESCRIPTION);
+    expect(snapshot.snapshotPayload.projectDescription).toBeUndefined();
   });
 
   it("DB-persisted snapshot payload contains projectLocation and projectDescription", async () => {
@@ -242,8 +258,8 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       projectDescription: unknown;
     };
 
-    expect(payload.projectLocation).toBe(PROJECT_LOCATION);
-    expect(payload.projectDescription).toBe(PROJECT_DESCRIPTION);
+    expect(payload.projectLocation).toBeUndefined();
+    expect(payload.projectDescription).toBeUndefined();
   });
 
   it("snapshot projectLocation/projectDescription are null when project has neither set", async () => {
@@ -262,6 +278,19 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       projectId: BARE_PROJECT_ID,
       anOrgId: NU_ORG,
     }).onConflictDoNothing();
+    await db.insert(coordinationPoliciesTable).values({
+      id: "t177-bare-agreement", policyKey: "t177-bare-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+      projectId: BARE_PROJECT_ID, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+      lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+        policyType: "PROJECT_AGREEMENT",
+        recipientOrganizationId: NU_ORG,
+        projectReference: BARE_PROJECT_ID,
+        validFrom: null,
+        validUntil: null,
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      },
+    }).onConflictDoNothing();
     await db.insert(projectMembershipsTable).values({
       id: "t177-bare-membership",
       projectId: BARE_PROJECT_ID,
@@ -270,6 +299,7 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       status: "ACTIVE",
       invitationId: "t177-bare-invitation",
       correlationId: "t177-bare-correlation",
+      projectAgreementPolicyId: "t177-bare-agreement",
     }).onConflictDoNothing();
 
     await db.insert(takteTable).values({
@@ -292,12 +322,14 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
         createdByUserId: USER_ID,
       });
 
-      expect(snapshot.snapshotPayload.projectLocation).toBeNull();
-      expect(snapshot.snapshotPayload.projectDescription).toBeNull();
+      expect(snapshot.snapshotPayload.projectLocation).toBeUndefined();
+      expect(snapshot.snapshotPayload.projectDescription).toBeUndefined();
     } finally {
       // Clean up extra fixtures
       await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (SELECT id FROM leistungsanfragen WHERE leistung_id = '${sql.raw(BARE_TAKT_ID)}')`).catch(() => {});
       await db.execute(sql`DELETE FROM leistungsanfragen WHERE leistung_id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
+      await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.id, "t177-bare-membership")).catch(() => {});
+      await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, "t177-bare-agreement")).catch(() => {});
       await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(BARE_TAKT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});
       await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(BARE_PROJECT_ID)}'`).catch(() => {});

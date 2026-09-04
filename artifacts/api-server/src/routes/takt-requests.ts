@@ -28,6 +28,8 @@ import {
   policyTemplatesTable,
   projectMembershipsTable,
   organizationsTable,
+  coordinationPoliciesTable,
+  leistungsanfragenTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -58,7 +60,10 @@ import {
   NuNotContractorError,
   InvalidTaktForSnapshotError,
   InvalidLeistungsfreigabeFieldsError,
+  LEISTUNGSFREIGABE_FIELD_WHITELISTS,
 } from "../lib/takt-request-snapshot-service";
+import { createPolicySnapshot } from "../services/policy-snapshot-service";
+import { resolvePolicyDelta } from "../services/construct-x-policy-service";
 import {
   getTaktResponseWithAlternatives,
   TaktResponseValidationError,
@@ -116,9 +121,120 @@ import {
   InvalidRequirementPeriodError,
   ResourceTypeNotOwnedError,
 } from "../services/resource-requirements-service";
+import {
+  assertLeistungsanfragePolicyAccess,
+  LeistungsanfragePolicyAccessError,
+} from "../services/leistungsanfrage-policy-guard";
 
 // Module-level transport singleton — stateless, safe to share across requests.
 const dataspaceExchange = createDataspaceExchange();
+
+async function assertRootRequestPolicyAccess(
+  requestId: string,
+  action: "DETAILS" | "ANSWER",
+): Promise<void> {
+  // Only genuinely pre-policy rows use the legacy fallback. New requests
+  // always have a child performance policy and can never bypass this gate.
+  const [request] = await db.select({ performancePolicyId: taktRequestsTable.performancePolicyId })
+    .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId)).limit(1);
+  if (!request?.performancePolicyId) return;
+  const [policy] = await db.select({
+    deltaClass: coordinationPoliciesTable.deltaClass,
+    lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+    effectivePolicy: coordinationPoliciesTable.effectivePolicy,
+  }).from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
+  if (!policy) throw new LeistungsanfragePolicyAccessError("NOT_PERMITTED", action);
+  assertLeistungsanfragePolicyAccess({
+    policyDeltaClass: policy.deltaClass,
+    policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
+      policy.lifecycleStatus === "REJECTED" ? "REJECTED" :
+      policy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+    validFrom: (policy.effectivePolicy as Record<string, unknown>)?.validFrom as string | null | undefined,
+    validUntil: (policy.effectivePolicy as Record<string, unknown>)?.validUntil as string | null | undefined,
+    retentionUntil: (policy.effectivePolicy as Record<string, unknown>)?.retentionUntil as string | null | undefined,
+  }, action);
+}
+
+class RootSnapshotAccessError extends Error {
+  constructor(public status: number, public payload: Record<string, unknown>) {
+    super(String(payload.error ?? "ACCESS_DENIED"));
+  }
+}
+
+/** One authorization path for both root snapshot representations. */
+async function authorizeRootSnapshotAccess(input: {
+  request: any;
+  snapshot: any;
+  callerOrgId: string;
+  isHubAdmin: boolean;
+}): Promise<"AG" | "AN"> {
+  const { request, snapshot, callerOrgId, isHubAdmin } = input;
+  if (!isHubAdmin && callerOrgId === request.guOrgId) return "AG";
+  if (isHubAdmin || callerOrgId !== request.nuOrgId) {
+    throw new RootSnapshotAccessError(403, { error: "SNAPSHOT_ACCESS_DENIED" });
+  }
+  if (!snapshot) throw new RootSnapshotAccessError(404, { error: "Snapshot not yet available" });
+
+  if (request.performancePolicyId) {
+    const projectId = String((snapshot.snapshotPayload as Record<string, unknown>).projectReference ?? "");
+    const [membership] = await db.select().from(projectMembershipsTable).where(and(
+      eq(projectMembershipsTable.projectId, projectId),
+      eq(projectMembershipsTable.anOrgId, callerOrgId),
+      eq(projectMembershipsTable.status, "ACTIVE"),
+    )).limit(1);
+    if (!membership?.projectAgreementPolicyId) {
+      throw new RootSnapshotAccessError(403, { error: "PROJECT_MEMBERSHIP_REQUIRED" });
+    }
+    const [agreement] = await db.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId)).limit(1);
+    const effective = agreement?.effectivePolicy as Record<string, unknown> | undefined;
+    const now = Date.now();
+    const from = typeof effective?.validFrom === "string" ? Date.parse(effective.validFrom) : NaN;
+    const until = typeof effective?.validUntil === "string" ? Date.parse(effective.validUntil) : NaN;
+    if (!agreement || agreement.kind !== "PROJECT_AGREEMENT" ||
+        agreement.lifecycleStatus !== "ACCEPTED" ||
+        agreement.projectId !== projectId || agreement.recipientOrgId !== callerOrgId ||
+        (Number.isFinite(from) && now < from) || (Number.isFinite(until) && now > until)) {
+      throw new RootSnapshotAccessError(403, { error: "PROJECT_AGREEMENT_REQUIRED" });
+    }
+    await assertRootRequestPolicyAccess(request.id, "DETAILS");
+    return "AN";
+  }
+
+  if (request.dataPublicationId) {
+    const [publication] = await db.select().from(dataPublicationsTable)
+      .where(eq(dataPublicationsTable.id, request.dataPublicationId)).limit(1);
+    const now = Date.now();
+    if (!publication || publication.status !== "PUBLISHED" ||
+        (publication.validFrom && now < publication.validFrom.getTime()) ||
+        (publication.validUntil && now > publication.validUntil.getTime())) {
+      throw new RootSnapshotAccessError(403, { error: "DATA_PUBLICATION_INACTIVE" });
+    }
+    const [recipient] = await db.select().from(dataPublicationRecipientsTable).where(and(
+      eq(dataPublicationRecipientsTable.publicationId, publication.id),
+      eq(dataPublicationRecipientsTable.anOrgId, callerOrgId),
+    )).limit(1);
+    if (!recipient || recipient.status !== "ACCEPTED" || !recipient.policyAcceptedAt) {
+      throw new RootSnapshotAccessError(403, { error: "POLICY_ACCEPTANCE_REQUIRED" });
+    }
+    const [template] = await db.select({ code: policyTemplatesTable.code })
+      .from(policyTemplatesTable)
+      .where(eq(policyTemplatesTable.id, publication.policyTemplateId)).limit(1);
+    if (template?.code === "PERFORMANCE_COORDINATION") {
+      const [membership] = await db.select({ id: projectMembershipsTable.id })
+        .from(projectMembershipsTable).where(and(
+          eq(projectMembershipsTable.projectId, publication.projectId),
+          eq(projectMembershipsTable.anOrgId, callerOrgId),
+          eq(projectMembershipsTable.status, "ACTIVE"),
+        )).limit(1);
+      if (!membership) {
+        throw new RootSnapshotAccessError(403, { error: "PROJECT_MEMBERSHIP_REQUIRED" });
+      }
+    }
+  }
+  return "AN";
+}
 
 /**
  * Wraps transport.send() and maps schema / idempotency errors to proper HTTP
@@ -255,7 +371,7 @@ const router = Router();
 // AN traffic has a dedicated /api/an router backed by AN-local projections.
 // Only intercept this router's legacy paths: a router-level middleware mounted
 // without a prefix would otherwise reject unrelated /api routes mounted later.
-router.use(requireJwt, (req, res, next) => {
+router.use(requireJwt, async (req, res, next) => {
   const resourceRequirementsPath =
     /^\/takt-requests\/[^/]+\/resource-requirements(?:\/|$)/.test(req.path);
   const legacyPath = (
@@ -266,6 +382,23 @@ router.use(requireJwt, (req, res, next) => {
     req.method === "GET" &&
     (/^\/takt-requests\/[^/]+$/.test(req.path) ||
       /^\/takt-requests\/[^/]+\/audit-trail$/.test(req.path));
+  // These narrowly-scoped legacy endpoints still serve historical root rows.
+  // Addressed ANs must reach their domain policy checks; the checks decide
+  // whether only metadata is available, rather than this transport middleware.
+  const anPolicyGatedLegacyPath =
+    /^\/takt-requests\/[^/]+\/(?:details|snapshot|response|responses)$/.test(req.path);
+  if (req.user?.orgType === "AN" && legacyPath && !guReadOnlyPath && anPolicyGatedLegacyPath) {
+    const requestId = /^\/takt-requests\/([^/]+)\//.exec(req.path)?.[1];
+    const [root] = requestId ? await db.select({
+      nuOrgId: taktRequestsTable.nuOrgId,
+      performancePolicyId: taktRequestsTable.performancePolicyId,
+    }).from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId)).limit(1) : [];
+    // Do not turn root routes into a general AN API: only an addressed AN
+    // handling a policy-backed request reaches the dedicated domain guard.
+    if (root?.nuOrgId === req.user.orgId && root.performancePolicyId) return next();
+    res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
+    return;
+  }
   if (req.user?.orgType === "AN" && legacyPath && !guReadOnlyPath) {
     res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
     return;
@@ -316,6 +449,62 @@ router.get("/takt-requests", requireJwt, async (req, res): Promise<void> => {
     nuOrgId: nuOrgId ?? undefined,
   });
   res.json(requests);
+});
+
+// ── POST /leistungsanfragen/policy-preview ───────────────────────────────────
+// This is deliberately a non-persisting evaluation. The candidate construction
+// is identical to the creation service: accepted membership policy + the
+// selected business purpose, Leistung and released field subset.
+router.post("/leistungsanfragen/policy-preview", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANNER"), async (req, res): Promise<void> => {
+  const parsed = z.object({
+    taktIds: z.array(z.string().min(1)).min(1).max(50),
+    nuOrgId: z.string().min(1),
+    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+    selectedFields: z.array(z.string().min(1)).min(1),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { taktIds, nuOrgId, purpose, selectedFields } = parsed.data;
+  const permitted = LEISTUNGSFREIGABE_FIELD_WHITELISTS[purpose];
+  const illegal = [...new Set(selectedFields)].filter((field) => !permitted.includes(field as never));
+  if (illegal.length) {
+    res.status(422).json({ error: `Fields are not permitted for ${purpose}: ${illegal.join(", ")}.`, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+    return;
+  }
+  const guOrgId = req.user!.orgId!;
+  const items = await Promise.all(taktIds.map(async (taktId) => {
+    const [takt] = await db.select({ id: takteTable.id, projectId: takteTable.projectId, version: takteTable.version })
+      .from(takteTable).where(eq(takteTable.id, taktId)).limit(1);
+    if (!takt) return { taktId, deltaClass: "NOT_PERMITTED" as const, error: "Leistung nicht gefunden.", inheritedEffectivePolicy: null, diff: { changed: [], summary: ["Die Leistung wurde nicht gefunden."] } };
+    const [project] = await db.select({ agOrgId: projectsTable.agOrgId }).from(projectsTable).where(eq(projectsTable.id, takt.projectId)).limit(1);
+    if (!project || project.agOrgId !== guOrgId) return { taktId, deltaClass: "NOT_PERMITTED" as const, error: "Keine Berechtigung für diese Leistung.", inheritedEffectivePolicy: null, diff: { changed: [], summary: ["Die Leistung gehört nicht zum Auftraggeber."] } };
+    try {
+      const membership = await assertActiveProjectMembership(takt.projectId, nuOrgId);
+      const [agreement] = membership.projectAgreementPolicyId
+        ? await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId)).limit(1)
+        : [];
+      const base = createPolicySnapshot({
+        templateId: purpose === "RAHMENTERMINE" ? "SCHEDULE_COORDINATION" : "PERFORMANCE_COORDINATION",
+        providerContext: { organizationId: guOrgId, userId: req.user!.userId!, organizationType: "AG" },
+        overrides: { recipientOrganizationId: nuOrgId, purpose, projectReference: takt.projectId, workPackageReference: taktId },
+      });
+      const resolution = resolvePolicyDelta(
+        agreement?.lifecycleStatus === "ACCEPTED" ? agreement.effectivePolicy as Record<string, unknown> : undefined,
+        { ...base, policyType: "PERFORMANCE_REQUEST", selectedFields },
+      );
+      return {
+        taktId,
+        deltaClass: resolution.deltaClass,
+        inheritedEffectivePolicy: agreement?.lifecycleStatus === "ACCEPTED" ? agreement.effectivePolicy : null,
+        diff: resolution.diff,
+      };
+    } catch (error) {
+      return { taktId, deltaClass: "NOT_PERMITTED" as const, error: error instanceof Error ? error.message : "Projektvereinbarung nicht verfügbar.", inheritedEffectivePolicy: null, diff: { changed: [], summary: ["Es besteht keine akzeptierte Projektvereinbarung."] } };
+    }
+  }));
+  res.json({ items });
 });
 
 // ── POST /projects/:projectId/takt-requests ───────────────────────────────────
@@ -1036,11 +1225,23 @@ router.get(
     const isAddressedNu = callerOrgId === request.nuOrgId;
     const isOwnerGu     = callerOrgId === request.guOrgId;
 
-    if (isHubAdmin || (!isAddressedNu && !isOwnerGu)) {
-      res.status(403).json({
-        error:
-          "Access denied. Only the addressed NU or the creating GU organisation may retrieve these details.",
+    try {
+      await authorizeRootSnapshotAccess({
+        request, snapshot, callerOrgId: callerOrgId!, isHubAdmin,
       });
+    } catch (error) {
+      if (error instanceof LeistungsanfragePolicyAccessError) {
+        res.status(409).json({ error: error.code, action: error.action });
+        return;
+      }
+      if (error instanceof RootSnapshotAccessError) {
+        res.status(error.status).json(error.payload);
+        return;
+      }
+      throw error;
+    }
+    if (!isAddressedNu && !isOwnerGu) {
+      res.status(403).json({ error: "SNAPSHOT_ACCESS_DENIED" });
       return;
     }
 
@@ -1085,7 +1286,13 @@ router.get(
     // their child policy, never by a DataOffer acceptance. DataOffers remain a
     // separate document/BIM/logistics flow and only old linked rows use that
     // compatibility branch below.
-    if (isAddressedNu && !request.dataPublicationId) {
+    const [requestPolicyLink] = await db.select({
+      performancePolicyId: leistungsanfragenTable.performancePolicyId,
+    }).from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, request.id)).limit(1);
+    const isGenuineLegacyPublicationRow = Boolean(
+      request.dataPublicationId && !requestPolicyLink?.performancePolicyId,
+    );
+    if (isAddressedNu && !isGenuineLegacyPublicationRow) {
       try {
         await assertActiveProjectMembership(String((snapshot.snapshotPayload as Record<string, unknown>).projectReference ?? ""), callerOrgId!);
       } catch (err) {
@@ -1097,7 +1304,7 @@ router.get(
       }
     }
 
-    if (isAddressedNu && request.dataPublicationId) {
+    if (isAddressedNu && isGenuineLegacyPublicationRow && request.dataPublicationId) {
       const [gatePub] = await db
         .select({
           status: dataPublicationsTable.status,
@@ -1277,11 +1484,20 @@ router.get(
     }
 
     const { request, snapshot } = result;
-    if (request.nuOrgId !== nuOrgId) {
-      res
-        .status(403)
-        .json({ error: "Only the addressed NU organisation may pull this snapshot" });
-      return;
+    try {
+      await authorizeRootSnapshotAccess({
+        request, snapshot, callerOrgId: nuOrgId, isHubAdmin: req.user!.hubAdmin,
+      });
+    } catch (error) {
+      if (error instanceof LeistungsanfragePolicyAccessError) {
+        res.status(409).json({ error: error.code, action: error.action });
+        return;
+      }
+      if (error instanceof RootSnapshotAccessError) {
+        res.status(error.status).json(error.payload);
+        return;
+      }
+      throw error;
     }
 
     if (!snapshot) {
@@ -1399,6 +1615,9 @@ router.post(
         nextAvailableDate,
       });
     } catch (err) {
+      if (err instanceof LeistungsanfragePolicyAccessError) {
+        res.status(409).json({ error: err.code, action: err.action }); return;
+      }
       if (err instanceof TaktResponseValidationError) {
         res.status(422).json({ error: err.message }); return;
       }
@@ -1523,6 +1742,9 @@ router.post(
         nextAvailableDate,
       });
     } catch (err) {
+      if (err instanceof LeistungsanfragePolicyAccessError) {
+        res.status(409).json({ error: err.code, action: err.action }); return;
+      }
       if (err instanceof TaktResponseValidationError) {
         res.status(422).json({ error: err.message }); return;
       }

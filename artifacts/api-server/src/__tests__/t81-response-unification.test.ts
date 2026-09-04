@@ -46,12 +46,13 @@ import {
   taktResponseAlternativesTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   messageOutboxTable,
   messageInboxTable,
   taktRequestAuditEventsTable,
   dataspaceExchangesTable,
 } from "@workspace/db";
-import { eq, and, inArray, or } from "drizzle-orm";
+import { eq, and, inArray, or, sql } from "drizzle-orm";
 import app from "../app";
 import { processIncomingServiceRequest } from "../services/dataspace/inbound-domain-service";
 
@@ -178,6 +179,14 @@ beforeAll(async () => {
     { id: NU_USER, name: "T81 NU User", email: "t81-nu@example.com", passwordHash: "x" },
   ]).onConflictDoNothing();
 
+  // Clear remnants from interrupted runs in FK order before reusing fixed IDs.
+  await db.delete(taktRequestSnapshotsTable).where(
+    sql`"leistungsanfrage_id" IN (SELECT id FROM leistungsanfragen WHERE gu_org_id = ${GU_ORG})`,
+  );
+  await db.delete(taktRequestsTable).where(eq(taktRequestsTable.guOrgId, GU_ORG));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
+
   // Project
   await db.insert(projectsTable).values([
     { id: PROJECT, agOrgId: GU_ORG, name: "T81 Project", status: "ACTIVE" },
@@ -199,6 +208,19 @@ beforeAll(async () => {
       assignmentStatus: "ACTIVE",
     },
   ]).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t81-agreement", policyKey: "t81-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t81-membership",
     projectId: PROJECT,
@@ -207,6 +229,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t81-invitation",
     correlationId: "t81-correlation",
+    projectAgreementPolicyId: "t81-agreement",
   }).onConflictDoNothing();
 
   // Tokens
@@ -270,6 +293,7 @@ afterAll(async () => {
   await db.delete(takteTable).where(eq(takteTable.projectId, PROJECT));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
 
   // 5. Users + orgs

@@ -42,10 +42,12 @@ import {
   resourceBookingsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   messageOutboxTable,
   messageInboxTable,
   taktRequestAuditEventsTable,
   taktRequestRemindersTable,
+  taktRequestSnapshotsTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import app from "../app";
@@ -408,6 +410,7 @@ describe("Audit trail — new event types", () => {
     // We need a contractor assignment for the POST to succeed
     const taktId = "t105-audit-takt";
     const projId = "t105-audit-proj";
+    const agreementId = "t105-audit-project-agreement";
 
     await db.insert(projectsTable).values({ id: projId, name: "T105 Audit Proj", agOrgId: GU_ORG })
       .onConflictDoNothing();
@@ -419,6 +422,26 @@ describe("Audit trail — new event types", () => {
     await db.insert(projectContractorsTable).values({
       projectId: projId, anOrgId: NU_ORG_A, assignmentStatus: "ACTIVE" as const,
     }).onConflictDoNothing();
+    await db.insert(coordinationPoliciesTable).values({
+      id: agreementId,
+      policyKey: agreementId,
+      version: 1,
+      kind: "PROJECT_AGREEMENT",
+      projectId: projId,
+      providerOrgId: GU_ORG,
+      recipientOrgId: NU_ORG_A,
+      lifecycleStatus: "ACCEPTED",
+      policySnapshot: {},
+      effectivePolicy: {
+        policyType: "PROJECT_AGREEMENT",
+        recipientOrganizationId: NU_ORG_A,
+        projectReference: projId,
+        validFrom: null,
+        validUntil: null,
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      },
+    }).onConflictDoNothing();
     await db.insert(projectMembershipsTable).values({
       id: "t105-audit-membership",
       projectId: projId,
@@ -427,6 +450,7 @@ describe("Audit trail — new event types", () => {
       status: "ACTIVE",
       invitationId: "t105-audit-invitation",
       correlationId: "t105-audit-correlation",
+      projectAgreementPolicyId: agreementId,
     }).onConflictDoNothing();
 
     const res = await request(app)
@@ -450,7 +474,13 @@ describe("Audit trail — new event types", () => {
     // Cleanup
     await db.delete(taktRequestAuditEventsTable)
       .where(eq(taktRequestAuditEventsTable.requestId, requestId));
+    await db.delete(taktRequestSnapshotsTable)
+      .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId));
     await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
+    await db.delete(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.projectId, projId));
+    await db.delete(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.projectId, projId));
     await db.delete(projectContractorsTable)
       .where(and(eq(projectContractorsTable.projectId, projId), eq(projectContractorsTable.anOrgId, NU_ORG_A)));
     await db.delete(takteTable).where(eq(takteTable.id, taktId));

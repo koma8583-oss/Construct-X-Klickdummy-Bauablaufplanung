@@ -34,6 +34,7 @@ import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import { applyIncomingScheduleChangeResponseOnAg } from "./service-change-proposal-service";
 import { applyAcceptedAnScheduleChange } from "./an-schedule-change-booking-service";
+import { assertLeistungsanfragePolicyAccess } from "./leistungsanfrage-policy-guard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -189,6 +190,7 @@ export async function createAnServiceResponse(
     eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
   )).limit(1);
   if (!request) throw new ResponseStatusError("NOT_FOUND", new Set(["AN-owned request"]));
+  assertLeistungsanfragePolicyAccess(request, "ANSWER");
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);

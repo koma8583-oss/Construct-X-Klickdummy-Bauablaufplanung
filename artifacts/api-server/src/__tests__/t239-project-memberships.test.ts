@@ -32,6 +32,7 @@ import {
   messageOutboxTable,
   messageDeliveryAttemptsTable,
   messageInboxTable,
+  coordinationPoliciesTable,
 } from "@workspace/db";
 
 const PREFIX = "t239";
@@ -929,7 +930,7 @@ describe("membership gates and legacy compatibility", () => {
     expect(noMembership.body.code).toBe("PROJECT_MEMBERSHIP_NOT_ACTIVE");
   });
 
-  it("permits request creation after the invitation is ACTIVE", async () => {
+  it("requires an accepted linked agreement in addition to ACTIVE membership", async () => {
     const membership = (await db.select().from(projectMembershipsTable)
       .where(and(eq(projectMembershipsTable.projectId, PROJECT_ID), eq(projectMembershipsTable.anOrgId, BACKFILL_AN_ID))))[0];
     // The concurrent test may have rejected it; create a clean ACTIVE row directly
@@ -948,6 +949,24 @@ describe("membership gates and legacy compatibility", () => {
         correlationId: `${PREFIX}-active-correlation`,
       });
     }
+    const deniedWithoutAgreement = await request(app).post("/api/takt-requests")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({ taktId: TAKT_ID, nuOrgId: BACKFILL_AN_ID });
+    expect(deniedWithoutAgreement.status).toBe(403);
+
+    const agreementId = `${PREFIX}-backfill-agreement`;
+    await db.insert(coordinationPoliciesTable).values({
+      id: agreementId, policyKey: agreementId, version: 1, kind: "PROJECT_AGREEMENT",
+      projectId: PROJECT_ID, providerOrgId: AG_ID, recipientOrgId: BACKFILL_AN_ID,
+      lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+        policyType: "PROJECT_AGREEMENT", recipientOrganizationId: BACKFILL_AN_ID,
+        projectReference: PROJECT_ID, validFrom: null, validUntil: null,
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      },
+    }).onConflictDoNothing();
+    await db.update(projectMembershipsTable).set({ projectAgreementPolicyId: agreementId })
+      .where(and(eq(projectMembershipsTable.projectId, PROJECT_ID), eq(projectMembershipsTable.anOrgId, BACKFILL_AN_ID)));
     const allowed = await request(app).post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
       .send({ taktId: TAKT_ID, nuOrgId: BACKFILL_AN_ID });

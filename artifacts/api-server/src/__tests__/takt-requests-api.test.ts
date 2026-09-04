@@ -16,6 +16,7 @@ import {
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   takteTable,
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -87,6 +88,19 @@ beforeAll(async () => {
     projectId: PROJECT_ID, anOrgId: NU_ORG,
     assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
+  await db.insert(coordinationPoliciesTable).values({
+    id: "t36-agreement", policyKey: "t36-agreement", version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: PROJECT_ID, providerOrgId: GU_ORG, recipientOrgId: NU_ORG,
+    lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      policyType: "PROJECT_AGREEMENT",
+      recipientOrganizationId: NU_ORG,
+      projectReference: PROJECT_ID,
+      validFrom: null,
+      validUntil: null,
+      childPolicyTypes: ["PERFORMANCE_REQUEST"],
+      childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+    },
+  }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
     id: "t36-membership",
     projectId: PROJECT_ID,
@@ -95,6 +109,7 @@ beforeAll(async () => {
     status: "ACTIVE",
     invitationId: "t36-invitation",
     correlationId: "t36-membership-correlation",
+    projectAgreementPolicyId: "t36-agreement",
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({

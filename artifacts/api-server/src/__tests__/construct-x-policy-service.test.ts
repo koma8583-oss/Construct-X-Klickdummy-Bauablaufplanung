@@ -58,4 +58,27 @@ describe("Construct-X coordination policy resolver", () => {
 
     expect(result.deltaClass).toBe("NOT_PERMITTED");
   });
+
+  it("rejects child policy types and purposes outside an explicit agreement allowance", () => {
+    expect(resolvePolicyDelta(
+      { ...base, childPolicyTypes: ["PERFORMANCE_REQUEST"], allowedPurposes: ["approved-purpose"] },
+      { ...candidate, policyType: "DATA_OFFER", purpose: "other-purpose" },
+    ).deltaClass).toBe("NOT_PERMITTED");
+  });
+
+  it("inherits prohibitions even when a child does not repeat them", () => {
+    const result = resolvePolicyDelta(
+      { ...base, prohibitions: ["COMMERCIAL_REUSE"] },
+      candidate,
+    );
+    expect(result.effectivePolicy.prohibitions).toEqual(["COMMERCIAL_REUSE"]);
+  });
+
+  it("rejects field selections outside the explicit parent field scope", () => {
+    const result = resolvePolicyDelta(
+      { ...base, allowedFieldScope: ["plannedTimeWindow"] },
+      { ...candidate, selectedFields: ["plannedTimeWindow", "projectDescription"] },
+    );
+    expect(result.deltaClass).toBe("NOT_PERMITTED");
+  });
 });

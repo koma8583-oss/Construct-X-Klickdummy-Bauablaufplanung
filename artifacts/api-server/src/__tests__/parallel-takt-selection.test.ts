@@ -19,6 +19,7 @@ import {
   organizationsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  coordinationPoliciesTable,
   projectsTable,
   taktRequestAuditEventsTable,
   taktRequestSnapshotsTable,
@@ -145,6 +146,7 @@ async function createTakt(id: string): Promise<void> {
 }
 
 beforeAll(async () => {
+  await cleanupFixtures();
   await db.insert(organizationsTable).values([
     { id: GU_ORG, name: "Parallel Selection GU", type: "AG" },
     ...NU_ORGS.map((id, index) => ({
@@ -181,6 +183,60 @@ beforeAll(async () => {
       assignmentStatus: "ACTIVE" as const,
     })),
   );
+  await db.insert(coordinationPoliciesTable).values(
+    NU_ORGS.map((anOrgId, index) => {
+      const agreementId = `${PREFIX}-agreement-${index}`;
+      return {
+        id: agreementId,
+        policyKey: agreementId,
+        version: 1,
+        kind: "PROJECT_AGREEMENT" as const,
+        projectId: PROJECT_ID,
+        providerOrgId: GU_ORG,
+        recipientOrgId: anOrgId,
+        lifecycleStatus: "ACCEPTED" as const,
+        policySnapshot: {
+          policyId: agreementId,
+          templateId: "PROJECT_MEMBERSHIP",
+          templateVersion: 1,
+          code: "PROJECT_MEMBERSHIP",
+          name: "Project Membership",
+          description: "Accepted project coordination agreement",
+          permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+          prohibitions: [],
+          provider: { organizationId: GU_ORG, userId: null },
+          recipientOrganizationId: anOrgId,
+          purpose: "PROJECT_MEMBERSHIP",
+          projectReference: PROJECT_ID,
+          workPackageReference: null,
+          validFrom: null,
+          validUntil: null,
+          createdAt: "2026-09-01T00:00:00.000Z",
+        },
+        effectivePolicy: {
+          policyId: agreementId,
+          templateId: "PROJECT_MEMBERSHIP",
+          templateVersion: 1,
+          code: "PROJECT_MEMBERSHIP",
+          name: "Project Membership",
+          description: "Accepted project coordination agreement",
+          permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+          prohibitions: [],
+          provider: { organizationId: GU_ORG, userId: null },
+          policyType: "PROJECT_AGREEMENT",
+          recipientOrganizationId: anOrgId,
+          purpose: "PROJECT_MEMBERSHIP",
+          projectReference: PROJECT_ID,
+          workPackageReference: null,
+          validFrom: null,
+          validUntil: null,
+          createdAt: "2026-09-01T00:00:00.000Z",
+          childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
+          childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+        },
+      };
+    }),
+  );
   await db.insert(projectMembershipsTable).values(
     NU_ORGS.map((anOrgId, index) => ({
       id: `${PREFIX}-membership-${index}`,
@@ -190,6 +246,7 @@ beforeAll(async () => {
       status: "ACTIVE" as const,
       invitationId: `${PREFIX}-invitation-${index}`,
       correlationId: `${PREFIX}-membership-correlation-${index}`,
+      projectAgreementPolicyId: `${PREFIX}-agreement-${index}`,
     })),
   );
 
@@ -198,7 +255,7 @@ beforeAll(async () => {
   await createTakt(CONCURRENT_TAKT_ID);
 });
 
-afterAll(async () => {
+async function cleanupFixtures() {
   const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
     .from(anLeistungsanfragenTable).where(inArray(anLeistungsanfragenTable.receiverAnOrgId, NU_ORGS));
   const localRequestIds = localRequests.map(({ id }) => id);
@@ -269,13 +326,16 @@ afterAll(async () => {
   ));
   await db.delete(takteTable).where(inArray(takteTable.id, takts));
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT_ID));
+  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT_ID));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT_ID));
   await db.delete(usersTable).where(inArray(usersTable.id, [GU_USER, ...NU_USERS]));
   await db.delete(organizationsTable).where(
     inArray(organizationsTable.id, [GU_ORG, ...NU_ORGS, INVALID_NU_ORG]),
   );
-});
+}
+
+afterAll(cleanupFixtures);
 
 describe("parallel TaktRequest selection", () => {
   it("creates one atomic batch with one shared selection group", async () => {
