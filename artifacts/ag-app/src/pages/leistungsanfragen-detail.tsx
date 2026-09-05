@@ -631,6 +631,16 @@ export default function LeistungsanfragenDetailPage() {
       return response.json() as Promise<CoordinationData>;
     },
   });
+  const sendMutation = useSendTaktRequest({
+    mutation: {
+      onSuccess: async () => {
+        await Promise.all([
+          refetch(),
+          queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailQueryKey(requestId ?? '') }),
+        ]);
+      },
+    },
+  });
   const requestTaktNames = useMemo(
     () => new Map((requestTakte ?? []).map(takt => [takt.id, `${takt.taktBezeichnung} · ${takt.gewerk}`])),
     [requestTakte],
@@ -685,14 +695,6 @@ export default function LeistungsanfragenDetailPage() {
   const tl = detail.timeline;
   const outboxFailed = detail.transport.status === 'FAILED';
   const policyDeltaClass = (detail as TaktRequestDetail & { policyDeltaClass?: string | null }).policyDeltaClass;
-  const sendMutation = useSendTaktRequest({
-    mutation: {
-      onSuccess: async () => {
-        await Promise.all([refetch(), queryClient.invalidateQueries({ queryKey: getGetTaktRequestDetailQueryKey(detail.id) })]);
-      },
-    },
-  });
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="w-full min-w-0 p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-300">

@@ -76,12 +76,12 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderDetail(coordination: CoordinationState = initialCoordination()) {
+function renderDetail(coordination: CoordinationState = initialCoordination(), detailResponse = detail) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detail);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detailResponse);
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) return jsonResponse(coordination);
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) return jsonResponse([]);
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({ error: "No local availability checks found" }, 404);
@@ -122,6 +122,71 @@ describe("AN Leistungsanfrage detail", () => {
     expect(screen.getByTestId("secondary-request-details")).not.toHaveAttribute("open");
     expect(screen.getByTestId("overview-service")).toHaveTextContent("Trockenbau 2. OG");
     expect(screen.getByTestId("overview-period")).toHaveTextContent("01.09.2026 – 10.09.2026");
+  });
+
+  it("führt eine Anfrage innerhalb der Projektvereinbarung von Details über Machbarkeit zur Rückmeldung", async () => {
+    const receivedWithinBaseline = {
+      ...detail,
+      status: "RECEIVED",
+      detailsRetrievedAt: null,
+      policyDeltaClass: "WITHIN_BASELINE",
+      policyDetailsAvailable: true,
+    };
+    const fetchMock = renderDetail({ ...initialCoordination(), openProposal: null }, receivedWithinBaseline);
+    const user = userEvent.setup();
+
+    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Anfrage prüfen");
+    expect(screen.getByText("Diese Anfrage erfolgt auf Grundlage Ihrer Projektvereinbarung")).toBeInTheDocument();
+    await user.click(screen.getByTestId("button-review-request"));
+    await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/an/leistungsanfragen/${requestId}/details/review`));
+    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Machbarkeit prüfen");
+    await user.click(screen.getByTestId("button-continue-without-availability"));
+    expect(await screen.findByTestId("text-detail-title")).toHaveTextContent("Rückmeldung senden");
+  });
+
+  it("beschränkt REQUIRES_CONSENT auf Metadaten, Diff und die beiden Entscheidungen", async () => {
+    const consentRequired = {
+      ...detail,
+      status: "RECEIVED",
+      detailsRetrievedAt: null,
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      policyDetailsAvailable: false,
+      policyDiff: { summary: ["Zeitraum wurde erweitert"], changed: ["Zeitraum"] },
+    };
+    renderDetail({ ...initialCoordination(), openProposal: null }, consentRequired);
+
+    const panel = await screen.findByTestId("policy-consent-panel");
+    expect(within(panel).getByText("Zeitraum wurde erweitert")).toBeInTheDocument();
+    expect(within(panel).getByText(/Geänderte Bereiche: Zeitraum/)).toBeInTheDocument();
+    expect(within(panel).getByTestId("button-accept-policy")).toBeEnabled();
+    expect(within(panel).getByTestId("button-reject-policy")).toBeEnabled();
+    expect(screen.queryByTestId("request-overview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("resource-block")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-progress")).not.toBeInTheDocument();
+  });
+
+  it("zeigt im Ressourcenbedarf keine Angaben aus dem veröffentlichten Anfrage-Snapshot", async () => {
+    const detailWithPublishedRequirement = {
+      ...detail,
+      resourceRequirements: [{
+        id: "published-resource",
+        resourceTypeName: "Fremde interne Ressource",
+        resourceTypeCode: "INTERNAL",
+        requiredCapacity: 99,
+        capacityUnit: "Personen",
+        utilizationPercent: 100,
+        periodStart: "2026-09-01",
+        periodEnd: "2026-09-10",
+        requiredQualification: null,
+        notes: "Nicht aus dem AN-Arbeitsstand",
+      }],
+    };
+    renderDetail({ ...initialCoordination(), openProposal: null }, detailWithPublishedRequirement);
+
+    expect(await screen.findByTestId("resource-block")).toHaveTextContent("Noch kein Ressourcenbedarf erfasst");
+    expect(screen.queryByText("Fremde interne Ressource")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nicht aus dem AN-Arbeitsstand")).not.toBeInTheDocument();
   });
 
   it("bestätigt ohne erneute Datumseingabe exakt das angefragte Zeitfenster", async () => {
@@ -212,6 +277,21 @@ describe("AN Leistungsanfrage detail", () => {
     fireEvent.change(within(section).getByLabelText("Neues Ende"), { target: { value: "2026-09-16" } });
     await user.click(within(section).getByRole("button", { name: "Alternative vorschlagen" }));
     await waitFor(() => expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/counter`));
+  });
+
+  it("bestätigt einen AG-Terminvorschlag genau einmal und sperrt die Aktion währenddessen", async () => {
+    const fetchMock = renderDetail();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-continue-without-availability"));
+    const section = (await screen.findByRole("heading", { name: "Neuer Terminvorschlag" })).closest("section");
+    if (!section) throw new Error("proposal section missing");
+    await user.click(within(section).getByRole("button", { name: "Bestätigen" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url, init]) =>
+      String(url) === `/api/an/leistungsanfragen/${requestId}/change-proposals/${proposalId}/accept`
+      && (init as RequestInit | undefined)?.method === "POST",
+    )).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument());
   });
 
   it("zeigt für eine nicht zugeordnete Projektion keine AN-Aktionen", async () => {

@@ -21,13 +21,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
   coordinationPoliciesTable,
+  leistungsanfragenTable,
+  anLeistungsanfragenTable,
   takteTable,
   usersTable,
   dataPublicationsTable,
@@ -238,6 +240,40 @@ describe("GET /takt-requests/:id/details — access control", () => {
       .get(`/api/an/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(res.status).toBe(200);
+  });
+
+  it("canonical alias keeps REQUIRES_CONSENT requests metadata-only until acceptance", async () => {
+    const [projection] = await anDb.select({
+      id: anLeistungsanfragenTable.id,
+      policyDeltaClass: anLeistungsanfragenTable.policyDeltaClass,
+      policyConsentStatus: anLeistungsanfragenTable.policyConsentStatus,
+    })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId))
+      .limit(1);
+    expect(projection).toBeTruthy();
+
+    await anDb.update(anLeistungsanfragenTable).set({
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+    }).where(eq(anLeistungsanfragenTable.id, projection!.id));
+
+    try {
+      const res = await request(app)
+        .get(`/api/an/leistungsanfragen/${requestId}/details`)
+        .set("Authorization", `Bearer ${nuToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        policyDetailsAvailable: false,
+        policyBlockedReason: "POLICY_CONSENT_REQUIRED",
+        snapshotPayload: null,
+      });
+    } finally {
+      await anDb.update(anLeistungsanfragenTable).set({
+        policyDeltaClass: projection!.policyDeltaClass,
+        policyConsentStatus: projection!.policyConsentStatus,
+      }).where(eq(anLeistungsanfragenTable.id, projection!.id));
+    }
   });
 
   it("GU owner retrieves details for preview — 200", async () => {

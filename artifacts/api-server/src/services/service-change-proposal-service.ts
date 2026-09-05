@@ -66,8 +66,6 @@ async function createScheduleChangePolicy(tx: any, input: {
       recipientOrganizationId: input.request.nuOrgId,
       purpose: "scheduleCoordination",
       projectReference: (parent.effectivePolicy?.projectReference as string | undefined) ?? null,
-      validFrom: dateOnly(input.proposal.start),
-      validUntil: dateOnly(input.proposal.end),
     },
   });
   const candidate = {

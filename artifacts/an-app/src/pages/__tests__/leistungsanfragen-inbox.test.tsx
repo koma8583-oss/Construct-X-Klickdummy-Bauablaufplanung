@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
-import LeistungsanfragenInboxPage, { filterInboxItems, inboxItemType, inboxViewFor, nextActionOwner, type InboxItem } from "../leistungsanfragen-inbox";
+import LeistungsanfragenInboxPage, { filterInboxItems, inboxItemType, inboxViewFor, nextActionOwner, uniqueInboxRecords, type InboxItem } from "../leistungsanfragen-inbox";
 
 const request = {
   id: "request-1",
@@ -138,6 +138,36 @@ describe("AN-Leistungsanfragen-Inbox", () => {
     expect(nextActionOwner(newAgProposal)).toBe("AN");
   });
 
+  it("hält Zu erledigen, Wartet auf AG und Erledigt ohne doppelte Karten getrennt", async () => {
+    const waiting = { ...request, id: "request-waiting", leistungsanfrageId: "request-waiting", status: "RESPONDED" as const, nextActionOwner: "AG" as const, nextAction: "DECIDE_RESPONSE" as const };
+    const done = { ...request, id: "request-done", leistungsanfrageId: "request-done", status: "CONFIRMED" as const, nextActionOwner: null, nextAction: "NO_ACTION" as const, coordinationState: "AGREED" as const };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/an/project-invitations" ? json([]) : json([request, request, waiting, done, done])));
+    renderInbox();
+    const user = userEvent.setup();
+
+    expect((await screen.findAllByTestId(/^card-request-/)).map((card) => card.dataset.testid)).toEqual(["card-request-request-1"]);
+    expect(screen.getByTestId("button-inbox-tab-open")).toHaveTextContent("1");
+    expect(screen.getByTestId("button-inbox-tab-waiting")).toHaveTextContent("1");
+    expect(screen.getByTestId("button-inbox-tab-done")).toHaveTextContent("1");
+
+    await user.click(screen.getByTestId("button-inbox-tab-waiting"));
+    expect(await screen.findByTestId("card-request-request-waiting")).toBeInTheDocument();
+    expect(screen.queryByTestId("card-request-request-1")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("button-inbox-tab-done"));
+    expect(await screen.findByTestId("card-request-request-done")).toBeInTheDocument();
+    expect(screen.queryByTestId("card-request-request-waiting")).not.toBeInTheDocument();
+  });
+
+  it("dedupliziert nur innerhalb desselben Vorgangstyps", () => {
+    const requestWithInvitationId = { ...request, id: invitation.id, leistungsanfrageId: invitation.id };
+    expect(uniqueInboxRecords([request, request, invitation, invitation, requestWithInvitationId])).toEqual([
+      request,
+      invitation,
+      requestWithInvitationId,
+    ]);
+  });
+
   it("bringt einen neuen AG-Terminvorschlag prominent in Zu erledigen", async () => {
     const proposal = { ...request, status: "RESPONDED" as const, nextActionOwner: "AG" as const, openProposal: { id: "proposal-1", start: "2030-10-18T00:00:00.000Z", end: "2030-10-20T00:00:00.000Z", proposerRole: "AG" as const } };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/an/project-invitations" ? json([]) : json([proposal])));
@@ -159,5 +189,17 @@ describe("AN-Leistungsanfragen-Inbox", () => {
       scheduleFilter: "ALL",
     });
     expect(filtered).toEqual([request]);
+  });
+
+  it("bleibt auf schmalen Ansichten bei fachlichen Bezeichnungen und ohne sichtbare Takt-Begriffe", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input) === "/api/an/project-invitations" ? json([]) : json([request])));
+    renderInbox();
+
+    const card = await screen.findByTestId("card-request-request-1");
+    expect(card.className).toContain("flex-col");
+    expect(screen.getByText("Leistung")).toBeInTheDocument();
+    expect(screen.queryByText(/takt/i)).not.toBeInTheDocument();
   });
 });

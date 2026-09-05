@@ -111,6 +111,7 @@ import {
   MalformedSchemaVersionError,
   UnsupportedSchemaVersionError,
 } from "../lib/schema-version";
+import { policyAccessDecision } from "../services/leistungsanfrage-policy-guard";
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
   createChangeProposal,
@@ -1712,6 +1713,26 @@ router.get(
       return;
     }
 
+    if (isAddressedNu && performancePolicy) {
+      const effective = performancePolicy.effectivePolicy as Record<string, unknown> | null;
+      const policyDecision = policyAccessDecision({
+        policyDeltaClass: performancePolicy.deltaClass,
+        policyConsentStatus: performancePolicy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED"
+          : performancePolicy.lifecycleStatus === "REJECTED" ? "REJECTED"
+            : performancePolicy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+        validFrom: typeof effective?.validFrom === "string" ? effective.validFrom : null,
+        validUntil: typeof effective?.validUntil === "string" ? effective.validUntil : null,
+        retentionUntil: typeof effective?.retentionUntil === "string" ? effective.retentionUntil : null,
+      }, "DETAILS");
+      if (!policyDecision.allowed) {
+        res.status(403).json({
+          error: policyDecision.code,
+          policyDetailsAvailable: false,
+        });
+        return;
+      }
+    }
+
     const RETRIEVABLE_STATUSES = new Set<string>([
       "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW",
       "ALTERNATIVES_PROPOSED", "ACCEPTED", "REJECTED", "REVISION_REQUIRED",
@@ -1836,7 +1857,7 @@ router.get(
          policyDeltaClass:   performancePolicy?.deltaClass ?? null,
          policyDiff:         performancePolicy?.diff ?? null,
          effectivePolicy:    performancePolicy?.effectivePolicy ?? null,
-         policyDetailsAvailable: performancePolicy?.deltaClass !== "NOT_PERMITTED",
+         policyDetailsAvailable: true,
         createdAt:          snapshot.createdAt.toISOString(),
       }),
     );

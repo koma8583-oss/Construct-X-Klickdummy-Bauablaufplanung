@@ -99,6 +99,16 @@ export function inboxViewFor(item: InboxRecord): InboxView {
   return "DONE";
 }
 
+export function uniqueInboxRecords(records: InboxRecord[]) {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = `${"invitationId" in record ? "invitation" : "request"}:${record.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export interface InboxFilterState {
   inboxFilter: "ALL" | InboxView;
   typeFilter?: "ALL" | InboxItemType;
@@ -282,9 +292,9 @@ export default function LeistungsanfragenInboxPage() {
   );
   const requests = Array.isArray(requestQuery.data) ? requestQuery.data : [];
   const invitations = Array.isArray(invitationQuery.data) ? invitationQuery.data : [];
-  const records: InboxRecord[] = status === "ALL"
+  const records = uniqueInboxRecords(status === "ALL"
     ? [...invitations, ...requests]
-    : requests;
+    : requests);
   const filteredRecords = filterInboxItems(records, {
     inboxFilter: "ALL",
     typeFilter,

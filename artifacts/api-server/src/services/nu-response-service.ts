@@ -22,6 +22,7 @@ import {
   taktResponsesTable,
   taktResponseAlternativesTable,
   taktRequestsTable,
+  coordinationPoliciesTable,
   type TaktResponse,
   type TaktResponseAlternativeRow,
   type TaktDecision,
@@ -190,7 +191,16 @@ export async function createAnServiceResponse(
     eq(anLeistungsanfragenTable.receiverAnOrgId, input.anOrgId),
   )).limit(1);
   if (!request) throw new ResponseStatusError("NOT_FOUND", new Set(["AN-owned request"]));
-  assertLeistungsanfragePolicyAccess(request, "ANSWER");
+  const effective = request.effectivePolicy && typeof request.effectivePolicy === "object"
+    ? request.effectivePolicy as Record<string, unknown>
+    : {};
+  assertLeistungsanfragePolicyAccess({
+    policyDeltaClass: request.policyDeltaClass,
+    policyConsentStatus: request.policyConsentStatus,
+    validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+    validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+    retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+  }, "ANSWER");
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);
@@ -583,10 +593,45 @@ export async function processNuResponse(
   validateInput(input);
 
   const {
-    taktRequestId, userId, decision,
+    taktRequestId, nuOrgId, userId, decision,
     acceptedTimeWindow, reasonCode, comment, alternatives, nextAvailableDate,
     answerableStatuses, currentRequestStatus, messageId,
   } = input;
+
+  const [actualRequest] = await agDb.select({
+    status: taktRequestsTable.status,
+    nuOrgId: taktRequestsTable.nuOrgId,
+    performancePolicyId: taktRequestsTable.performancePolicyId,
+  }).from(taktRequestsTable)
+    .where(eq(taktRequestsTable.id, taktRequestId))
+    .limit(1);
+  if (!actualRequest || actualRequest.nuOrgId !== nuOrgId) {
+    throw new ResponseStatusError("NOT_FOUND", answerableStatuses);
+  }
+  if (actualRequest.performancePolicyId) {
+    const [policy] = await agDb.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, actualRequest.performancePolicyId))
+      .limit(1);
+    if (!policy) {
+      assertLeistungsanfragePolicyAccess({
+        policyDeltaClass: "NOT_PERMITTED",
+        policyConsentStatus: "NOT_REQUIRED",
+      }, "ANSWER");
+    }
+    const effective = policy!.effectivePolicy && typeof policy!.effectivePolicy === "object"
+      ? policy!.effectivePolicy as Record<string, unknown>
+      : {};
+    assertLeistungsanfragePolicyAccess({
+      policyDeltaClass: policy!.deltaClass,
+      policyConsentStatus: policy!.lifecycleStatus === "ACCEPTED" ? "ACCEPTED"
+        : policy!.lifecycleStatus === "REJECTED" ? "REJECTED"
+          : policy!.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+      validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+      validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+      retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+    }, "ANSWER");
+  }
+  const persistedRequestStatus = actualRequest.status;
 
   // ── Build canonical public payload (what goes in the GU's inbox) ────────────
   const canonicalPayload: Record<string, unknown> = {
@@ -625,7 +670,7 @@ export async function processNuResponse(
       };
     }
 
-    if (currentRequestStatus !== "REVISION_REQUIRED") {
+    if (persistedRequestStatus !== "REVISION_REQUIRED") {
       // Normal case: conflict — NU already responded and GU has not requested revision
       const reason = existing.response.decision !== decision
         ? "DIFFERENT_DECISION" as const
@@ -638,8 +683,8 @@ export async function processNuResponse(
     // response remains represented by the immutable GU decision and audit events.
   } else {
     // First-time response: enforce answerable-status guard
-    if (!answerableStatuses.has(currentRequestStatus)) {
-      throw new ResponseStatusError(currentRequestStatus, answerableStatuses);
+    if (!answerableStatuses.has(persistedRequestStatus)) {
+      throw new ResponseStatusError(persistedRequestStatus, answerableStatuses);
     }
   }
 

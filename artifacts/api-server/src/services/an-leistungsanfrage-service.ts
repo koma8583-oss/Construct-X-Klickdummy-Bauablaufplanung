@@ -35,6 +35,7 @@ import {
 import {
   assertLeistungsanfragePolicyAccess,
   policyAccessDecision,
+  type LeistungsanfragePolicyState,
 } from "./leistungsanfrage-policy-guard";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
@@ -80,6 +81,17 @@ function snapshotOf(projection: Projection): PayloadSnapshot {
   return projection.payloadSnapshot as PayloadSnapshot;
 }
 
+function policyStateOf(projection: Projection): LeistungsanfragePolicyState {
+  const effective = objectRecord(projection.effectivePolicy);
+  return {
+    policyDeltaClass: projection.policyDeltaClass,
+    policyConsentStatus: projection.policyConsentStatus,
+    validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+    validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+    retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+  };
+}
+
 function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
   return snapshot[key]
     ?? (snapshot.request as Record<string, unknown> | undefined)?.[key]
@@ -87,6 +99,7 @@ function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
 }
 
 function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView, revision?: RevisionView | null) {
+  const detailsAllowed = policyAccessDecision(policyStateOf(projection), "DETAILS").allowed;
   const snapshot = snapshotOf(projection);
   const releasedSnapshot = snapshotValue(snapshot, "publicSnapshot");
   const displaySnapshot = Object.keys(objectRecord(releasedSnapshot)).length > 0
@@ -117,8 +130,8 @@ function toRequestView(projection: Projection, requirementCount = 0, workflow?: 
     nuOrgId: projection.receiverAnOrgId,
     projektId: projection.projectReference,
     projectId: projection.projectReference,
-    plannedStart: projection.plannedStart,
-    plannedEnd: projection.plannedEnd,
+    plannedStart: detailsAllowed ? projection.plannedStart : null,
+    plannedEnd: detailsAllowed ? projection.plannedEnd : null,
     responseRequiredBy: typeof responseRequiredBy === "string" ? responseRequiredBy : null,
     receivedAt: projection.receivedAt.toISOString(),
     detailsRetrievedAt: projection.detailsRetrievedAt?.toISOString() ?? null,
@@ -129,27 +142,30 @@ function toRequestView(projection: Projection, requirementCount = 0, workflow?: 
     policyConsentStatus: projection.policyConsentStatus,
     policyDiff: projection.policyDiff,
     effectivePolicy: projection.effectivePolicy,
-    policyDetailsAvailable: projection.policyConsentStatus === "NOT_REQUIRED" ||
-      projection.policyConsentStatus === "ACCEPTED",
-    resourceRequirementCount: requirementCount,
-    nextActionOwner: workflow?.nextActionOwner ?? null,
-    nextAction: workflow?.nextAction ?? "NO_ACTION",
-    coordinationState: workflow?.coordinationState ?? "NO_AGREEMENT",
-    openProposal: workflow?.openProposal ?? null,
-    revision: revision ?? null,
+    policyDetailsAvailable: detailsAllowed,
+    resourceRequirementCount: detailsAllowed ? requirementCount : 0,
+    nextActionOwner: detailsAllowed ? workflow?.nextActionOwner ?? null : null,
+    nextAction: detailsAllowed ? workflow?.nextAction ?? "NO_ACTION" : "NO_ACTION",
+    coordinationState: detailsAllowed ? workflow?.coordinationState ?? "NO_AGREEMENT" : "NO_AGREEMENT",
+    openProposal: detailsAllowed ? workflow?.openProposal ?? null : null,
+    revision: detailsAllowed ? revision ?? null : null,
     takt: {
       id: projection.leistungReference,
-      taktBezeichnung: typeof workPackage === "string" ? workPackage : null,
-      kurzbezeichnung: typeof serviceName === "string" ? serviceName : null,
-      gewerk: typeof trade === "string" ? trade : null,
-      zone: typeof zone === "string" ? zone : null,
-      plannedStart: typeof plannedTimeWindow?.start === "string" ? plannedTimeWindow.start : projection.plannedStart,
-      plannedEnd: typeof plannedTimeWindow?.end === "string" ? plannedTimeWindow.end : projection.plannedEnd,
+      taktBezeichnung: detailsAllowed && typeof workPackage === "string" ? workPackage : null,
+      kurzbezeichnung: detailsAllowed && typeof serviceName === "string" ? serviceName : null,
+      gewerk: detailsAllowed && typeof trade === "string" ? trade : null,
+      zone: detailsAllowed && typeof zone === "string" ? zone : null,
+      plannedStart: detailsAllowed
+        ? typeof plannedTimeWindow?.start === "string" ? plannedTimeWindow.start : projection.plannedStart
+        : null,
+      plannedEnd: detailsAllowed
+        ? typeof plannedTimeWindow?.end === "string" ? plannedTimeWindow.end : projection.plannedEnd
+        : null,
     },
     project: {
       id: projection.projectReference,
-      name: typeof projectName === "string" ? projectName : null,
-      location: typeof location === "string" ? location : null,
+      name: detailsAllowed && typeof projectName === "string" ? projectName : null,
+      location: detailsAllowed && typeof location === "string" ? location : null,
     },
   };
 }
@@ -340,7 +356,7 @@ export async function getAnLeistungsanfrageDetail(
 
   let current = projection;
 
-  const policyDecision = policyAccessDecision(current, "DETAILS");
+  const policyDecision = policyAccessDecision(policyStateOf(current), "DETAILS");
   if (!policyDecision.allowed) {
     return {
       ...toRequestView(current, 0),
@@ -416,7 +432,7 @@ export async function reviewAnLeistungsanfrageDetails(
     eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
   )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
   if (!projection) return null;
-  const policyDecision = policyAccessDecision(projection, "REVIEW");
+  const policyDecision = policyAccessDecision(policyStateOf(projection), "REVIEW");
   if (!policyDecision.allowed) {
     return {
       reviewedNow: false,
@@ -527,7 +543,7 @@ export async function updateAnResourceRequirement(
       actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
     ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
     if (!projection) return null;
-    assertLeistungsanfragePolicyAccess(projection, "RESOURCE");
+    assertLeistungsanfragePolicyAccess(policyStateOf(projection), "RESOURCE");
 
     const [existing] = await tx.select()
       .from(anLeistungsanfrageResourceRequirementsTable)
@@ -712,7 +728,7 @@ export async function runAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return null;
-  assertLeistungsanfragePolicyAccess(projection, "AVAILABILITY");
+  assertLeistungsanfragePolicyAccess(policyStateOf(projection), "AVAILABILITY");
 
   const [requirements, resources, bookings, previous] = await Promise.all([
     anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
@@ -927,7 +943,7 @@ export async function getLatestAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return { projectionFound: false as const, check: null };
-  assertLeistungsanfragePolicyAccess(projection, "AVAILABILITY");
+  assertLeistungsanfragePolicyAccess(policyStateOf(projection), "AVAILABILITY");
   const [check] = await anDb.select().from(anAvailabilityChecksTable).where(and(
     eq(anAvailabilityChecksTable.anLeistungsanfrageId, projection.id),
     eq(anAvailabilityChecksTable.anOrgId, anOrgId),
@@ -1127,14 +1143,7 @@ export async function createAnScheduleChangeProposal(input: {
     coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
   );
   if (!root) return null;
-  const effective = objectRecord(root.effectivePolicy);
-  assertLeistungsanfragePolicyAccess({
-    policyDeltaClass: root.policyDeltaClass,
-    policyConsentStatus: root.policyConsentStatus,
-    validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
-    validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
-    retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
-  }, "AVAILABILITY");
+  assertLeistungsanfragePolicyAccess(policyStateOf(root), "AVAILABILITY");
   const proposalId = createHash("sha256").update(JSON.stringify([
     input.requestId,
     input.anOrgId,

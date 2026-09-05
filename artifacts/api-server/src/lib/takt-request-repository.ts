@@ -20,6 +20,7 @@ import {
   taktResponsesTable,
   taktResponseAlternativesTable,
   taktResponseDecisionsTable,
+  coordinationPoliciesTable,
   type TaktRequest,
   type InsertTaktRequest,
   type TaktRequestSnapshot,
@@ -33,6 +34,7 @@ import {
   withCanonicalTaktRequest,
 } from "./legacy-takt-mappers";
 import { getCoordination } from "../services/service-change-proposal-service";
+import { policyAccessDecision } from "../services/leistungsanfrage-policy-guard";
 
 // ── Detail view types (Task 5.4) ──────────────────────────────────────────────
 
@@ -672,6 +674,10 @@ export async function listTaktRequestsForNuEnriched(
       projectId:          takteTable.projectId,
       projectName:        projectsTable.name,
       snapshotPayload:    taktRequestSnapshotsTable.snapshotPayload,
+      performancePolicyId: taktRequestsTable.performancePolicyId,
+      policyDeltaClass: coordinationPoliciesTable.deltaClass,
+      policyLifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+      effectivePolicy: coordinationPoliciesTable.effectivePolicy,
     })
     .from(taktRequestsTable)
     .leftJoin(guOrg, eq(taktRequestsTable.guOrgId, guOrg.id))
@@ -680,6 +686,10 @@ export async function listTaktRequestsForNuEnriched(
     .leftJoin(
       taktRequestSnapshotsTable,
       eq(taktRequestSnapshotsTable.taktRequestId, taktRequestsTable.id),
+    )
+    .leftJoin(
+      coordinationPoliciesTable,
+      eq(coordinationPoliciesTable.id, taktRequestsTable.performancePolicyId),
     )
     .where(and(...conditions))
     .orderBy(desc(taktRequestsTable.createdAt));
@@ -693,6 +703,21 @@ export async function listTaktRequestsForNuEnriched(
     const payload = (r.snapshotPayload ?? {}) as Record<string, unknown>;
     const location = (payload.location ?? {}) as Record<string, unknown>;
     const tw       = (payload.plannedTimeWindow ?? {}) as Record<string, unknown>;
+    const effective = r.effectivePolicy && typeof r.effectivePolicy === "object"
+      ? r.effectivePolicy as Record<string, unknown>
+      : {};
+    const detailsAllowed = !r.performancePolicyId || (
+      r.policyDeltaClass !== null &&
+      policyAccessDecision({
+        policyDeltaClass: r.policyDeltaClass,
+        policyConsentStatus: r.policyLifecycleStatus === "ACCEPTED" ? "ACCEPTED"
+          : r.policyLifecycleStatus === "REJECTED" ? "REJECTED"
+            : r.policyDeltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+        validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+        validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+        retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+      }, "DETAILS").allowed
+    );
 
     const coordination = await getCoordination(r.id, nuOrgId);
     return {
@@ -716,15 +741,16 @@ export async function listTaktRequestsForNuEnriched(
       updatedAt:          r.updatedAt,
       agOrgName:          r.agOrgName   ?? null,
       projectId:          r.projectId   ?? null,
-      projectName:        r.projectName ?? null,
+       projectName:        detailsAllowed ? r.projectName ?? null : null,
       // Snapshot-derived display fields (correct keys per TaktRequestSnapshotPayload v1.0)
-      taktBezeichnung:    (payload.workPackage as string | undefined) ?? null,
-      zone:               (location.zone       as string | undefined) ?? null,
-      gewerk:             (payload.trade        as string | undefined) ?? null,
-      plannedStart:       (tw.start             as string | undefined) ?? null,
-      plannedEnd:         (tw.end               as string | undefined) ?? null,
-      currentAgreement: coordination?.currentAgreement ?? null,
-      openProposal: coordination?.openProposal
+       taktBezeichnung:    detailsAllowed ? (payload.workPackage as string | undefined) ?? null : null,
+       zone:               detailsAllowed ? (location.zone as string | undefined) ?? null : null,
+       gewerk:             detailsAllowed ? (payload.trade as string | undefined) ?? null : null,
+       plannedStart:       detailsAllowed ? (tw.start as string | undefined) ?? null : null,
+       plannedEnd:         detailsAllowed ? (tw.end as string | undefined) ?? null : null,
+       policyDetailsAvailable: detailsAllowed,
+       currentAgreement: detailsAllowed ? coordination?.currentAgreement ?? null : null,
+       openProposal: detailsAllowed && coordination?.openProposal
         ? {
             id: coordination.openProposal.id,
             start: coordination.openProposal.start,
@@ -736,9 +762,11 @@ export async function listTaktRequestsForNuEnriched(
             createdAt: coordination.openProposal.createdAt,
           }
         : null,
-      coordinationState: coordination?.coordinationState ?? "NO_AGREEMENT",
-      nextActionOwner: coordination?.nextActionOwner ?? null,
-      scheduleDelta: coordination?.scheduleDelta ?? { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
+       coordinationState: detailsAllowed ? coordination?.coordinationState ?? "NO_AGREEMENT" : "NO_AGREEMENT",
+       nextActionOwner: detailsAllowed ? coordination?.nextActionOwner ?? null : null,
+       scheduleDelta: detailsAllowed
+         ? coordination?.scheduleDelta ?? { startDays: 0, endDays: 0, durationDays: 0, hasChange: false }
+         : { startDays: 0, endDays: 0, durationDays: 0, hasChange: false },
     };
   }));
   return enriched;

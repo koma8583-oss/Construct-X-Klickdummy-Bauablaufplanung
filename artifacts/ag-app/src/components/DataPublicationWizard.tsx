@@ -77,13 +77,14 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
   const [fields, setFields] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[]>([]);
   const [previewing, setPreviewing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [sendResults, setSendResults] = useState<SendResult[]>([]);
   const active = contractors.filter((item) => item.assignmentStatus === "ACTIVE" && item.projectAgreementStatus === "ACCEPTED" && item.projectAgreementPolicyId && item.parentAgreement?.effectivePolicy);
   const chosen = active.find((item) => item.orgId === recipient);
   const inheritedContext = inheritedPolicyContext(chosen?.parentAgreement);
   const allowed = purpose ? FIELDS[purpose] : [];
   const selectable = useMemo(() => takte.filter((item) => item.status !== "STORNIERT" && item.lifecycleStatus !== "CANCELLED"), [takte]);
-  useEffect(() => { if (!open) return; setStep(0); setRecipient(""); setPurpose(""); setLeistungen(new Set()); setFields(new Set()); setPreview([]); setSendResults([]); }, [open]);
+  useEffect(() => { if (!open) return; setStep(0); setRecipient(""); setPurpose(""); setLeistungen(new Set()); setFields(new Set()); setPreview([]); setSubmitting(false); setSendResults([]); }, [open]);
   useEffect(() => { if (purpose) setFields(new Set(FIELDS[purpose])); }, [purpose]);
   const valid = step === 0 ? !!chosen : step === 1 ? !!purpose : step === 2 ? leistungen.size > 0 : step === 3 ? fields.size > 0 : true;
   const toggle = (field: string) => setFields((previous) => { const next = new Set(previous); next.has(field) ? next.delete(field) : next.add(field); return next; });
@@ -114,25 +115,37 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
     setStep(step + 1);
   };
   const submit = async () => {
-    if (!purpose || !chosen) return;
+    if (!purpose || !chosen || submitting) return;
     if (preview.some((item) => item.deltaClass === "NOT_PERMITTED") || preview.length !== leistungen.size) return;
+    const previousResults = new Map(sendResults.map((item) => [item.taktId, item]));
+    const taktIds = sendResults.length
+      ? sendResults.filter((item) => item.status === "FAILED").map((item) => item.taktId)
+      : [...leistungen];
+    if (!taktIds.length) return;
     const byId = new Map(selectable.map((item) => [item.id, item.kurzbezeichnung || item.taktBezeichnung]));
-    const outcomes = await Promise.all([...leistungen].map(async (taktId): Promise<SendResult> => {
-      try {
-        const batch = await createBatch.mutateAsync({ data: { taktId, nuOrgIds: [chosen.orgId], purpose, selectedFields: [...fields] } });
-        const requests = batch.requests ?? [];
-        if (requests.length !== 1) throw new Error("Die Erstellung lieferte kein eindeutiges Ergebnis.");
-        await send.mutateAsync({ requestId: requests[0].id });
-        return { taktId, name: byId.get(taktId) ?? taktId, status: "SENT" };
-      } catch (error) {
-        return { taktId, name: byId.get(taktId) ?? taktId, status: "FAILED", error: error instanceof Error ? error.message : "Unbekannter Fehler" };
-      }
-    }));
-    setSendResults(outcomes);
-    const failed = outcomes.filter((outcome) => outcome.status === "FAILED");
-    toast(failed.length ? { title: `${failed.length} von ${outcomes.length} Leistungsfreigaben fehlgeschlagen`, variant: "destructive" } : { title: "Leistungen für AN freigegeben" });
+    setSubmitting(true);
+    try {
+      const outcomes = await Promise.all(taktIds.map(async (taktId): Promise<SendResult> => {
+        try {
+          const batch = await createBatch.mutateAsync({ data: { taktId, nuOrgIds: [chosen.orgId], purpose, selectedFields: [...fields] } });
+          const requests = batch.requests ?? [];
+          if (requests.length !== 1) throw new Error("Die Erstellung lieferte kein eindeutiges Ergebnis.");
+          await send.mutateAsync({ requestId: requests[0].id });
+          return { taktId, name: byId.get(taktId) ?? taktId, status: "SENT" };
+        } catch (error) {
+          return { taktId, name: byId.get(taktId) ?? taktId, status: "FAILED", error: error instanceof Error ? error.message : "Unbekannter Fehler" };
+        }
+      }));
+      outcomes.forEach((outcome) => previousResults.set(outcome.taktId, outcome));
+      const results = [...leistungen].map((taktId) => previousResults.get(taktId)).filter((item): item is SendResult => !!item);
+      setSendResults(results);
+      const failed = results.filter((outcome) => outcome.status === "FAILED");
+      toast(failed.length ? { title: `${failed.length} von ${results.length} Leistungsfreigaben fehlgeschlagen`, variant: "destructive" } : { title: "Leistungen für AN freigegeben" });
+    } finally {
+      setSubmitting(false);
+    }
   };
-  const pending = createBatch.isPending || send.isPending || previewing;
+  const pending = createBatch.isPending || send.isPending || previewing || submitting;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-2xl">
     <DialogHeader><DialogTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" />Leistungen für AN freigeben</DialogTitle>
       <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">Wählen Sie einen aktiven AN, den Zweck und nur die für die Leistungen erforderlichen Angaben. Datenangebote für BIM-, Logistik- oder Dokumentpakete werden separat verwaltet.</p>
@@ -145,6 +158,6 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
       {step === 3 && <div className="space-y-3"><div data-testid="inherited-policy-context" className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Aus akzeptierter Projektvereinbarung übernommen</b><p className="mt-1 text-xs text-muted-foreground">Dieser Kontext ist schreibgeschützt und wird nicht als Leistungsdatenfeld dupliziert.</p><div className="mt-2 flex flex-wrap gap-1">{inheritedContext.map((field) => <Badge key={field} variant="secondary">{field}</Badge>)}</div></div><p className="text-sm">Zusätzliche Angaben für {PURPOSES.find((item) => item.value === purpose)?.label}</p>{allowed.map((field) => <label className="flex gap-2 text-sm" key={field}><Checkbox checked={fields.has(field)} onCheckedChange={() => toggle(field)} />{LABELS[field]}</label>)}</div>}
       {step === 4 && <div className="space-y-3 rounded-lg border p-4 text-sm"><p><b>AN:</b> {chosen?.name}</p><p><b>Zweck:</b> {PURPOSES.find((item) => item.value === purpose)?.label}</p><p><b>Leistungen:</b> {leistungen.size}</p><p><b>Zusätzliche Angaben:</b> {[...fields].map((field) => LABELS[field]).join(", ")}</p><div data-testid="policy-preview" className="space-y-2 border-t pt-3"><b>Policy-Prüfung vor Versand</b>{preview.map((item) => <div key={item.taktId} className={`rounded border p-2 ${item.deltaClass === "NOT_PERMITTED" ? "border-destructive/40 bg-destructive/5" : item.deltaClass === "REQUIRES_CONSENT" ? "border-amber-500/40 bg-amber-500/10" : "border-emerald-600/30 bg-emerald-600/5"}`}><span className="font-medium">{selectable.find((leistung) => leistung.id === item.taktId)?.kurzbezeichnung ?? item.taktId}: {item.deltaClass}</span>{item.diff?.summary?.map((summary) => <p key={summary} className="mt-1 text-xs text-muted-foreground">{summary}</p>)}{item.error && <p className="mt-1 text-xs text-destructive">{item.error}</p>}</div>)}</div>{sendResults.length > 0 && <div data-testid="batch-send-results" className="space-y-2 border-t pt-3"><b>Versandergebnis</b>{sendResults.map((item) => <p key={item.taktId} className={item.status === "SENT" ? "text-emerald-700" : "text-destructive"}>{item.name}: {item.status === "SENT" ? "gesendet" : `fehlgeschlagen – ${item.error}`}</p>)}</div>}<p className="flex gap-2 text-muted-foreground"><Lock className="h-4 w-4" />Projektangaben bleiben durch die Projektvereinbarung abgedeckt.</p></div>}
     </div>
-    <DialogFooter className="flex !flex-row justify-between"><Button variant="outline" disabled={pending} onClick={() => step ? setStep(step - 1) : onOpenChange(false)}>{step ? <><ChevronLeft className="mr-1 h-4 w-4" />Zurück</> : "Abbrechen"}</Button>{step < 4 ? <Button disabled={!valid || pending} onClick={() => void next()}>{previewing ? "Wird geprüft…" : <>Weiter <ChevronRight className="ml-1 h-4 w-4" /></>}</Button> : <Button disabled={pending || preview.some((item) => item.deltaClass === "NOT_PERMITTED") || preview.length !== leistungen.size} onClick={() => void submit()}>{pending ? "Wird gesendet…" : <><Send className="mr-1 h-4 w-4" />Senden</>}</Button>}</DialogFooter>
+    <DialogFooter className="flex !flex-row justify-between"><Button variant="outline" disabled={pending} onClick={() => step ? setStep(step - 1) : onOpenChange(false)}>{step ? <><ChevronLeft className="mr-1 h-4 w-4" />Zurück</> : "Abbrechen"}</Button>{step < 4 ? <Button disabled={!valid || pending} onClick={() => void next()}>{previewing ? "Wird geprüft…" : <>Weiter <ChevronRight className="ml-1 h-4 w-4" /></>}</Button> : <Button disabled={pending || preview.some((item) => item.deltaClass === "NOT_PERMITTED") || preview.length !== leistungen.size || (sendResults.length > 0 && !sendResults.some((item) => item.status === "FAILED"))} onClick={() => void submit()}>{pending ? "Wird gesendet…" : sendResults.some((item) => item.status === "FAILED") ? <><Send className="mr-1 h-4 w-4" />Fehlgeschlagene erneut senden</> : <><Send className="mr-1 h-4 w-4" />Senden</>}</Button>}</DialogFooter>
   </DialogContent></Dialog>;
 }

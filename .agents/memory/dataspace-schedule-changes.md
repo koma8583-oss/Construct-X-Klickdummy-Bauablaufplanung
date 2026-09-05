@@ -14,3 +14,9 @@ Schedule changes form a single versioned SCHEDULE_CHANGE child-policy chain. The
 **Why:** Applying response dates before winning resolution allowed concurrent or altered responses to overwrite the agreement outside the reviewed child policy.
 
 **How to apply:** Serialize proposal resolution per request, re-check the root policy at acceptance time, reject changed accepted windows as counterproposals, and ensure only one schedule policy version is effective.
+
+The proposed work period is schedule content, not the child policy's access-validity window. A SCHEDULE_CHANGE child inherits access validity and retention from its active parent unless there is a genuine policy deviation.
+
+**Why:** Treating proposed start/end as policy validFrom/validUntil blocked the recipient from reviewing a future schedule before the work began.
+
+**How to apply:** Keep proposed dates in the versioned proposal/policy snapshot, but resolve access validity from the parent policy; use the delta resolver only for actual policy-scope changes.

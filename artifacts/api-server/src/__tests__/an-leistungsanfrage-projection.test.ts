@@ -20,6 +20,7 @@ import {
   getAnLeistungsanfrageDetail,
   runAnAvailabilityCheck,
 } from "../services/an-leistungsanfrage-service";
+import { createAnServiceResponse } from "../services/nu-response-service";
 
 const messageIds: string[] = [];
 const AG = "ag-local-projection-test";
@@ -252,6 +253,66 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
     const request = payload();
 
     await expect(receive(request)).resolves.toEqual({ duplicate: false, status: "PROCESSED" });
+  });
+
+  it("hält Listen vor Consent metadata-only und sperrt direkte Antworten nach Policy-Ablauf", async () => {
+    const request = payload();
+    await receive(request);
+    const [projection] = await anDb.select().from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
+
+    await anDb.update(anLeistungsanfragenTable).set({
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      effectivePolicy: {
+        policyType: "PERFORMANCE_REQUEST",
+        validUntil: "2099-01-01T00:00:00.000Z",
+      },
+    }).where(eq(anLeistungsanfragenTable.id, projection.id));
+
+    const token = jwt.sign({
+      userId: "projection-test-user",
+      orgId: AN,
+      orgType: "AN",
+      hubAdmin: false,
+      roles: ["AN_ADMIN"],
+    }, process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod");
+    const list = await httpRequest(app)
+      .get("/api/an/leistungsanfragen")
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const item = list.body.find((entry: { leistungsanfrageId: string }) =>
+      entry.leistungsanfrageId === request.requestId);
+    expect(item).toMatchObject({
+      policyDetailsAvailable: false,
+      plannedStart: null,
+      plannedEnd: null,
+      takt: {
+        taktBezeichnung: null,
+        kurzbezeichnung: null,
+        gewerk: null,
+        zone: null,
+        plannedStart: null,
+        plannedEnd: null,
+      },
+      project: { id: "project-1", name: null, location: null },
+    });
+
+    await anDb.update(anLeistungsanfragenTable).set({
+      policyDeltaClass: "WITHIN_BASELINE",
+      policyConsentStatus: "NOT_REQUIRED",
+      effectivePolicy: {
+        policyType: "PERFORMANCE_REQUEST",
+        validUntil: "2020-01-01T00:00:00.000Z",
+      },
+    }).where(eq(anLeistungsanfragenTable.id, projection.id));
+    await expect(createAnServiceResponse({
+      anLeistungsanfrageId: projection.id,
+      anOrgId: AN,
+      userId: "projection-test-user",
+      decision: "REJECTED",
+      reasonCode: "NO_CAPACITY",
+    })).rejects.toMatchObject({ code: "NOT_PERMITTED", action: "ANSWER" });
   });
 
   it("weist einen Policy-Snapshot mit abweichendem Provider zurück", async () => {
