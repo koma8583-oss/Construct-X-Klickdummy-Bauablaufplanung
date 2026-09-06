@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq, inArray } from "drizzle-orm";
 import {
   hubDb as db,
+  dataspaceAccessGrantsTable,
   messageDeliveryAttemptsTable,
   messageOutboxTable,
   organizationsTable,
@@ -16,6 +17,7 @@ import { createDataspaceExchange } from "../services/dataspace/dataspace-exchang
 import { TractusXEdcExchange } from "../services/dataspace/tractusx-edc-exchange";
 import {
   externalProjectInvitationSchema,
+  externalServiceResponseSchema,
   externalServiceRequestSchema,
   serializeExternalProjectInvitation,
 } from "../services/dataspace/external-contracts";
@@ -24,6 +26,8 @@ import { RestDataspaceExchange } from "../services/dataspace/rest-dataspace-exch
 const TRACTUSX_TEST_ORG_IDS = ["tractusx-test-ag", "tractusx-test-an"];
 const COORDINATION_DECISION_MESSAGE_ID = "coordination-decision-message-1";
 const DATA_OFFER_MESSAGE_ID = "data-offer-not-configured-message-1";
+const MIXED_RESOURCE_RESPONSE_MESSAGE_ID = crypto.randomUUID();
+const MIXED_RESOURCE_ASSET_ID = `notification-api-mixed-resource-test-${crypto.randomUUID()}`;
 const SERVICE_REQUEST_MESSAGE_IDS = [
   "edc-not-configured-service-request-message-1",
   "tractusx-not-configured-service-request-message-1",
@@ -39,9 +43,13 @@ const TEST_MESSAGE_IDS = [
   ...PROJECT_INVITATION_MESSAGE_IDS,
   COORDINATION_DECISION_MESSAGE_ID,
   DATA_OFFER_MESSAGE_ID,
+  MIXED_RESOURCE_RESPONSE_MESSAGE_ID,
 ];
 
 async function cleanupMessageFixtures() {
+  await db.delete(dataspaceAccessGrantsTable)
+    .where(eq(dataspaceAccessGrantsTable.assetId, MIXED_RESOURCE_ASSET_ID))
+    .catch(() => {});
   await db.delete(messageDeliveryAttemptsTable)
     .where(inArray(messageDeliveryAttemptsTable.messageId, [...TEST_MESSAGE_IDS, ...SERVICE_REQUEST_MESSAGE_IDS]))
     .catch(() => {});
@@ -218,6 +226,127 @@ describe("dataspace exchange boundary", () => {
       expect(connectorFetch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it("serializes a mixed-resource response with only public alternatives through the EDC connector", async () => {
+    const previousEnv = { ...process.env };
+    const publicAlternatives = [
+      {
+        alternativeId: "alternative-mixed-2",
+        rank: 2,
+        timeWindow: { start: "2026-09-08T08:00:00.000Z", end: "2026-09-10T17:00:00.000Z" },
+        crewSize: 4,
+        conditions: "Crew und Gerät gemeinsam verfügbar",
+      },
+      {
+        alternativeId: "alternative-mixed-1",
+        rank: 1,
+        timeWindow: { start: "2026-09-15T08:00:00.000Z", end: "2026-09-17T17:00:00.000Z" },
+        crewSize: 5,
+        conditions: "Vollständiger Ressourcenmix bestätigt",
+      },
+    ];
+    const concreteNuResourceIds = ["nu-crew-42", "nu-crane-09"];
+    const payload = toExternalServiceResponse({
+      requestId: "mixed-resource-request-1",
+      requestVersion: 4,
+      messageId: MIXED_RESOURCE_RESPONSE_MESSAGE_ID,
+      correlationId: "mixed-resource-correlation-1",
+      decision: "ALTERNATIVES_PROPOSED",
+      senderOrgId: TRACTUSX_TEST_ORG_IDS[1],
+      receiverOrgId: TRACTUSX_TEST_ORG_IDS[0],
+      comment: "Gemischte Ressourcen sind im ursprünglichen Zeitraum nicht gemeinsam verfügbar.",
+      alternatives: publicAlternatives,
+    });
+    const connectorFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        dataset: [{ id: MIXED_RESOURCE_ASSET_ID }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        contractAgreementId: "mixed-resource-agreement-1",
+      }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        transferProcessId: "mixed-resource-transfer-1",
+        edrId: "mixed-resource-edr-1",
+      }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: "mixed-resource-delivery-1",
+      }), { status: 202 }));
+
+    Object.assign(process.env, {
+      DATASPACE_CONNECTOR_CATALOG_URL: "https://connector.test/catalog",
+      DATASPACE_CONNECTOR_CONTRACT_NEGOTIATION_URL: "https://connector.test/negotiations",
+      DATASPACE_CONNECTOR_TRANSFER_PROCESS_URL: "https://connector.test/transfers",
+      DATASPACE_NOTIFICATION_API_URL: "https://connector.test/notifications",
+      DATASPACE_NOTIFICATION_ASSET_ID: MIXED_RESOURCE_ASSET_ID,
+      DATASPACE_NOTIFICATION_ACCESS_POLICY_ID: "mixed-resource-access",
+      DATASPACE_NOTIFICATION_USAGE_POLICY_ID: "mixed-resource-usage",
+      DATASPACE_CONNECTOR_COUNTER_PARTY_ADDRESS: "BPNL000000000ZZZ",
+      DATASPACE_PARTICIPANT_BPN_MAP: JSON.stringify({
+        [TRACTUSX_TEST_ORG_IDS[0]]: "BPNL000000000AAA",
+        [TRACTUSX_TEST_ORG_IDS[1]]: "BPNL000000000ZZZ",
+      }),
+    });
+    vi.stubGlobal("fetch", connectorFetch);
+
+    try {
+      const result = await new TractusXEdcExchange().publishServiceResponse(payload);
+
+      expect(result).toMatchObject({
+        exchangeId: MIXED_RESOURCE_RESPONSE_MESSAGE_ID,
+        externalReference: "mixed-resource-delivery-1",
+        status: "DELIVERED",
+      });
+      expect(connectorFetch).toHaveBeenCalledTimes(4);
+
+      const notificationRequest = connectorFetch.mock.calls[3] as [string, RequestInit];
+      const serializedEnvelope = JSON.parse(String(notificationRequest[1].body)) as {
+        header: Record<string, unknown>;
+        content: Record<string, unknown>;
+      };
+      expect(serializedEnvelope.header).toMatchObject({
+        messageId: MIXED_RESOURCE_RESPONSE_MESSAGE_ID,
+        senderBpn: "BPNL000000000ZZZ",
+        receiverBpn: "BPNL000000000AAA",
+      });
+      expect(serializedEnvelope.content).toMatchObject({
+        correlationId: "mixed-resource-correlation-1",
+        requestId: "mixed-resource-request-1",
+        requestVersion: 4,
+        decision: "ALTERNATIVES_PROPOSED",
+        alternatives: publicAlternatives,
+      });
+      expect(serializedEnvelope.content.alternatives).toEqual(publicAlternatives);
+
+      const { correlationId: _correlationId, ...responseContent } = serializedEnvelope.content;
+      expect(externalServiceResponseSchema.parse({
+        metadata: payload.metadata,
+        ...responseContent,
+      })).toMatchObject({
+        requestId: payload.requestId,
+        requestVersion: payload.requestVersion,
+        decision: payload.decision,
+        alternatives: publicAlternatives,
+      });
+
+      const serialized = JSON.stringify(serializedEnvelope);
+      for (const forbiddenField of [
+        "resourceId",
+        "resourceName",
+        "localProjectId",
+        "employeeId",
+      ]) {
+        expect(serialized, `serialized payload should not contain "${forbiddenField}"`)
+          .not.toContain(forbiddenField);
+      }
+      for (const concreteResourceId of concreteNuResourceIds) {
+        expect(serialized, `serialized payload should not contain "${concreteResourceId}"`)
+          .not.toContain(concreteResourceId);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      process.env = previousEnv;
     }
   });
 
