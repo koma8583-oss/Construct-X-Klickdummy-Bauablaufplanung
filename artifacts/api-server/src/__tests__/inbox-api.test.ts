@@ -230,6 +230,16 @@ describe("GET /messages/inbox", () => {
     expect(msg.messageType).toBe("TAKT_REQUEST_NOTIFICATION");
   });
 
+  it("AN namespace exposes the same inbox for the AN app", async () => {
+    const res = await request(app)
+      .get("/api/an/messages/inbox")
+      .set("Authorization", `Bearer ${nuToken}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.some((m: { messageId: string }) => m.messageId === messageId)).toBe(true);
+  });
+
   it("NU2 sees no messages — org isolation", async () => {
     const res = await request(app)
       .get("/api/messages/inbox")

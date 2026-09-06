@@ -16,6 +16,7 @@ import nuRouter from "../nu";
 import dataOffersRouter from "./data-offers";
 import reportsRouter from "../reports";
 import inboxMessagesRouter from "./inbox-messages";
+import messagesRouter from "../messages";
 import projectInvitationsRouter from "./project-invitations";
 import policiesRouter from "./policies";
 import leistungsanfragenRouter from "./leistungsanfragen";
@@ -49,6 +50,11 @@ router.use(reportsRouter);
 
 // AN inbox messages (reminders + expiry notifications) at /api/an/inbox-messages
 router.use(inboxMessagesRouter);
+
+// General Hub inbox messages used by the AN Nachrichten page. The AN app
+// rewrites /api/messages/inbox to /api/an/messages/inbox, so the shared
+// authenticated inbox router must be mounted in this namespace as well.
+router.use(messagesRouter);
 
 // AN-local Dataspace invitation projection and decision endpoints.
 router.use(projectInvitationsRouter);

@@ -14,7 +14,7 @@
  * TaktRequest.status is NEVER changed here — markAsRead only updates inbox status.
  */
 import { Router } from "express";
-import { db, messageInboxTable } from "@workspace/db";
+import { hubDb, messageInboxTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
@@ -123,7 +123,7 @@ router.get(
     const messageId = req.params.messageId as string;
 
     // Look up the row scoped to the caller's org (safe — no cross-org leakage)
-    const [row] = await db
+    const [row] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(
@@ -173,7 +173,7 @@ router.post(
     }
 
     // Reload the updated inbox row to return current readAt
-    const [row] = await db
+    const [row] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(
