@@ -33,6 +33,7 @@ import {
   projectsTable,
   projectContractorsTable,
   projectMembershipsTable,
+  leistungsanfragenTable,
   anLeistungsanfragenTable,
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsantwortenTable,
@@ -59,6 +60,8 @@ import {
   evaluateResourceRequirements,
   shiftRequirementsToWindow,
 } from "../services/resource-availability-service";
+import { createAnServiceResponse } from "../services/nu-response-service";
+import { deliverLocalServiceResponse } from "../services/dataspace/local-dataspace-delivery";
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 
@@ -588,6 +591,90 @@ describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () =
     const publicPayload = JSON.stringify(checkRes.body.publicResult);
     for (const field of ["resourceId", "localProjectId", "resourceName", "employeeId"]) {
       expect(publicPayload).not.toContain(`"${field}"`);
+    }
+    for (const resourceId of MIXED_RESOURCE_IDS) {
+      expect(publicPayload).not.toContain(resourceId);
+    }
+  });
+
+  it("delivers mixed-resource alternatives to the AG inbox without NU resource details", async () => {
+    await db.insert(leistungsanfragenTable).values({
+      id: MIXED_REQUEST_ID,
+      leistungId: TAKT,
+      leistungVersion: 1,
+      guOrgId: GU_ORG,
+      nuOrgId: NU_ORG,
+      requestNumber: "TKR-T49-MIXED",
+      status: "UNDER_REVIEW",
+      createdByUserId: GU_USER,
+    }).onConflictDoNothing();
+
+    const alternatives = [
+      {
+        alternativeId: "t49-mixed-alt-1",
+        rank: 1,
+        timeWindow: {
+          start: "2026-12-03T00:00:00.000Z",
+          end: "2026-12-04T00:00:00.000Z",
+        },
+        crewSize: 2,
+        conditions: ["Crew and equipment available"],
+      },
+      {
+        alternativeId: "t49-mixed-alt-2",
+        rank: 2,
+        timeWindow: {
+          start: "2026-12-05T00:00:00.000Z",
+          end: "2026-12-06T00:00:00.000Z",
+        },
+        crewSize: 2,
+        conditions: ["Crew and equipment available"],
+      },
+    ];
+
+    const response = await createAnServiceResponse({
+      anLeistungsanfrageId: MIXED_PROJECTION_ID,
+      anOrgId: NU_ORG,
+      userId: NU_USER,
+      decision: "ALTERNATIVES_PROPOSED",
+      reasonCode: "RESOURCE_CONFLICT",
+      comment: "Mixed resources are available in these windows.",
+      alternatives,
+      outboundMessageId: "t49-mixed-response",
+    });
+    const delivery = await deliverLocalServiceResponse(response.payload);
+
+    expect(delivery.status).toBe("DELIVERED");
+
+    const [inboxMessage] = await db.select().from(messageInboxTable).where(and(
+      eq(messageInboxTable.messageId, "t49-mixed-response"),
+      eq(messageInboxTable.recipientOrgId, GU_ORG),
+      eq(messageInboxTable.messageType, "TAKT_RESPONSE_SUBMITTED"),
+    ));
+    expect(inboxMessage).toBeTruthy();
+
+    const payload = inboxMessage!.payload as {
+      taktRequestId: string;
+      decision: string;
+      alternatives: Array<{
+        alternativeId: string;
+        rank: number;
+        timeWindow: { start: string; end: string };
+      }>;
+    };
+    expect(payload).toMatchObject({
+      taktRequestId: MIXED_REQUEST_ID,
+      decision: "ALTERNATIVES_PROPOSED",
+      alternatives: alternatives.map(({ alternativeId, rank, timeWindow }) => ({
+        alternativeId,
+        rank,
+        timeWindow,
+      })),
+    });
+
+    const publicPayload = JSON.stringify(inboxMessage!.payload);
+    for (const field of ["resourceId", "resourceName", "localProjectId", "employeeId"]) {
+      expect(publicPayload, `inbox payload should not contain "${field}"`).not.toContain(`"${field}"`);
     }
     for (const resourceId of MIXED_RESOURCE_IDS) {
       expect(publicPayload).not.toContain(resourceId);
