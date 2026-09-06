@@ -286,18 +286,21 @@ export async function cleanupCampusWest(seed: Seed): Promise<void> {
   ));
   await agDb.delete(leistungenTable).where(eq(leistungenTable.projectId, seed.projectId));
   await agDb.delete(projectsTable).where(eq(projectsTable.id, seed.projectId));
+  // Dataspace exchanges and delivery history are Hub transport state. AG/AN
+  // clients may use the narrow transport interface, but cleanup must target
+  // the owning Hub schema explicitly.
+  await hubDb.delete(dataspaceExchangesTable)
+    .where(inArray(dataspaceExchangesTable.senderOrgId, [seed.agOrgId, ...seed.anOrgIds]));
+  const outboxRows = await hubDb.select({ messageId: messageOutboxTable.messageId })
+    .from(messageOutboxTable)
+    .where(inArray(messageOutboxTable.senderOrgId, [seed.agOrgId, ...seed.anOrgIds]));
+  const messageIds = outboxRows.map(({ messageId }) => messageId);
+  if (messageIds.length) {
+    await hubDb.delete(messageDeliveryAttemptsTable).where(inArray(messageDeliveryAttemptsTable.messageId, messageIds));
+    await hubDb.delete(messageInboxTable).where(inArray(messageInboxTable.messageId, messageIds));
+    await hubDb.delete(messageOutboxTable).where(inArray(messageOutboxTable.messageId, messageIds));
+  }
   for (const database of [agDb, anDb, hubDb]) {
-    await database.delete(dataspaceExchangesTable)
-      .where(inArray(dataspaceExchangesTable.senderOrgId, [seed.agOrgId, ...seed.anOrgIds]));
-    const outboxRows = await database.select({ messageId: messageOutboxTable.messageId })
-      .from(messageOutboxTable)
-      .where(inArray(messageOutboxTable.senderOrgId, [seed.agOrgId, ...seed.anOrgIds]));
-    const messageIds = outboxRows.map(({ messageId }) => messageId);
-    if (messageIds.length) {
-      await database.delete(messageDeliveryAttemptsTable).where(inArray(messageDeliveryAttemptsTable.messageId, messageIds));
-      await database.delete(messageInboxTable).where(inArray(messageInboxTable.messageId, messageIds));
-      await database.delete(messageOutboxTable).where(inArray(messageOutboxTable.messageId, messageIds));
-    }
     await database.delete(userOrganizationsTable).where(inArray(userOrganizationsTable.userId, seed.userIds));
     await database.delete(usersTable).where(inArray(usersTable.id, seed.userIds));
     await database.delete(organizationsTable).where(inArray(organizationsTable.id, [seed.agOrgId, ...seed.anOrgIds]));

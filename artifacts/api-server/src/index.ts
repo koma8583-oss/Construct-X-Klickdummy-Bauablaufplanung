@@ -9,9 +9,9 @@ import {
   runWithDatabaseRole,
 } from "@workspace/db";
 
-// Refuse to boot before any pool is opened if the three physical stores are
-// missing or accidentally configured to the same PostgreSQL database. The
-// identity probe also verifies that role credentials are not shared.
+// Refuse to boot before any pool is opened unless all three logical role
+// sessions resolve to the same physical PostgreSQL database and their schema
+// privileges are isolated.
 try {
   await assertDatabaseConfiguration();
 } catch (error) {
@@ -61,7 +61,7 @@ const server = app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 
   // ── Seed canonical policy templates ─────────────────────────────────────
-  runWithDatabaseRole("hub", () => seedPolicyTemplates()).catch((err) =>
+  runWithDatabaseRole("ag", () => seedPolicyTemplates()).catch((err) =>
     logger.error({ err }, "Failed to seed policy templates"),
   );
 

@@ -1,9 +1,12 @@
 /**
- * Complete schema for the local PoC when AG, AN and Hub share one physical
- * PostgreSQL database.
+ * Complete physical table shape used by the shared-database migration tool.
  *
- * This intentionally composes the complete schema barrel instead of selecting
- * one logical role. The logical AG/AN/Hub database clients still enforce
- * ownership and transport boundaries at the application layer.
+ * Each invocation of Drizzle is pointed at a different role schema. The
+ * runtime clients use the role-specific schema compositions and PostgreSQL
+ * ACLs decide which tables each effective role can actually access.
+ *
+ * Keeping the migration shape complete avoids missing transitive foreign-key
+ * declarations while creating isolated schemas. It does not grant cross-role
+ * access; the bootstrap allowlist is the security boundary.
  */
 export * from "./index";

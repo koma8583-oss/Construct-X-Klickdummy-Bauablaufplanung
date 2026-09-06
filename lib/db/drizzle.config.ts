@@ -5,21 +5,31 @@ const role = process.env.DB_ROLE;
 const roleEnv =
   role === "ag" ? "AG_DATABASE_URL" :
   role === "an" ? "AN_DATABASE_URL" :
-  role === "hub" ? "HUB_DATABASE_URL" :
-  role === "shared" ? undefined : undefined;
-const url = roleEnv ? (process.env[roleEnv] ?? process.env.DATABASE_URL) : undefined;
-const sharedUrl = role === "shared" ? process.env.DATABASE_URL ?? process.env.AG_DATABASE_URL : undefined;
+  role === "hub" ? "HUB_DATABASE_URL" : undefined;
+const schema =
+  role === "ag" ? "ag" :
+  role === "an" ? "an" :
+  role === "hub" ? "hub" : undefined;
+const baseUrl = roleEnv
+  ? process.env.DATABASE_URL ?? process.env[roleEnv]
+  : undefined;
 const schemaFile =
-  role === "ag" ? "./src/schema/ag.ts" :
-  role === "an" ? "./src/schema/an.ts" :
-  role === "hub" ? "./src/schema/hub-database.ts" :
-  "./src/schema/shared.ts";
+  role === "ag" || role === "an" || role === "hub"
+    ? "./src/schema/shared.ts"
+    : undefined;
 
-if (!["ag", "an", "hub", "shared"].includes(role ?? "") || (!url && !sharedUrl)) {
+if (!schemaFile || !schema || !baseUrl) {
   throw new Error(
-    "DB_ROLE must be ag, an, hub, or shared and DATABASE_URL or its corresponding *_DATABASE_URL must be set",
+    "DB_ROLE must be ag, an or hub and DATABASE_URL (or the corresponding role URL) must be set",
   );
 }
+
+const databaseUrl = new URL(baseUrl);
+const searchPath = schema === "hub" ? "hub,pg_catalog" : `${schema},hub,pg_catalog`;
+databaseUrl.searchParams.set(
+  "options",
+  `-c search_path=${searchPath}`,
+);
 
 export default defineConfig({
   schema: path.join(
@@ -28,6 +38,6 @@ export default defineConfig({
   ),
   dialect: "postgresql",
   dbCredentials: {
-    url: url ?? sharedUrl!,
+    url: databaseUrl.toString(),
   },
 });

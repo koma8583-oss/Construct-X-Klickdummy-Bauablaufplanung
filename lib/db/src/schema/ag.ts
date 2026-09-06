@@ -19,4 +19,3 @@ export * from "./takt-versions";
 export * from "./takt-responses";
 export * from "./takt-response-decisions";
 export * from "./data-publications";
-export * from "./dataspace-exchanges";

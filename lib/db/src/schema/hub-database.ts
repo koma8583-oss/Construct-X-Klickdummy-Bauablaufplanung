@@ -9,3 +9,4 @@ export * from "./refreshTokens";
 export * from "./hub";
 export * from "./messages";
 export * from "./dataspace-exchanges";
+export * from "./dataspace-access-grants";

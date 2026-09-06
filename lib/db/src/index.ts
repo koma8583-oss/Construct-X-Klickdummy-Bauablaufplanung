@@ -14,15 +14,35 @@ const roleEnvironmentVariables: Record<DatabaseRole, string> = {
 };
 
 /**
- * The single-database setup is an explicit development/test-only mode. It is
- * intentionally not inferred from the presence of DATABASE_URL because that
- * would make a production deployment silently lose its physical boundary.
+ * AG, AN and Hub always share one PostgreSQL database. Isolation is provided
+ * by PostgreSQL schemas and effective database roles, not by separate servers
+ * or databases. Role-specific URLs are optional: when only DATABASE_URL is
+ * configured, the connection user must be allowed to SET ROLE to the
+ * role-specific NOLOGIN roles provisioned by the database bootstrap.
  */
-const SHARED_DATABASE_POC_ENV = "TAKTKOORD_SHARED_DATABASE_POC";
+const roleNameEnvironmentVariables: Record<DatabaseRole, string> = {
+  ag: "AG_DATABASE_ROLE",
+  an: "AN_DATABASE_ROLE",
+  hub: "HUB_DATABASE_ROLE",
+};
+
+const defaultRoleNames: Record<DatabaseRole, string> = {
+  ag: "taktkoord_ag",
+  an: "taktkoord_an",
+  hub: "taktkoord_hub",
+};
+
+export const databaseSchemaByRole: Record<DatabaseRole, string> = {
+  ag: "ag",
+  an: "an",
+  hub: "hub",
+};
 
 type DatabaseConfiguration = {
-  mode: "separate" | "shared-poc";
+  mode: "shared";
   connectionStrings: Record<DatabaseRole, string>;
+  roleNames: Record<DatabaseRole, string>;
+  useRoleSwitching: Record<DatabaseRole, boolean>;
 };
 
 type DatabaseIdentity = {
@@ -30,80 +50,103 @@ type DatabaseIdentity = {
   connectionUser: string;
 };
 
-function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
-function isSharedDatabasePocRequested(): boolean {
-  return process.env[SHARED_DATABASE_POC_ENV] === "true";
+function roleNames(): Record<DatabaseRole, string> {
+  const roles = {} as Record<DatabaseRole, string>;
+  for (const role of Object.keys(defaultRoleNames) as DatabaseRole[]) {
+    const configured = process.env[roleNameEnvironmentVariables[role]];
+    const name = configured || defaultRoleNames[role];
+    if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
+      throw new Error(
+        `${roleNameEnvironmentVariables[role]} must be a lowercase PostgreSQL role identifier`,
+      );
+    }
+    roles[role] = name;
+  }
+  return roles;
 }
 
 function getDatabaseConfiguration(): DatabaseConfiguration {
-  const sharedPocRequested = isSharedDatabasePocRequested();
   const sharedUrl = process.env.DATABASE_URL;
   const roleUrls = (Object.keys(roleEnvironmentVariables) as DatabaseRole[]).map(
     (role) => [role, process.env[roleEnvironmentVariables[role]]] as const,
   );
-  const hasRoleUrl = roleUrls.some(([, url]) => Boolean(url));
-
-  if (sharedPocRequested) {
-    if (isProduction()) {
-      throw new Error(
-        `${SHARED_DATABASE_POC_ENV}=true is only permitted outside production. ` +
-          "Configure separate AG_DATABASE_URL, AN_DATABASE_URL, and HUB_DATABASE_URL.",
-      );
-    }
-    if (!sharedUrl) {
-      throw new Error(
-        `${SHARED_DATABASE_POC_ENV}=true requires DATABASE_URL. ` +
-          "Configure separate role URLs instead when physical database separation is required.",
-      );
-    }
-    if (hasRoleUrl) {
-      throw new Error(
-        `${SHARED_DATABASE_POC_ENV}=true requires DATABASE_URL without any role-specific ` +
-          "database URLs; refusing to ignore an ambiguous mixed configuration.",
-      );
-    }
-    return {
-      mode: "shared-poc",
-      connectionStrings: { ag: sharedUrl, an: sharedUrl, hub: sharedUrl },
-    };
-  }
-
-  const missing = roleUrls
-    .filter(([, url]) => !url)
-    .map(([role]) => roleEnvironmentVariables[role]);
-  if (missing.length > 0) {
-    const sharedHint = sharedUrl
-      ? ` For the non-production shared-database PoC only, set ${SHARED_DATABASE_POC_ENV}=true.`
-      : "";
+  if (!sharedUrl && roleUrls.some(([, url]) => !url)) {
     throw new Error(
-      `Separate database configuration is required. Missing: ${missing.join(", ")}. ` +
-        "Set all three role URLs." + sharedHint,
+      "A single DATABASE_URL or all three role-specific URLs " +
+        "(AG_DATABASE_URL, AN_DATABASE_URL, HUB_DATABASE_URL) are required. " +
+        "All targets must resolve to the same PostgreSQL database.",
     );
   }
 
+  const roles = roleNames();
   return {
-    mode: "separate",
+    mode: "shared",
     connectionStrings: Object.fromEntries(
-      roleUrls.map(([role, url]) => [role, url!]),
+      roleUrls.map(([role, url]) => [role, url ?? sharedUrl!]),
     ) as Record<DatabaseRole, string>,
+    roleNames: roles,
+    // Role-specific URLs may still use the shared bootstrap credential. The
+    // effective application identity is always established with SET ROLE.
+    useRoleSwitching: Object.fromEntries(
+      roleUrls.map(([role]) => [role, true]),
+    ) as Record<DatabaseRole, boolean>,
   };
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function quoteLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function connectionOptions(
+  role: DatabaseRole,
+  configuration: DatabaseConfiguration,
+): string {
+  const schema = databaseSchemaByRole[role];
+  const roleOption = configuration.useRoleSwitching[role]
+    ? ` -c role=${configuration.roleNames[role]}`
+    : "";
+  const searchPath = role === "hub"
+    ? `${schema},pg_catalog`
+    : `${schema},hub,pg_catalog`;
+  return `-c search_path=${searchPath}${roleOption}`;
 }
 
 async function readDatabaseIdentity(
   role: DatabaseRole,
   connectionString: string,
+  configuration: DatabaseConfiguration,
 ): Promise<DatabaseIdentity> {
-  const rolePool = new Pool({ connectionString });
+  const rolePool = new Pool({
+    connectionString,
+    options: connectionOptions(role, configuration),
+  });
   try {
     const result = await rolePool.query<{
       database_name: string;
       connection_user: string;
-    }>("SELECT current_database() AS database_name, current_user AS connection_user");
+      session_user: string;
+      current_schema: string;
+      has_schema_usage: boolean;
+    }>(
+      `SELECT current_database() AS database_name,
+              current_user AS connection_user,
+              session_user,
+              current_schema(),
+              has_schema_privilege(current_user, ${quoteLiteral(databaseSchemaByRole[role])}, 'USAGE')
+                AS has_schema_usage`,
+    );
     const identity = result.rows[0];
-    if (!identity?.database_name || !identity.connection_user) {
+    if (
+      !identity?.database_name ||
+      !identity.connection_user ||
+      !identity.session_user ||
+      identity.current_schema !== databaseSchemaByRole[role] ||
+      !identity.has_schema_usage
+    ) {
       throw new Error("PostgreSQL returned an incomplete connection identity");
     }
     return {
@@ -149,38 +192,52 @@ function findDuplicateRoles(
  */
 export async function assertDatabaseConfiguration(): Promise<void> {
   const configuration = getDatabaseConfiguration();
-  if (configuration.mode === "shared-poc") {
-    return;
-  }
-
   const roles = Object.keys(configuration.connectionStrings) as DatabaseRole[];
   const entries = await Promise.all(
     roles.map(async (role) => [
       role,
-      await readDatabaseIdentity(role, configuration.connectionStrings[role]),
+      await readDatabaseIdentity(
+        role,
+        configuration.connectionStrings[role],
+        configuration,
+      ),
     ] as const),
   );
   const identities = Object.fromEntries(entries) as Record<
     DatabaseRole,
     DatabaseIdentity
   >;
-  const sharedDatabases = findDuplicateRoles(identities, "databaseName");
-  const sharedUsers = findDuplicateRoles(identities, "connectionUser");
   const violations: string[] = [];
-  if (sharedDatabases.length > 0) {
+  const databaseNames = new Set(
+    roles.map((role) => identities[role].databaseName),
+  );
+  if (databaseNames.size !== 1) {
     violations.push(
-      `database identity is shared by ${sharedDatabases.join("; ")}`,
+      "AG, AN and Hub do not point to the same PostgreSQL database",
     );
   }
-  if (sharedUsers.length > 0) {
+  const sharedUsers = findDuplicateRoles(identities, "connectionUser");
+  const roleSwitchingUsers = roles.filter(
+    (role) => configuration.useRoleSwitching[role],
+  );
+  if (
+    roleSwitchingUsers.some(
+      (role) => identities[role].connectionUser !== configuration.roleNames[role],
+    )
+  ) {
     violations.push(
-      `connection-user identity is shared by ${sharedUsers.join("; ")}`,
+      "role switching did not establish the configured AG, AN and Hub database roles",
+    );
+  }
+  if (sharedUsers.length > 0 && roleSwitchingUsers.length !== roles.length) {
+    violations.push(
+      `effective connection-user identity is shared by ${sharedUsers.join("; ")}`,
     );
   }
   if (violations.length > 0) {
     throw new Error(
-      `Physical database separation validation failed: ${violations.join(" and ")}. ` +
-        "Use distinct PostgreSQL databases and connection users for AG, AN, and Hub.",
+      `Shared database role isolation validation failed: ${violations.join(" and ")}. ` +
+        "Use one PostgreSQL database with the ag, an and hub schemas and least-privilege roles.",
     );
   }
 }
@@ -189,8 +246,8 @@ export function createDatabase(connectionString: string) {
   return drizzle(new Pool({ connectionString }), { schema });
 }
 
-function getConnectionStrings(): Record<DatabaseRole, string> {
-  return getDatabaseConfiguration().connectionStrings;
+function getConnectionStrings(): DatabaseConfiguration {
+  return getDatabaseConfiguration();
 }
 
 // Keep pool creation lazy enough for unit tests and tooling that only imports
@@ -201,11 +258,15 @@ const databases = new Map<DatabaseRole, ReturnType<typeof createDatabase>>();
 function databaseFor(role: DatabaseRole) {
   let database = databases.get(role);
   if (!database) {
-    const url = getConnectionStrings()[role];
+    const configuration = getConnectionStrings();
+    const url = configuration.connectionStrings[role];
     if (!url) {
       throw new Error(`${role.toUpperCase()}_DATABASE_URL is not configured`);
     }
-    const rolePool = new Pool({ connectionString: url });
+    const rolePool = new Pool({
+      connectionString: url,
+      options: connectionOptions(role, configuration),
+    });
     pools.set(role, rolePool);
     database = drizzle(rolePool, { schema });
     databases.set(role, database);

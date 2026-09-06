@@ -1,33 +1,34 @@
 ---
 name: Physical database boundaries
-description: Durable rules for maintaining separate AG, AN, and Hub PostgreSQL stores
+description: Durable rules for maintaining one PostgreSQL database with isolated AG, AN, and Hub schemas
 ---
 
-AG, AN, and Hub must use distinct PostgreSQL databases and credentials. The
-application must fail closed when a role URL is missing or points to the same
-database as another role. Cross-domain business data must travel through the
-Dataspace exchange; the Hub may retain transport metadata, not full domain
+AG, AN, and Hub must use one PostgreSQL database with separate `ag`, `an`, and
+`hub` schemas and least-privilege NOLOGIN roles. The application must fail
+closed when the role sessions do not resolve to the same database, effective
+role, schema, or schema usage. Cross-domain business data must travel through
+the Dataspace exchange; the Hub may retain transport metadata, not full domain
 records.
 
-**Why:** A shared ORM connection and shared foreign-key graph can expose private
-project or resource data even when route-level organisation checks are correct.
+**Why:** A shared physical database is the deployment constraint, so logical
+schema and ACL boundaries must replace database-level separation without
+allowing route-level organisation checks to become the only privacy control.
 
-**How to apply:** Use named role handles and role-specific migration schemas.
-Never reintroduce `DATABASE_URL` as a fallback or add SQL joins/transactions
-between AG and AN data. Treat cross-database workflows as idempotent message
-projections/sagas.
+**How to apply:** Use named role handles, `SET ROLE`, and role-specific
+`search_path` values. Role-specific URLs are allowed only when they resolve to
+the same physical database. Never add SQL joins/transactions between AG and AN
+schemas; treat cross-domain workflows as idempotent message projections/sagas.
 
-The physical boundary test suite is opt-in: it skips only when no role URLs are
-configured, but a partial role configuration must fail loudly. Run it after
-migrating each role-specific schema.
+The shared-boundary test suite runs with one `DATABASE_URL` (or three URLs that
+resolve to the same database). It verifies identical database identity,
+effective role/schema, and denied cross-schema access.
 
-**Why:** Shared-PoC tests cannot detect a handler accidentally querying a
-private table on the other side, while silently skipping a partially configured
-physical run would hide the same deployment error.
+**Why:** Testing the actual ACL boundary catches accidental cross-domain reads
+while preserving the single-database deployment model.
 
-**How to apply:** Set all three role URLs for the dedicated suite; keep the
-normal suite on the explicit non-production shared-PoC flag when no role URLs
-are available.
+**How to apply:** Keep the normal test path on the shared `DATABASE_URL`; never
+reintroduce an opt-in shared-database flag or a requirement for three physical
+databases.
 
 Bilateral coordination endpoints are a deliberate exception to the canonical
 AG planning-path guard: proposal history and actions are public coordination

@@ -1,16 +1,18 @@
 /**
- * Physical AG ↔ AN ↔ Hub boundary tests.
+ * Shared PostgreSQL AG ↔ AN ↔ Hub boundary tests.
  *
- * Unlike the normal PoC suite, this file never falls back to DATABASE_URL.
- * Run it with AG_DATABASE_URL, AN_DATABASE_URL, and HUB_DATABASE_URL pointing
- * at three separately migrated PostgreSQL databases.
+ * All three clients intentionally target one physical database. PostgreSQL
+ * role switching, schema search paths and table ACLs provide the isolation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   agDb,
   anDb,
   hubDb,
+  agPool,
+  anPool,
+  hubPool,
   assertDatabaseConfiguration,
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
@@ -48,11 +50,11 @@ import type {
   ExternalServiceResponse,
 } from "../services/dataspace/external-contracts";
 
-const hasAnyRoleTarget = [
+const hasSharedTarget = Boolean(process.env.DATABASE_URL) || [
   process.env.AG_DATABASE_URL,
   process.env.AN_DATABASE_URL,
   process.env.HUB_DATABASE_URL,
-].some(Boolean);
+].every(Boolean);
 
 const PREFIX = `physical-boundary-${crypto.randomUUID()}`;
 const AG = `${PREFIX}-ag`;
@@ -87,6 +89,7 @@ function policySnapshot() {
     description: "A policy used only by the physical boundary suite.",
     permissions: ["read:project"],
     prohibitions: ["share-outside-project"],
+    deltaClass: "WITHIN_BASELINE" as const,
     provider: { organizationId: AG, userId: null },
     recipientOrganizationId: AN,
     purpose: "Project coordination",
@@ -168,13 +171,6 @@ function serviceResponse(requestId: string, messageId: string): ExternalServiceR
     decision: "ACCEPTED",
     acceptedTimeWindow: { start: iso("2026-09-01"), end: iso("2026-09-05") },
   };
-}
-
-async function tableExists(database: typeof agDb, tableName: string): Promise<boolean> {
-  const result = await database.execute<{ relation_name: string | null }>(
-    sql`SELECT to_regclass(${`public.${tableName}`}) AS relation_name`,
-  );
-  return Boolean(result.rows[0]?.relation_name);
 }
 
 async function seedFixtures() {
@@ -285,12 +281,9 @@ async function cleanupFixtures() {
   ]);
 }
 
-// No role URLs means this opt-in suite is unavailable in the shared-PoC
-// workspace. A partial role configuration must run and fail in
-// assertDatabaseConfiguration rather than silently skipping a broken setup.
-const physicalBoundary = hasAnyRoleTarget ? describe : describe.skip;
+const sharedBoundary = hasSharedTarget ? describe : describe.skip;
 
-physicalBoundary("physically separate AG, AN and Hub databases", () => {
+sharedBoundary("shared database with isolated AG, AN and Hub schemas", () => {
   beforeAll(async () => {
     await assertDatabaseConfiguration();
     await seedFixtures();
@@ -300,13 +293,32 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
     await cleanupFixtures();
   });
 
-  it("rejects a configuration that does not provide physical private-table boundaries", async () => {
-    expect(await tableExists(agDb, "resources")).toBe(false);
-    expect(await tableExists(agDb, "resource_bookings")).toBe(false);
-    expect(await tableExists(anDb, "leistungen")).toBe(false);
-    expect(await tableExists(anDb, "leistungsanfragen")).toBe(false);
-    expect(await tableExists(hubDb, "resources")).toBe(false);
-    expect(await tableExists(hubDb, "leistungen")).toBe(false);
+  it("uses one physical database and blocks cross-role schema access", async () => {
+    const identities = await Promise.all([
+      agPool.query("SELECT current_database() AS database_name, current_user, current_schema() AS schema_name"),
+      anPool.query("SELECT current_database() AS database_name, current_user, current_schema() AS schema_name"),
+      hubPool.query("SELECT current_database() AS database_name, current_user, current_schema() AS schema_name"),
+    ]);
+    expect(new Set(identities.map((result) => result.rows[0]?.database_name)).size).toBe(1);
+    expect(identities.map((result) => result.rows[0]?.current_user)).toEqual([
+      "taktkoord_ag",
+      "taktkoord_an",
+      "taktkoord_hub",
+    ]);
+    expect(identities.map((result) => result.rows[0]?.schema_name)).toEqual(["ag", "an", "hub"]);
+
+    await expect(agPool.query("SELECT 1 FROM an.resources LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
+    await expect(anPool.query("SELECT 1 FROM ag.projects LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
+    await expect(hubPool.query("SELECT 1 FROM ag.projects LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
+    await expect(hubPool.query("SELECT 1 FROM an.resources LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
   });
 
   it("delivers a project invitation locally while keeping invitation data on AN and transport data on Hub", async () => {
@@ -326,6 +338,11 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
 
     const response = await deliverLocalProjectInvitationResponse(invitationResponse());
     expect(response.status).toBe("DELIVERED");
+    // The shared-boundary fixture represents a completed bilateral admission
+    // before exercising schedule changes in the following test.
+    await anDb.update(anProjectInvitationsTable)
+      .set({ status: "ACCEPTED" })
+      .where(eq(anProjectInvitationsTable.invitationId, `${PREFIX}-invitation-id`));
     const [membership] = await agDb.select({ status: projectMembershipsTable.status })
       .from(projectMembershipsTable)
       .where(eq(projectMembershipsTable.invitationId, `${PREFIX}-invitation-id`));
@@ -342,8 +359,6 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, SERVICE_REQUEST));
     expect(projection?.senderAgOrgId).toBe(AG);
     expect(projection?.receiverAnOrgId).toBe(AN);
-    expect(await tableExists(agDb, "an_leistungsanfragen")).toBe(false);
-
     const responsePayload = serviceResponse(SERVICE_REQUEST, `${PREFIX}-service-response`);
     const response = await new RestDataspaceExchange().receiveServiceResponse(
       responsePayload,
@@ -352,8 +367,6 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
     expect(response.status).toBe("PROCESSED");
     expect(await agDb.select().from(taktResponsesTable)
       .where(eq(taktResponsesTable.taktRequestId, SERVICE_REQUEST))).toHaveLength(1);
-    expect(await tableExists(anDb, "leistungsantworten")).toBe(false);
-
     const replay = await new RestDataspaceExchange().receiveServiceResponse(
       responsePayload,
       processIncomingServiceResponse,
@@ -391,9 +404,13 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
     let generatedResponse: ExternalServiceResponse | undefined;
     const inbound = await new RestDataspaceExchange().receiveServiceRequest(
       schedule,
-      (payload) => processIncomingServiceRequest(payload, async (response) => {
-        generatedResponse = response;
-      }),
+      (payload) => processIncomingServiceRequest(
+        payload,
+        async (response) => {
+          generatedResponse = response;
+        },
+        { automaticResponse: true },
+      ),
     );
     expect(inbound.status).toBe("PROCESSED");
     expect(generatedResponse?.requestKind).toBe("SCHEDULE_CHANGE");
@@ -407,8 +424,6 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
     expect(scheduleProjection).toBeDefined();
     expect(await anDb.select().from(anAvailabilityChecksTable)
       .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, scheduleProjection.id))).not.toHaveLength(0);
-    expect(await tableExists(agDb, "an_leistungsanfragen")).toBe(false);
-
     const decision: ExternalCoordinationDecision = {
       metadata: {
         ...metadata(`${PREFIX}-decision`, `${PREFIX}-decision-correlation`),
@@ -428,6 +443,5 @@ physicalBoundary("physically separate AG, AN and Hub databases", () => {
     const bookings = await anDb.select().from(resourceBookingsTable)
       .where(eq(resourceBookingsTable.sourceReferenceId, scheduleProjection.id));
     expect(bookings).toHaveLength(1);
-    expect(await tableExists(agDb, "resource_bookings")).toBe(false);
   });
 });
