@@ -149,6 +149,8 @@ export interface ResourceAvailabilityResult {
     resourceId: string;
     resourceName: string;
     conflictType: "MISSING_EQUIPMENT" | "MISSING_QUALIFICATION" | "CAPACITY_EXCEEDED";
+    /** Stable IDs of confirmed reservations active in the conflicting segment. */
+    bookingIds?: string[];
     missingQualification?: string;
     isTentative: boolean;
     overlapUtilizationSum: number;
@@ -386,6 +388,7 @@ export function evaluateResourceRequirements({
       confirmedUsed: number;
       tentativeUsed: number;
       requiredCapacity: number;
+      confirmedBookingIds: string[];
     }> = [];
     let groupHasConflict = false;
 
@@ -460,6 +463,9 @@ export function evaluateResourceRequirements({
         confirmedUsed,
         tentativeUsed,
         requiredCapacity: activeRequired,
+        confirmedBookingIds: activeBookings
+          .filter((booking) => booking.status === "CONFIRMED")
+          .map((booking) => booking.id),
       });
       if (!hardFeasible) groupHasConflict = true;
       for (const requirement of activeRequirements) {
@@ -533,6 +539,11 @@ export function evaluateResourceRequirements({
         conflictType: "CAPACITY_EXCEEDED",
         isTentative: false,
         overlapUtilizationSum: Math.round(Math.max(...groupSegments.map((segment) => segment.confirmedUsed), 0)),
+        bookingIds: [...new Set(
+          groupSegments
+            .filter((segment) => !segment.hardFeasible)
+            .flatMap((segment) => segment.confirmedBookingIds),
+        )].sort(),
       });
     } else {
       for (const segment of groupedRequirements) {

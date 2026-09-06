@@ -873,6 +873,9 @@ export async function runAnAvailabilityCheck(
     const shared = sharedByRequirementId.get(requirement.id);
     const availableCapacity = shared?.availableCapacity ?? 0;
     if (!shared?.feasible) {
+      const sharedConflict = sharedEvaluation.conflicts.find((conflict) =>
+        conflict.resourceId === requirement.localResourceTypeId &&
+        conflict.conflictType === "CAPACITY_EXCEEDED");
       conflicts.push({
         conflictType: requirement.requiredQualification &&
           sharedEvaluation.missingQualifications.includes(requirement.requiredQualification)
@@ -882,6 +885,7 @@ export async function runAnAvailabilityCheck(
         resourceName: requirement.externalResourceTypeName,
         requiredCapacity,
         availableCapacity,
+        ...(sharedConflict?.bookingIds ? { bookingIds: sharedConflict.bookingIds } : {}),
       });
       continue;
     }

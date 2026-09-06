@@ -54,6 +54,8 @@ export interface InternalResultPayload {
     resourceId: string;
     resourceName: string;
     conflictType: "OVERLAP" | "CAPACITY_EXCEEDED" | "MISSING_QUALIFICATION" | "MISSING_EQUIPMENT";
+    /** Stable AN-local reservation IDs active in the conflicting capacity segment. */
+    bookingIds?: string[];
     /** tentativeness flag — TENTATIVE bookings cause warnings, not hard blocks */
     isTentative?: boolean;
     /** Local project involved in the conflict — internal only */

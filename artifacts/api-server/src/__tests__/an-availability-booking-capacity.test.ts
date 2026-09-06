@@ -40,6 +40,7 @@ type InternalResult = {
     conflictType: string;
     requiredCapacity?: number;
     availableCapacity?: number;
+    bookingIds?: string[];
   }>;
   tentativeWarnings: Array<{
     resourceId: string;
@@ -143,12 +144,14 @@ async function addRequirement(
 async function runCheck(requestId: string): Promise<{
   result: string;
   internal: InternalResult;
+  public: Record<string, unknown>;
 }> {
   const check = await runAnAvailabilityCheck(requestId, AN_ORG, null);
   if (!check) throw new Error(`AN-local projection not found for ${requestId}`);
   return {
     result: check.result ?? "UNKNOWN",
     internal: check.internalResultPayload as unknown as InternalResult,
+    public: check.publicResultPayload as unknown as Record<string, unknown>,
   };
 }
 
@@ -407,6 +410,36 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     expect(check.internal.dailyAvailability).toEqual(expect.arrayContaining([
       expect.objectContaining({ requiredCapacity: 10, availableCapacity: 8 }),
     ]));
+  });
+
+  it("explains capacity conflicts with overlapping concrete and type-level reservation IDs", async () => {
+    const requestId = "t362-conflict-provenance";
+    await seedRequest(requestId, 8);
+    await addBooking({
+      id: "t362-conflict-concrete",
+      resourceId: RESOURCE_A,
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+    await addBooking({
+      id: "t362-conflict-type",
+      resourceId: null,
+      quantity: 2,
+      utilizationPercent: 100,
+      status: "CONFIRMED",
+    });
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).toBe("FEASIBLE_WITH_ALTERNATIVES");
+    expect(check.internal.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        conflictType: "CAPACITY_EXCEEDED",
+        bookingIds: ["t362-conflict-concrete", "t362-conflict-type"],
+      }),
+    ]));
+    expect(JSON.stringify(check.public)).not.toContain("t362-conflict-concrete");
+    expect(JSON.stringify(check.public)).not.toContain("t362-conflict-type");
   });
 
   it("uses the peak segment instead of summing bookings that never overlap", async () => {
