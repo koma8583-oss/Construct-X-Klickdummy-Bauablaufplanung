@@ -190,6 +190,12 @@ export interface ResourceAvailabilityResult {
     availableCapacity: number;
     projectedAvailableCapacity: number;
   }>;
+  requirementAvailability?: Array<{
+    requirementId?: string;
+    requiredCapacity: number;
+    availableCapacity: number;
+    feasible: boolean;
+  }>;
 }
 
 export function shiftRequirementsToWindow<
@@ -222,6 +228,100 @@ function overlaps(startAt: Date, endAt: Date, start: Date, end: Date): boolean {
   return startAt < end && endAt > start;
 }
 
+type CapacityDemand = {
+  amount: number;
+  qualification: string | null;
+};
+
+function normalizedQualification(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLocaleLowerCase();
+  return normalized ? normalized : null;
+}
+
+function resourceMatchesQualification(
+  resource: ResourceAvailabilityResource,
+  qualification: string | null,
+): boolean {
+  if (!qualification) return true;
+  // Legacy projections may not carry qualification metadata at all. An
+  // explicit empty list remains a real "no qualification" declaration.
+  if (resource.qualifications === null || resource.qualifications === undefined) return true;
+  return Array.isArray(resource.qualifications) &&
+    (resource.qualifications as string[]).some((value) =>
+      normalizedQualification(value) === qualification);
+}
+
+/**
+ * Maximum bipartite allocation for one time segment. Requirements are nodes
+ * on the left and concrete resources on the right; qualification edges are
+ * the only permitted connections. This prevents a shared resource from being
+ * counted once per qualification group.
+ */
+function maxAllocatableCapacity(
+  demands: CapacityDemand[],
+  resources: ResourceAvailabilityResource[],
+  capacities: Map<string, number>,
+): number {
+  type Edge = { to: number; reverse: number; capacity: number };
+  const source = 0;
+  const demandOffset = 1;
+  const resourceOffset = demandOffset + demands.length;
+  const sink = resourceOffset + resources.length;
+  const graph: Edge[][] = Array.from({ length: sink + 1 }, () => []);
+
+  const addEdge = (from: number, to: number, capacity: number) => {
+    const forward: Edge = { to, reverse: graph[to].length, capacity };
+    const reverse: Edge = { to: from, reverse: graph[from].length, capacity: 0 };
+    graph[from].push(forward);
+    graph[to].push(reverse);
+  };
+
+  demands.forEach((demand, demandIndex) => {
+    addEdge(source, demandOffset + demandIndex, Math.max(0, demand.amount));
+    resources.forEach((resource, resourceIndex) => {
+      if (resourceMatchesQualification(resource, demand.qualification)) {
+        addEdge(demandOffset + demandIndex, resourceOffset + resourceIndex, Number.POSITIVE_INFINITY);
+      }
+    });
+  });
+  resources.forEach((resource, resourceIndex) => {
+    addEdge(resourceOffset + resourceIndex, sink, Math.max(0, capacities.get(resource.id) ?? 0));
+  });
+
+  let flow = 0;
+  const epsilon = 1e-9;
+  while (true) {
+    const parent: Array<{ node: number; edge: number } | null> = Array(graph.length).fill(null);
+    const queue = [source];
+    parent[source] = { node: source, edge: -1 };
+    for (let cursor = 0; cursor < queue.length && parent[sink] === null; cursor += 1) {
+      const node = queue[cursor];
+      graph[node].forEach((edge, edgeIndex) => {
+        if (parent[edge.to] === null && edge.capacity > epsilon) {
+          parent[edge.to] = { node, edge: edgeIndex };
+          queue.push(edge.to);
+        }
+      });
+    }
+    if (parent[sink] === null) break;
+    let augment = Number.POSITIVE_INFINITY;
+    for (let node = sink; node !== source;) {
+      const previous = parent[node]!;
+      augment = Math.min(augment, graph[previous.node][previous.edge].capacity);
+      node = previous.node;
+    }
+    for (let node = sink; node !== source;) {
+      const previous = parent[node]!;
+      const edge = graph[previous.node][previous.edge];
+      edge.capacity -= augment;
+      graph[node][edge.reverse].capacity += augment;
+      node = previous.node;
+    }
+    flow += augment;
+  }
+  return flow;
+}
+
 export function evaluateResourceRequirements({
   requirements,
   resources,
@@ -241,83 +341,128 @@ export function evaluateResourceRequirements({
     missingQualifications: [],
     tentativeWarnings: [],
     bookingRequirements: [],
+    requirementAvailability: [],
   };
 
   const daily: NonNullable<ResourceAvailabilityResult["dailyAvailability"]> = [];
   const groups = new Map<string, ResourceAvailabilityRequirement[]>();
   for (const requirement of requirements) {
     if (!requirement.resourceTypeId) continue;
-    const key = `${requirement.resourceTypeId}:${requirement.requiredQualification?.trim().toLocaleLowerCase() ?? ""}`;
-    groups.set(key, [...(groups.get(key) ?? []), requirement]);
+    groups.set(requirement.resourceTypeId, [...(groups.get(requirement.resourceTypeId) ?? []), requirement]);
   }
-  const dayKey = (date: Date) => date.toISOString().slice(0, 10);
-  const daysFor = (start: Date, end: Date) =>
-    iterateCalendarDays(dayKey(start), dayKey(new Date(end.getTime() - 1)))
-      .map((day) => parseDate(day));
-
-  for (const groupedRequirements of groups.values()) {
-    const requirement = groupedRequirements[0];
-    const typeResources = resources.filter((resource) => resource.resourceTypeId === requirement.resourceTypeId);
-    const normalizedQualification = requirement.requiredQualification?.trim().toLocaleLowerCase();
-    const eligibleResources = normalizedQualification
-      ? typeResources.filter((resource) => Array.isArray(resource.qualifications) &&
-        (resource.qualifications as string[]).some((qualification) =>
-          qualification.trim().toLocaleLowerCase() === normalizedQualification))
-      : typeResources;
-    if (eligibleResources.length === 0) {
-      result.conflicts.push({
-        resourceId: requirement.resourceTypeId!,
-        resourceName: requirement.notes ?? `ResourceType ${requirement.resourceTypeId}`,
-        conflictType: normalizedQualification ? "MISSING_QUALIFICATION" : "MISSING_EQUIPMENT",
-        missingQualification: normalizedQualification ? requirement.requiredQualification!.trim() : "Keine Ressource dieses Typs vorhanden",
-        isTentative: false,
-        overlapUtilizationSum: 0,
-      });
-      if (normalizedQualification) result.missingQualifications.push(requirement.requiredQualification!.trim());
-      continue;
-    }
-    const totalCapacity = eligibleResources.reduce((sum, resource) => sum + (resource.capacity ?? 1), 0);
-    const start = new Date(Math.min(...groupedRequirements.map((item) => (item.periodStart ? parseDate(item.periodStart) : windowStart).getTime())));
-    const end = new Date(Math.max(...groupedRequirements.map((item) => (item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd).getTime())));
+  for (const [resourceTypeId, groupedRequirements] of groups) {
+    const typeResources = resources.filter((resource) => resource.resourceTypeId === resourceTypeId);
+    const typeBookings = bookings.filter((booking) => booking.resourceTypeId === resourceTypeId);
+    const boundaries = [...new Set([
+      windowStart.getTime(),
+      windowEnd.getTime(),
+      ...groupedRequirements.flatMap((item) => [
+        (item.periodStart ? parseDate(item.periodStart) : windowStart).getTime(),
+        (item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd).getTime(),
+      ]),
+      ...typeBookings.flatMap((booking) => [booking.startAt.getTime(), booking.endAt.getTime()]),
+    ])].sort((left, right) => left - right);
+    const availabilityByRequirement = new Map<string, number>();
+    const requiredByRequirement = new Map<string, number>();
+    const groupSegments: Array<{
+      start: Date;
+      end: Date;
+      hardFeasible: boolean;
+      confirmedUsed: number;
+      tentativeUsed: number;
+      requiredCapacity: number;
+    }> = [];
     let groupHasConflict = false;
-    for (const day of daysFor(start, end)) {
-      const dayStart = day;
-      const dayEnd = parseDate(addCalendarDays(dayKey(day), 1));
-      const requiredCapacity = groupedRequirements.reduce((sum, item) => {
-        const itemStart = item.periodStart ? parseDate(item.periodStart) : windowStart;
-        const itemEnd = item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd;
-        return overlaps(itemStart, itemEnd, dayStart, dayEnd)
-          ? sum + Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100
-          : sum;
-      }, 0);
-      if (requiredCapacity === 0) continue;
-      const dayBookings = bookings.filter((booking) =>
-        booking.resourceTypeId === requirement.resourceTypeId &&
-        overlaps(booking.startAt, booking.endAt, dayStart, dayEnd));
-      const usedFor = (status: "CONFIRMED" | "TENTATIVE") => dayBookings
-        .filter((booking) => booking.status === status)
-        .reduce((sum, booking) => {
-          if (booking.resourceId === null) return sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100;
-          const resource = eligibleResources.find((candidate) => candidate.id === booking.resourceId);
-          return sum + (resource ? (resource.capacity ?? 1) * booking.utilizationPercent / 100 : 0);
-        }, 0);
-      const confirmedUsed = usedFor("CONFIRMED");
-      const tentativeUsed = usedFor("TENTATIVE");
-      daily.push({
-        resourceTypeId: requirement.resourceTypeId!,
-        requiredQualification: requirement.requiredQualification ?? null,
-        date: dayKey(day), totalCapacity, confirmedUsed, tentativeUsed,
-        requiredCapacity, availableCapacity: totalCapacity - confirmedUsed,
-        projectedAvailableCapacity: totalCapacity - confirmedUsed - tentativeUsed,
+
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const segmentStart = new Date(boundaries[index]);
+      const segmentEnd = new Date(boundaries[index + 1]);
+      if (segmentEnd <= segmentStart) continue;
+      const activeRequirements = groupedRequirements.filter((item) =>
+        overlaps(
+          item.periodStart ? parseDate(item.periodStart) : windowStart,
+          item.periodEnd ? inclusiveEnd(item.periodEnd) : windowEnd,
+          segmentStart,
+          segmentEnd,
+        ));
+      if (activeRequirements.length === 0) continue;
+      const activeBookings = typeBookings.filter((booking) =>
+        overlaps(booking.startAt, booking.endAt, segmentStart, segmentEnd));
+      const concreteConfirmed = activeBookings.filter((booking) =>
+        booking.status === "CONFIRMED" && booking.resourceId !== null);
+      const concreteTentative = activeBookings.filter((booking) =>
+        booking.status === "TENTATIVE" && booking.resourceId !== null);
+      const confirmedTypeDemands: CapacityDemand[] = activeBookings
+        .filter((booking) => booking.status === "CONFIRMED" && booking.resourceId === null)
+        .map((booking) => ({
+          amount: (booking.quantity ?? 0) * booking.utilizationPercent / 100,
+          qualification: null,
+        }));
+      const tentativeTypeDemands: CapacityDemand[] = activeBookings
+        .filter((booking) => booking.status === "TENTATIVE" && booking.resourceId === null)
+        .map((booking) => ({
+          amount: (booking.quantity ?? 0) * booking.utilizationPercent / 100,
+          qualification: null,
+        }));
+      const confirmedCapacity = new Map(typeResources.map((resource) => [
+        resource.id,
+        Math.max(0, (resource.capacity ?? 1) - concreteConfirmed
+          .filter((booking) => booking.resourceId === resource.id)
+          .reduce((sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100, 0)),
+      ]));
+      const projectedCapacity = new Map(typeResources.map((resource) => [
+        resource.id,
+        Math.max(0, (confirmedCapacity.get(resource.id) ?? 0) - concreteTentative
+          .filter((booking) => booking.resourceId === resource.id)
+          .reduce((sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100, 0)),
+      ]));
+      const requirementDemands = activeRequirements.map((item) => ({
+        amount: Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100,
+        qualification: normalizedQualification(item.requiredQualification),
+      }));
+      const confirmedDemands = [...requirementDemands, ...confirmedTypeDemands];
+      const projectedDemands = [...confirmedDemands, ...tentativeTypeDemands];
+      const hardDemand = requirementDemands.reduce((sum, demand) => sum + demand.amount, 0);
+      const confirmedUsed = typeResources.reduce((sum, resource) =>
+        sum + (resource.capacity ?? 1) - (confirmedCapacity.get(resource.id) ?? 0), 0) +
+        confirmedTypeDemands.reduce((sum, demand) => sum + demand.amount, 0);
+      const tentativeUsed = typeResources.reduce((sum, resource) =>
+        sum + (confirmedCapacity.get(resource.id) ?? 0) - (projectedCapacity.get(resource.id) ?? 0), 0) +
+        tentativeTypeDemands.reduce((sum, demand) => sum + demand.amount, 0);
+      const hardFlow = maxAllocatableCapacity(confirmedDemands, typeResources, confirmedCapacity);
+      const projectedFlow = maxAllocatableCapacity(projectedDemands, typeResources, projectedCapacity);
+      const hardFeasible = hardFlow + 1e-9 >= confirmedDemands.reduce((sum, demand) => sum + demand.amount, 0);
+      const projectedFeasible = projectedFlow + 1e-9 >= projectedDemands.reduce((sum, demand) => sum + demand.amount, 0);
+      const totalCapacity = typeResources.reduce((sum, resource) => sum + (resource.capacity ?? 1), 0);
+      const availableCapacity = Math.max(0, totalCapacity - confirmedUsed);
+      const projectedAvailableCapacity = Math.max(0, availableCapacity - tentativeUsed);
+      const activeRequired = activeRequirements.reduce((sum, item) =>
+        sum + Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100, 0);
+      groupSegments.push({
+        start: segmentStart,
+        end: segmentEnd,
+        hardFeasible,
+        confirmedUsed,
+        tentativeUsed,
+        requiredCapacity: activeRequired,
       });
-      if (totalCapacity - confirmedUsed < requiredCapacity) {
-        groupHasConflict = true;
+      if (!hardFeasible) groupHasConflict = true;
+      for (const requirement of activeRequirements) {
+        const demand = Number(requirement.requiredCapacity ?? 0) * requirement.utilizationPercent / 100;
+        const otherDemand = activeRequirements.reduce((sum, item) =>
+          sum + Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100, 0) - demand;
+        const previous = availabilityByRequirement.get(requirement.id ?? "");
+        const availableForRequirement = Math.max(0, availableCapacity - otherDemand);
+        if (previous === undefined || availableForRequirement < previous) {
+          availabilityByRequirement.set(requirement.id ?? "", availableForRequirement);
+        }
+        requiredByRequirement.set(requirement.id ?? "", demand);
       }
-      if (totalCapacity - confirmedUsed - tentativeUsed < requiredCapacity) {
-        for (const booking of dayBookings.filter((item) => item.status === "TENTATIVE")) {
+      if (!projectedFeasible) {
+        for (const booking of activeBookings.filter((item) => item.status === "TENTATIVE")) {
           if (!result.tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
             result.tentativeWarnings.push({
-              resourceId: booking.resourceId ?? requirement.resourceTypeId!,
+              resourceId: booking.resourceId ?? resourceTypeId,
               bookingId: booking.id,
               overlapStart: booking.startAt.toISOString(),
               overlapEnd: booking.endAt.toISOString(),
@@ -325,38 +470,95 @@ export function evaluateResourceRequirements({
           }
         }
       }
+      daily.push({
+        resourceTypeId,
+        requiredQualification: activeRequirements.length === 1
+          ? activeRequirements[0].requiredQualification ?? null
+          : null,
+        date: segmentStart.toISOString().slice(0, 10),
+        totalCapacity,
+        confirmedUsed,
+        tentativeUsed,
+        requiredCapacity: activeRequired,
+        availableCapacity,
+        projectedAvailableCapacity,
+      });
     }
-    if (groupHasConflict) {
-      const groupDays = daily.filter((item) => item.requiredCapacity > 0 && item.date >= dayKey(start) && item.date < dayKey(end));
+    const missing = groupedRequirements.filter((requirement) =>
+      normalizedQualification(requirement.requiredQualification) &&
+      !typeResources.some((resource) => resourceMatchesQualification(
+        resource,
+        normalizedQualification(requirement.requiredQualification),
+      )));
+    for (const requirement of missing) {
+      const qualification = requirement.requiredQualification!.trim();
+      if (!result.missingQualifications.includes(qualification)) result.missingQualifications.push(qualification);
+    }
+    if (typeResources.length === 0) {
       result.conflicts.push({
-        resourceId: requirement.resourceTypeId!,
-        resourceName: requirement.notes ?? `ResourceType ${requirement.resourceTypeId}`,
+        resourceId: resourceTypeId,
+        resourceName: groupedRequirements[0].notes ?? `ResourceType ${resourceTypeId}`,
+        conflictType: "MISSING_EQUIPMENT",
+        isTentative: false,
+        overlapUtilizationSum: 0,
+      });
+    } else if (missing.length > 0) {
+      result.conflicts.push({
+        resourceId: resourceTypeId,
+        resourceName: groupedRequirements[0].notes ?? `ResourceType ${resourceTypeId}`,
+        conflictType: "MISSING_QUALIFICATION",
+        missingQualification: missing[0].requiredQualification!.trim(),
+        isTentative: false,
+        overlapUtilizationSum: 0,
+      });
+    } else if (groupHasConflict) {
+      result.conflicts.push({
+        resourceId: resourceTypeId,
+        resourceName: groupedRequirements[0].notes ?? `ResourceType ${resourceTypeId}`,
         conflictType: "CAPACITY_EXCEEDED",
         isTentative: false,
-        overlapUtilizationSum: Math.round(Math.max(...groupDays.map((item) => item.confirmedUsed), 0)),
+        overlapUtilizationSum: Math.round(Math.max(...groupSegments.map((segment) => segment.confirmedUsed), 0)),
       });
     } else {
       for (const segment of groupedRequirements) {
         result.bookingRequirements.push({
           ...(segment.id ? { resourceRequirementId: segment.id } : {}),
-          resourceTypeId: requirement.resourceTypeId!,
+          resourceTypeId,
           quantity: Number(segment.requiredCapacity ?? 0),
           utilizationPercent: segment.utilizationPercent,
           periodStart: segment.periodStart ?? null,
           periodEnd: segment.periodEnd ?? null,
           requiredQualification: segment.requiredQualification ?? null,
         });
+        const availableCapacity = availabilityByRequirement.get(segment.id ?? "") ??
+          Number(segment.requiredCapacity ?? 0);
+        result.requirementAvailability!.push({
+          ...(segment.id ? { requirementId: segment.id } : {}),
+          requiredCapacity: requiredByRequirement.get(segment.id ?? "") ?? 0,
+          availableCapacity,
+          feasible: availableCapacity + 1e-9 >=
+            (requiredByRequirement.get(segment.id ?? "") ?? 0),
+        });
+        result.availableResources.push({
+          resourceId: null,
+          resourceType: "DTC_TYPE",
+          resourceTypeId: resourceTypeId,
+          quantity: availableCapacity,
+          utilizationPercent: segment.utilizationPercent,
+          periodStart: segment.periodStart ?? null,
+          periodEnd: segment.periodEnd ?? null,
+        });
       }
-      const first = groupedRequirements[0];
-      result.availableResources.push({
-        resourceId: null,
-        resourceType: "DTC_TYPE",
-        resourceTypeId: requirement.resourceTypeId!,
-        quantity: groupedRequirements.reduce((sum, item) => sum + Number(item.requiredCapacity ?? 0), 0),
-        utilizationPercent: first.utilizationPercent,
-        periodStart: first.periodStart ?? null,
-        periodEnd: first.periodEnd ?? null,
-      });
+    }
+    if (groupHasConflict) {
+      for (const segment of groupedRequirements) {
+        result.requirementAvailability!.push({
+          ...(segment.id ? { requirementId: segment.id } : {}),
+          requiredCapacity: Number(segment.requiredCapacity ?? 0),
+          availableCapacity: availabilityByRequirement.get(segment.id ?? "") ?? 0,
+          feasible: false,
+        });
+      }
     }
   }
   result.dailyAvailability = daily;

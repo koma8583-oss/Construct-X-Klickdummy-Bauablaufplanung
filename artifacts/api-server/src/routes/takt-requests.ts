@@ -30,6 +30,7 @@ import {
   organizationsTable,
   coordinationPoliciesTable,
   leistungsanfragenTable,
+  taktRequestSnapshotsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
@@ -134,18 +135,34 @@ async function assertRootRequestPolicyAccess(
   requestId: string,
   action: "DETAILS" | "ANSWER",
 ): Promise<void> {
-  // Only genuinely pre-policy rows use the legacy fallback. New requests
-  // always have a child performance policy and can never bypass this gate.
   const [request] = await db.select({ performancePolicyId: taktRequestsTable.performancePolicyId })
     .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId)).limit(1);
-  if (!request?.performancePolicyId) return;
+  if (!request?.performancePolicyId) {
+    const [snapshot] = await db.select({ snapshotPayload: taktRequestSnapshotsTable.snapshotPayload })
+      .from(taktRequestSnapshotsTable)
+      .where(eq(taktRequestSnapshotsTable.taktRequestId, requestId))
+      .limit(1);
+    const snapshotPolicy = (snapshot?.snapshotPayload as Record<string, unknown> | undefined)?.policySnapshot;
+    if (snapshotPolicy == null) return;
+    throw new LeistungsanfragePolicyAccessError("NOT_PERMITTED", action);
+  }
   const [policy] = await db.select({
     deltaClass: coordinationPoliciesTable.deltaClass,
     lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
     effectivePolicy: coordinationPoliciesTable.effectivePolicy,
+    parentPolicyId: coordinationPoliciesTable.parentPolicyId,
   }).from(coordinationPoliciesTable)
     .where(eq(coordinationPoliciesTable.id, request.performancePolicyId)).limit(1);
-  if (!policy) throw new LeistungsanfragePolicyAccessError("NOT_PERMITTED", action);
+  if (!policy?.parentPolicyId) {
+    throw new LeistungsanfragePolicyAccessError("NOT_PERMITTED", action);
+  }
+  const [parentPolicy] = await db.select({
+    lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+  }).from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, policy.parentPolicyId)).limit(1);
+  if (!parentPolicy) {
+    throw new LeistungsanfragePolicyAccessError("NOT_PERMITTED", action);
+  }
   assertLeistungsanfragePolicyAccess({
     policyDeltaClass: policy.deltaClass,
     policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
@@ -154,6 +171,7 @@ async function assertRootRequestPolicyAccess(
     validFrom: (policy.effectivePolicy as Record<string, unknown>)?.validFrom as string | null | undefined,
     validUntil: (policy.effectivePolicy as Record<string, unknown>)?.validUntil as string | null | undefined,
     retentionUntil: (policy.effectivePolicy as Record<string, unknown>)?.retentionUntil as string | null | undefined,
+    parentAgreementStatus: parentPolicy.lifecycleStatus,
   }, action);
 }
 
@@ -969,6 +987,26 @@ router.post(
     }
     const requestPolicy = ((snapResult.snapshot.snapshotPayload as Record<string, unknown>)
       .policySnapshot ?? {}) as Record<string, unknown>;
+    const [linkedPerformancePolicy] = existing.performancePolicyId
+      ? await db.select({
+        parentPolicyId: coordinationPoliciesTable.parentPolicyId,
+        deltaClass: coordinationPoliciesTable.deltaClass,
+      }).from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.id, existing.performancePolicyId))
+        .limit(1)
+      : [];
+    if (
+      !existing.performancePolicyId ||
+      requestPolicy.policyType !== "PERFORMANCE_REQUEST" ||
+      requestPolicy.policyId !== existing.performancePolicyId ||
+      !linkedPerformancePolicy?.parentPolicyId
+    ) {
+      res.status(409).json({
+        error: "POLICY_NOT_PERMITTED",
+        message: "Diese Leistungsanfrage hat keine gültige, an ein Projektabkommen gebundene Policy.",
+      });
+      return;
+    }
     if (requestPolicy.deltaClass === "NOT_PERMITTED") {
       res.status(409).json({
         error: "POLICY_NOT_PERMITTED",

@@ -174,8 +174,16 @@ export function resolvePolicyDelta(
   // Prohibitions are inherited, never replaced.  A candidate may repeat them
   // (recommended for a self-contained wire snapshot) or omit them; omission
   // cannot remove them from the effective policy below.
+  // A generated child template carries its own restrictive terms, but that
+  // list is not a replacement for the parent's terms.  Explicit hand-authored
+  // prohibition lists remain authoritative for removal detection.
+  const generatedTemplateChild =
+    typeof candidate.templateId === "string" &&
+    candidate.templateId.startsWith("tk-policy-");
   const removedProhibitions = baseProhibitions.filter((prohibition) =>
-    candidateProhibitions.length > 0 && !candidateProhibitions.includes(prohibition),
+    !generatedTemplateChild &&
+    Object.prototype.hasOwnProperty.call(candidate, "prohibitions") &&
+    !candidateProhibitions.includes(prohibition),
   );
   const candidateStart = toTime(candidate.validFrom);
   const candidateEnd = toTime(candidate.validUntil);
@@ -200,6 +208,7 @@ export function resolvePolicyDelta(
   let deltaClass: CoordinationPolicyDeltaClass;
   if (
     identityMismatch || typeNotGranted || permissionNotGranted || prohibitionConvertedToPermission ||
+    removedProhibitions.length > 0 ||
     outsideValidity || broadenedRetention ||
     purposeNotAllowed || fieldScopeNotAllowed
   ) {

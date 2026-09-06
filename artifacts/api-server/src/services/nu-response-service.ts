@@ -194,17 +194,26 @@ export async function createAnServiceResponse(
   const effective = request.effectivePolicy && typeof request.effectivePolicy === "object"
     ? request.effectivePolicy as Record<string, unknown>
     : {};
-  assertLeistungsanfragePolicyAccess({
-    policyDeltaClass: request.policyDeltaClass,
-    policyConsentStatus: request.policyConsentStatus,
-    validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
-    validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
-    retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
-    parentMembershipStatus: ["INVITED", "ACTIVE", "REJECTED", "REVOKED"].includes(String(effective.parentMembershipStatus))
-      ? effective.parentMembershipStatus as LeistungsanfragePolicyState["parentMembershipStatus"] : null,
-    parentAgreementStatus: typeof effective.parentAgreementStatus === "string"
-      ? effective.parentAgreementStatus : null,
-  }, "ANSWER");
+  const policySnapshot = request.policySnapshot && typeof request.policySnapshot === "object"
+    ? request.policySnapshot as Record<string, unknown>
+    : null;
+  const explicitLegacyProjection = request.policyDeltaClass == null &&
+    (policySnapshot == null || policySnapshot.policyType !== "PERFORMANCE_REQUEST");
+  const hasSynchronizedParentState =
+    "parentMembershipStatus" in effective || "parentAgreementStatus" in effective;
+  if (!explicitLegacyProjection || hasSynchronizedParentState) {
+    assertLeistungsanfragePolicyAccess({
+      policyDeltaClass: request.policyDeltaClass ?? "WITHIN_BASELINE",
+      policyConsentStatus: request.policyConsentStatus,
+      validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
+      validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
+      retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+      parentMembershipStatus: ["INVITED", "ACTIVE", "REJECTED", "REVOKED"].includes(String(effective.parentMembershipStatus))
+        ? effective.parentMembershipStatus as LeistungsanfragePolicyState["parentMembershipStatus"] : null,
+      parentAgreementStatus: typeof effective.parentAgreementStatus === "string"
+        ? effective.parentAgreementStatus : null,
+    }, "ANSWER");
+  }
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);

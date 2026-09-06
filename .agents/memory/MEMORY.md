@@ -63,3 +63,4 @@
 - [Authenticated API caching](authenticated-api-cache.md) — protected worklists use no-store and no ETags so deleted or changed records cannot survive as stale 304 responses.
 - [Performance request child policies](performance-request-child-policies.md) — normal Leistungsanfragen inherit an accepted project agreement and never depend on DataOffer acceptance.
 - [Schedule-response retry identity](schedule-response-retry-identity.md) — root-addressed AN response retries must remain bound to the same schedule child after its terminal status transition.
+- [Legacy policy gates](legacy-policy-gates.md) — historical projections may omit child metadata, but synchronized parent state must still enforce revoke and validity gates.

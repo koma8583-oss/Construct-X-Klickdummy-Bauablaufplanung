@@ -74,6 +74,38 @@ describe("Construct-X coordination policy resolver", () => {
     expect(result.effectivePolicy.prohibitions).toEqual(["COMMERCIAL_REUSE"]);
   });
 
+  it("rejects explicit removal of one or more parent prohibitions", () => {
+    const result = resolvePolicyDelta(
+      { ...base, prohibitions: ["NO_EXPORT", "NO_REUSE"] },
+      { ...candidate, prohibitions: ["NO_EXPORT"] },
+    );
+
+    expect(result.deltaClass).toBe("NOT_PERMITTED");
+    expect(result.diff.changed).toContain("prohibitions");
+    expect(result.effectivePolicy.prohibitions).toEqual(["NO_EXPORT", "NO_REUSE"]);
+  });
+
+  it("rejects an explicitly empty prohibition list but preserves omitted prohibitions", () => {
+    const parent = { ...base, prohibitions: ["NO_EXPORT", "NO_REUSE"] };
+
+    expect(resolvePolicyDelta(parent, { ...candidate, prohibitions: [] }).deltaClass)
+      .toBe("NOT_PERMITTED");
+    expect(resolvePolicyDelta(parent, candidate).deltaClass)
+      .toBe("WITHIN_BASELINE");
+  });
+
+  it("rejects every parent prohibition that is converted into a permission", () => {
+    const result = resolvePolicyDelta(
+      { ...base, prohibitions: ["NO_EXPORT", "NO_REUSE"] },
+      {
+        ...candidate,
+        permissions: [...candidate.permissions, "NO_EXPORT", "NO_REUSE"],
+      },
+    );
+
+    expect(result.deltaClass).toBe("NOT_PERMITTED");
+  });
+
   it("serializes inherited restrictive terms and never converts a prohibition into a permission", () => {
     const parent = {
       ...base,

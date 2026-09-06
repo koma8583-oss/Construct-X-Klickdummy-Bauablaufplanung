@@ -37,6 +37,7 @@ import {
   policyAccessDecision,
   type LeistungsanfragePolicyState,
 } from "./leistungsanfrage-policy-guard";
+import { evaluateResourceRequirements } from "./resource-availability-service";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
@@ -96,6 +97,49 @@ function policyStateOf(projection: Projection): LeistungsanfragePolicyState {
   };
 }
 
+function isExplicitLegacyProjection(projection: Projection): boolean {
+  const snapshot = objectRecord(projection.policySnapshot);
+  return projection.policyDeltaClass == null &&
+    (projection.policySnapshot == null || snapshot.policyType !== "PERFORMANCE_REQUEST");
+}
+
+function policyDecisionForProjection(
+  projection: Projection,
+  action: Parameters<typeof policyAccessDecision>[1],
+) {
+  if (isExplicitLegacyProjection(projection)) {
+    const state = policyStateOf(projection);
+    const hasSynchronizedParentState =
+      state.parentMembershipStatus != null || state.parentAgreementStatus != null;
+    if (!hasSynchronizedParentState) return { allowed: true } as const;
+    return policyAccessDecision({
+      ...state,
+      policyDeltaClass: "WITHIN_BASELINE",
+      policyConsentStatus: "NOT_REQUIRED",
+    }, action);
+  }
+  return policyAccessDecision(policyStateOf(projection), action);
+}
+
+function assertProjectionPolicyAccess(
+  projection: Projection,
+  action: Exclude<Parameters<typeof assertLeistungsanfragePolicyAccess>[1], "METADATA">,
+): void {
+  if (isExplicitLegacyProjection(projection)) {
+    const state = policyStateOf(projection);
+    const hasSynchronizedParentState =
+      state.parentMembershipStatus != null || state.parentAgreementStatus != null;
+    if (!hasSynchronizedParentState) return;
+    assertLeistungsanfragePolicyAccess({
+      ...state,
+      policyDeltaClass: "WITHIN_BASELINE",
+      policyConsentStatus: "NOT_REQUIRED",
+    }, action);
+    return;
+  }
+  assertLeistungsanfragePolicyAccess(policyStateOf(projection), action);
+}
+
 function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
   return snapshot[key]
     ?? (snapshot.request as Record<string, unknown> | undefined)?.[key]
@@ -103,7 +147,7 @@ function snapshotValue(snapshot: PayloadSnapshot, key: string): unknown {
 }
 
 function toRequestView(projection: Projection, requirementCount = 0, workflow?: WorkflowView, revision?: RevisionView | null) {
-  const detailsAllowed = policyAccessDecision(policyStateOf(projection), "DETAILS").allowed;
+  const detailsAllowed = policyDecisionForProjection(projection, "DETAILS").allowed;
   const snapshot = snapshotOf(projection);
   const releasedSnapshot = snapshotValue(snapshot, "publicSnapshot");
   const displaySnapshot = Object.keys(objectRecord(releasedSnapshot)).length > 0
@@ -364,7 +408,7 @@ export async function getAnLeistungsanfrageDetail(
 
   let current = projection;
 
-  const policyDecision = policyAccessDecision(policyStateOf(current), "DETAILS");
+  const policyDecision = policyDecisionForProjection(current, "DETAILS");
   if (!policyDecision.allowed) {
     return {
       ...toRequestView(current, 0),
@@ -440,7 +484,7 @@ export async function reviewAnLeistungsanfrageDetails(
     eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
   )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
   if (!projection) return null;
-  const policyDecision = policyAccessDecision(policyStateOf(projection), "REVIEW");
+  const policyDecision = policyDecisionForProjection(projection, "REVIEW");
   if (!policyDecision.allowed) {
     return {
       reviewedNow: false,
@@ -551,7 +595,7 @@ export async function updateAnResourceRequirement(
       actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
     ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
     if (!projection) return null;
-    assertLeistungsanfragePolicyAccess(policyStateOf(projection), "RESOURCE");
+    assertProjectionPolicyAccess(projection, "RESOURCE");
 
     const [existing] = await tx.select()
       .from(anLeistungsanfrageResourceRequirementsTable)
@@ -736,7 +780,7 @@ export async function runAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return null;
-  assertLeistungsanfragePolicyAccess(policyStateOf(projection), "AVAILABILITY");
+  assertProjectionPolicyAccess(projection, "AVAILABILITY");
 
   const [requirements, resources, bookings, previous] = await Promise.all([
     anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
@@ -767,151 +811,73 @@ export async function runAnAvailabilityCheck(
   const availableResources: Array<Record<string, unknown>> = [];
   const missingQualifications: string[] = [];
   const tentativeWarnings: Array<Record<string, unknown>> = [];
-  const warnedTentativeBookingIds = new Set<string>();
-  const addTentativeWarning = (
-    booking: typeof resourceBookingsTable.$inferSelect,
-    resourceId: string,
-  ) => {
-    if (warnedTentativeBookingIds.has(booking.id)) return;
-    warnedTentativeBookingIds.add(booking.id);
-    tentativeWarnings.push({
-      resourceId,
-      bookingId: booking.id,
-      overlapStart: booking.startAt.toISOString(),
-      overlapEnd: booking.endAt.toISOString(),
-    });
-  };
-
-  const validRequirements: Array<{
-    requirement: typeof anLeistungsanfrageResourceRequirementsTable.$inferSelect;
-    start: Date;
-    end: Date;
-    candidates: Array<typeof resourcesTable.$inferSelect>;
-  }> = [];
+  // Use the shared qualification-aware allocator for both DTC and legacy AN
+  // projections. This keeps capacity, booking, qualification, and tentative
+  // semantics identical across the two request representations.
+  const sharedEvaluation = evaluateResourceRequirements({
+    requirements: requirements
+      .filter((requirement) => requirement.localResourceTypeId)
+      .map((requirement) => ({
+        id: requirement.id,
+        resourceTypeId: requirement.localResourceTypeId,
+        requiredCapacity: requirement.requiredCapacity,
+        utilizationPercent: requirement.utilizationPercent,
+        requiredQualification: requirement.requiredQualification,
+        periodStart: requirement.periodStart?.slice(0, 10) ?? projection.plannedStart.slice(0, 10),
+        periodEnd: requirement.periodEnd?.slice(0, 10) ?? projection.plannedEnd.slice(0, 10),
+        notes: requirement.externalResourceTypeName,
+      })),
+    resources: resources.map((resource) => ({
+      id: resource.id,
+      type: resource.type,
+      name: resource.name,
+      capacity: resource.capacity,
+      qualifications: Array.isArray(resource.qualifications) && resource.qualifications.length > 0
+        ? resource.qualifications
+        : null,
+      resourceTypeId: resource.resourceTypeId,
+    })),
+    bookings: relevantBookings.map((booking) => ({
+      id: booking.id,
+      resourceId: booking.resourceId,
+      resourceTypeId: booking.resourceTypeId,
+      quantity: booking.quantity,
+      startAt: booking.startAt,
+      endAt: booking.endAt,
+      status: booking.status,
+      utilizationPercent: booking.utilizationPercent,
+    })),
+    windowStart: new Date(projection.plannedStart),
+    windowEnd: new Date(projection.plannedEnd),
+  });
+  const sharedByRequirementId = new Map(
+    (sharedEvaluation.requirementAvailability ?? []).map((entry) => [entry.requirementId, entry]),
+  );
+  conflicts.length = 0;
+  availableResources.length = 0;
+  missingQualifications.length = 0;
+  tentativeWarnings.length = 0;
+  missingQualifications.push(...sharedEvaluation.missingQualifications);
   for (const requirement of requirements) {
-    const start = new Date(requirement.periodStart || projection.plannedStart);
-    const end = new Date(requirement.periodEnd || projection.plannedEnd);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-      conflicts.push({ conflictType: "OVERLAP", resourceId: null, resourceName: requirement.externalResourceTypeName });
-      continue;
-    }
+    const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
     if (!requirement.localResourceTypeId) {
       conflicts.push({
         conflictType: "MISSING_EQUIPMENT",
         resourceId: null,
         resourceName: requirement.externalResourceTypeName,
+        requiredCapacity,
+        availableCapacity: 0,
       });
       continue;
     }
-
-    const candidates = resources.filter((resource) => resource.resourceTypeId === requirement.localResourceTypeId);
-    if (!candidates.length) {
+    const shared = sharedByRequirementId.get(requirement.id);
+    const availableCapacity = shared?.availableCapacity ?? 0;
+    if (!shared?.feasible) {
       conflicts.push({
-        conflictType: "MISSING_EQUIPMENT",
-        resourceId: null,
-        resourceName: requirement.externalResourceTypeName,
-      });
-      continue;
-    }
-    validRequirements.push({ requirement, start, end, candidates });
-  }
-
-  const availabilityByRequirementId = new Map<string, number>();
-  const capacityExceededRequirementIds = new Set<string>();
-  const requirementsByType = new Map<string, typeof validRequirements>();
-  for (const entry of validRequirements) {
-    const typeId = entry.requirement.localResourceTypeId!;
-    const entries = requirementsByType.get(typeId) ?? [];
-    entries.push(entry);
-    requirementsByType.set(typeId, entries);
-  }
-
-  for (const [resourceTypeId, typeRequirements] of requirementsByType) {
-    const candidateIds = new Set(typeRequirements[0].candidates.map((resource) => resource.id));
-    const typeBookings = relevantBookings.filter((booking) =>
-      (booking.resourceId === null && booking.resourceTypeId === resourceTypeId) ||
-      (booking.resourceId !== null && candidateIds.has(booking.resourceId)),
-    );
-    const boundaries = [...new Set([
-      ...typeRequirements.flatMap((entry) => [entry.start.getTime(), entry.end.getTime()]),
-      ...typeBookings.flatMap((booking) => [booking.startAt.getTime(), booking.endAt.getTime()]),
-    ])].sort((left, right) => left - right);
-    const limitingCapacityByRequirementId = new Map<string, number>();
-
-    for (let index = 0; index < boundaries.length - 1; index += 1) {
-      const segmentStart = new Date(boundaries[index]);
-      const segmentEnd = new Date(boundaries[index + 1]);
-      if (segmentEnd <= segmentStart) continue;
-      const activeRequirements = typeRequirements.filter((entry) =>
-        timeOverlaps(segmentStart, segmentEnd, entry.start, entry.end),
-      );
-      if (!activeRequirements.length) continue;
-      const activeBookings = typeBookings.filter((booking) =>
-        timeOverlaps(segmentStart, segmentEnd, booking.startAt, booking.endAt),
-      );
-      const confirmedBookings = activeBookings.filter((booking) => booking.status === "CONFIRMED");
-      const availableBeforeTypeBookings = typeRequirements[0].candidates.reduce((total, resource) => {
-        const concreteUse = confirmedBookings
-          .filter((booking) => booking.resourceId === resource.id)
-          .reduce(
-            (sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100,
-            0,
-          );
-        return total + Math.max(0, (resource.capacity ?? 1) - concreteUse);
-      }, 0);
-      const typeUse = confirmedBookings
-        .filter((booking) => booking.resourceId === null && booking.resourceTypeId === resourceTypeId)
-        .reduce(
-          (sum, booking) => sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100,
-          0,
-        );
-      const segmentCapacity = Math.max(0, availableBeforeTypeBookings - typeUse);
-      const totalDemand = activeRequirements.reduce(
-        (sum, entry) => sum +
-          Number(entry.requirement.requiredCapacity ?? 1) *
-            Number(entry.requirement.utilizationPercent ?? 100) / 100,
-        0,
-      );
-
-      for (const entry of activeRequirements) {
-        const requirementId = entry.requirement.id;
-        const ownDemand = Number(entry.requirement.requiredCapacity ?? 1) *
-          Number(entry.requirement.utilizationPercent ?? 100) / 100;
-        const availableForRequirement = Math.max(0, segmentCapacity - (totalDemand - ownDemand));
-        const previousLimit = limitingCapacityByRequirementId.get(requirementId);
-        if (previousLimit === undefined || availableForRequirement < previousLimit) {
-          limitingCapacityByRequirementId.set(requirementId, availableForRequirement);
-        }
-      }
-    }
-
-    for (const entry of typeRequirements) {
-      const requirementId = entry.requirement.id;
-      const availableCapacity = limitingCapacityByRequirementId.get(requirementId) ?? 0;
-      availabilityByRequirementId.set(requirementId, availableCapacity);
-      const requiredCapacity = Number(entry.requirement.requiredCapacity ?? 1);
-      const requiredDemand = requiredCapacity * Number(entry.requirement.utilizationPercent ?? 100) / 100;
-      if (availableCapacity < requiredDemand) capacityExceededRequirementIds.add(requirementId);
-
-      for (const booking of typeBookings.filter((candidate) =>
-        candidate.status === "TENTATIVE" &&
-        timeOverlaps(entry.start, entry.end, candidate.startAt, candidate.endAt),
-      )) {
-        addTentativeWarning(
-          booking,
-          booking.resourceId === null ? resourceTypeId : booking.resourceId,
-        );
-      }
-    }
-  }
-
-  for (const { requirement } of validRequirements) {
-    const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
-    const availableCapacity = availabilityByRequirementId.get(requirement.id) ?? 0;
-
-    if (capacityExceededRequirementIds.has(requirement.id)) {
-      conflicts.push({
-        conflictType: "CAPACITY_EXCEEDED",
+        conflictType: requirement.requiredQualification &&
+          sharedEvaluation.missingQualifications.includes(requirement.requiredQualification)
+          ? "MISSING_QUALIFICATION"
+          : "CAPACITY_EXCEEDED",
         resourceId: null,
         resourceName: requirement.externalResourceTypeName,
         requiredCapacity,
@@ -929,6 +895,7 @@ export async function runAnAvailabilityCheck(
       periodEnd: requirement.periodEnd,
     });
   }
+  tentativeWarnings.push(...sharedEvaluation.tentativeWarnings);
 
   const alternatives = conflicts.length > 0
     ? generateAlternatives(
@@ -1017,7 +984,7 @@ export async function getLatestAnAvailabilityCheck(
     actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
   ) ?? projections.find((row) => row.externalLeistungsanfrageId === externalLeistungsanfrageId);
   if (!projection) return { projectionFound: false as const, check: null };
-  assertLeistungsanfragePolicyAccess(policyStateOf(projection), "AVAILABILITY");
+  assertProjectionPolicyAccess(projection, "AVAILABILITY");
   const [check] = await anDb.select().from(anAvailabilityChecksTable).where(and(
     eq(anAvailabilityChecksTable.anLeistungsanfrageId, projection.id),
     eq(anAvailabilityChecksTable.anOrgId, anOrgId),
@@ -1210,7 +1177,7 @@ export async function createAnScheduleChangeProposal(input: {
     coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
   );
   if (!root) return null;
-  assertLeistungsanfragePolicyAccess(policyStateOf(root), "AVAILABILITY");
+  assertProjectionPolicyAccess(root, "AVAILABILITY");
   // Check the AN-local policy before consulting bilateral coordination state.
   // This ensures revoked/expired parent access cannot leak AG coordination
   // state and works with physically separated role databases.

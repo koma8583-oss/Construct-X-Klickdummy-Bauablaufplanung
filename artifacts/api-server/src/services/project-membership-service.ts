@@ -11,7 +11,7 @@ import {
   policyTemplatesTable,
   coordinationPoliciesTable,
 } from "@workspace/db";
-import { and, asc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
@@ -829,6 +829,62 @@ async function resolveInvitation(
     respondedAt: now.toISOString(),
   };
   const [updated] = await db.transaction(async (tx) => {
+    let agreement: typeof coordinationPoliciesTable.$inferSelect | undefined;
+    if (membership.projectAgreementPolicyId) {
+      // Acceptance and root-policy revocation use the same lock order:
+      // parent policy first, then membership. This makes the decision
+      // linearizable and prevents an ACTIVE membership from resurrecting a
+      // revoked parent agreement.
+      await tx.execute(sql`
+        SELECT id
+        FROM coordination_policies
+        WHERE id = ${membership.projectAgreementPolicyId}
+        FOR UPDATE
+      `);
+      [agreement] = await tx.select().from(coordinationPoliciesTable)
+        .where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId))
+        .limit(1);
+      if (!agreement) {
+        throw new ProjectMembershipError(
+          "PROJECT_AGREEMENT_NOT_FOUND",
+          "Die verknüpfte Project Agreement Policy wurde nicht gefunden.",
+        );
+      }
+      if (agreement.kind !== "PROJECT_AGREEMENT" ||
+        agreement.projectId !== membership.projectId ||
+        agreement.recipientOrgId !== membership.anOrgId) {
+        throw new ProjectMembershipError(
+          "PROJECT_AGREEMENT_INVALID",
+          "Die verknüpfte Project Agreement Policy ist für diese Einladung ungültig.",
+        );
+      }
+      const validity = (agreement.effectivePolicy ?? agreement.policySnapshot) as {
+        validFrom?: unknown;
+        validUntil?: unknown;
+      };
+      const validFrom = typeof validity.validFrom === "string" ? new Date(validity.validFrom) : null;
+      const validUntil = typeof validity.validUntil === "string" ? new Date(validity.validUntil) : null;
+      if (decision === "ACTIVE") {
+        if (agreement.lifecycleStatus === "REVOKED" || agreement.lifecycleStatus === "REJECTED") {
+          throw new ProjectMembershipError(
+            "PROJECT_AGREEMENT_NOT_ACCEPTABLE",
+            "Die Project Agreement Policy ist nicht mehr annehmbar.",
+          );
+        }
+        if (validFrom && validFrom > now) {
+          throw new ProjectMembershipError(
+            "PROJECT_AGREEMENT_NOT_YET_VALID",
+            "Die Project Agreement Policy ist noch nicht gültig.",
+          );
+        }
+        if (validUntil && validUntil <= now) {
+          throw new ProjectMembershipError(
+            "PROJECT_AGREEMENT_EXPIRED",
+            "Die Project Agreement Policy ist abgelaufen.",
+          );
+        }
+      }
+    }
     const [row] = await tx.update(projectMembershipsTable).set({
       status: decision,
       respondedAt: now,
@@ -841,13 +897,34 @@ async function resolveInvitation(
       eq(projectMembershipsTable.status, "INVITED"),
     )).returning();
     if (!row) throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
-    if (membership.projectAgreementPolicyId) {
-      await tx.update(coordinationPoliciesTable).set({
-        lifecycleStatus: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
-        consentedAt: decision === "ACTIVE" ? now : null,
-        consentedByOrgId: decision === "ACTIVE" ? anOrgId : null,
-        updatedAt: now,
-      }).where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId));
+    if (agreement) {
+      if (decision === "ACTIVE") {
+        const [acceptedAgreement] = await tx.update(coordinationPoliciesTable).set({
+          lifecycleStatus: "ACCEPTED",
+          consentedAt: now,
+          consentedByOrgId: anOrgId,
+          updatedAt: now,
+        }).where(and(
+          eq(coordinationPoliciesTable.id, agreement.id),
+          inArray(coordinationPoliciesTable.lifecycleStatus, ["PUBLISHED", "CONSENT_REQUIRED", "ACCEPTED"]),
+        )).returning();
+        if (!acceptedAgreement) {
+          throw new ProjectMembershipError(
+            "PROJECT_AGREEMENT_NOT_ACCEPTABLE",
+            "Die Project Agreement Policy wurde während der Annahme ungültig.",
+          );
+        }
+      } else {
+        await tx.update(coordinationPoliciesTable).set({
+          lifecycleStatus: "REJECTED",
+          consentedAt: null,
+          consentedByOrgId: null,
+          updatedAt: now,
+        }).where(and(
+          eq(coordinationPoliciesTable.id, agreement.id),
+          inArray(coordinationPoliciesTable.lifecycleStatus, ["PUBLISHED", "CONSENT_REQUIRED"]),
+        ));
+      }
     }
     if (linkedRecipient) {
       const [recipient] = await tx.update(dataPublicationRecipientsTable).set({
@@ -990,18 +1067,54 @@ export async function publishProjectAgreementStatus(
 
 /** Phase-1 owner for revoking a root agreement and synchronizing AN access. */
 export async function revokeProjectAgreement(projectAgreementPolicyId: string, agOrgId: string) {
-  const [updated] = await db.transaction(async (tx) => tx.update(coordinationPoliciesTable).set({
-    lifecycleStatus: "REVOKED",
-    updatedAt: new Date(),
-  }).where(and(
-    eq(coordinationPoliciesTable.id, projectAgreementPolicyId),
-    eq(coordinationPoliciesTable.providerOrgId, agOrgId),
-    eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
-  )).returning());
-  if (!updated) {
-    throw new ProjectMembershipError("PROJECT_AGREEMENT_NOT_FOUND", "Projektvereinbarung nicht gefunden.");
-  }
-  // Publish only after the policy lifecycle transaction committed.
-  await publishProjectAgreementStatus(updated.id);
-  return updated;
+  const result = await db.transaction(async (tx) => {
+    // Keep the lock order identical to resolveInvitation(): policy first,
+    // membership second. Revoke therefore wins or follows an acceptance
+    // atomically, but can never leave ACTIVE + REVOKED as a stable result.
+    await tx.execute(sql`
+      SELECT id
+      FROM coordination_policies
+      WHERE id = ${projectAgreementPolicyId}
+        AND provider_org_id = ${agOrgId}
+        AND kind = 'PROJECT_AGREEMENT'
+      FOR UPDATE
+    `);
+    const [agreement] = await tx.select().from(coordinationPoliciesTable).where(and(
+      eq(coordinationPoliciesTable.id, projectAgreementPolicyId),
+      eq(coordinationPoliciesTable.providerOrgId, agOrgId),
+      eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
+    )).limit(1);
+    if (!agreement) {
+      throw new ProjectMembershipError("PROJECT_AGREEMENT_NOT_FOUND", "Projektvereinbarung nicht gefunden.");
+    }
+    if (agreement.lifecycleStatus === "REVOKED") {
+      return { agreement, revokedMemberships: [] as Array<typeof projectMembershipsTable.$inferSelect> };
+    }
+    const now = new Date();
+    const [updated] = await tx.update(coordinationPoliciesTable).set({
+      lifecycleStatus: "REVOKED",
+      updatedAt: now,
+    }).where(and(
+      eq(coordinationPoliciesTable.id, projectAgreementPolicyId),
+      eq(coordinationPoliciesTable.lifecycleStatus, agreement.lifecycleStatus),
+    )).returning();
+    if (!updated) {
+      throw new ProjectMembershipError("PROJECT_AGREEMENT_REVOKE_RACE", "Die Project Agreement Policy wurde parallel geändert.");
+    }
+    const revokedMemberships = await tx.update(projectMembershipsTable).set({
+      status: "REVOKED",
+      revokedAt: now,
+      respondedAt: now,
+      updatedAt: now,
+    }).where(and(
+      eq(projectMembershipsTable.projectAgreementPolicyId, projectAgreementPolicyId),
+      inArray(projectMembershipsTable.status, ["INVITED", "ACTIVE"]),
+    )).returning();
+    return { agreement: updated, revokedMemberships };
+  });
+  // Publish only after the lifecycle and membership transaction committed.
+  await Promise.all(result.revokedMemberships.map((membership) =>
+    publishProjectMembershipStatus(membership, "REVOKED"),
+  ));
+  return result.agreement;
 }

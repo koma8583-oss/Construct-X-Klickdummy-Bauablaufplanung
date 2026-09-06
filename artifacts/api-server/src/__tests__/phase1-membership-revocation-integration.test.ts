@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   agDb, anDb, anLeistungsanfragenTable, anProjectInvitationsTable,
-  coordinationPoliciesTable, organizationsTable, projectMembershipsTable, projectsTable,
+  coordinationPoliciesTable, messageOutboxTable, organizationsTable, projectMembershipsTable, projectsTable,
 } from "@workspace/db";
 import { deliverLocalProjectInvitation, deliverLocalServiceRequest } from "../services/dataspace/local-dataspace-delivery";
-import { revokeMembership, revokeProjectAgreement } from "../services/project-membership-service";
+import { acceptInvitation, revokeMembership, revokeProjectAgreement } from "../services/project-membership-service";
 import { createAnScheduleChangeProposal, getAnLeistungsanfrageDetail, runAnAvailabilityCheck, updateAnResourceRequirement } from "../services/an-leistungsanfrage-service";
 import { createAnServiceResponse } from "../services/nu-response-service";
 import { LeistungsanfragePolicyAccessError } from "../services/leistungsanfrage-policy-guard";
@@ -62,6 +62,46 @@ async function deliveredFixture(validUntil: string | null = null) {
   return { ag, an, project, membership, agreement, requestId };
 }
 
+async function invitedAgreementFixture(options: {
+  validUntil?: string | null;
+  policyStatus?: "PUBLISHED" | "ACCEPTED";
+} = {}) {
+  const suffix = crypto.randomUUID();
+  const ag = track(`phase1-invited-ag-${suffix}`);
+  const an = track(`phase1-invited-an-${suffix}`);
+  const project = track(`phase1-invited-project-${suffix}`);
+  const invitationId = track(`phase1-invited-invitation-${suffix}`);
+  const correlationId = track(`phase1-invited-correlation-${suffix}`);
+  const policyId = track(`phase1-invited-policy-${suffix}`);
+  await agDb.insert(organizationsTable).values([
+    { id: ag, name: ag, type: "AG" },
+    { id: an, name: an, type: "AN" },
+  ]);
+  await agDb.insert(projectsTable).values({
+    id: project, name: project, agOrgId: ag, status: "ACTIVE",
+    startDate: "2025-01-01", endDate: "2027-01-01",
+  });
+  const validUntil = options.validUntil ?? null;
+  const snapshot = {
+    ...policy(ag, an, project, validUntil),
+    lifecycleStatus: options.policyStatus ?? "PUBLISHED",
+    effectivePolicy: { validFrom: null, validUntil },
+  };
+  await agDb.insert(coordinationPoliciesTable).values({
+    id: policyId, policyKey: policyId, version: 1, kind: "PROJECT_AGREEMENT",
+    projectId: project, providerOrgId: ag, recipientOrgId: an,
+    lifecycleStatus: options.policyStatus ?? "PUBLISHED",
+    policySnapshot: snapshot, effectivePolicy: snapshot.effectivePolicy,
+  });
+  const [membership] = await agDb.insert(projectMembershipsTable).values({
+    projectId: project, agOrgId: ag, anOrgId: an,
+    anParticipantId: `BPNL${suffix.replaceAll("-", "").slice(0, 12)}`,
+    status: "INVITED", invitationId, correlationId, projectAgreementPolicyId: policyId,
+  }).returning();
+  ids.push(membership.id);
+  return { ag, an, project, membership, policyId, invitationId };
+}
+
 async function expectProtectedDenied(fixture: Awaited<ReturnType<typeof deliveredFixture>>) {
   const detail = await getAnLeistungsanfrageDetail(fixture.requestId, fixture.an);
   expect(detail?.policyDetailsAvailable).toBe(false);
@@ -101,11 +141,64 @@ describe("Phase 1 delivered-request root synchronization", () => {
     expect((projection!.effectivePolicy as Record<string, unknown>).validUntil).toBe("2020-01-01T00:00:00.000Z");
     await expectProtectedDenied(fixture);
   });
+
+  it("blocks revoke-before-accept and never reactivates the parent agreement", async () => {
+    const fixture = await invitedAgreementFixture();
+    await revokeProjectAgreement(fixture.policyId, fixture.ag);
+
+    await expect(acceptInvitation(fixture.membership.id, fixture.an, true))
+      .rejects.toMatchObject({
+        code: expect.stringMatching(/^PROJECT_(AGREEMENT_NOT_ACCEPTABLE|INVITATION_ALREADY_RESOLVED)$/),
+      });
+    const [membership] = await agDb.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, fixture.membership.id));
+    const [agreement] = await agDb.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, fixture.policyId));
+    expect(membership?.status).toBe("REVOKED");
+    expect(agreement?.lifecycleStatus).toBe("REVOKED");
+  });
+
+  it("revokes an accepted membership and is idempotent when repeated", async () => {
+    const fixture = await invitedAgreementFixture();
+    await acceptInvitation(fixture.membership.id, fixture.an, true);
+    await revokeProjectAgreement(fixture.policyId, fixture.ag);
+    const second = await revokeProjectAgreement(fixture.policyId, fixture.ag);
+
+    const [membership] = await agDb.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, fixture.membership.id));
+    expect(second.lifecycleStatus).toBe("REVOKED");
+    expect(membership?.status).toBe("REVOKED");
+  });
+
+  it("blocks acceptance when the parent agreement validity has expired", async () => {
+    const fixture = await invitedAgreementFixture({ validUntil: "2020-01-01T00:00:00.000Z" });
+    await expect(acceptInvitation(fixture.membership.id, fixture.an, true))
+      .rejects.toMatchObject({ code: "PROJECT_AGREEMENT_EXPIRED" });
+    const [membership] = await agDb.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, fixture.membership.id));
+    expect(membership?.status).toBe("INVITED");
+  });
+
+  it("serializes parallel acceptance and revocation without an ACTIVE/REVOKED split state", async () => {
+    const fixture = await invitedAgreementFixture();
+    const outcomes = await Promise.allSettled([
+      acceptInvitation(fixture.membership.id, fixture.an, true),
+      revokeProjectAgreement(fixture.policyId, fixture.ag),
+    ]);
+    expect(outcomes.some((outcome) => outcome.status === "fulfilled")).toBe(true);
+    const [membership] = await agDb.select().from(projectMembershipsTable)
+      .where(eq(projectMembershipsTable.id, fixture.membership.id));
+    const [agreement] = await agDb.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, fixture.policyId));
+    expect(agreement?.lifecycleStatus).toBe("REVOKED");
+    expect(membership?.status).toBe("REVOKED");
+  });
 });
 
 afterEach(async () => {
   const created = ids.splice(0);
   for (const id of created) {
+    await agDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, `project-invitation-response-${id}-ACTIVE`)).catch(() => {});
     await anDb.delete(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, id)).catch(() => {});
     await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.invitationId, id)).catch(() => {});
     await agDb.delete(projectMembershipsTable).where(eq(projectMembershipsTable.id, id)).catch(() => {});

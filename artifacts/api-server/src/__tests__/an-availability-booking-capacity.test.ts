@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { runAnAvailabilityCheck } from "../services/an-leistungsanfrage-service";
+import { evaluateResourceRequirements } from "../services/resource-availability-service";
 
 const AG_ORG = "t362-ag-org";
 const AN_ORG = "t362-an-org";
@@ -205,6 +206,85 @@ afterAll(async () => {
 });
 
 describe("runAnAvailabilityCheck — booking capacity semantics", () => {
+  it("does not reuse one shared resource across competing qualifications", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [
+        {
+          id: "qualification-a-demand",
+          resourceTypeId: "qualification-shared-type",
+          requiredCapacity: 5,
+          utilizationPercent: 100,
+          requiredQualification: "A",
+          periodStart: WINDOW_START,
+          periodEnd: WINDOW_END,
+        },
+        {
+          id: "qualification-b-demand",
+          resourceTypeId: "qualification-shared-type",
+          requiredCapacity: 5,
+          utilizationPercent: 100,
+          requiredQualification: "B",
+          periodStart: WINDOW_START,
+          periodEnd: WINDOW_END,
+        },
+      ],
+      resources: [{
+        id: "qualification-shared-resource",
+        resourceTypeId: "qualification-shared-type",
+        type: "CREW",
+        name: "Shared qualified crew",
+        capacity: 8,
+        qualifications: ["A", "B"],
+      }],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+  });
+
+  it("allocates mixed qualified resources without double-consuming the overlap", () => {
+    const resources = [
+      { id: "only-a", resourceTypeId: "mixed-type", type: "CREW", name: "A", capacity: 4, qualifications: ["A"] },
+      { id: "both", resourceTypeId: "mixed-type", type: "CREW", name: "A+B", capacity: 4, qualifications: ["A", "B"] },
+      { id: "only-b", resourceTypeId: "mixed-type", type: "CREW", name: "B", capacity: 4, qualifications: ["B"] },
+    ];
+    const base = {
+      resourceTypeId: "mixed-type",
+      utilizationPercent: 100,
+      periodStart: WINDOW_START,
+      periodEnd: WINDOW_END,
+    };
+    const feasible = evaluateResourceRequirements({
+      requirements: [
+        { ...base, id: "mixed-a-feasible", requiredCapacity: 4, requiredQualification: "A" },
+        { ...base, id: "mixed-b-feasible", requiredCapacity: 4, requiredQualification: "B" },
+      ],
+      resources,
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+    const infeasible = evaluateResourceRequirements({
+      requirements: [
+        { ...base, id: "mixed-a-infeasible", requiredCapacity: 8, requiredQualification: "A" },
+        { ...base, id: "mixed-b-infeasible", requiredCapacity: 8, requiredQualification: "B" },
+      ],
+      resources,
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(feasible.conflicts).toEqual([]);
+    expect(infeasible.conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+  });
+
   it("accumulates simultaneous requirements of the same resource type", async () => {
     const requestId = "t362-simultaneous-requirements";
     await seedRequest(requestId, 5);

@@ -162,6 +162,19 @@ async function setScheduleChangePolicyLifecycle(tx: any, input: {
 }
 
 /** Re-evaluate the effective root policy at the irreversible consent point. */
+function persistedPolicyDeltaClass(
+  policy: typeof coordinationPoliciesTable.$inferSelect,
+) {
+  // Older internal fixtures stored the effective policy separately and used
+  // an empty wire snapshot. Keep those explicit legacy rows readable while
+  // malformed/new non-empty child snapshots remain fail-closed.
+  const legacyEmptySnapshot = policy.deltaClass == null &&
+    policy.policySnapshot != null &&
+    typeof policy.policySnapshot === "object" &&
+    Object.keys(policy.policySnapshot as Record<string, unknown>).length === 0;
+  return policy.deltaClass ?? (legacyEmptySnapshot ? "WITHIN_BASELINE" : null);
+}
+
 async function assertScheduleAcceptancePolicy(tx: any, request: typeof leistungsanfragenTable.$inferSelect) {
   if (!request.performancePolicyId) return; // legacy requests have no policy chain
   const [policy] = await tx.select().from(coordinationPoliciesTable)
@@ -170,9 +183,9 @@ async function assertScheduleAcceptancePolicy(tx: any, request: typeof leistungs
   const effective = policy.effectivePolicy as Record<string, unknown> | null;
   try {
     assertLeistungsanfragePolicyAccess({
-      policyDeltaClass: policy.deltaClass,
+      policyDeltaClass: persistedPolicyDeltaClass(policy),
       policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
-        policy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+        persistedPolicyDeltaClass(policy) === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
       validFrom: effective?.validFrom as string | null | undefined,
       validUntil: effective?.validUntil as string | null | undefined,
       retentionUntil: effective?.retentionUntil as string | null | undefined,
@@ -194,9 +207,9 @@ function assertPersistedPolicyUsable(policy: typeof coordinationPoliciesTable.$i
   }
   try {
     assertLeistungsanfragePolicyAccess({
-      policyDeltaClass: policy.deltaClass,
+      policyDeltaClass: persistedPolicyDeltaClass(policy),
       policyConsentStatus: policy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
-        policy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+      persistedPolicyDeltaClass(policy) === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
       validFrom: effective?.validFrom as string | null | undefined,
       validUntil: effective?.validUntil as string | null | undefined,
       retentionUntil: effective?.retentionUntil as string | null | undefined,
@@ -541,9 +554,9 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       const effective = performancePolicy.effectivePolicy as Record<string, unknown>;
       try {
         assertLeistungsanfragePolicyAccess({
-          policyDeltaClass: performancePolicy.deltaClass,
+          policyDeltaClass: persistedPolicyDeltaClass(performancePolicy),
           policyConsentStatus: performancePolicy.lifecycleStatus === "ACCEPTED" ? "ACCEPTED" :
-            performancePolicy.deltaClass === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
+            persistedPolicyDeltaClass(performancePolicy) === "REQUIRES_CONSENT" ? "PENDING" : "NOT_REQUIRED",
           validFrom: effective.validFrom as string | null | undefined,
           validUntil: effective.validUntil as string | null | undefined,
           retentionUntil: effective.retentionUntil as string | null | undefined,

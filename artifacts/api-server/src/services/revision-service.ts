@@ -366,6 +366,9 @@ export async function createRevision(
         status:              "DRAFT",
         responseRequiredBy:  responseRequiredBy ?? null,
         dataPublicationId:  oldRequest.dataPublicationId,
+        // A revision remains governed by the same accepted performance child
+        // policy until a new policy version is explicitly created.
+        performancePolicyId: oldRequest.performancePolicyId,
         supersedesRequestId: oldRequestId,
         createdByUserId:     userId,
         createdAt:           now,

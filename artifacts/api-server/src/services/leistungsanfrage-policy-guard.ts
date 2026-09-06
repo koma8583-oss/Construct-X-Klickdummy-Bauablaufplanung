@@ -44,6 +44,12 @@ export function policyAccessDecision(
       (policy.parentAgreementStatus != null && policy.parentAgreementStatus !== "ACCEPTED")) {
     return { allowed: false, code: "NOT_PERMITTED" };
   }
+  // A protected request without a resolved child-policy decision is malformed,
+  // not an implicit baseline. Only metadata may be exposed while it is
+  // repaired or rejected.
+  if (policy.policyDeltaClass == null) {
+    return { allowed: false, code: "NOT_PERMITTED" };
+  }
   const current = now.getTime();
   const start = policy.validFrom ? Date.parse(policy.validFrom) : NaN;
   const end = policy.validUntil ? Date.parse(policy.validUntil) : NaN;
