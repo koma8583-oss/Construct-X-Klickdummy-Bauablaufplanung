@@ -34,7 +34,7 @@ import {
   taktResponseDecisionsTable,
   taktVersionsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import type { TaktVersion } from "@workspace/db";
 import { withCanonicalVersion } from "../lib/legacy-takt-mappers";
 
@@ -291,7 +291,12 @@ export async function applyAcceptAlternative(
     .from(taktResponseAlternativesTable)
     .where(
       and(
-        eq(taktResponseAlternativesTable.id, acceptedAlternativeId),
+        // Public alternativeId is the contract value. Keep accepting the row
+        // UUID so already released AG clients can finish an in-flight round.
+        or(
+          eq(taktResponseAlternativesTable.alternativeId, acceptedAlternativeId),
+          eq(taktResponseAlternativesTable.id, acceptedAlternativeId),
+        ),
         eq(taktResponseAlternativesTable.responseId, responseId),
       ),
     )

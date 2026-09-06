@@ -31,7 +31,7 @@ import {
   taktResponseDecisionsTable,
   takteTable,
 } from "@workspace/db";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, or, sql } from "drizzle-orm";
 import type {
   TaktResponseDecision,
   TaktCoordinationDecisionType,
@@ -127,6 +127,16 @@ export interface GuDecisionResult {
   autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string; requestVersion: number }>;
 }
 
+function toPublicDecision(
+  row: typeof taktResponseDecisionsTable.$inferSelect,
+  publicAlternativeId: string | null,
+): TaktResponseDecision {
+  return {
+    ...withCanonicalDecision(row),
+    acceptedAlternativeId: publicAlternativeId,
+  } as TaktResponseDecision;
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export async function createGuDecision(
@@ -175,7 +185,9 @@ export async function createGuDecision(
   }
 
   // ── 4. Validate ACCEPT_ALTERNATIVE constraints ───────────────────────────────
-  // Also capture the alternative row so we can use its time window for auto-booking.
+  // Also capture the alternative row so we can use its time window for the
+  // coordination record. The Dataspace contract exposes alternativeId as the
+  // public selector; the row UUID remains accepted for older AG clients.
   let acceptedAltRow: typeof taktResponseAlternativesTable.$inferSelect | null = null;
 
   if (decisionType === "ACCEPT_ALTERNATIVE") {
@@ -189,7 +201,10 @@ export async function createGuDecision(
       .from(taktResponseAlternativesTable)
       .where(
         and(
-          eq(taktResponseAlternativesTable.id, acceptedAlternativeId),
+          or(
+            eq(taktResponseAlternativesTable.alternativeId, acceptedAlternativeId),
+            eq(taktResponseAlternativesTable.id, acceptedAlternativeId),
+          ),
           eq(taktResponseAlternativesTable.responseId, responseRow.id),
         ),
       )
@@ -207,6 +222,8 @@ export async function createGuDecision(
       `acceptedAlternativeId must not be set for decision type "${decisionType}"`, 400,
     );
   }
+  const publicAcceptedAlternativeId = acceptedAltRow?.alternativeId ?? null;
+  const internalAcceptedAlternativeId = acceptedAltRow?.id ?? null;
 
   // ── 5. Check for existing decision on this response ──────────────────────────
   const [existingDecision] = await db
@@ -221,13 +238,13 @@ export async function createGuDecision(
       idempotencyKey &&
       existingDecision.idempotencyKey === idempotencyKey &&
       existingDecision.decisionType === decisionType &&
-      existingDecision.acceptedAlternativeId === (acceptedAlternativeId ?? null) &&
+      existingDecision.acceptedAlternativeId === internalAcceptedAlternativeId &&
       existingDecision.comment === (comment ?? null)
     ) {
       logger.info({ taktRequestId, idempotencyKey }, "Idempotent GU decision retry — returning existing");
       const updatedRequest = await getTaktRequestById(taktRequestId);
       return {
-        decision: withCanonicalDecision(existingDecision),
+        decision: toPublicDecision(existingDecision, publicAcceptedAlternativeId),
         updatedRequest: withCanonicalTaktRequest(updatedRequest!),
         newTaktVersion: null,
         idempotent: true,
@@ -360,7 +377,9 @@ export async function createGuDecision(
         responseId:             responseRow.id,
         guOrgId,
         decisionType,
-        acceptedAlternativeId:  acceptedAlternativeId ?? null,
+        // The database FK deliberately retains the internal alternative row.
+        // API and Dataspace outputs are normalized to the public alternativeId.
+        acceptedAlternativeId:  internalAcceptedAlternativeId,
         comment:                comment ?? null,
         idempotencyKey:         idempotencyKey ?? null,
         decidedByUserId:        userId,
@@ -386,7 +405,7 @@ export async function createGuDecision(
         taktRequestId,
         responseId:           responseRow.id,
         decisionId:           decision.id,
-        acceptedAlternativeId: acceptedAlternativeId!,
+        acceptedAlternativeId: internalAcceptedAlternativeId!,
         guOrgId,
         userId,
         expectedTaktVersion,
@@ -449,7 +468,7 @@ export async function createGuDecision(
       .limit(1);
 
     return {
-      decision: withCanonicalDecision(decision),
+      decision: toPublicDecision(decision, publicAcceptedAlternativeId),
       updatedRequest: withCanonicalTaktRequest(updatedRequest),
       newTaktVersion: newTaktVersion
         ? withCanonicalVersion(newTaktVersion)
@@ -472,7 +491,7 @@ export async function createGuDecision(
   // Fire-and-forget post-commit: transport failure does NOT roll back the decision.
   try {
     await sendGuDecisionMessage({
-      decision:       withCanonicalDecision(result.decision),
+      decision:       result.decision,
       request,
       newTaktVersion: result.newTaktVersion,
       confirmedTimeWindow: bookingStart && bookingEnd
@@ -515,7 +534,7 @@ export async function createGuDecision(
   }));
 
   return {
-    decision:       withCanonicalDecision(result.decision),
+    decision:       result.decision,
     updatedRequest: withCanonicalTaktRequest(result.updatedRequest),
     newTaktVersion: result.newTaktVersion
       ? withCanonicalVersion(result.newTaktVersion)

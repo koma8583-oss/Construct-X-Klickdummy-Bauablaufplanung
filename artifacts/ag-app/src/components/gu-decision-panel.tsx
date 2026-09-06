@@ -211,7 +211,7 @@ function AlternativeTable({
           </tr>
           {/* Alternative rows */}
           {alts.map((alt) => {
-            const isSelected = selectedId === alt.id;
+            const isSelected = selectedId === alt.alternativeId;
             const shiftDays =
               origStart ? dayDiff(origStart, alt.proposedStart as string) : null;
             return (
@@ -222,11 +222,11 @@ function AlternativeTable({
                     ? 'bg-primary/10 ring-1 ring-inset ring-primary/30'
                     : 'hover:bg-muted/40'
                 }`}
-                onClick={() => onSelect(alt.id)}
+                onClick={() => onSelect(alt.alternativeId)}
                 role="radio"
                 aria-checked={isSelected}
                 tabIndex={0}
-                onKeyDown={(e) => e.key === ' ' && onSelect(alt.id)}
+                onKeyDown={(e) => e.key === ' ' && onSelect(alt.alternativeId)}
               >
                 <td className="py-2 pr-3">
                   <div className="flex items-center gap-2">
@@ -798,9 +798,9 @@ function ConfirmationDetails({
   const origStart = tw?.start ?? (snap?.plannedStart as string | undefined);
   const origEnd = tw?.end ?? (snap?.plannedEnd as string | undefined);
 
-  // alternativeId here is the row UUID — look up by .id, not by .alternativeId (business string)
+  // The decision contract uses the public alternativeId, not the database row UUID.
   const selectedAlt = alternativeId
-    ? resp?.alternatives?.find((a) => a.id === alternativeId)
+    ? resp?.alternatives?.find((a) => a.alternativeId === alternativeId)
     : null;
 
   const effectiveStart = selectedAlt

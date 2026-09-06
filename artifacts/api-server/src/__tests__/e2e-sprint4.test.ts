@@ -44,6 +44,9 @@ import {
   resourcesTable,
   resourceTypesTable,
   resourceBookingsTable,
+  taktResponseAlternativesTable,
+  taktResponseDecisionsTable,
+  taktVersionsTable,
   availabilityChecksTable,
   messageInboxTable,
   messageOutboxTable,
@@ -336,19 +339,23 @@ afterAll(async () => {
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
 
-  // 2. takt responses + alternatives (FK to leistungsanfragen via takt_request_id)
+  // 2. versions, decisions, responses + alternatives (FK to leistungsanfragen)
   const ourRequests = await db.select({ id: taktRequestsTable.id })
     .from(taktRequestsTable)
     .where(or(
       eq(taktRequestsTable.guOrgId, GU_ORG),
       eq(taktRequestsTable.nuOrgId, NU_ORG),
     ));
+  await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
   for (const { id } of ourRequests) {
     const responses = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable)
       .where(eq(taktResponsesTable.taktRequestId, id));
     for (const { id: rid } of responses) {
-      await db.execute(sql`DELETE FROM leistungsantwort_alternativen WHERE response_id = ${rid}`);
+      await db.delete(taktResponseDecisionsTable)
+        .where(eq(taktResponseDecisionsTable.responseId, rid));
+      await db.delete(taktResponseAlternativesTable)
+        .where(eq(taktResponseAlternativesTable.responseId, rid));
     }
     await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, id));
   }
@@ -678,6 +685,71 @@ describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () =
     }
     for (const resourceId of MIXED_RESOURCE_IDS) {
       expect(publicPayload).not.toContain(resourceId);
+    }
+  });
+
+  it("lets the AG accept a mixed alternative by public ID and applies only its window", async () => {
+    const selectedAlternativeId = "t49-mixed-alt-2";
+    const decisionRes = await request(app)
+      .post(`/api/takt-requests/${MIXED_REQUEST_ID}/gu-decisions`)
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({
+        decisionType: "ACCEPT_ALTERNATIVE",
+        acceptedAlternativeId: selectedAlternativeId,
+        idempotencyKey: "t49-mixed-acceptance",
+      });
+
+    expect(decisionRes.status).toBe(201);
+    expect(decisionRes.body).toMatchObject({
+      decisionType: "ACCEPT_ALTERNATIVE",
+      acceptedAlternativeId: selectedAlternativeId,
+      updatedRequestStatus: "ACCEPTED",
+    });
+
+    const [takt] = await db.select({
+      plannedStart: takteTable.plannedStart,
+      plannedEnd: takteTable.plannedEnd,
+      lifecycleStatus: takteTable.lifecycleStatus,
+    }).from(takteTable).where(eq(takteTable.id, TAKT));
+    expect(takt).toMatchObject({
+      plannedStart: "2026-12-05",
+      plannedEnd: "2026-12-06",
+      lifecycleStatus: "CONFIRMED",
+    });
+
+    const [requestRow] = await db.select({
+      status: taktRequestsTable.status,
+      agreedStart: taktRequestsTable.agreedStart,
+      agreedEnd: taktRequestsTable.agreedEnd,
+    }).from(taktRequestsTable).where(eq(taktRequestsTable.id, MIXED_REQUEST_ID));
+    expect(requestRow?.status).toBe("ACCEPTED");
+    expect(requestRow?.agreedStart?.toISOString()).toBe("2026-12-05T00:00:00.000Z");
+    expect(requestRow?.agreedEnd?.toISOString()).toBe("2026-12-06T00:00:00.000Z");
+
+    const [response] = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable)
+      .where(eq(taktResponsesTable.taktRequestId, MIXED_REQUEST_ID));
+    expect(response).toBeTruthy();
+    const [decision] = await db.select()
+      .from(taktResponseDecisionsTable)
+      .where(eq(taktResponseDecisionsTable.responseId, response!.id));
+    const [selectedAlternative] = await db.select()
+      .from(taktResponseAlternativesTable)
+      .where(and(
+        eq(taktResponseAlternativesTable.responseId, response!.id),
+        eq(taktResponseAlternativesTable.alternativeId, selectedAlternativeId),
+      ));
+    const [version] = await db.select()
+      .from(taktVersionsTable)
+      .where(eq(taktVersionsTable.sourceRequestId, MIXED_REQUEST_ID));
+    expect(decision?.acceptedAlternativeId).toBe(selectedAlternative?.id);
+    expect(version?.snapshotPayload).toMatchObject({
+      acceptedAlternative: { alternativeId: selectedAlternativeId },
+    });
+
+    const agRecords = JSON.stringify({ takt, requestRow, decision, version });
+    for (const resourceId of MIXED_RESOURCE_IDS) {
+      expect(agRecords).not.toContain(resourceId);
     }
   });
 });

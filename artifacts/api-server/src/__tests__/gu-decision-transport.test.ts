@@ -51,13 +51,13 @@ const GU_USER = "t66-gu-user";
 const NU_USER = "t66-nu-user";
 const PROJECT = "t66-project";
 const TAKT    = "t66-takt";
+const ALT_PUBLIC_ID = "ALT-6601";
 
 const guToken = sign({ userId: GU_USER, orgId: GU_ORG, orgType: "AG" });
 
 // Requests created in beforeAll for each decision type
 let reqConfirmId   = "";  // ACCEPTED response
 let reqAltId       = "";  // ALTERNATIVES_PROPOSED response
-let altRowId       = "";  // alternative PK
 let reqRevisionId  = "";  // to test REQUEST_REVISION transport
 let reqCloseId     = "";  // to test CLOSE_WITHOUT_AGREEMENT transport
 
@@ -151,14 +151,13 @@ beforeAll(async () => {
     createdByUserId: NU_USER,
   }).returning();
 
-  const [altB] = await db.insert(taktResponseAlternativesTable).values({
+  await db.insert(taktResponseAlternativesTable).values({
     responseId: respB.id,
-    alternativeId: "ALT-6601",
+    alternativeId: ALT_PUBLIC_ID,
     rank: 1,
     proposedStart: new Date("2026-10-15T06:00:00Z"),
     proposedEnd:   new Date("2026-10-22T14:00:00Z"),
-  }).returning();
-  altRowId = altB.id;
+  });
 
   // ── REQUEST_REVISION fixture ──────────────────────────────────────────────
   const [rC] = await db.insert(taktRequestsTable).values({
@@ -330,11 +329,11 @@ describe("CONFIRM_ACCEPTED", () => {
 // ── ACCEPT_ALTERNATIVE → TAKT_RESPONSE_ACCEPTED ──────────────────────────────
 
 describe("ACCEPT_ALTERNATIVE", () => {
-  it("sends TAKT_RESPONSE_ACCEPTED with acceptedAlternativeId", async () => {
+  it("sends TAKT_RESPONSE_ACCEPTED with the public acceptedAlternativeId", async () => {
     const res = await request(app)
       .post(`/api/takt-requests/${reqAltId}/gu-decisions`)
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ decisionType: "ACCEPT_ALTERNATIVE", acceptedAlternativeId: altRowId });
+      .send({ decisionType: "ACCEPT_ALTERNATIVE", acceptedAlternativeId: ALT_PUBLIC_ID });
 
     expect(res.status).toBe(201);
 
@@ -350,7 +349,7 @@ describe("ACCEPT_ALTERNATIVE", () => {
     expect(inbox).toBeDefined();
     const payload = inbox.payload as Record<string, unknown>;
     expect(payload.decisionType).toBe("ACCEPT_ALTERNATIVE");
-    expect(payload.acceptedAlternativeId).toBe(altRowId);
+    expect(payload.acceptedAlternativeId).toBe(ALT_PUBLIC_ID);
     expect(payload.confirmedTimeWindow).toBeDefined();
   });
 });

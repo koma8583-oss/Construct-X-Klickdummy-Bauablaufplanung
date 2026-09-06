@@ -51,9 +51,9 @@ export interface TaktRequestDetailTransport {
 }
 
 export interface TaktRequestDetailResponseAlt {
-  /** Row UUID — used as `acceptedAlternativeId` when submitting a GU decision */
+  /** Internal row UUID; the public `alternativeId` is used for GU decisions. */
   id: string;
-  /** NU-assigned business identifier, e.g. "ALT-001" — display only */
+  /** NU-assigned public identifier, e.g. "ALT-001" — used for GU decisions. */
   alternativeId: string;
   rank: number;
   proposedStart: Date;
@@ -276,6 +276,9 @@ export async function getTaktRequestDetailForGu(
   }
 
   const coordination = await getCoordination(requestId, guOrgId);
+  const guDecisionPublicAlternativeId = alternatives.find(
+    (alternative) => alternative.id === row.guDecisionAcceptedAlternativeId,
+  )?.alternativeId ?? row.guDecisionAcceptedAlternativeId;
   return {
     id: row.id,
     requestNumber: row.requestNumber,
@@ -332,7 +335,7 @@ export async function getTaktRequestDetailForGu(
           taktRequestId: row.id,
           responseId: row.guDecisionResponseId!,
           decisionType: row.guDecisionType as string,
-          acceptedAlternativeId: row.guDecisionAcceptedAlternativeId ?? null,
+          acceptedAlternativeId: guDecisionPublicAlternativeId ?? null,
           comment: row.guDecisionComment ?? null,
           decidedAt: row.guDecisionDecidedAt!,
           createdAt: row.guDecisionCreatedAt!,
