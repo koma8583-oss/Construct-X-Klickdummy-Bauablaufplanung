@@ -45,6 +45,17 @@ type InternalResult = {
     resourceId: string;
     bookingId: string;
   }>;
+  dailyAvailability?: Array<{
+    date: string;
+    requiredCapacity: number;
+    availableCapacity: number;
+  }>;
+  requirementAvailability?: Array<{
+    requirementId?: string;
+    requiredCapacity: number;
+    availableCapacity: number;
+    feasible: boolean;
+  }>;
 };
 
 async function seedRequest(requestId: string, requiredCapacity: number) {
@@ -285,6 +296,99 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     ]);
   });
 
+  it("uses the peak demand in a partial overlap and records the segment accounting", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [
+        {
+          id: "partial-overlap-a",
+          resourceTypeId: "partial-overlap-type",
+          requiredCapacity: 6,
+          utilizationPercent: 100,
+          requiredQualification: null,
+          periodStart: "2027-06-01",
+          periodEnd: "2027-06-02",
+        },
+        {
+          id: "partial-overlap-b",
+          resourceTypeId: "partial-overlap-type",
+          requiredCapacity: 3,
+          utilizationPercent: 100,
+          requiredQualification: null,
+          periodStart: "2027-06-02",
+          periodEnd: "2027-06-03",
+        },
+      ],
+      resources: [
+        { id: "partial-overlap-a-resource", resourceTypeId: "partial-overlap-type", type: "CREW", name: "A", capacity: 4, qualifications: null },
+        { id: "partial-overlap-b-resource", resourceTypeId: "partial-overlap-type", type: "CREW", name: "B", capacity: 4, qualifications: null },
+      ],
+      bookings: [],
+      windowStart: new Date("2027-06-01T00:00:00Z"),
+      windowEnd: new Date("2027-06-04T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+    expect(result.dailyAvailability).toEqual([
+      expect.objectContaining({ date: "2027-06-01", requiredCapacity: 6, availableCapacity: 8 }),
+      expect.objectContaining({ date: "2027-06-02", requiredCapacity: 9, availableCapacity: 8 }),
+      expect.objectContaining({ date: "2027-06-03", requiredCapacity: 3, availableCapacity: 8 }),
+    ]);
+    expect(result.requirementAvailability).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requirementId: "partial-overlap-a",
+        requiredCapacity: 6,
+        availableCapacity: 5,
+        feasible: false,
+      }),
+      expect.objectContaining({
+        requirementId: "partial-overlap-b",
+        requiredCapacity: 3,
+        availableCapacity: 2,
+        feasible: false,
+      }),
+    ]));
+  });
+
+  it("does not sum requirements that occupy sequential periods", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [
+        {
+          id: "sequential-a",
+          resourceTypeId: "sequential-type",
+          requiredCapacity: 8,
+          utilizationPercent: 100,
+          requiredQualification: null,
+          periodStart: "2027-06-01",
+          periodEnd: "2027-06-01",
+        },
+        {
+          id: "sequential-b",
+          resourceTypeId: "sequential-type",
+          requiredCapacity: 8,
+          utilizationPercent: 100,
+          requiredQualification: null,
+          periodStart: "2027-06-02",
+          periodEnd: "2027-06-02",
+        },
+      ],
+      resources: [
+        { id: "sequential-a-resource", resourceTypeId: "sequential-type", type: "CREW", name: "A", capacity: 4, qualifications: null },
+        { id: "sequential-b-resource", resourceTypeId: "sequential-type", type: "CREW", name: "B", capacity: 4, qualifications: null },
+      ],
+      bookings: [],
+      windowStart: new Date("2027-06-01T00:00:00Z"),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.dailyAvailability).toEqual([
+      expect.objectContaining({ date: "2027-06-01", requiredCapacity: 8 }),
+      expect.objectContaining({ date: "2027-06-02", requiredCapacity: 8 }),
+    ]);
+  });
+
   it("accumulates simultaneous requirements of the same resource type", async () => {
     const requestId = "t362-simultaneous-requirements";
     await seedRequest(requestId, 5);
@@ -299,6 +403,9 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
         requiredCapacity: 5,
         availableCapacity: 3,
       }),
+    ]));
+    expect(check.internal.dailyAvailability).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requiredCapacity: 10, availableCapacity: 8 }),
     ]));
   });
 

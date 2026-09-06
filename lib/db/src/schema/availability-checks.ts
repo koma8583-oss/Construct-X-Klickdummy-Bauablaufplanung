@@ -101,6 +101,13 @@ export interface InternalResultPayload {
     availableCapacity: number;
     projectedAvailableCapacity: number;
   }>;
+  /** Per-requirement residual capacity after concurrent demands are reserved. */
+  requirementAvailability?: Array<{
+    requirementId?: string;
+    requiredCapacity: number;
+    availableCapacity: number;
+    feasible: boolean;
+  }>;
   /** Technical error message when status = FAILED */
   errorMessage?: string;
 }

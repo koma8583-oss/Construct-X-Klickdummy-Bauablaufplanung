@@ -183,16 +183,28 @@ export interface ResourceAvailabilityResult {
     resourceTypeId: string;
     requiredQualification: string | null;
     date: string;
+    /** Capacity is evaluated for this atomic time segment only. */
     totalCapacity: number;
     confirmedUsed: number;
     tentativeUsed: number;
+    /**
+     * Sum of all concurrent requirement demand in the segment after each
+     * requirement's utilization percentage is applied. Requirements in
+     * sequential segments do not consume capacity at the same time.
+     */
     requiredCapacity: number;
+    /** Residual confirmed capacity before applying this segment's demand. */
     availableCapacity: number;
     projectedAvailableCapacity: number;
   }>;
   requirementAvailability?: Array<{
     requirementId?: string;
+    /** Effective demand after utilization is applied. */
     requiredCapacity: number;
+    /**
+     * Minimum residual capacity available to this requirement across all of
+     * its segments after reserving the other concurrent requirements.
+     */
     availableCapacity: number;
     feasible: boolean;
   }>;
@@ -362,8 +374,11 @@ export function evaluateResourceRequirements({
       ]),
       ...typeBookings.flatMap((booking) => [booking.startAt.getTime(), booking.endAt.getTime()]),
     ])].sort((left, right) => left - right);
-    const availabilityByRequirement = new Map<string, number>();
-    const requiredByRequirement = new Map<string, number>();
+    // Use the requirement object as the key. IDs are optional at this layer,
+    // and using "" for every anonymous requirement would make one demand
+    // overwrite another in overlapping groups.
+    const availabilityByRequirement = new Map<ResourceAvailabilityRequirement, number>();
+    const requiredByRequirement = new Map<ResourceAvailabilityRequirement, number>();
     const groupSegments: Array<{
       start: Date;
       end: Date;
@@ -451,12 +466,12 @@ export function evaluateResourceRequirements({
         const demand = Number(requirement.requiredCapacity ?? 0) * requirement.utilizationPercent / 100;
         const otherDemand = activeRequirements.reduce((sum, item) =>
           sum + Number(item.requiredCapacity ?? 0) * item.utilizationPercent / 100, 0) - demand;
-        const previous = availabilityByRequirement.get(requirement.id ?? "");
+        const previous = availabilityByRequirement.get(requirement);
         const availableForRequirement = Math.max(0, availableCapacity - otherDemand);
         if (previous === undefined || availableForRequirement < previous) {
-          availabilityByRequirement.set(requirement.id ?? "", availableForRequirement);
+          availabilityByRequirement.set(requirement, availableForRequirement);
         }
-        requiredByRequirement.set(requirement.id ?? "", demand);
+        requiredByRequirement.set(requirement, demand);
       }
       if (!projectedFeasible) {
         for (const booking of activeBookings.filter((item) => item.status === "TENTATIVE")) {
@@ -530,14 +545,14 @@ export function evaluateResourceRequirements({
           periodEnd: segment.periodEnd ?? null,
           requiredQualification: segment.requiredQualification ?? null,
         });
-        const availableCapacity = availabilityByRequirement.get(segment.id ?? "") ??
+        const availableCapacity = availabilityByRequirement.get(segment) ??
           Number(segment.requiredCapacity ?? 0);
         result.requirementAvailability!.push({
           ...(segment.id ? { requirementId: segment.id } : {}),
-          requiredCapacity: requiredByRequirement.get(segment.id ?? "") ?? 0,
+          requiredCapacity: requiredByRequirement.get(segment) ?? 0,
           availableCapacity,
           feasible: availableCapacity + 1e-9 >=
-            (requiredByRequirement.get(segment.id ?? "") ?? 0),
+            (requiredByRequirement.get(segment) ?? 0),
         });
         result.availableResources.push({
           resourceId: null,
@@ -554,8 +569,9 @@ export function evaluateResourceRequirements({
       for (const segment of groupedRequirements) {
         result.requirementAvailability!.push({
           ...(segment.id ? { requirementId: segment.id } : {}),
-          requiredCapacity: Number(segment.requiredCapacity ?? 0),
-          availableCapacity: availabilityByRequirement.get(segment.id ?? "") ?? 0,
+          requiredCapacity: requiredByRequirement.get(segment) ??
+            Number(segment.requiredCapacity ?? 0) * segment.utilizationPercent / 100,
+          availableCapacity: availabilityByRequirement.get(segment) ?? 0,
           feasible: false,
         });
       }

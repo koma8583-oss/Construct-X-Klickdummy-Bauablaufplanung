@@ -959,6 +959,11 @@ export async function runAnAvailabilityCheck(
       missingQualifications,
       unavailableEquipment: [],
       tentativeWarnings: tentativeWarnings as never[],
+      // Keep the segment-level accounting with the AN-local result so a
+      // concurrent demand is explainable as a peak, not a sum over the whole
+      // request window.
+      dailyAvailability: sharedEvaluation.dailyAvailability ?? [],
+      requirementAvailability: sharedEvaluation.requirementAvailability ?? [],
     },
     publicResultPayload: publicResult,
     checkedAt: now,
