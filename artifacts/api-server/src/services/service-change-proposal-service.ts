@@ -39,6 +39,11 @@ export function maxDate(...values: Array<Date | string | null | undefined>): Dat
   return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null;
 }
 function dateOnly(value: Date | string): string { return (value instanceof Date ? value.toISOString() : value).slice(0, 10); }
+function validIsoDate(value: Date | string | null | undefined): string | undefined {
+  if (value == null) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
 
 /**
  * Schedule changes are their own immutable child-policy versions.  The
@@ -59,6 +64,16 @@ async function createScheduleChangePolicy(tx: any, input: {
   if (!parent || !["PUBLISHED", "ACCEPTED"].includes(parent.lifecycleStatus)) {
     throw Object.assign(new Error("Eine wirksame Leistungsrichtlinie ist für die Terminänderung erforderlich"), { statusCode: 422 });
   }
+  const parentEffective = parent.effectivePolicy as Record<string, unknown> | null;
+  // The policy validity interval is an authorization capability, not the
+  // proposed work interval. A future Campus-West schedule must be actionable
+  // today while its parent capability is valid.
+  const validFrom = validIsoDate(
+    typeof parentEffective?.validFrom === "string" ? parentEffective.validFrom : undefined,
+  );
+  const validUntil = validIsoDate(
+    typeof parentEffective?.validUntil === "string" ? parentEffective.validUntil : undefined,
+  );
   const baseSnapshot = createPolicySnapshot({
     templateId: "SCHEDULE_COORDINATION",
     providerContext: { organizationId: input.request.guOrgId, userId: input.createdByUserId ?? undefined, organizationType: "AG" },
@@ -66,6 +81,10 @@ async function createScheduleChangePolicy(tx: any, input: {
       recipientOrganizationId: input.request.nuOrgId,
       purpose: "scheduleCoordination",
       projectReference: (parent.effectivePolicy?.projectReference as string | undefined) ?? null,
+      // Preserve valid inherited capability dates. Do not pass absent policy
+      // dates through a Date constructor, which would create Invalid Dates.
+      ...(validFrom ? { validFrom } : {}),
+      ...(validUntil ? { validUntil } : {}),
     },
   });
   const candidate = {

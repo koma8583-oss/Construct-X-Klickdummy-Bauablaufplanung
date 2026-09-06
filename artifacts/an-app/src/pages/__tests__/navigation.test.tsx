@@ -88,6 +88,16 @@ describe("AN-Navigation", () => {
     expect(screen.getByText("Weitere Bereiche")).toBeInTheDocument();
   });
 
+  it("zeigt in der sichtbaren Navigation keine Legacy-Terminologie", () => {
+    const { container } = render(
+      <Router base="/">
+        <Layout><div>Inhalt</div></Layout>
+      </Router>,
+    );
+
+    expect(container.textContent).not.toMatch(/\b(?:TaktKoord|Taktfenster|Taktvorschlag|Takte?|takte?)\b/i);
+  });
+
   it("verlinkt Ressourcenbelegungen aus den Internen Projekten kontextuell", async () => {
     vi.stubGlobal(
       "fetch",

@@ -12,6 +12,7 @@ import reportsRouter from "./routes/reports";
 import dataPublicationsRouter from "./routes/data-publications";
 import { logger } from "./lib/logger";
 import { runWithDatabaseRole, type DatabaseRole } from "@workspace/db";
+import { apiErrorHandler, apiNotFoundHandler } from "./middlewares/api-error-handler";
 
 const app: Express = express();
 
@@ -93,5 +94,7 @@ app.use("/api", dataPublicationsRouter);
 
 // ── Internal-only routes (dev/admin, not public) ─────────────────────────────
 app.use("/internal", internalRouter);
+app.use(apiNotFoundHandler);
+app.use(apiErrorHandler);
 
 export default app;

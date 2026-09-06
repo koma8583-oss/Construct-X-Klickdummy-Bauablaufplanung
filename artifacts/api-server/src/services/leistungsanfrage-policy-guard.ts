@@ -19,6 +19,9 @@ export type LeistungsanfragePolicyState = {
   validFrom?: string | null;
   validUntil?: string | null;
   retentionUntil?: string | null;
+  /** Synchronized root-project state.  AN action services never query AG. */
+  parentMembershipStatus?: "INVITED" | "ACTIVE" | "REJECTED" | "REVOKED" | null;
+  parentAgreementStatus?: string | null;
 };
 
 export class LeistungsanfragePolicyAccessError extends Error {
@@ -37,6 +40,10 @@ export function policyAccessDecision(
   now = new Date(),
 ): { allowed: boolean; code?: LeistungsanfragePolicyAccessError["code"] } {
   if (action === "METADATA") return { allowed: true };
+  if ((policy.parentMembershipStatus != null && policy.parentMembershipStatus !== "ACTIVE") ||
+      (policy.parentAgreementStatus != null && policy.parentAgreementStatus !== "ACCEPTED")) {
+    return { allowed: false, code: "NOT_PERMITTED" };
+  }
   const current = now.getTime();
   const start = policy.validFrom ? Date.parse(policy.validFrom) : NaN;
   const end = policy.validUntil ? Date.parse(policy.validUntil) : NaN;

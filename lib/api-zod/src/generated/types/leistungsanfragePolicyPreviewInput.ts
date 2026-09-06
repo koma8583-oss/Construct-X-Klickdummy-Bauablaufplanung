@@ -14,4 +14,14 @@ export interface LeistungsanfragePolicyPreviewInput {
   purpose: LeistungsanfragePolicyPreviewInputPurpose;
   /** @minItems 1 */
   selectedFields: string[];
+  /**
+     * Exact accepted parent policy selected from the effective-policy response.
+     * @minLength 1
+     */
+  parentPolicyId: string;
+  /**
+     * Exact version of the selected parent policy.
+     * @minimum 1
+     */
+  parentPolicyVersion: number;
 }

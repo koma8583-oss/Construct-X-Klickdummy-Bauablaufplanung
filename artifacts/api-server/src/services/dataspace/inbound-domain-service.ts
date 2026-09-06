@@ -3,6 +3,7 @@ import {
   anDb,
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
+  anProjectInvitationsTable,
   dataPublicationRecipientsTable,
   dataPublicationsTable,
   projectMembershipsTable,
@@ -106,6 +107,48 @@ export async function processIncomingServiceRequest(
     throw new Error("Inbound service request version is older than the current AN projection");
   }
 
+  // Root membership/agreement state is projected from the AN-local invitation.
+  // This is deliberately read from anDb only: action services must remain
+  // usable with physically separated AG and AN databases.
+  const [invitation] = await anDb.select().from(anProjectInvitationsTable).where(and(
+    eq(anProjectInvitationsTable.projectReference, payload.projectReference),
+    eq(anProjectInvitationsTable.senderAgOrgId, metadata.senderOrgId),
+    eq(anProjectInvitationsTable.receiverAnOrgId, metadata.receiverOrgId),
+  )).limit(1);
+  const invitationPolicy = invitation?.policySnapshot as Record<string, unknown> | null;
+  const parentEffective = invitationPolicy?.effectivePolicy && typeof invitationPolicy.effectivePolicy === "object"
+    ? invitationPolicy.effectivePolicy as Record<string, unknown>
+    : invitationPolicy ?? {};
+  const [sourceProjection] = payload.requestKind === "SCHEDULE_CHANGE" && payload.sourceRequestId
+    ? await anDb.select({ effectivePolicy: anLeistungsanfragenTable.effectivePolicy })
+      .from(anLeistungsanfragenTable)
+      .where(and(
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, payload.sourceRequestId),
+        eq(anLeistungsanfragenTable.receiverAnOrgId, metadata.receiverOrgId),
+      ))
+      .limit(1)
+    : [];
+  const sourceEffective = sourceProjection?.effectivePolicy &&
+    typeof sourceProjection.effectivePolicy === "object"
+    ? sourceProjection.effectivePolicy as Record<string, unknown>
+    : {};
+  const parentState = invitation
+    ? {
+        parentMembershipStatus: invitation.status === "ACCEPTED" ? "ACTIVE" : "REVOKED",
+        parentAgreementStatus: invitation.status === "ACCEPTED"
+          ? "ACCEPTED"
+          : typeof invitationPolicy?.lifecycleStatus === "string" ? invitationPolicy.lifecycleStatus : "REVOKED",
+        validFrom: typeof parentEffective.validFrom === "string" ? parentEffective.validFrom : undefined,
+        validUntil: typeof parentEffective.validUntil === "string" ? parentEffective.validUntil : undefined,
+      }
+    : payload.requestKind === "SCHEDULE_CHANGE"
+      ? {
+          parentMembershipStatus: sourceEffective.parentMembershipStatus,
+          parentAgreementStatus: sourceEffective.parentAgreementStatus,
+          validFrom: typeof sourceEffective.validFrom === "string" ? sourceEffective.validFrom : undefined,
+          validUntil: typeof sourceEffective.validUntil === "string" ? sourceEffective.validUntil : undefined,
+        }
+      : {};
   let projectionId: string | undefined;
   await anDb.transaction(async (tx) => {
     if (latest && payload.requestVersion > latest.externalRequestVersion) {
@@ -128,8 +171,10 @@ export async function processIncomingServiceRequest(
       receiverAnOrgId: metadata.receiverOrgId,
       projectReference: payload.projectReference,
       leistungReference,
-      plannedStart: payload.plannedStart,
-      plannedEnd: payload.plannedEnd,
+      // AN planning columns and the alternative generator use canonical
+      // calendar dates. Dataspace envelopes may carry full ISO timestamps.
+      plannedStart: payload.plannedStart.slice(0, 10),
+      plannedEnd: payload.plannedEnd.slice(0, 10),
       policySnapshot: payload.policySnapshot ?? payload.policy ?? null,
       policyDeltaClass: payload.policySnapshot?.deltaClass ?? null,
       // A schedule-change's bilateral accept/reject is the consent event for
@@ -140,7 +185,10 @@ export async function processIncomingServiceRequest(
         ? "PENDING"
         : "NOT_REQUIRED",
       policyDiff: payload.policySnapshot?.diff ?? null,
-      effectivePolicy: payload.policySnapshot?.effectivePolicy ?? null,
+       effectivePolicy: {
+         ...(payload.policySnapshot?.effectivePolicy ?? {}),
+         ...parentState,
+       },
       payloadSnapshot: payload as unknown as Record<string, unknown>,
       status: "RECEIVED",
       receivedAt: new Date(metadata.createdAt),
@@ -290,7 +338,33 @@ export async function processIncomingCoordinationDecision(
 
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {
   assertPolicySnapshotParticipants(payload);
-  await storeIncomingProjectInvitation(payload);
+  const invitation = await storeIncomingProjectInvitation(payload);
+  if (payload.membershipStatus === "REVOKED" || payload.projectAgreementStatus) {
+    const rootEffective = payload.projectAgreementEffectivePolicy
+      ?? (payload.policySnapshot?.effectivePolicy ?? payload.policySnapshot ?? {});
+    const parentState = {
+      parentMembershipStatus: payload.membershipStatus ?? (invitation.status === "ACCEPTED" ? "ACTIVE" : "REVOKED"),
+      parentAgreementStatus: payload.projectAgreementStatus
+        ?? (invitation.status === "ACCEPTED" ? "ACCEPTED" : "REVOKED"),
+      ...(typeof rootEffective.validFrom === "string" ? { validFrom: rootEffective.validFrom } : {}),
+      ...(typeof rootEffective.validUntil === "string" ? { validUntil: rootEffective.validUntil } : {}),
+    };
+    const projections = await anDb.select({
+      id: anLeistungsanfragenTable.id,
+      effectivePolicy: anLeistungsanfragenTable.effectivePolicy,
+    }).from(anLeistungsanfragenTable).where(and(
+      eq(anLeistungsanfragenTable.projectReference, payload.project.projectReference),
+      eq(anLeistungsanfragenTable.senderAgOrgId, payload.metadata.senderOrgId),
+      eq(anLeistungsanfragenTable.receiverAnOrgId, payload.metadata.receiverOrgId),
+    ));
+    await Promise.all(projections.map((projection) => anDb.update(anLeistungsanfragenTable).set({
+      effectivePolicy: {
+        ...(projection.effectivePolicy ?? {}),
+        ...parentState,
+      },
+      updatedAt: new Date(),
+    }).where(eq(anLeistungsanfragenTable.id, projection.id))));
+  }
 }
 
 export async function processIncomingDataOffer(payload: ExternalDataOffer): Promise<void> {

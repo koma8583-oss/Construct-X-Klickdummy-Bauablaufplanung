@@ -77,6 +77,14 @@ export class InvalidLeistungsfreigabeFieldsError extends Error {
   }
 }
 
+/** The requested child exceeds the accepted project's effective policy. */
+export class PolicyNotPermittedError extends Error {
+  constructor() {
+    super("Die angeforderte Leistungsfreigabe ist durch die Projektvereinbarung nicht erlaubt.");
+    this.name = "PolicyNotPermittedError";
+  }
+}
+
 export function selectLeistungsfreigabeFields(
   payload: TaktRequestSnapshotPayload,
   purpose: LeistungsfreigabePurpose,
@@ -303,6 +311,9 @@ export interface CreateTaktRequestWithSnapshotInput {
   purpose?: LeistungsfreigabePurpose;
   /** Explicit child-owned fields. Omitted only for backwards-compatible callers. */
   selectedFields?: string[];
+  /** Immutable parent policy selected by the AG from the effective-policy response. */
+  parentPolicyId?: string;
+  parentPolicyVersion?: number;
   /** Compatibility input for old routes. It is intentionally ignored: normal
    * Leistungsanfragen never create or link a DataPublication. */
   dataPublicationId?: string;
@@ -399,6 +410,15 @@ export async function createTaktRequestWithSnapshot(
       "Ein aktives Projektmitglied benötigt ein verknüpftes, akzeptiertes Projektabkommen.",
     );
   }
+  if (
+    (input.parentPolicyId !== undefined && input.parentPolicyId !== agreement.id) ||
+    (input.parentPolicyVersion !== undefined && input.parentPolicyVersion !== agreement.version)
+  ) {
+    throw new ProjectMembershipError(
+      "PROJECT_AGREEMENT_CHANGED",
+      "Die ausgewählte Projektvereinbarung wurde geändert. Bitte prüfen Sie die Freigabe erneut.",
+    );
+  }
   // Acceptance is not an enduring grant: the agreement's effective window is
   // enforced before a child can be minted.
   const agreementEffective = agreement.effectivePolicy as Record<string, unknown>;
@@ -469,6 +489,12 @@ export async function createTaktRequestWithSnapshot(
     agreement?.effectivePolicy as Record<string, unknown> | undefined,
     candidateSnapshot,
   );
+  // Do not mint a draft child policy for a forbidden request. In particular,
+  // this must happen before any request/snapshot exists that could later be
+  // sent through the Dataspace.
+  if (resolution.deltaClass === "NOT_PERMITTED") {
+    throw new PolicyNotPermittedError();
+  }
   const performancePolicy = createConstructXPolicy({
     baseSnapshot: basePolicySnapshot,
     policyType: "PERFORMANCE_REQUEST",
@@ -476,7 +502,7 @@ export async function createTaktRequestWithSnapshot(
     parentPolicyId: agreement?.id ?? null,
     lifecycleStatus: resolution.deltaClass === "REQUIRES_CONSENT"
       ? "CONSENT_REQUIRED"
-      : resolution.deltaClass === "NOT_PERMITTED" ? "DRAFT" : "PUBLISHED",
+      : "PUBLISHED",
     deltaClass: resolution.deltaClass,
     diff: resolution.diff,
     effectivePolicy: resolution.effectivePolicy,
@@ -583,6 +609,8 @@ export interface CreateTaktRequestBatchInput {
   message?: string;
   purpose?: LeistungsfreigabePurpose;
   selectedFields?: string[];
+  parentPolicyId?: string;
+  parentPolicyVersion?: number;
 }
 
 export interface CreateTaktRequestBatchResult {
@@ -623,6 +651,8 @@ export async function createTaktRequestBatchWithSnapshot(
         message: input.message,
         purpose: input.purpose,
         selectedFields: input.selectedFields,
+        parentPolicyId: input.parentPolicyId,
+        parentPolicyVersion: input.parentPolicyVersion,
         selectionGroupId,
         tx,
       });

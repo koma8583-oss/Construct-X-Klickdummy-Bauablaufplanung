@@ -7,6 +7,11 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "validate:types": "pnpm run typecheck:libs && pnpm --filter @workspace/api-server run typecheck && pnpm --filter @workspace/ag-app run typecheck && pnpm --filter @workspace/an-app run typecheck",
+    "test:api": "pnpm --filter @workspace/api-server run test",
+    "test:ag": "pnpm --filter @workspace/ag-app run test",
+    "test:an": "pnpm --filter @workspace/an-app run test",
+    "validate:ci": "pnpm run validate:types && pnpm run test:api && pnpm run test:ag && pnpm run test:an && pnpm run e2e:list",
     "e2e": "playwright test --config=e2e/playwright.config.ts",
     "e2e:list": "playwright test --config=e2e/playwright.config.ts --list"
   },

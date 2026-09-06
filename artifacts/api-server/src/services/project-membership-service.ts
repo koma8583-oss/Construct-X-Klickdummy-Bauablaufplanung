@@ -89,6 +89,7 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
   const agreements = agreementIds.length
     ? await db.select({
       id: coordinationPoliciesTable.id,
+      version: coordinationPoliciesTable.version,
       lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
       effectivePolicy: coordinationPoliciesTable.effectivePolicy,
     }).from(coordinationPoliciesTable).where(inArray(coordinationPoliciesTable.id, agreementIds))
@@ -896,17 +897,111 @@ export async function revokeMembership(id: string, agOrgId: string) {
     eq(projectMembershipsTable.agOrgId, agOrgId),
   )).limit(1);
   if (existing?.status === "REVOKED") return existing;
-  const [updated] = await db.update(projectMembershipsTable).set({
+  const now = new Date();
+  const [updated] = await db.transaction(async (tx) => tx.update(projectMembershipsTable).set({
     status: "REVOKED",
-    revokedAt: new Date(),
-    updatedAt: new Date(),
+    revokedAt: now,
+    updatedAt: now,
   }).where(and(
     eq(projectMembershipsTable.id, id),
     eq(projectMembershipsTable.agOrgId, agOrgId),
     // Both pending invitations and active memberships may be revoked.
     // Resolved memberships cannot be silently reactivated.
     inArray(projectMembershipsTable.status, ["INVITED", "ACTIVE"]),
-  )).returning();
+  )).returning());
   if (!updated) throw new ProjectMembershipError("PROJECT_MEMBERSHIP_NOT_FOUND", "Aktive Projektmitgliedschaft nicht gefunden.");
+  // The membership transaction is committed before the Dataspace publication.
+  // AN receives a status-only compatible invitation update and updates only its
+  // local projection; it never needs an AG database read to revoke access.
+  await publishProjectMembershipStatus(updated, "REVOKED", now);
+  return updated;
+}
+
+export async function publishProjectMembershipStatus(
+  membership: typeof projectMembershipsTable.$inferSelect,
+  membershipStatus: "ACTIVE" | "REVOKED",
+  now = new Date(),
+) {
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, membership.projectId)).limit(1);
+  const [agreement] = membership.projectAgreementPolicyId
+    ? await db.select().from(coordinationPoliciesTable)
+      .where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId)).limit(1)
+    : [];
+  if (!project || !agreement) {
+    throw new ProjectMembershipError("PROJECT_MEMBERSHIP_STATUS_UNDELIVERABLE", "Projektvereinbarung für die Statussynchronisation fehlt.");
+  }
+  if (!membership.anParticipantId) {
+    throw new ProjectMembershipError(
+      "PROJECT_MEMBERSHIP_STATUS_UNDELIVERABLE",
+      "Der Dataspace-Teilnehmer der Projektmitgliedschaft fehlt.",
+    );
+  }
+  const messageId = `project-membership-status:${membership.invitationId}:${membershipStatus}:${agreement.lifecycleStatus}`;
+  const payload: ExternalProjectInvitation = {
+    metadata: {
+      messageId,
+      correlationId: membership.correlationId,
+      schemaVersion: "1.0",
+      senderOrgId: membership.agOrgId,
+      receiverOrgId: membership.anOrgId,
+      createdAt: now.toISOString(),
+    },
+    invitationId: membership.invitationId,
+    project: {
+      projectReference: project.id,
+      projectName: project.name,
+      status: project.status,
+      ...(project.description ? { description: project.description } : {}),
+      ...(project.location ? { location: project.location } : {}),
+    },
+    requestedRole: "CONTRACTOR",
+    purpose: "PROJECT_COLLABORATION",
+    policy: {
+      usagePurpose: "PROJECT_MEMBERSHIP",
+      allowedConsumerParticipantId: membership.anParticipantId,
+    },
+    policySnapshot: agreement.policySnapshot as ExternalProjectInvitation["policySnapshot"],
+    membershipStatus,
+    projectAgreementStatus: agreement.lifecycleStatus,
+    ...(agreement.effectivePolicy
+      ? { projectAgreementEffectivePolicy: agreement.effectivePolicy }
+      : {}),
+  };
+  const exchange = createDataspaceExchange();
+  await deliverLocalProjectInvitation(payload, exchange);
+}
+
+/**
+ * Explicit root-policy synchronization hook for the policy lifecycle owner.
+ * Keeping it here makes the outbound update use the same adapter and envelope
+ * as membership revocation, without introducing an AN → AG database coupling.
+ */
+export async function publishProjectAgreementStatus(
+  projectAgreementPolicyId: string,
+): Promise<void> {
+  const memberships = await db.select().from(projectMembershipsTable).where(and(
+    eq(projectMembershipsTable.projectAgreementPolicyId, projectAgreementPolicyId),
+    eq(projectMembershipsTable.status, "ACTIVE"),
+  ));
+  await Promise.all(memberships.map((membership) =>
+    publishProjectMembershipStatus(membership, "ACTIVE"),
+  ));
+}
+
+/** Phase-1 owner for revoking a root agreement and synchronizing AN access. */
+export async function revokeProjectAgreement(projectAgreementPolicyId: string, agOrgId: string) {
+  const [updated] = await db.transaction(async (tx) => tx.update(coordinationPoliciesTable).set({
+    lifecycleStatus: "REVOKED",
+    updatedAt: new Date(),
+  }).where(and(
+    eq(coordinationPoliciesTable.id, projectAgreementPolicyId),
+    eq(coordinationPoliciesTable.providerOrgId, agOrgId),
+    eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
+  )).returning());
+  if (!updated) {
+    throw new ProjectMembershipError("PROJECT_AGREEMENT_NOT_FOUND", "Projektvereinbarung nicht gefunden.");
+  }
+  // Publish only after the policy lifecycle transaction committed.
+  await publishProjectAgreementStatus(updated.id);
   return updated;
 }

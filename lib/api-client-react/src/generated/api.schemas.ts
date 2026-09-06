@@ -100,6 +100,16 @@ export interface LeistungsanfragePolicyPreviewInput {
   purpose: LeistungsanfragePolicyPreviewInputPurpose;
   /** @minItems 1 */
   selectedFields: string[];
+  /**
+     * Exact accepted parent policy selected from the effective-policy response.
+     * @minLength 1
+     */
+  parentPolicyId: string;
+  /**
+     * Exact version of the selected parent policy.
+     * @minimum 1
+     */
+  parentPolicyVersion: number;
 }
 
 export type LeistungsanfragePolicyPreviewItemDeltaClass = typeof LeistungsanfragePolicyPreviewItemDeltaClass[keyof typeof LeistungsanfragePolicyPreviewItemDeltaClass];
@@ -141,6 +151,8 @@ export type EffectiveProjectAgreementEffectivePolicy = { [key: string]: unknown 
  */
 export interface EffectiveProjectAgreement {
   id: string;
+  /** @minimum 1 */
+  version: number;
   lifecycleStatus: EffectiveProjectAgreementLifecycleStatus;
   effectivePolicy: EffectiveProjectAgreementEffectivePolicy;
 }
@@ -2013,6 +2025,16 @@ export interface TaktRequestBatchInput {
      * @items.minLength 1
      */
   selectedFields?: string[];
+  /**
+     * Exact accepted parent policy selected from the effective-policy response.
+     * @minLength 1
+     */
+  parentPolicyId?: string;
+  /**
+     * Exact version of the selected parent policy.
+     * @minimum 1
+     */
+  parentPolicyVersion?: number;
 }
 
 /**

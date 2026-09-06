@@ -89,6 +89,10 @@ function policyStateOf(projection: Projection): LeistungsanfragePolicyState {
     validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
     validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
     retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+    parentMembershipStatus: ["INVITED", "ACTIVE", "REJECTED", "REVOKED"].includes(String(effective.parentMembershipStatus))
+      ? effective.parentMembershipStatus as LeistungsanfragePolicyState["parentMembershipStatus"] : null,
+    parentAgreementStatus: typeof effective.parentAgreementStatus === "string"
+      ? effective.parentAgreementStatus : null,
   };
 }
 
@@ -349,7 +353,11 @@ export async function getAnLeistungsanfrageDetail(
   const activeSchedule = externalLeistungsanfrageId === rootProjection.externalLeistungsanfrageId
     ? related.find((row) =>
         coordinationRequestKind(row) === "SCHEDULE_CHANGE" &&
-        actionableStatuses.includes(row.status as typeof actionableStatuses[number]),
+        (
+          actionableStatuses.includes(row.status as typeof actionableStatuses[number]) ||
+          row.status === "CONFIRMED" ||
+          row.status === "RESPONDED"
+        ),
       )
     : undefined;
   const projection = activeSchedule ?? rootProjection;
@@ -774,6 +782,12 @@ export async function runAnAvailabilityCheck(
     });
   };
 
+  const validRequirements: Array<{
+    requirement: typeof anLeistungsanfrageResourceRequirementsTable.$inferSelect;
+    start: Date;
+    end: Date;
+    candidates: Array<typeof resourcesTable.$inferSelect>;
+  }> = [];
   for (const requirement of requirements) {
     const start = new Date(requirement.periodStart || projection.plannedStart);
     const end = new Date(requirement.periodEnd || projection.plannedEnd);
@@ -799,43 +813,103 @@ export async function runAnAvailabilityCheck(
       });
       continue;
     }
+    validRequirements.push({ requirement, start, end, candidates });
+  }
 
-    const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
-    const matchingTypeBookings = relevantBookings.filter((booking) =>
-      booking.resourceId === null &&
-      booking.resourceTypeId === requirement.localResourceTypeId &&
-      timeOverlaps(start, end, booking.startAt, booking.endAt),
+  const availabilityByRequirementId = new Map<string, number>();
+  const capacityExceededRequirementIds = new Set<string>();
+  const requirementsByType = new Map<string, typeof validRequirements>();
+  for (const entry of validRequirements) {
+    const typeId = entry.requirement.localResourceTypeId!;
+    const entries = requirementsByType.get(typeId) ?? [];
+    entries.push(entry);
+    requirementsByType.set(typeId, entries);
+  }
+
+  for (const [resourceTypeId, typeRequirements] of requirementsByType) {
+    const candidateIds = new Set(typeRequirements[0].candidates.map((resource) => resource.id));
+    const typeBookings = relevantBookings.filter((booking) =>
+      (booking.resourceId === null && booking.resourceTypeId === resourceTypeId) ||
+      (booking.resourceId !== null && candidateIds.has(booking.resourceId)),
     );
-    const confirmedTypeUse = matchingTypeBookings
-      .filter((booking) => booking.status === "CONFIRMED")
-      .reduce(
-        (sum, booking) => sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100,
-        0,
+    const boundaries = [...new Set([
+      ...typeRequirements.flatMap((entry) => [entry.start.getTime(), entry.end.getTime()]),
+      ...typeBookings.flatMap((booking) => [booking.startAt.getTime(), booking.endAt.getTime()]),
+    ])].sort((left, right) => left - right);
+    const limitingCapacityByRequirementId = new Map<string, number>();
+
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const segmentStart = new Date(boundaries[index]);
+      const segmentEnd = new Date(boundaries[index + 1]);
+      if (segmentEnd <= segmentStart) continue;
+      const activeRequirements = typeRequirements.filter((entry) =>
+        timeOverlaps(segmentStart, segmentEnd, entry.start, entry.end),
       );
-    const availableCapacityBeforeTypeBookings = candidates.reduce((total, resource) => {
-      const matchingConcreteBookings = relevantBookings.filter((booking) =>
-        booking.resourceId === resource.id &&
-        timeOverlaps(start, end, booking.startAt, booking.endAt),
+      if (!activeRequirements.length) continue;
+      const activeBookings = typeBookings.filter((booking) =>
+        timeOverlaps(segmentStart, segmentEnd, booking.startAt, booking.endAt),
       );
-      const confirmedConcreteUse = matchingConcreteBookings
-        .filter((booking) => booking.status === "CONFIRMED")
+      const confirmedBookings = activeBookings.filter((booking) => booking.status === "CONFIRMED");
+      const availableBeforeTypeBookings = typeRequirements[0].candidates.reduce((total, resource) => {
+        const concreteUse = confirmedBookings
+          .filter((booking) => booking.resourceId === resource.id)
+          .reduce(
+            (sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100,
+            0,
+          );
+        return total + Math.max(0, (resource.capacity ?? 1) - concreteUse);
+      }, 0);
+      const typeUse = confirmedBookings
+        .filter((booking) => booking.resourceId === null && booking.resourceTypeId === resourceTypeId)
         .reduce(
-          (sum, booking) => sum + (resource.capacity ?? 1) * booking.utilizationPercent / 100,
+          (sum, booking) => sum + (booking.quantity ?? 0) * booking.utilizationPercent / 100,
           0,
         );
-      for (const booking of matchingConcreteBookings.filter((entry) => entry.status === "TENTATIVE")) {
-        addTentativeWarning(booking, resource.id);
+      const segmentCapacity = Math.max(0, availableBeforeTypeBookings - typeUse);
+      const totalDemand = activeRequirements.reduce(
+        (sum, entry) => sum +
+          Number(entry.requirement.requiredCapacity ?? 1) *
+            Number(entry.requirement.utilizationPercent ?? 100) / 100,
+        0,
+      );
+
+      for (const entry of activeRequirements) {
+        const requirementId = entry.requirement.id;
+        const ownDemand = Number(entry.requirement.requiredCapacity ?? 1) *
+          Number(entry.requirement.utilizationPercent ?? 100) / 100;
+        const availableForRequirement = Math.max(0, segmentCapacity - (totalDemand - ownDemand));
+        const previousLimit = limitingCapacityByRequirementId.get(requirementId);
+        if (previousLimit === undefined || availableForRequirement < previousLimit) {
+          limitingCapacityByRequirementId.set(requirementId, availableForRequirement);
+        }
       }
-      return total + Math.max(0, (resource.capacity ?? 1) - confirmedConcreteUse);
-    }, 0);
-    // A type-level booking reserves the shared resource-type pool, so subtract
-    // it once after summing the residual capacity of concrete resources.
-    const availableCapacity = Math.max(0, availableCapacityBeforeTypeBookings - confirmedTypeUse);
-    for (const booking of matchingTypeBookings.filter((entry) => entry.status === "TENTATIVE")) {
-      addTentativeWarning(booking, requirement.localResourceTypeId);
     }
 
-    if (availableCapacity < requiredCapacity) {
+    for (const entry of typeRequirements) {
+      const requirementId = entry.requirement.id;
+      const availableCapacity = limitingCapacityByRequirementId.get(requirementId) ?? 0;
+      availabilityByRequirementId.set(requirementId, availableCapacity);
+      const requiredCapacity = Number(entry.requirement.requiredCapacity ?? 1);
+      const requiredDemand = requiredCapacity * Number(entry.requirement.utilizationPercent ?? 100) / 100;
+      if (availableCapacity < requiredDemand) capacityExceededRequirementIds.add(requirementId);
+
+      for (const booking of typeBookings.filter((candidate) =>
+        candidate.status === "TENTATIVE" &&
+        timeOverlaps(entry.start, entry.end, candidate.startAt, candidate.endAt),
+      )) {
+        addTentativeWarning(
+          booking,
+          booking.resourceId === null ? resourceTypeId : booking.resourceId,
+        );
+      }
+    }
+  }
+
+  for (const { requirement } of validRequirements) {
+    const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
+    const availableCapacity = availabilityByRequirementId.get(requirement.id) ?? 0;
+
+    if (capacityExceededRequirementIds.has(requirement.id)) {
       conflicts.push({
         conflictType: "CAPACITY_EXCEEDED",
         resourceId: null,
@@ -968,7 +1042,13 @@ function coordinationSourceRequestId(projection: Projection): string | undefined
 }
 
 function coordinationWindow(projection: Projection): CoordinationWindow {
-  return { start: projection.plannedStart, end: projection.plannedEnd };
+  const snapshot = coordinationSnapshot(projection);
+  const start = snapshotValue(snapshot, "plannedStart");
+  const end = snapshotValue(snapshot, "plannedEnd");
+  return {
+    start: typeof start === "string" ? start : projection.plannedStart,
+    end: typeof end === "string" ? end : projection.plannedEnd,
+  };
 }
 
 async function coordinationProjections(requestId: string, anOrgId: string) {
@@ -1124,6 +1204,16 @@ export async function createAnScheduleChangeProposal(input: {
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
     throw Object.assign(new Error("Ende muss nach dem Beginn liegen"), { statusCode: 400 });
   }
+  const projections = await coordinationProjections(input.requestId, input.anOrgId);
+  const root = projections.find((projection) =>
+    projection.externalLeistungsanfrageId === input.requestId &&
+    coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
+  );
+  if (!root) return null;
+  assertLeistungsanfragePolicyAccess(policyStateOf(root), "AVAILABILITY");
+  // Check the AN-local policy before consulting bilateral coordination state.
+  // This ensures revoked/expired parent access cannot leak AG coordination
+  // state and works with physically separated role databases.
   const coordination = await getAnCoordination(input.requestId, input.anOrgId);
   if (!coordination) return null;
   if (!coordination.currentAgreement) {
@@ -1137,13 +1227,6 @@ export async function createAnScheduleChangeProposal(input: {
       coordination.openProposal.id !== input.supersedesProposalId) {
     throw Object.assign(new Error("Es existiert bereits eine offene Terminänderung"), { statusCode: 409 });
   }
-  const projections = await coordinationProjections(input.requestId, input.anOrgId);
-  const root = projections.find((projection) =>
-    projection.externalLeistungsanfrageId === input.requestId &&
-    coordinationRequestKind(projection) !== "SCHEDULE_CHANGE",
-  );
-  if (!root) return null;
-  assertLeistungsanfragePolicyAccess(policyStateOf(root), "AVAILABILITY");
   const proposalId = createHash("sha256").update(JSON.stringify([
     input.requestId,
     input.anOrgId,

@@ -12,6 +12,7 @@ import {
   type TaktRequestSnapshotPayload,
 } from "@workspace/api-zod";
 import type { MessageEnvelope } from "../../lib/transport/message-transport";
+import { ApiBoundaryValidationError } from "../../middlewares/api-error-handler";
 
 const SCHEMA_VERSION = "1.0";
 export const CONSTRUCTION_SERVICE_COORDINATION_PURPOSE = "construction-service-coordination";
@@ -35,7 +36,7 @@ export function toExternalResourceRequirements(rows: Array<{
   return rows.map((row) => {
     if (!row.resourceTypeCode || !row.resourceTypeName || row.requiredCapacity == null ||
         !row.capacityUnit || !row.periodStart || !row.periodEnd) {
-      throw new Error("Service request resource requirement is incomplete");
+      throw new ApiBoundaryValidationError("Service request resource requirement is incomplete");
     }
     return {
       resourceTypeCode: row.resourceTypeCode,
@@ -72,14 +73,14 @@ export function toExternalResourceRequirementsFromSnapshot(
       typeof (row as Record<string, unknown>).resourceType !== "string" ||
       typeof (row as Record<string, unknown>).notes !== "string"
     ) {
-      throw new Error("Snapshot resource requirement is incomplete");
+      throw new ApiBoundaryValidationError("Snapshot resource requirement is incomplete");
     }
 
     const resourceType = (row as Record<string, string>).resourceType.trim().toUpperCase();
     const metadata = SNAPSHOT_RESOURCE_TYPE_METADATA[
       resourceType as keyof typeof SNAPSHOT_RESOURCE_TYPE_METADATA
     ];
-    if (!metadata) throw new Error("Snapshot resource requirement has an unsupported type");
+    if (!metadata) throw new ApiBoundaryValidationError("Snapshot resource requirement has an unsupported type");
 
     return {
       resourceTypeCode: metadata.code,
@@ -122,7 +123,7 @@ export function toExternalServiceRequest(input: {
   policySnapshot?: ExternalPolicySnapshot;
 }): ExternalServiceRequest {
   if (!input.plannedStart || !input.plannedEnd) {
-    throw new Error("Service request cannot be published without plannedStart and plannedEnd");
+    throw new ApiBoundaryValidationError("Service request cannot be published without plannedStart and plannedEnd");
   }
   const metadata: ExchangeMetadata = {
     messageId: input.messageId ?? newMessageId(),
@@ -171,7 +172,7 @@ export function publicSnapshotFromRecord(value: Record<string, unknown>): TaktRe
   );
   const parsed = TaktRequestSnapshotPayloadSchema.safeParse(candidate);
   if (!parsed.success) {
-    throw new Error("The released Takt snapshot is incomplete or malformed");
+    throw new ApiBoundaryValidationError("The released Takt snapshot is incomplete or malformed");
   }
   // The validator permits purpose-scoped children; the external envelope uses
   // the established snapshot type while consumers must treat omitted fields as
@@ -227,7 +228,7 @@ export function toExternalServiceResponse(input: {
 export function toExternalServiceRequestFromEnvelope(envelope: MessageEnvelope): ExternalServiceRequest {
   const payload = envelope.payload as Record<string, unknown>;
   if (typeof payload.plannedStart !== "string" || typeof payload.plannedEnd !== "string") {
-    throw new Error("Legacy service request envelope is missing plannedStart or plannedEnd");
+    throw new ApiBoundaryValidationError("Legacy service request envelope is missing plannedStart or plannedEnd");
   }
   return toExternalServiceRequest({
     requestId: String(payload.taktRequestId ?? payload.leistungsanfrageId ?? payload.requestId ?? envelope.correlationId),
@@ -263,7 +264,7 @@ export function toExternalServiceResponseFromEnvelope(envelope: MessageEnvelope)
     decision: payload.decision === "REJECTED" ? "REJECTED" :
       payload.decision === "ALTERNATIVES_PROPOSED" ? "ALTERNATIVES_PROPOSED" :
       payload.decision === "ACCEPTED" ? "ACCEPTED" :
-      (() => { throw new Error("Invalid external service response decision"); })(),
+      (() => { throw new ApiBoundaryValidationError("Invalid external service response decision"); })(),
     senderOrgId: envelope.senderOrgId,
     receiverOrgId: envelope.recipientOrgId,
     correlationId: envelope.correlationId,

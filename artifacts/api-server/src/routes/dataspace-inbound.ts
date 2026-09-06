@@ -39,6 +39,7 @@ import {
 import pino from "pino";
 import { processIncomingDataOfferResponse, processIncomingProjectInvitation, processIncomingProjectInvitationResponse, processIncomingServiceRequest, processIncomingServiceResponse } from "../services/dataspace/inbound-domain-service";
 import { messageTypeForNotificationContext } from "../services/dataspace/notification-envelope";
+import { isApiBoundaryValidationError } from "../middlewares/api-error-handler";
 
 const logger = pino({ name: "dataspace-inbound" });
 const router = Router();
@@ -167,6 +168,7 @@ router.post("/dataspace/inbound/project-invitations", requireDataspaceConnector,
   } catch (error) {
     logger.error({ err: error, messageId: metadata.messageId }, "receiveProjectInvitation failed");
     if (error instanceof Error && error.message.includes("conflicts")) { res.status(409).json({ error: error.message }); return; }
+    if (isApiBoundaryValidationError(error)) { res.status(422).json({ error: error.message }); return; }
     res.status(500).json({ error: "Internal error processing inbound project invitation" });
   }
 });
@@ -183,6 +185,7 @@ router.post("/dataspace/inbound/project-invitation-responses", requireDataspaceC
   } catch (error) {
     logger.error({ err: error, messageId: metadata.messageId }, "receiveProjectInvitationResponse failed");
     if (error instanceof Error && error.message.includes("conflicts")) { res.status(409).json({ error: error.message }); return; }
+    if (isApiBoundaryValidationError(error)) { res.status(422).json({ error: error.message }); return; }
     res.status(500).json({ error: "Internal error processing inbound project invitation response" });
   }
 });
@@ -206,6 +209,10 @@ router.post("/dataspace/inbound/data-offer-responses", requireDataspaceConnector
     logger.error({ err: error, messageId: metadata.messageId }, "receiveDataOfferResponse failed");
     if (error instanceof Error && error.message.includes("conflicts")) {
       res.status(409).json({ error: error.message });
+      return;
+    }
+    if (isApiBoundaryValidationError(error)) {
+      res.status(422).json({ error: error.message });
       return;
     }
     res.status(500).json({ error: "Internal error processing inbound data-offer response" });
@@ -254,6 +261,10 @@ router.post(
       }
       if (msg.includes("conflicts")) {
         res.status(409).json({ error: msg });
+        return;
+      }
+      if (isApiBoundaryValidationError(err)) {
+        res.status(422).json({ error: msg });
         return;
       }
       logger.error({ err, messageId: metadata.messageId }, "receiveServiceRequest failed");
@@ -305,6 +316,10 @@ router.post(
       }
       if (msg.includes("conflicts")) {
         res.status(409).json({ error: msg });
+        return;
+      }
+      if (isApiBoundaryValidationError(err)) {
+        res.status(422).json({ error: msg });
         return;
       }
       logger.error({ err, messageId: metadata.messageId }, "receiveServiceResponse failed");

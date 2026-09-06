@@ -46,6 +46,8 @@ type PolicyComparable = {
   purpose?: string | null;
   workPackageReference?: string | null;
   selectedFields?: readonly string[];
+  duties?: readonly unknown[];
+  constraints?: readonly unknown[];
 };
 
 function asComparable(value: unknown): PolicyComparable {
@@ -60,6 +62,39 @@ function toTime(value: string | null | undefined): number | null {
 
 function unique(values: readonly string[] | undefined): string[] {
   return [...new Set((values ?? []).filter((value): value is string => typeof value === "string"))];
+}
+
+/** Preserve restrictive ODRL terms from every ancestor without relying on object identity. */
+function inheritedTerms(
+  parent: readonly unknown[] | undefined,
+  child: readonly unknown[] | undefined,
+): unknown[] {
+  const result: unknown[] = [];
+  const seen = new Set<string>();
+  for (const term of [...(parent ?? []), ...(child ?? [])]) {
+    const serialized = JSON.stringify(term);
+    if (!seen.has(serialized)) {
+      seen.add(serialized);
+      result.push(term);
+    }
+  }
+  return result;
+}
+
+function inheritedPolicy(base: PolicyComparable | null, candidate: PolicyComparable, candidateType: string) {
+  return {
+    ...(base ?? {}),
+    ...candidate,
+    policyType: candidateType,
+    // A child can add a restriction but can never discard an ancestor's
+    // prohibition, duty, or constraint.
+    prohibitions: unique([...unique(base?.prohibitions), ...unique(candidate.prohibitions)]),
+    duties: inheritedTerms(base?.duties, candidate.duties),
+    constraints: inheritedTerms(base?.constraints, candidate.constraints),
+    validFrom: candidate.validFrom ?? base?.validFrom ?? null,
+    validUntil: candidate.validUntil ?? base?.validUntil ?? null,
+    retentionUntil: candidate.retentionUntil ?? base?.retentionUntil ?? null,
+  };
 }
 
 function makeDiff(base: PolicyComparable | null, candidate: PolicyComparable): PolicyDiff {
@@ -133,6 +168,9 @@ export function resolvePolicyDelta(
   const permissionNotGranted = candidatePermissions.some((permission) => !basePermissions.includes(permission));
   const baseProhibitions = unique(base?.prohibitions);
   const candidateProhibitions = unique(candidate.prohibitions);
+  const prohibitionConvertedToPermission = candidatePermissions.some((permission) =>
+    baseProhibitions.includes(permission),
+  );
   // Prohibitions are inherited, never replaced.  A candidate may repeat them
   // (recommended for a self-contained wire snapshot) or omit them; omission
   // cannot remove them from the effective policy below.
@@ -161,7 +199,8 @@ export function resolvePolicyDelta(
 
   let deltaClass: CoordinationPolicyDeltaClass;
   if (
-    identityMismatch || typeNotGranted || permissionNotGranted ||
+    identityMismatch || typeNotGranted || permissionNotGranted || prohibitionConvertedToPermission ||
+    outsideValidity || broadenedRetention ||
     purposeNotAllowed || fieldScopeNotAllowed
   ) {
     deltaClass = "NOT_PERMITTED";
@@ -178,16 +217,16 @@ export function resolvePolicyDelta(
         unique(base?.childPolicyTypes).includes("SCHEDULE_CHANGE"));
     const meaningfulChanges = projectAgreementAllowsChildRefinement
       // A business purpose, the concrete Leistung and its whitelisted field
-      // subset are refinements of the accepted project agreement, not a new
-      // grant. Validity/identity/permission expansion remains consent-gated.
+       // subset and a narrower validity interval are refinements of the
+       // accepted project agreement, not a new grant.
       ? diff.changed.filter((field) => ![
         "purpose", "workPackageReference", "selectedFields", "permissions", "prohibitions",
-        // Schedule-child windows are refinements; outsideValidity above still
-        // rejects a window escaping an explicit parent validity interval.
-        ...(candidateType === "SCHEDULE_CHANGE" ? ["validFrom", "validUntil"] : []),
+        // A child may narrow its capability window. Escaping the parent
+        // interval is rejected above for every child type.
+        "validFrom", "validUntil",
       ].includes(field))
       : diff.changed;
-    if (outsideValidity || broadenedRetention || removedProhibitions.length > 0 || meaningfulChanges.length > 0) {
+    if (removedProhibitions.length > 0 || meaningfulChanges.length > 0) {
       deltaClass = "REQUIRES_CONSENT";
     } else {
       deltaClass = "WITHIN_BASELINE";
@@ -197,15 +236,7 @@ export function resolvePolicyDelta(
   return {
     deltaClass,
     diff,
-      effectivePolicy: {
-        ...(base ?? {}),
-        ...candidate,
-        policyType: candidateType,
-        prohibitions: unique([...baseProhibitions, ...candidateProhibitions]),
-        validFrom: candidate.validFrom ?? base?.validFrom ?? null,
-        validUntil: candidate.validUntil ?? base?.validUntil ?? null,
-        retentionUntil: candidate.retentionUntil ?? base?.retentionUntil ?? null,
-      },
+    effectivePolicy: inheritedPolicy(base, candidate, candidateType),
   };
 }
 
@@ -220,8 +251,23 @@ export function createConstructXPolicy(input: {
   effectivePolicy?: Record<string, unknown>;
 }): ConstructXPolicy {
   const policyVersion = input.policyVersion ?? 1;
-  return {
+  // policySnapshot is the Dataspace wire representation.  It must remain
+  // self-contained, rather than requiring receivers to recover restrictions
+  // by following parentPolicyId in a different Dataspace.
+  const effectivePolicy = input.effectivePolicy ?? { ...input.baseSnapshot };
+  const inheritedSnapshot = {
     ...input.baseSnapshot,
+    ...Object.fromEntries(
+      [
+        "permissions", "childPermissions", "childPolicyTypes", "allowedPurposes", "allowedFieldScope",
+        "prohibitions", "duties", "constraints", "validFrom", "validUntil", "retentionUntil",
+      ]
+        .filter((key) => key in effectivePolicy)
+        .map((key) => [key, effectivePolicy[key]]),
+    ),
+  };
+  return {
+    ...inheritedSnapshot,
     policyType: input.policyType,
     policyVersion,
     parentPolicyId: input.parentPolicyId ?? null,
@@ -229,6 +275,6 @@ export function createConstructXPolicy(input: {
     lifecycleStatus: input.lifecycleStatus ?? "PUBLISHED",
     deltaClass: input.deltaClass ?? null,
     diff: input.diff ?? null,
-    effectivePolicy: input.effectivePolicy ?? { ...input.baseSnapshot },
+    effectivePolicy,
   };
 }

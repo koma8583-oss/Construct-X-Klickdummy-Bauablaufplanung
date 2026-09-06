@@ -42,6 +42,11 @@ export type Seed = Scenario & {
   resourceTypeIds: string[];
   resourceIds: string[];
   companyNames: string[];
+  assignments: Array<{
+    requestId: string;
+    anOrgId: string;
+    serviceId: string;
+  }>;
   boundaryRequestIds: {
     an3Expiring: string;
     an4ChildReject: string;
@@ -172,6 +177,11 @@ export async function seedCampusWest(): Promise<Seed> {
     ["AN3_EXPIRING", 1, 2, "WITHIN_BASELINE"], ["AN4_CHILD_REJECT", 0, 3, "REQUIRES_CONSENT"],
   ];
   const requestIds = Object.fromEntries(requestKeys.map(([key]) => [key, id(namespace, `request-${key}`)])) as Record<string, string>;
+  const assignments = requestKeys.map(([key, serviceIndex, anIndex]) => ({
+    requestId: requestIds[key],
+    anOrgId: anOrgIds[anIndex],
+    serviceId: services[serviceIndex].id,
+  }));
   const policyIds: string[] = [...parentIds];
   for (const [key, serviceIndex, anIndex, deltaClass] of requestKeys) {
     const requestId = requestIds[key];
@@ -193,10 +203,17 @@ export async function seedCampusWest(): Promise<Seed> {
       schemaVersion: "1.0",
       projectReference: projectId,
       projectLocation: "Campus-West",
+      taktReference: services[serviceIndex].id,
+      taktVersion: 1,
       kurzbezeichnung: services[serviceIndex].kurzbezeichnung,
       workPackage: services[serviceIndex].leistungsBezeichnung,
       plannedTimeWindow: { start: "2027-05-10", end: "2027-05-14" },
-      resourceRequirements: [{ resourceType: "CREW", quantity: 1, utilizationPercent: 100 }],
+      resourceRequirements: [{
+        resourceType: "CREW",
+        // The public contract requires this field. An empty note deliberately
+        // adds no qualification constraint to this type-only requirement.
+        notes: "",
+      }],
     };
     await agDb.insert(leistungsanfrageSnapshotsTable).values({ id: id(namespace, `snapshot-${key}`), leistungsanfrageId: requestId, schemaVersion: "1.0", snapshotPayload: payload });
     await anDb.insert(anLeistungsanfragenTable).values({
@@ -206,7 +223,8 @@ export async function seedCampusWest(): Promise<Seed> {
       plannedStart: "2027-05-10", plannedEnd: "2027-05-14", policyDeltaClass: deltaClass,
       policyConsentStatus: deltaClass === "WITHIN_BASELINE" ? "NOT_REQUIRED" : "PENDING",
       policyDiff: deltaClass === "REQUIRES_CONSENT" ? { summary: ["Terminfenster wurde konkretisiert"], changed: ["Zeitraum"] } : null,
-      policySnapshot: childPolicy.policySnapshot, effectivePolicy: childPolicy.effectivePolicy,
+      policySnapshot: { ...childPolicy.policySnapshot, policyId: childId },
+      effectivePolicy: childPolicy.effectivePolicy,
       payloadSnapshot: payload, status: "UNDER_REVIEW",
     });
   }
@@ -233,11 +251,12 @@ export async function seedCampusWest(): Promise<Seed> {
   const an4ChildReject = requestIds.AN4_CHILD_REJECT;
   return {
     runId: namespace, ids: [namespace], projectId, agOrgId, anOrgIds, userIds, policyIds,
-    serviceIds: services.map(({ id: serviceId }) => serviceId), dependencyIds, resourceTypeIds, resourceIds, companyNames,
+    serviceIds: services.map(({ id: serviceId }) => serviceId), dependencyIds, resourceTypeIds, resourceIds, companyNames, assignments,
     boundaryRequestIds: { an3Expiring, an4ChildReject },
     ag: { email: accounts[0].email, password }, an: accounts.slice(1).map(({ email }) => ({ email, password })),
     requests: { WITHIN_BASELINE: requestIds.WITHIN_BASELINE, REQUIRES_CONSENT: requestIds.REQUIRES_CONSENT, NOT_PERMITTED: requestIds.NOT_PERMITTED },
-    bilateralRequestId: requestIds.BILATERAL, multiRequestIds: [requestIds.MULTI_1, requestIds.MULTI_2],
+    bilateralRequestId: requestIds.BILATERAL, bilateralProposalId: id(namespace, "proposal-an"),
+    multiRequestIds: [requestIds.MULTI_1, requestIds.MULTI_2],
   };
 }
 

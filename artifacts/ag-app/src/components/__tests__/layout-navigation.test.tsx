@@ -41,4 +41,10 @@ describe("AG navigation", () => {
     expect(screen.getByRole("link", { name: "Datenraum" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Projekte" })).toBeInTheDocument();
   });
+
+  it("uses the canonical German terminology in visible navigation", () => {
+    const { container } = render(<Layout><main>Projektinhalt</main></Layout>);
+
+    expect(container.textContent).not.toMatch(/\b(?:TaktKoord|Taktfenster|Taktvorschlag|Takte?|takte?)\b/i);
+  });
 });

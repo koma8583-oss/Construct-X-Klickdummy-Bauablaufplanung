@@ -37,6 +37,7 @@ import {
   applyIncomingScheduleChangeResponseOnAg,
 } from "../services/service-change-proposal-service";
 import { getAnLeistungsanfrageDetail } from "../services/an-leistungsanfrage-service";
+import { createAnServiceResponse } from "../services/nu-response-service";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const GU_ORG = "t212-gu-org";
@@ -48,6 +49,7 @@ const OTHER_USER = "t212-other-user";
 const PROJECT = "t212-project";
 const LEISTUNG = "t212-leistung";
 const ROUNDTRIP_REQUEST = "t212-request-roundtrip";
+const CAMPUS_COUNTER_REQUEST = "t212-request-campus-west-counter";
 const REQUEST_IDS = [
   "t212-request-initial",
   "t212-request-counter",
@@ -60,6 +62,7 @@ const REQUEST_IDS = [
   "t212-request-an-local",
   "t212-request-an-init",
   "t212-request-policy-chain",
+  CAMPUS_COUNTER_REQUEST,
 ];
 
 const publishedSnapshot = {
@@ -211,15 +214,20 @@ beforeAll(async () => {
   await insertRequest("t212-request-an-local", "AN-LOCAL");
   await insertRequest("t212-request-an-init", "AN-INIT");
   await insertRequest("t212-request-policy-chain", "POLICY-CHAIN");
+  await insertRequest(CAMPUS_COUNTER_REQUEST, "CAMPUS-WEST-COUNTER");
   await db.insert(coordinationPoliciesTable).values([
     {
       id: POLICY_AGREEMENT, policyKey: "t212:agreement", version: 1, kind: "PROJECT_AGREEMENT",
       projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG, lifecycleStatus: "ACCEPTED",
       policySnapshot: {}, effectivePolicy: {
         policyType: "PROJECT_AGREEMENT", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
+        validFrom: "2020-01-01T00:00:00.000Z", validUntil: "2099-12-31T23:59:59.000Z",
         childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE"],
         childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
-        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: [],
+        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: ["COMMERCIAL_REUSE"],
+        retentionUntil: "2099-12-31T23:59:59.000Z",
+        duties: [{ action: "DELETE", target: "after-retention" }],
+        constraints: [{ leftOperand: "purpose", operator: "eq", rightOperand: "scheduleCoordination" }],
       },
     },
     {
@@ -227,19 +235,39 @@ beforeAll(async () => {
       projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG, parentPolicyId: POLICY_AGREEMENT,
       lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
         policyType: "PERFORMANCE_REQUEST", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
+        validFrom: "2020-01-01T00:00:00.000Z", validUntil: "2099-12-31T23:59:59.000Z",
         childPolicyTypes: ["SCHEDULE_CHANGE"], childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
-        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: [],
+        permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: ["COMMERCIAL_REUSE"],
+        retentionUntil: "2099-12-31T23:59:59.000Z",
+        duties: [{ action: "DELETE", target: "after-retention" }],
+        constraints: [{ leftOperand: "purpose", operator: "eq", rightOperand: "scheduleCoordination" }],
       },
     },
   ]);
   await db.update(leistungsanfragenTable).set({ performancePolicyId: POLICY_PERFORMANCE })
     .where(inArray(leistungsanfragenTable.id, [
       "t212-request-policy-chain",
+      CAMPUS_COUNTER_REQUEST,
     ]));
   await db.insert(leistungsanfrageSnapshotsTable).values({
     leistungsanfrageId: REQUEST_IDS[6],
     schemaVersion: publishedSnapshot.schemaVersion,
     snapshotPayload: publishedSnapshot as Record<string, unknown>,
+  });
+  await db.insert(leistungsanfrageSnapshotsTable).values({
+    leistungsanfrageId: CAMPUS_COUNTER_REQUEST,
+    schemaVersion: "1.0",
+    snapshotPayload: {
+      schemaVersion: "1.0",
+      projectReference: PROJECT,
+      projectLocation: "Campus-West",
+      taktReference: LEISTUNG,
+      taktVersion: 1,
+      kurzbezeichnung: "Campus-West",
+      workPackage: "Campus-West Gegenvorschlag",
+      plannedTimeWindow: { start: "2027-05-10", end: "2027-05-14" },
+      resourceRequirements: [{ resourceType: "CREW", notes: "" }],
+    },
   });
   const [localProjection] = await anDb.insert(anLeistungsanfragenTable).values({
     id: "t212-an-local-projection",
@@ -254,6 +282,14 @@ beforeAll(async () => {
     leistungReference: LEISTUNG,
     plannedStart: "2026-09-01",
     plannedEnd: "2026-09-05",
+    policyDeltaClass: "WITHIN_BASELINE",
+    policyConsentStatus: "NOT_REQUIRED",
+    effectivePolicy: {
+      parentMembershipStatus: "ACTIVE",
+      parentAgreementStatus: "ACCEPTED",
+      validFrom: "2020-01-01T00:00:00.000Z",
+      validUntil: "2099-12-31T23:59:59.000Z",
+    },
     payloadSnapshot: {
       requestKind: "INITIAL",
       publicSnapshot: publishedSnapshot,
@@ -287,6 +323,12 @@ beforeAll(async () => {
     payloadSnapshot: {
       requestKind: "INITIAL",
       publicSnapshot: publishedSnapshot,
+    },
+    effectivePolicy: {
+      parentMembershipStatus: "ACTIVE",
+      parentAgreementStatus: "ACCEPTED",
+      validFrom: "2020-01-01T00:00:00.000Z",
+      validUntil: "2099-12-31T23:59:59.000Z",
     },
     status: "RESPONDED",
   });
@@ -452,6 +494,68 @@ describe("bilateral change proposals", () => {
     expect(detail?.takt?.id).not.toBe(LEISTUNG);
   });
 
+  it("serializes valid Campus-West counterproposal policy dates through createChangeProposal", async () => {
+    let proposalId: string | undefined;
+    let schedulePolicyId: string | undefined;
+    try {
+      const proposal = await createAgChangeProposal({
+        requestId: CAMPUS_COUNTER_REQUEST,
+        orgId: GU_ORG,
+        userId: GU_USER,
+        start: new Date("2027-05-13T00:00:00.000Z"),
+        end: new Date("2027-05-17T00:00:00.000Z"),
+      });
+      proposalId = proposal.id;
+      expect(proposal.start.toISOString()).toBe("2027-05-13T00:00:00.000Z");
+      expect(proposal.end.toISOString()).toBe("2027-05-17T00:00:00.000Z");
+      const [schedulePolicy] = await db.select().from(coordinationPoliciesTable).where(and(
+        eq(coordinationPoliciesTable.kind, "SCHEDULE_CHANGE"),
+        eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+        sql`${coordinationPoliciesTable.policySnapshot}->>'changeProposalId' = ${proposal.id}`,
+      ));
+      schedulePolicyId = schedulePolicy?.id;
+      expect(schedulePolicy?.policySnapshot).toMatchObject({
+        parentPolicyId: POLICY_PERFORMANCE,
+        inheritFrom: POLICY_PERFORMANCE,
+        validFrom: "2020-01-01T00:00:00.000Z",
+        validUntil: "2099-12-31T23:59:59.000Z",
+        retentionUntil: "2099-12-31T23:59:59.000Z",
+        prohibitions: expect.arrayContaining(["COMMERCIAL_REUSE"]),
+        duties: [{ action: "DELETE", target: "after-retention" }],
+        constraints: [{ leftOperand: "purpose", operator: "eq", rightOperand: "scheduleCoordination" }],
+      });
+    } finally {
+      const projections = await anDb.select({ id: anLeistungsanfragenTable.id })
+        .from(anLeistungsanfragenTable)
+        .where(or(
+          eq(anLeistungsanfragenTable.externalLeistungsanfrageId, proposalId ?? CAMPUS_COUNTER_REQUEST),
+          sql`${anLeistungsanfragenTable.payloadSnapshot}->>'sourceRequestId' = ${CAMPUS_COUNTER_REQUEST}`,
+        ));
+      if (projections.length) {
+        await anDb.delete(anAvailabilityChecksTable)
+          .where(inArray(anAvailabilityChecksTable.anLeistungsanfrageId, projections.map(({ id }) => id)));
+      }
+      await anDb.delete(anLeistungsanfragenTable).where(or(
+        eq(anLeistungsanfragenTable.externalLeistungsanfrageId, proposalId ?? CAMPUS_COUNTER_REQUEST),
+        sql`${anLeistungsanfragenTable.payloadSnapshot}->>'sourceRequestId' = ${CAMPUS_COUNTER_REQUEST}`,
+      ));
+      if (proposalId) {
+        await db.delete(serviceChangeProposalsTable)
+          .where(eq(serviceChangeProposalsTable.id, proposalId));
+      }
+      await db.delete(serviceChangeProposalsTable)
+        .where(eq(serviceChangeProposalsTable.leistungsanfrageId, CAMPUS_COUNTER_REQUEST));
+      if (schedulePolicyId) {
+        await db.delete(coordinationPoliciesTable)
+          .where(eq(coordinationPoliciesTable.id, schedulePolicyId));
+      }
+      await db.delete(coordinationPoliciesTable).where(and(
+        eq(coordinationPoliciesTable.parentPolicyId, POLICY_PERFORMANCE),
+        eq(coordinationPoliciesTable.policyKey, `${CAMPUS_COUNTER_REQUEST}:schedule-change`),
+      ));
+    }
+  });
+
   it("requires the opposite party for accept/reject and does not permit unrelated organizations", async () => {
     const requestId = REQUEST_IDS[2];
     const proposal = await createAgChangeProposal({
@@ -551,17 +655,78 @@ describe("bilateral change proposals", () => {
     const accepted = await request(app)
       .post(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposal.id}/accept`)
       .set("Authorization", `Bearer ${nuToken}`);
-    expect([200, 201]).toContain(accepted.status);
+    expect([200, 201], JSON.stringify(accepted.body)).toContain(accepted.status);
     expect(accepted.body.decision).toBe("ACCEPTED");
     const retried = await request(app)
       .post(`/api/an/leistungsanfragen/${requestId}/change-proposals/${proposal.id}/accept`)
       .set("Authorization", `Bearer ${nuToken}`);
-    expect(retried.status).toBe(200);
+    expect(retried.status, JSON.stringify(retried.body)).toBe(200);
     const afterAcceptance = await request(app)
       .get(`/api/an/leistungsanfragen/${requestId}/coordination`)
       .set("Authorization", `Bearer ${nuToken}`);
     expect(afterAcceptance.body.openProposal).toBeNull();
     expect(afterAcceptance.body.currentAgreement.start).toContain("2026-09-03");
+  });
+
+  it("returns the stored AN response for an identical projection/version payload", async () => {
+    const projectionId = "t212-an-root-response-idempotency";
+    const externalRequestId = "t212-root-response-idempotency";
+    await anDb.delete(anLeistungsantwortenTable)
+      .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, projectionId));
+    await anDb.delete(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.id, projectionId));
+    try {
+      await anDb.insert(anLeistungsanfragenTable).values({
+        id: projectionId,
+        externalLeistungsanfrageId: externalRequestId,
+        externalRequestVersion: 1,
+        sourceMessageId: "t212-root-response-idempotency-message",
+        payloadHash: "t212-root-response-idempotency-request-hash",
+        correlationId: externalRequestId,
+        senderAgOrgId: GU_ORG,
+        receiverAnOrgId: NU_ORG,
+        projectReference: PROJECT,
+        leistungReference: LEISTUNG,
+        plannedStart: "2026-09-03",
+        plannedEnd: "2026-09-07",
+        effectivePolicy: {
+          parentMembershipStatus: "ACTIVE",
+          parentAgreementStatus: "ACCEPTED",
+          validFrom: "2020-01-01T00:00:00.000Z",
+          validUntil: "2099-12-31T23:59:59.000Z",
+        },
+        payloadSnapshot: {
+          requestKind: "INITIAL",
+          publicSnapshot: publishedSnapshot,
+        },
+        status: "UNDER_REVIEW",
+      });
+      const payload = {
+        anLeistungsanfrageId: projectionId,
+        anOrgId: NU_ORG,
+        userId: NU_USER,
+        decision: "ACCEPTED" as const,
+        acceptedTimeWindow: { start: "2026-09-03T00:00:00.000Z", end: "2026-09-07T00:00:00.000Z" },
+        comment: "Identische Rückmeldung",
+      };
+      const first = await createAnServiceResponse(payload);
+      const second = await createAnServiceResponse(payload);
+      expect(first.idempotent).toBe(false);
+      expect(second.idempotent).toBe(true);
+      expect(second.response.id).toBe(first.response.id);
+      const [stored] = await anDb.select().from(anLeistungsantwortenTable).where(and(
+        eq(anLeistungsantwortenTable.sourceRequestId, externalRequestId),
+        eq(anLeistungsantwortenTable.requestVersion, 1),
+      ));
+      expect(stored).toMatchObject({
+        anLeistungsanfrageId: projectionId,
+        requestVersion: 1,
+        payloadHash: first.payloadHash,
+      });
+    } finally {
+      await anDb.delete(anLeistungsantwortenTable)
+        .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, projectionId));
+      await anDb.delete(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.id, projectionId));
+    }
   });
 
   it("delivers and confirms an AN-initiated proposal exactly once", async () => {

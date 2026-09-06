@@ -242,6 +242,13 @@ async function respond(req: any, res: any) {
       res.status(409).json({ error: error.message });
       return;
     }
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode) {
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : "Coordination action failed",
+      });
+      return;
+    }
     throw error;
   }
 }
@@ -372,6 +379,13 @@ async function resolveProposal(req: any, res: any) {
     }
     if (error instanceof ResponseStatusError) {
       res.status(409).json({ error: error.message });
+      return;
+    }
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode) {
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : "Coordination action failed",
+      });
       return;
     }
     throw error;

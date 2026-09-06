@@ -49,6 +49,15 @@ const policySnapshotSchema = z.object({
   policyVersion: z.number().int().positive().optional(),
   parentPolicyId: nonEmpty(200).nullable().optional(),
   inheritFrom: nonEmpty(200).nullable().optional(),
+  childPermissions: z.array(nonEmpty(500)).max(100).optional(),
+  childPolicyTypes: z.array(nonEmpty(200)).max(100).optional(),
+  allowedPurposes: z.array(nonEmpty(2000)).max(100).optional(),
+  allowedFieldScope: z.array(nonEmpty(500)).max(100).optional(),
+  // Restrictive ODRL terms are carried in the child snapshot as well as its
+  // effectivePolicy so a receiver never needs cross-Dataspace parent lookup.
+  duties: z.array(z.unknown()).max(100).optional(),
+  constraints: z.array(z.unknown()).max(100).optional(),
+  retentionUntil: externalDate.nullable().optional(),
   lifecycleStatus: z.enum([
     "DRAFT", "PUBLISHED", "CONSENT_REQUIRED", "ACCEPTED",
     "REJECTED", "SUPERSEDED", "REVOKED",
@@ -140,6 +149,15 @@ export const externalProjectInvitationSchema = z.object({
   validUntil: externalDate.optional(),
   policy: invitationPolicySchema,
   policySnapshot: policySnapshotSchema.optional(),
+  // A compatible status projection for an already-delivered invitation.  It is
+  // intentionally carried by the invitation envelope so both local REST and
+  // external connector adapters use the same message path.
+  membershipStatus: z.enum(["INVITED", "ACTIVE", "REJECTED", "REVOKED"]).optional(),
+  projectAgreementStatus: z.enum([
+    "DRAFT", "PUBLISHED", "CONSENT_REQUIRED", "ACCEPTED",
+    "REJECTED", "SUPERSEDED", "REVOKED",
+  ]).optional(),
+  projectAgreementEffectivePolicy: z.record(z.string(), z.unknown()).optional(),
   dataspacePreparation: z.object({
     mode: z.literal("LOCAL_PREPARED"),
     participantId: nonEmpty(200),
@@ -456,6 +474,9 @@ export type ExternalProjectInvitation = {
     prohibitions?: string[];
   };
   policySnapshot?: ExternalPolicySnapshot;
+  membershipStatus?: "INVITED" | "ACTIVE" | "REJECTED" | "REVOKED";
+  projectAgreementStatus?: "DRAFT" | "PUBLISHED" | "CONSENT_REQUIRED" | "ACCEPTED" | "REJECTED" | "SUPERSEDED" | "REVOKED";
+  projectAgreementEffectivePolicy?: Record<string, unknown>;
   dataspacePreparation?: {
     mode: "LOCAL_PREPARED";
     participantId: string;

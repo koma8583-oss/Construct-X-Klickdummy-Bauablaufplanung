@@ -1,9 +1,20 @@
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render as baseRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataPublicationWizard } from "@/components/DataPublicationWizard";
 import type { Takt } from "@workspace/api-client-react";
+
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return baseRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const mocks = vi.hoisted(() => ({
   createBatch: vi.fn(),
@@ -20,6 +31,8 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 vi.mock("@workspace/api-client-react", () => ({
+  getListTaktRequestsQueryKey: () => ["/api/takt-requests"],
+  getListTakteQueryKey: (projectId: string) => ["/api/projects", projectId, "takte"],
   useCreateTaktRequestBatchWithSnapshot: () => ({
     mutateAsync: mocks.createBatch,
     isPending: false,
@@ -127,12 +140,19 @@ type Contractors = React.ComponentProps<typeof DataPublicationWizard>["contracto
 
 const policy = (id: string, allowedFieldScope = ["kurzbezeichnung", "workPackage", "trade"]) => ({
   id,
+  version: 7,
   lifecycleStatus: "ACCEPTED",
   effectivePolicy: {
     projectReference: "campus-west",
     allowedPurposes: ["RAHMENTERMINE"],
     allowedFieldScope,
     validFrom: "2026-09-01",
+    validUntil: "2026-12-31",
+    retentionUntil: "2027-03-31",
+    permissions: ["Leistungsdaten für die Terminabstimmung verwenden"],
+    duties: ["Zugriffe dokumentieren"],
+    prohibitions: ["Keine Weitergabe an Dritte"],
+    constraints: ["Nur Baufeld West"],
   },
 });
 
@@ -201,6 +221,7 @@ describe("DataPublicationWizard", () => {
           projectAgreementStatus: "ACCEPTED",
           parentAgreement: {
             id: "agreement-1",
+            version: 7,
             lifecycleStatus: "ACCEPTED",
             effectivePolicy: {
               projectReference: "project-1",
@@ -240,8 +261,38 @@ describe("DataPublicationWizard", () => {
     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       purpose: "RAHMENTERMINE",
       selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
+      parentPolicyId: "agreement-1",
+      parentPolicyVersion: 7,
     }) }));
     expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
+  });
+
+  it("derives every approval term from the selected concrete parent policy", async () => {
+    const user = userEvent.setup();
+    render(<DataPublicationWizard open onOpenChange={vi.fn()} projectId="campus-west" projectName="Campus West" contractors={[activeContractor()]} takte={campusTakte} />);
+
+    await user.click(screen.getByRole("button", { name: /Baupartner/ }));
+    const agreement = screen.getByTestId("parent-agreement");
+    expect(agreement).toHaveTextContent("Leistungsdaten für die Terminabstimmung verwenden");
+    expect(agreement).toHaveTextContent("Zugriffe dokumentieren");
+    expect(agreement).toHaveTextContent("Keine Weitergabe an Dritte");
+    expect(agreement).toHaveTextContent("Nur Baufeld West");
+    expect(agreement).toHaveTextContent("2026-09-01");
+    expect(agreement).toHaveTextContent("2026-12-31");
+    expect(agreement).toHaveTextContent("2027-03-31");
+    expect(agreement).toHaveTextContent("v7");
+  });
+
+  it("fails closed when the selected parent policy is not concrete", async () => {
+    const user = userEvent.setup();
+    render(<DataPublicationWizard open onOpenChange={vi.fn()} projectId="campus-west" projectName="Campus West" contractors={[
+      activeContractor({ parentAgreement: { id: "agreement-without-version", lifecycleStatus: "ACCEPTED", effectivePolicy: { permissions: ["Nur lesen"] } } }),
+    ]} takte={campusTakte} />);
+
+    expect(screen.getByText("Baupartner")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Baupartner/ }));
+    expect(screen.getByTestId("parent-policy-missing")).toHaveTextContent("vollständige, versionierte Projektvereinbarung");
+    expect(screen.getByRole("button", { name: /Weiter/ })).toBeDisabled();
   });
 
   it("gates Campus-West recipients to ACTIVE members with an accepted, concrete parent policy", async () => {

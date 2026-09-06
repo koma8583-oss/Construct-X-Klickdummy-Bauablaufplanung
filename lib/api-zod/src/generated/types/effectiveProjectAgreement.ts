@@ -13,6 +13,8 @@ import type { EffectiveProjectAgreementLifecycleStatus } from './effectiveProjec
  */
 export interface EffectiveProjectAgreement {
   id: string;
+  /** @minimum 1 */
+  version: number;
   lifecycleStatus: EffectiveProjectAgreementLifecycleStatus;
   effectivePolicy: EffectiveProjectAgreementEffectivePolicy;
 }

@@ -60,6 +60,7 @@ import {
   NuNotContractorError,
   InvalidTaktForSnapshotError,
   InvalidLeistungsfreigabeFieldsError,
+  PolicyNotPermittedError,
   LEISTUNGSFREIGABE_FIELD_WHITELISTS,
 } from "../lib/takt-request-snapshot-service";
 import { createPolicySnapshot } from "../services/policy-snapshot-service";
@@ -461,6 +462,8 @@ router.post("/leistungsanfragen/policy-preview", requireJwt, requireRole("AG_ADM
     nuOrgId: z.string().min(1),
     purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
     selectedFields: z.array(z.string().min(1)).min(1),
+    parentPolicyId: z.string().min(1),
+    parentPolicyVersion: z.number().int().positive(),
   }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -485,6 +488,9 @@ router.post("/leistungsanfragen/policy-preview", requireJwt, requireRole("AG_ADM
       const [agreement] = membership.projectAgreementPolicyId
         ? await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId)).limit(1)
         : [];
+      if (!agreement || agreement.id !== parsed.data.parentPolicyId || agreement.version !== parsed.data.parentPolicyVersion) {
+        return { taktId, deltaClass: "NOT_PERMITTED" as const, error: "Die ausgewählte Projektvereinbarung wurde geändert. Bitte prüfen Sie die Freigabe erneut.", inheritedEffectivePolicy: null, diff: { changed: [], summary: ["Die ausgewählte Projektvereinbarung ist nicht mehr gültig."] } };
+      }
       const base = createPolicySnapshot({
         templateId: purpose === "RAHMENTERMINE" ? "SCHEDULE_COORDINATION" : "PERFORMANCE_COORDINATION",
         providerContext: { organizationId: guOrgId, userId: req.user!.userId!, organizationType: "AG" },
@@ -591,6 +597,10 @@ router.post(
         res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
         return;
       }
+      if (err instanceof PolicyNotPermittedError) {
+        res.status(409).json({ error: "POLICY_NOT_PERMITTED", message: err.message });
+        return;
+      }
       throw err;
     }
 
@@ -672,6 +682,8 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     message:             z.string().max(2000).optional(),
     purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
     selectedFields: z.array(z.string().min(1)).optional(),
+    parentPolicyId: z.string().min(1).optional(),
+    parentPolicyVersion: z.number().int().positive().optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -714,6 +726,8 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
       message,
       purpose: parsed.data.purpose,
       selectedFields: parsed.data.selectedFields,
+      parentPolicyId: parsed.data.parentPolicyId,
+      parentPolicyVersion: parsed.data.parentPolicyVersion,
     });
   } catch (err) {
     if (err instanceof ProjectMembershipError) {
@@ -738,6 +752,10 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     }
     if (err instanceof InvalidLeistungsfreigabeFieldsError) {
       res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+      return;
+    }
+    if (err instanceof PolicyNotPermittedError) {
+      res.status(409).json({ error: "POLICY_NOT_PERMITTED", message: err.message });
       return;
     }
     throw err;
@@ -869,6 +887,10 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
     }
     if (err instanceof InvalidLeistungsfreigabeFieldsError) {
       res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+      return;
+    }
+    if (err instanceof PolicyNotPermittedError) {
+      res.status(409).json({ error: "POLICY_NOT_PERMITTED", message: err.message });
       return;
     }
     throw err;

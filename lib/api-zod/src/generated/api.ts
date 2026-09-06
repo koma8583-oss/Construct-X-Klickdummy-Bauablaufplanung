@@ -588,6 +588,9 @@ export const ListProjectMembershipsParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
+
+
+
 export const ListProjectMembershipsResponseItem = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -597,6 +600,7 @@ export const ListProjectMembershipsResponseItem = zod.object({
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "projectAgreement": zod.object({
   "id": zod.string(),
+  "version": zod.number().min(1),
   "lifecycleStatus": zod.enum(['ACCEPTED']),
   "effectivePolicy": zod.record(zod.string(), zod.unknown())
 }).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
@@ -709,6 +713,9 @@ export const InviteProjectParticipantBody = zod.object({
   "validUntil": zod.coerce.date().optional()
 })
 
+
+
+
 export const InviteProjectParticipantResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -718,6 +725,7 @@ export const InviteProjectParticipantResponse = zod.object({
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "projectAgreement": zod.object({
   "id": zod.string(),
+  "version": zod.number().min(1),
   "lifecycleStatus": zod.enum(['ACCEPTED']),
   "effectivePolicy": zod.record(zod.string(), zod.unknown())
 }).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
@@ -798,6 +806,9 @@ export const CreateProjectInvitationPackageBody = zod.object({
   "idempotencyKey": zod.string().max(createProjectInvitationPackageBodyIdempotencyKeyMax).optional()
 })
 
+
+
+
 export const CreateProjectInvitationPackageResponse = zod.object({
   "projectInvitationId": zod.string(),
   "status": zod.enum(['PREPARED']),
@@ -810,6 +821,7 @@ export const CreateProjectInvitationPackageResponse = zod.object({
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "projectAgreement": zod.object({
   "id": zod.string(),
+  "version": zod.number().min(1),
   "lifecycleStatus": zod.enum(['ACCEPTED']),
   "effectivePolicy": zod.record(zod.string(), zod.unknown())
 }).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
@@ -891,6 +903,9 @@ export const InviteProjectParticipantsWithDataBody = zod.object({
   "validFrom": zod.coerce.date().optional()
 })
 
+
+
+
 export const InviteProjectParticipantsWithDataResponse = zod.object({
   "publication": zod.object({
   "id": zod.string(),
@@ -910,6 +925,7 @@ export const InviteProjectParticipantsWithDataResponse = zod.object({
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "projectAgreement": zod.object({
   "id": zod.string(),
+  "version": zod.number().min(1),
   "lifecycleStatus": zod.enum(['ACCEPTED']),
   "effectivePolicy": zod.record(zod.string(), zod.unknown())
 }).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
@@ -1288,6 +1304,9 @@ export const RevokeProjectMembershipParams = zod.object({
   "id": zod.coerce.string()
 })
 
+
+
+
 export const RevokeProjectMembershipResponse = zod.object({
   "id": zod.string(),
   "projectId": zod.string(),
@@ -1297,6 +1316,7 @@ export const RevokeProjectMembershipResponse = zod.object({
   "projectAgreementPolicyId": zod.string().nullish().describe('Accepted parent project-agreement policy for child Leistungsfreigaben.'),
   "projectAgreement": zod.object({
   "id": zod.string(),
+  "version": zod.number().min(1),
   "lifecycleStatus": zod.enum(['ACCEPTED']),
   "effectivePolicy": zod.record(zod.string(), zod.unknown())
 }).describe('Read-only effective policy inherited by a Leistungsfreigabe from an accepted project agreement.').nullish().describe('Effective accepted parent policy. Null while the membership or policy is pending.'),
@@ -3606,6 +3626,8 @@ export const createTaktRequestBatchWithSnapshotBodyMessageMax = 2000;
 
 
 
+
+
 export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
   "taktId": zod.string().min(1),
   "nuOrgIds": zod.array(zod.string().min(1)).min(1).max(createTaktRequestBatchWithSnapshotBodyNuOrgIdsMax),
@@ -3613,7 +3635,9 @@ export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
   "subject": zod.string().max(createTaktRequestBatchWithSnapshotBodySubjectMax).optional(),
   "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional(),
   "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']).optional().describe('Business purpose of the Leistungsfreigabe.'),
-  "selectedFields": zod.array(zod.string().min(1)).optional().describe('Explicit child-owned fields; the server enforces the purpose whitelist.')
+  "selectedFields": zod.array(zod.string().min(1)).optional().describe('Explicit child-owned fields; the server enforces the purpose whitelist.'),
+  "parentPolicyId": zod.string().min(1).optional().describe('Exact accepted parent policy selected from the effective-policy response.'),
+  "parentPolicyVersion": zod.number().min(1).optional().describe('Exact version of the selected parent policy.')
 }).describe('Body for atomically creating one request per selected NU.')
 
 
@@ -3645,11 +3669,15 @@ export const CreateTaktRequestBatchWithSnapshotResponse = zod.object({
 
 
 
+
+
 export const PreviewLeistungsanfragePolicyBody = zod.object({
   "taktIds": zod.array(zod.string()).min(1),
   "nuOrgId": zod.string(),
   "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']),
-  "selectedFields": zod.array(zod.string()).min(1)
+  "selectedFields": zod.array(zod.string()).min(1),
+  "parentPolicyId": zod.string().min(1).describe('Exact accepted parent policy selected from the effective-policy response.'),
+  "parentPolicyVersion": zod.number().min(1).describe('Exact version of the selected parent policy.')
 })
 
 export const PreviewLeistungsanfragePolicyResponse = zod.object({

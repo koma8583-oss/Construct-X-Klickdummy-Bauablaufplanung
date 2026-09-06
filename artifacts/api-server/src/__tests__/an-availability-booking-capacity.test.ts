@@ -88,6 +88,8 @@ async function addBooking(input: {
   quantity?: number;
   utilizationPercent?: number;
   status: "CONFIRMED" | "TENTATIVE" | "CANCELLED";
+  startAt?: string;
+  endAt?: string;
 }) {
   await anDb.insert(resourceBookingsTable).values({
     id: input.id,
@@ -96,15 +98,22 @@ async function addBooking(input: {
     resourceTypeId: RESOURCE_TYPE,
     sourceType: "MANUAL_BLOCK",
     sourceReferenceId: input.id,
-    startAt: new Date(`${WINDOW_START}T00:00:00Z`),
-    endAt: new Date("2027-06-03T00:00:00Z"),
+    startAt: new Date(input.startAt ?? `${WINDOW_START}T00:00:00Z`),
+    endAt: new Date(input.endAt ?? "2027-06-03T00:00:00Z"),
     utilizationPercent: input.utilizationPercent ?? 100,
     quantity: input.quantity,
     status: input.status,
   });
 }
 
-async function addRequirement(requestId: string, requirementId: string, requiredCapacity: number) {
+async function addRequirement(
+  requestId: string,
+  requirementId: string,
+  requiredCapacity: number,
+  periodStart = WINDOW_START,
+  periodEnd = WINDOW_END,
+  utilizationPercent = 100,
+) {
   await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values({
     id: requirementId,
     anLeistungsanfrageId: `${requestId}-projection`,
@@ -113,9 +122,9 @@ async function addRequirement(requestId: string, requirementId: string, required
     localResourceTypeId: RESOURCE_TYPE,
     requiredCapacity: requiredCapacity.toString(),
     capacityUnit: "PERSONS",
-    utilizationPercent: 100,
-    periodStart: WINDOW_START,
-    periodEnd: WINDOW_END,
+    utilizationPercent,
+    periodStart,
+    periodEnd,
   });
 }
 
@@ -196,6 +205,115 @@ afterAll(async () => {
 });
 
 describe("runAnAvailabilityCheck — booking capacity semantics", () => {
+  it("accumulates simultaneous requirements of the same resource type", async () => {
+    const requestId = "t362-simultaneous-requirements";
+    await seedRequest(requestId, 5);
+    await addRequirement(requestId, `${requestId}-second`, 5);
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).not.toBe("FEASIBLE");
+    expect(check.internal.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        conflictType: "CAPACITY_EXCEEDED",
+        requiredCapacity: 5,
+        availableCapacity: 3,
+      }),
+    ]));
+  });
+
+  it("uses the peak segment instead of summing bookings that never overlap", async () => {
+    const requestId = "t362-sequential-bookings";
+    await seedRequest(requestId, 4);
+    await addBooking({
+      id: "t362-morning-booking",
+      resourceId: null,
+      quantity: 4,
+      status: "CONFIRMED",
+      startAt: "2027-06-01T00:00:00Z",
+      endAt: "2027-06-01T12:00:00Z",
+    });
+    await addBooking({
+      id: "t362-afternoon-booking",
+      resourceId: null,
+      quantity: 4,
+      status: "CONFIRMED",
+      startAt: "2027-06-01T12:00:00Z",
+      endAt: "2027-06-02T00:00:00Z",
+    });
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 4 }),
+    ]);
+  });
+
+  it("evaluates mixed concrete and type reservations in their shared peak segment", async () => {
+    const requestId = "t362-mixed-peak";
+    await seedRequest(requestId, 3);
+    await addBooking({
+      id: "t362-mixed-concrete",
+      resourceId: RESOURCE_A,
+      quantity: 4,
+      status: "CONFIRMED",
+      startAt: "2027-06-01T00:00:00Z",
+      endAt: "2027-06-01T12:00:00Z",
+    });
+    await addBooking({
+      id: "t362-mixed-type",
+      resourceId: null,
+      quantity: 2,
+      utilizationPercent: 50,
+      status: "CONFIRMED",
+      startAt: "2027-06-01T06:00:00Z",
+      endAt: "2027-06-01T18:00:00Z",
+    });
+
+    const check = await runCheck(requestId);
+
+    // A is fully occupied and the type reservation consumes one of B's four units.
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 3 }),
+    ]);
+  });
+
+  it("honors requirement utilization while evaluating concurrent demand", async () => {
+    const requestId = "t362-requirement-utilization";
+    await seedRequest(requestId, 4);
+    await addRequirement(requestId, `${requestId}-half`, 8, WINDOW_START, WINDOW_END, 50);
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 4 }),
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 4 }),
+    ]);
+  });
+
+  it("does not let boundary-touching reservations consume a segment", async () => {
+    const requestId = "t362-boundary-touching";
+    await seedRequest(requestId, 8);
+    await addBooking({
+      id: "t362-before-window",
+      resourceId: null,
+      quantity: 8,
+      status: "CONFIRMED",
+      startAt: "2027-05-31T00:00:00Z",
+      endAt: "2027-06-01T00:00:00Z",
+    });
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 8 }),
+    ]);
+  });
+
   it("concrete bookings consume only the assigned resource, not its sibling", async () => {
     const requestId = "t362-concrete-sibling";
     await seedRequest(requestId, 4);
@@ -333,7 +451,7 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
 
   it("emits one warning per overlapping tentative booking even across requirements", async () => {
     const requestId = "t362-multiple-tentative";
-    await seedRequest(requestId, 8);
+    await seedRequest(requestId, 7);
     await addRequirement(requestId, `${requestId}-second-requirement`, 1);
     await addBooking({
       id: "t362-tentative-concrete",

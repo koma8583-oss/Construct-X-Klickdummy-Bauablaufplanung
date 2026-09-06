@@ -13,7 +13,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   agDb as db,
   anDb,
+  hubDb,
   coordinationPoliciesTable,
+  anLeistungsanfragenTable,
+  hubMessagesTable,
   leistungenTable,
   organizationsTable,
   projectMembershipsTable,
@@ -23,6 +26,7 @@ import {
   taktDependenciesTable,
   taktRequestSnapshotsTable,
   taktRequestsTable,
+  messageOutboxTable,
   usersTable,
 } from "@workspace/db";
 import app from "../app";
@@ -30,6 +34,7 @@ import {
   buildTaktRequestSnapshot,
   createTaktRequestWithSnapshot,
   InvalidLeistungsfreigabeFieldsError,
+  PolicyNotPermittedError,
   selectLeistungsfreigabeFields,
 } from "../lib/takt-request-snapshot-service";
 import { resolvePolicyDelta } from "../services/construct-x-policy-service";
@@ -53,6 +58,16 @@ const COMPANY_NAMES = [
   "Elektro West GmbH",
   "TGA Technik GmbH",
   "Maler Süd GmbH",
+] as const;
+const AN_ASSIGNMENTS = [
+  { requestId: `${PREFIX}-request-an1-l101`, an: "AN1", leistungId: "L-101" },
+  { requestId: `${PREFIX}-request-an1-l201`, an: "AN1", leistungId: "L-201" },
+  { requestId: `${PREFIX}-request-an1-l301`, an: "AN1", leistungId: "L-301" },
+  { requestId: `${PREFIX}-request-an1-l401`, an: "AN1", leistungId: "L-401" },
+  { requestId: `${PREFIX}-request-an2-l301`, an: "AN2", leistungId: "L-301" },
+  { requestId: `${PREFIX}-request-an3-l401`, an: "AN3", leistungId: "L-401" },
+  { requestId: `${PREFIX}-request-an3-l201`, an: "AN3", leistungId: "L-201" },
+  { requestId: `${PREFIX}-request-an4-l101`, an: "AN4", leistungId: "L-101" },
 ] as const;
 const requestNumbers: string[] = [];
 
@@ -81,10 +96,16 @@ const baseline = {
   ],
   validFrom: "2020-01-01T00:00:00.000Z",
   validUntil: "2099-12-31T23:59:59.000Z",
+  retentionUntil: "2099-12-31T23:59:59.000Z",
   prohibitions: ["COMMERCIAL_REUSE"],
+  duties: [{ action: "DELETE", target: "after-retention" }],
+  constraints: [{ leftOperand: "purpose", operator: "eq", rightOperand: "LEISTUNGSKOORDINATION" }],
 };
 
 async function cleanup() {
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(inArray(anLeistungsanfragenTable.externalLeistungsanfrageId, AN_ASSIGNMENTS.map(({ requestId }) => requestId)))
+    .catch(() => {});
   const requests = await db.select({ id: taktRequestsTable.id }).from(taktRequestsTable)
     .where(inArray(taktRequestsTable.requestNumber, requestNumbers));
   const requestIds = requests.map(({ id }) => id);
@@ -103,7 +124,7 @@ async function cleanup() {
   await db.delete(organizationsTable).where(inArray(organizationsTable.id, [AG, OTHER_AG, ...ANS.map(anId)])).catch(() => {});
   await anDb.delete(resourcesTable).where(inArray(resourcesTable.anOrgId, ANS.map(anId))).catch(() => {});
   await anDb.delete(resourceTypesTable).where(inArray(resourceTypesTable.anOrgId, ANS.map(anId))).catch(() => {});
-  await anDb.delete(organizationsTable).where(inArray(organizationsTable.id, ANS.map(anId))).catch(() => {});
+  await anDb.delete(organizationsTable).where(inArray(organizationsTable.id, [AG, ...ANS.map(anId)])).catch(() => {});
   requestNumbers.length = 0;
 }
 
@@ -114,8 +135,10 @@ beforeAll(async () => {
     { id: OTHER_AG, name: "Fremdmandant GmbH", type: "AG" },
     ...ANS.map((an, index) => ({ id: anId(an), name: COMPANY_NAMES[index + 1], type: "AN" as const })),
   ]);
-  await anDb.insert(organizationsTable).values(
-    ANS.map((an, index) => ({ id: anId(an), name: COMPANY_NAMES[index + 1], type: "AN" as const })),
+  await anDb.insert(organizationsTable).values([
+    { id: AG, name: COMPANY_NAMES[0], type: "AG" },
+    ...ANS.map((an, index) => ({ id: anId(an), name: COMPANY_NAMES[index + 1], type: "AN" as const })),
+  ]
   ).onConflictDoNothing();
   await db.insert(usersTable).values([
     { id: AG_USER, name: COMPANY_NAMES[0], email: "cw27-ag@test.invalid", passwordHash: "x" },
@@ -185,14 +208,38 @@ beforeAll(async () => {
     { id: `${PREFIX}-membership-an4`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN4"), status: "INVITED", invitationId: `${PREFIX}-invite-an4`, correlationId: `${PREFIX}-correlation-an4`, projectAgreementPolicyId: `${PREFIX}-agreement-an4` },
   ]);
   const resourceTypeIds = ANS.map((an) => `${PREFIX}-resource-type-${an.toLowerCase()}`);
-  await anDb.insert(resourceTypesTable).values([
-    { id: resourceTypeIds[0], anOrgId: anId("AN1"), name: "Stahlbau-Team", category: "CREW", capacityUnit: "PERSONS" },
-    { id: resourceTypeIds[1], anOrgId: anId("AN2"), name: "Elektro-Team", category: "CREW", capacityUnit: "PERSONS" },
-  ]).onConflictDoNothing();
-  await anDb.insert(resourcesTable).values([
-    { id: `${PREFIX}-resource-an1`, anOrgId: anId("AN1"), type: "CREW", name: "Stahlbau Ruhr Montageteam", resourceTypeId: resourceTypeIds[0], capacity: 8, capacityUnit: "PERSONS" },
-    { id: `${PREFIX}-resource-an2`, anOrgId: anId("AN2"), type: "CREW", name: "Elektro West Montageteam", resourceTypeId: resourceTypeIds[1], capacity: 2, capacityUnit: "PERSONS" },
-  ]).onConflictDoNothing();
+  await anDb.insert(resourceTypesTable).values(ANS.map((an, index) => ({
+    id: resourceTypeIds[index], anOrgId: anId(an), name: `${an}-Team`, category: "CREW" as const, capacityUnit: "PERSONS" as const,
+  }))).onConflictDoNothing();
+  await anDb.insert(resourcesTable).values(ANS.map((an, index) => ({
+    id: `${PREFIX}-resource-${an.toLowerCase()}`, anOrgId: anId(an), type: "CREW" as const, name: `${an} Montageteam`,
+    resourceTypeId: resourceTypeIds[index], capacity: index === 0 ? 8 : 2, capacityUnit: "PERSONS" as const,
+  }))).onConflictDoNothing();
+  await anDb.insert(anLeistungsanfragenTable).values(AN_ASSIGNMENTS.map((assignment) => ({
+    id: `${assignment.requestId}-projection`,
+    externalLeistungsanfrageId: assignment.requestId,
+    externalRequestVersion: 1,
+    sourceMessageId: `${assignment.requestId}-message`,
+    payloadHash: `${assignment.requestId}-hash`,
+    correlationId: `${assignment.requestId}-correlation`,
+    senderAgOrgId: AG,
+    receiverAnOrgId: anId(assignment.an),
+    projectReference: PROJECT,
+    leistungReference: assignment.leistungId,
+    plannedStart: "2027-05-10",
+    plannedEnd: "2027-05-14",
+    policyDeltaClass: "WITHIN_BASELINE" as const,
+    policyConsentStatus: "NOT_REQUIRED" as const,
+    policySnapshot: { permissions: baseline.permissions },
+    effectivePolicy: { ...baseline, recipientOrganizationId: anId(assignment.an) },
+    payloadSnapshot: {
+      schemaVersion: "1.0",
+      kurzbezeichnung: assignment.leistungId,
+      workPackage: `Campus West ${assignment.leistungId}`,
+      plannedTimeWindow: { start: "2027-05-10", end: "2027-05-14" },
+    },
+    status: "UNDER_REVIEW" as const,
+  })));
 });
 
 afterAll(cleanup);
@@ -227,7 +274,54 @@ describe("Construct-X Campus West campaign", () => {
     expect(foreignResource.status).toBe(404);
   });
 
-  it("classifies baseline, consent, and forbidden child deltas without changing membership", async () => {
+  it("gives AN1–AN4 exactly their assigned local projections and resources", async () => {
+    for (const [index, an] of ANS.entries()) {
+      const [requests, resources, resourceTypes] = await Promise.all([
+        request(app).get("/api/an/leistungsanfragen").set("Authorization", `Bearer ${anTokens[index]}`),
+        request(app).get("/api/resources").set("Authorization", `Bearer ${anTokens[index]}`),
+        request(app).get("/api/nu/resource-types").set("Authorization", `Bearer ${anTokens[index]}`),
+      ]);
+      expect(requests.status).toBe(200);
+      expect(resources.status).toBe(200);
+      expect(resourceTypes.status).toBe(200);
+      expect(requests.body.map((row: { id: string; nuOrgId: string; takt: { id: string } }) =>
+        [row.id, row.nuOrgId, row.takt.id],
+      ).sort())
+        .toEqual(AN_ASSIGNMENTS.filter((assignment) => assignment.an === an)
+          .map(({ requestId, leistungId }) => [requestId, anId(an), leistungId]).sort());
+      expect(resources.body.map((row: { id: string; anOrgId: string }) => [row.id, row.anOrgId]))
+        .toEqual([[`${PREFIX}-resource-${an.toLowerCase()}`, anId(an)]]);
+      expect(resourceTypes.body.items.map((row: { id: string; anOrgId: string }) => [row.id, row.anOrgId]))
+        .toEqual([[`${PREFIX}-resource-type-${an.toLowerCase()}`, anId(an)]]);
+    }
+  });
+
+  it("denies wrong-AN reads and writes without returning foreign metadata", async () => {
+    for (const [index, an] of ANS.entries()) {
+      const foreign = AN_ASSIGNMENTS.find((assignment) => assignment.an !== an);
+      if (!foreign) throw new Error("Campus-West fixture requires a foreign AN assignment");
+      const foreignResourceId = `${PREFIX}-resource-${ANS[(index + 1) % ANS.length].toLowerCase()}`;
+      const responses = await Promise.all([
+        request(app).get(`/api/an/leistungsanfragen/${foreign.requestId}/details`).set("Authorization", `Bearer ${anTokens[index]}`),
+        request(app).post(`/api/an/takt-requests/${foreign.requestId}/availability-checks`).set("Authorization", `Bearer ${anTokens[index]}`),
+        request(app).post(`/api/an/leistungsanfragen/${foreign.requestId}/responses`)
+          .set("Authorization", `Bearer ${anTokens[index]}`)
+          .send({ decision: "REJECTED", reasonCode: "OTHER" }),
+        request(app).patch(`/api/resources/${foreignResourceId}`).set("Authorization", `Bearer ${anTokens[index]}`).send({ name: "must not mutate" }),
+      ]);
+      for (const response of responses) {
+        expect([403, 404]).toContain(response.status);
+        const serialized = JSON.stringify(response.body);
+        for (const value of [foreign.requestId, foreign.leistungId, foreignResourceId, anId(foreign.an)]) {
+          expect(serialized).not.toContain(value);
+        }
+      }
+    }
+  });
+
+  it("derives baseline, consent, and forbidden child deltas from AN1's effective parent policy", async () => {
+    const [parent] = await db.select({ effectivePolicy: coordinationPoliciesTable.effectivePolicy })
+      .from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, AGREEMENT));
     const candidate = {
       policyType: "PERFORMANCE_REQUEST" as const, projectReference: PROJECT, recipientOrganizationId: anId("AN1"),
       purpose: "LEISTUNGSKOORDINATION", workPackageReference: "L-101",
@@ -235,10 +329,52 @@ describe("Construct-X Campus West campaign", () => {
       selectedFields: baseline.allowedFieldScope, prohibitions: ["COMMERCIAL_REUSE"],
       validFrom: baseline.validFrom, validUntil: baseline.validUntil,
     };
-    expect(resolvePolicyDelta(baseline, candidate).deltaClass).toBe("WITHIN_BASELINE");
-    expect(resolvePolicyDelta(baseline, { ...candidate, validUntil: "2100-01-01T00:00:00.000Z" }).deltaClass).toBe("REQUIRES_CONSENT");
-    expect(resolvePolicyDelta(baseline, { ...candidate, recipientOrganizationId: anId("AN2") }).deltaClass).toBe("NOT_PERMITTED");
+    const effectiveParent = parent.effectivePolicy as Record<string, unknown>;
+    expect(resolvePolicyDelta(effectiveParent, candidate).deltaClass).toBe("WITHIN_BASELINE");
+    expect(resolvePolicyDelta(effectiveParent, { ...candidate, validUntil: "2100-01-01T00:00:00.000Z" }).deltaClass).toBe("NOT_PERMITTED");
+    expect(resolvePolicyDelta(effectiveParent, {
+      ...candidate,
+      selectedFields: [...baseline.allowedFieldScope, "internalNote"],
+    }).deltaClass).toBe("NOT_PERMITTED");
     expect((await db.select().from(projectMembershipsTable).where(eq(projectMembershipsTable.id, MEMBERSHIP)))[0]?.status).toBe("ACTIVE");
+  });
+
+  it("rejects a forbidden child before request creation or Dataspace delivery side effects", async () => {
+    const requestNumber = "CW27-L101-NOT-PERMITTED";
+    const [parent] = await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, AGREEMENT));
+    const restrictiveParent = {
+      ...(parent.effectivePolicy as Record<string, unknown>),
+      allowedFieldScope: baseline.allowedFieldScope.filter((field) => field !== "resourceRequirements"),
+    };
+    await db.update(coordinationPoliciesTable).set({ effectivePolicy: restrictiveParent })
+      .where(eq(coordinationPoliciesTable.id, AGREEMENT));
+    try {
+      const [outboxBefore, projectionBefore, historyBefore] = await Promise.all([
+        hubDb.select().from(messageOutboxTable),
+        anDb.select().from(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.senderAgOrgId, AG)),
+        hubDb.select().from(hubMessagesTable),
+      ]);
+      await expect(createTaktRequestWithSnapshot({
+        taktId: "L-101", guOrgId: AG, nuOrgId: anId("AN1"), requestNumber, createdByUserId: AG_USER,
+        purpose: "LEISTUNGSKOORDINATION", selectedFields: ["resourceRequirements"],
+      })).rejects.toBeInstanceOf(PolicyNotPermittedError);
+      const [outboxAfter, projectionAfter, historyAfter, membership] = await Promise.all([
+        hubDb.select().from(messageOutboxTable),
+        anDb.select().from(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.senderAgOrgId, AG)),
+        hubDb.select().from(hubMessagesTable),
+        db.select({ status: projectMembershipsTable.status }).from(projectMembershipsTable)
+          .where(eq(projectMembershipsTable.id, MEMBERSHIP)),
+      ]);
+      expect(await db.select().from(taktRequestsTable).where(eq(taktRequestsTable.requestNumber, requestNumber))).toEqual([]);
+      expect(await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.policyKey, `${requestNumber}:performance`))).toEqual([]);
+      expect(outboxAfter).toHaveLength(outboxBefore.length);
+      expect(projectionAfter).toHaveLength(projectionBefore.length);
+      expect(historyAfter).toHaveLength(historyBefore.length);
+      expect(membership[0]?.status).toBe("ACTIVE");
+    } finally {
+      await db.update(coordinationPoliciesTable).set({ effectivePolicy: parent.effectivePolicy })
+        .where(eq(coordinationPoliciesTable.id, AGREEMENT));
+    }
   });
 
   it("keeps AN3 valid through 2027-06-30 and lets AN4 join before its child policy is rejected", async () => {
@@ -273,6 +409,16 @@ describe("Construct-X Campus West campaign", () => {
     expect(created.request).not.toHaveProperty("dataPublicationId"); // DataOffer is never coupled to a Leistung request.
     expect(created.snapshot.snapshotPayload).toMatchObject({ taktReference: "L-101", projectReference: PROJECT });
     expect(JSON.stringify(created.snapshot.snapshotPayload)).not.toContain("vertraulich");
+    expect(((created.snapshot.snapshotPayload as Record<string, unknown>).policySnapshot as Record<string, unknown>)).toMatchObject({
+      parentPolicyId: AGREEMENT,
+      inheritFrom: AGREEMENT,
+      prohibitions: expect.arrayContaining(baseline.prohibitions),
+      duties: baseline.duties,
+      constraints: baseline.constraints,
+      validFrom: baseline.validFrom,
+      validUntil: baseline.validUntil,
+      retentionUntil: baseline.retentionUntil,
+    });
     await db.update(leistungenTable).set({ leistungsBezeichnung: "mutiert", version: 2 }).where(eq(leistungenTable.id, "L-101"));
     const [stored] = await db.select().from(taktRequestSnapshotsTable).where(eq(taktRequestSnapshotsTable.id, created.snapshot.id));
     expect((stored.snapshotPayload as { workPackage: string }).workPackage).toBe("Campus West L-101");

@@ -35,7 +35,7 @@ import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import { applyIncomingScheduleChangeResponseOnAg } from "./service-change-proposal-service";
 import { applyAcceptedAnScheduleChange } from "./an-schedule-change-booking-service";
-import { assertLeistungsanfragePolicyAccess } from "./leistungsanfrage-policy-guard";
+import { assertLeistungsanfragePolicyAccess, type LeistungsanfragePolicyState } from "./leistungsanfrage-policy-guard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -200,14 +200,22 @@ export async function createAnServiceResponse(
     validFrom: typeof effective.validFrom === "string" ? effective.validFrom : null,
     validUntil: typeof effective.validUntil === "string" ? effective.validUntil : null,
     retentionUntil: typeof effective.retentionUntil === "string" ? effective.retentionUntil : null,
+    parentMembershipStatus: ["INVITED", "ACTIVE", "REJECTED", "REVOKED"].includes(String(effective.parentMembershipStatus))
+      ? effective.parentMembershipStatus as LeistungsanfragePolicyState["parentMembershipStatus"] : null,
+    parentAgreementStatus: typeof effective.parentAgreementStatus === "string"
+      ? effective.parentAgreementStatus : null,
   }, "ANSWER");
 
   const canonical = responsePayload(request.externalLeistungsanfrageId, request.externalRequestVersion, input);
   const payloadHash = computeResponsePayloadHash(canonical);
   const [existing] = await anDb.select().from(anLeistungsantwortenTable).where(and(
-    eq(anLeistungsantwortenTable.anLeistungsanfrageId, request.id),
+    // The external request/version is the idempotency key. A refreshed or
+    // redelivered AN projection may have a different local ID for the same
+    // externally addressed request, and must still return the original
+    // response as an idempotent retry.
+    eq(anLeistungsantwortenTable.sourceRequestId, request.externalLeistungsanfrageId),
     eq(anLeistungsantwortenTable.requestVersion, request.externalRequestVersion),
-  )).limit(1);
+  )).orderBy(desc(anLeistungsantwortenTable.createdAt)).limit(1);
   if (existing) {
     if (existing.payloadHash !== payloadHash) {
       throw new ResponseConflictError(existing.decision, input.decision, "DIFFERENT_PAYLOAD");
