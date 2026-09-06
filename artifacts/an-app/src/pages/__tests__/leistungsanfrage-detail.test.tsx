@@ -76,14 +76,21 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderDetail(coordination: CoordinationState = initialCoordination(), detailResponse = detail) {
+function renderDetail(
+  coordination: CoordinationState = initialCoordination(),
+  detailResponse = detail,
+  resourceResponse = jsonResponse([]),
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detailResponse);
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) return jsonResponse(coordination);
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) return jsonResponse([]);
+    if (
+      url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)
+      || url.endsWith(`/api/leistungsanfragen/${requestId}/resource-requirements`)
+    ) return resourceResponse;
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({ error: "No local availability checks found" }, 404);
     if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/responses`)) return jsonResponse({ responseId: "response-1", decision: "ACCEPTED", requestStatus: "RESPONDED" }, 201);
     if (method === "POST" && url.includes(`/api/an/leistungsanfragen/${requestId}/change-proposals`)) {
@@ -122,6 +129,23 @@ describe("AN Leistungsanfrage detail", () => {
     expect(screen.getByTestId("secondary-request-details")).not.toHaveAttribute("open");
     expect(screen.getByTestId("overview-service")).toHaveTextContent("Trockenbau 2. OG");
     expect(screen.getByTestId("overview-period")).toHaveTextContent("01.09.2026 – 10.09.2026");
+  });
+
+  it("erklärt einen Policy-Block beim Laden des Ressourcenbedarfs", async () => {
+    renderDetail(initialCoordination(), detail, jsonResponse({ error: "POLICY_NOT_PERMITTED" }, 409));
+
+    const block = await screen.findByTestId("resource-policy-block");
+    expect(block).toHaveTextContent("Ressourcendetails durch Policy gesperrt");
+    expect(block).toHaveTextContent("Projektvereinbarung");
+    expect(screen.queryByText("Ressourcenbedarf konnte nicht aktualisiert werden")).not.toBeInTheDocument();
+  });
+
+  it("nennt die Zustimmung als nächsten Schritt bei geschützten Ressourcendetails", async () => {
+    renderDetail(initialCoordination(), detail, jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409));
+
+    const block = await screen.findByTestId("resource-policy-block");
+    expect(block).toHaveTextContent("Ressourcendetails noch nicht freigegeben");
+    expect(block).toHaveTextContent("Bestätigen Sie zuerst");
   });
 
   it("führt eine Anfrage innerhalb der Projektvereinbarung von Details über Machbarkeit zur Rückmeldung", async () => {

@@ -95,6 +95,18 @@ function list(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+type ResourcePolicyBlock = "NOT_PERMITTED" | "POLICY_NOT_PERMITTED" | "POLICY_CONSENT_REQUIRED";
+
+function getResourcePolicyBlock(error: unknown): ResourcePolicyBlock | null {
+  if (!error || typeof error !== "object") return null;
+  const response = error as { status?: unknown; data?: unknown };
+  if (response.status !== 409) return null;
+  const code = object(response.data).error;
+  return code === "NOT_PERMITTED" || code === "POLICY_NOT_PERMITTED" || code === "POLICY_CONSENT_REQUIRED"
+    ? code
+    : null;
+}
+
 function StatusBadge({ status }: { status: string }) {
   return <Badge data-testid="status-detail" variant="outline" className={`font-medium ${STATUS_TONE[status] ?? "border-border text-muted-foreground"}`}>{STATUS_LABELS[status] ?? "Status nicht veröffentlicht"}</Badge>;
 }
@@ -279,7 +291,7 @@ function RequestOverview({ details, requestedStart, requestedEnd, onReview }: { 
   );
 }
 
-function ResourceSection({ id, requirements, canEdit, defaultStart, defaultEnd, loadError }: { id: string; requirements: AnLeistungsanfrageResourceRequirement[]; canEdit: boolean; defaultStart: string; defaultEnd: string; loadError?: boolean }) {
+function ResourceSection({ id, requirements, canEdit, defaultStart, defaultEnd, loadError }: { id: string; requirements: AnLeistungsanfrageResourceRequirement[]; canEdit: boolean; defaultStart: string; defaultEnd: string; loadError?: unknown }) {
   const [showAdd, setShowAdd] = useState(false);
   const [resourceTypeId, setResourceTypeId] = useState("");
   const [capacity, setCapacity] = useState("");
@@ -314,10 +326,27 @@ function ResourceSection({ id, requirements, canEdit, defaultStart, defaultEnd, 
     if (!window.confirm("Ressourcenbedarf wirklich entfernen?")) return;
     remove.mutate({ leistungsanfrageId: id, reqId: requirementId }, { onSuccess: () => { toast({ title: "Ressourcenbedarf entfernt" }); refresh(); }, onError: () => toast({ title: "Ressourcenbedarf konnte nicht entfernt werden", variant: "destructive" }) });
   };
+  const requirementError = client.getQueryState(getListLeistungsanfrageResourceRequirementsQueryKey(id))?.error;
+  const policyBlock = getResourcePolicyBlock(requirementError);
 
   return (
     <div data-testid="resource-block">
-      {loadError && <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Ressourcenbedarf konnte nicht aktualisiert werden. Bereits veröffentlichte Angaben bleiben sichtbar.</p>}
+      {policyBlock ? (
+        <div data-testid="resource-policy-block" className="mb-3 rounded-lg border border-amber-600/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-900 dark:text-amber-100">
+          <p className="font-semibold">
+            {policyBlock === "POLICY_CONSENT_REQUIRED"
+              ? "Ressourcendetails noch nicht freigegeben"
+              : "Ressourcendetails durch Policy gesperrt"}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-100/80">
+            {policyBlock === "POLICY_CONSENT_REQUIRED"
+              ? "Bestätigen Sie zuerst die neuen Nutzungsbedingungen oben. Danach können die Ressourcendetails geladen werden."
+              : "Der Auftraggeber muss die Projektvereinbarung oder die Leistungsfreigabe anpassen. Erst danach können die Ressourcendetails angezeigt werden."}
+          </p>
+        </div>
+      ) : loadError ? (
+        <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Ressourcenbedarf konnte nicht aktualisiert werden. Bereits veröffentlichte Angaben bleiben sichtbar.</p>
+      ) : null}
       {requirements.length === 0
         ? <div className="rounded-xl border border-dashed border-border/80 p-4 text-sm text-muted-foreground">Noch kein Ressourcenbedarf erfasst. Ergänzen Sie nur den Bedarf, der für Ihre Rückmeldung relevant ist.</div>
         : <div className="space-y-2">{requirements.map((req) => <div data-testid={`resource-row-${req.id}`} key={req.id} className="flex items-start gap-3 rounded-xl border border-border bg-background/70 p-3"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{text(req.resourceTypeName, req.resourceTypeCode)}</p><p className="mt-1 text-xs text-muted-foreground">{String(req.requiredCapacity ?? EMPTY)} {req.capacityUnit ?? ""} · {req.utilizationPercent ? `${req.utilizationPercent}% Auslastung` : "Auslastung nicht veröffentlicht"} · {dateText(req.periodStart)} – {dateText(req.periodEnd)}</p>{req.requiredQualification && <p className="mt-1 text-xs text-muted-foreground">Qualifikation: {req.requiredQualification}</p>}{req.notes && <p className="mt-1 text-xs text-muted-foreground">{req.notes}</p>}</div>{canEdit && <Button data-testid={`button-delete-resource-${req.id}`} variant="ghost" size="icon" disabled={remove.isPending} onClick={() => removeRow(req.id)} aria-label="Ressourcenbedarf entfernen"><Trash2 className="h-4 w-4 text-muted-foreground" /></Button>}</div>)}</div>}
@@ -693,7 +722,7 @@ export default function LeistungsanfrageDetailPage() {
            <p className="mt-1 text-muted-foreground">Die geltenden Bedingungen und weitere Angaben stehen direkt in dieser Anfrage bereit.</p>
          </div>
        )}
-       <PolicyDecisionPanel details={details} onChanged={() => void detailQuery.refetch()} />
+      <PolicyDecisionPanel details={details} onChanged={() => { void detailQuery.refetch(); void requirementQuery.refetch(); void availabilityQuery.refetch(); }} />
 
        {!policyConsentPending && <><div data-testid="phase-progress" className="grid gap-2 md:grid-cols-3">{[1, 2, 3].map((number) => <div key={number} className={`rounded-xl border px-4 py-3 ${phase === number ? "border-primary/40 bg-primary/5" : phase > number ? "border-emerald-700/20 bg-emerald-600/5" : "border-border bg-card"}`}><p className="text-xs text-muted-foreground">Phase {number}</p><p className="mt-1 text-sm font-semibold">{phaseHeading(number)}</p></div>)}</div>
        {phase > 1 ? <details data-testid="phase-1" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 1 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Anfrage prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4"><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></div></details> : <section data-testid="phase-1" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Phase 1</p><h2 className="mt-1 text-xl font-semibold">Anfrage prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Prüfen Sie die veröffentlichte Leistung und schließen Sie diese Phase bewusst ab.</p></div><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} onReview={policyDetailsAvailable && details.status === "RECEIVED" ? () => void reviewDetails() : undefined} /></section>}

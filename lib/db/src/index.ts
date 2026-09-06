@@ -85,10 +85,8 @@ function getDatabaseConfiguration(): DatabaseConfiguration {
       roleUrls.map(([role, url]) => [role, url ?? sharedUrl!]),
     ) as Record<DatabaseRole, string>,
     roleNames: roles,
-    // Role-specific URLs may still use the shared bootstrap credential. The
-    // effective application identity is always established with SET ROLE.
     useRoleSwitching: Object.fromEntries(
-      roleUrls.map(([role]) => [role, true]),
+      roleUrls.map(([role, url]) => [role, !url]),
     ) as Record<DatabaseRole, boolean>,
   };
 }
@@ -109,10 +107,7 @@ function connectionOptions(
   const roleOption = configuration.useRoleSwitching[role]
     ? ` -c role=${configuration.roleNames[role]}`
     : "";
-  const searchPath = role === "hub"
-    ? `${schema},pg_catalog`
-    : `${schema},hub,pg_catalog`;
-  return `-c search_path=${searchPath}${roleOption}`;
+  return `-c search_path=${schema},pg_catalog${roleOption}`;
 }
 
 async function readDatabaseIdentity(

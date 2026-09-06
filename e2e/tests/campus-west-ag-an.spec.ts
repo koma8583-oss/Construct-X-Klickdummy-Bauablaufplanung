@@ -27,6 +27,8 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     const page = await anContext.newPage();
     await gotoAnRequest(page, scenario.requests.NOT_PERMITTED);
     await expect(page.getByTestId("policy-not-permitted")).toBeVisible();
+    await expect(page.getByTestId("resource-policy-block")).toContainText(/Projektvereinbarung|Leistungsfreigabe/);
+    await expect(page.getByTestId("resource-policy-block")).not.toContainText("konnte nicht aktualisiert werden");
     await expect(page.getByRole("button", { name: /bestätigen|annehmen/i })).toHaveCount(0);
   });
 
