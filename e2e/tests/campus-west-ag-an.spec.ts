@@ -45,7 +45,15 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     await an.goto(`/an/leistungsanfragen/${scenario.bilateralRequestId}`);
     await expect(an.getByRole("heading", { name: /rückmeldung senden/i, level: 1 })).toBeVisible();
     await an.getByRole("button", { name: /termin bestätigen/i }).click();
-    await an.getByRole("button", { name: "Rückmeldung senden", exact: true }).click();
+    const [firstResponse, responseRequest] = await Promise.all([
+      an.waitForResponse((response) => response.url().includes("/responses") && response.request().method() === "POST"),
+      an.waitForRequest((request) => request.url().includes("/responses") && request.method() === "POST"),
+      an.getByRole("button", { name: "Rückmeldung senden", exact: true }).click(),
+    ]);
+    expect(firstResponse.status(), await firstResponse.text()).toBe(201);
+    const retry = await an.request.post(responseRequest.url(), { data: responseRequest.postDataJSON() });
+    expect(retry.status(), await retry.text()).toBe(200);
+    expect((await retry.json()).responseId).toBe((await firstResponse.json()).responseId);
   });
 
   test("multi-service / multi-AN assignments remain separately visible", async ({ agContext, scenario }) => {
@@ -54,6 +62,56 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     await expect(page.getByRole("button", { name: /L-301 Campus-West/ })).toHaveCount(2);
     await expect(page.getByRole("button", { name: /L-401 Campus-West/ })).toHaveCount(2);
     await expect(page.getByText(/Campus-West/i).first()).toBeVisible();
+  });
+
+  test("a multi-AN resource release partially succeeds: AN1 coordinates while AN2 is blocked", async ({ anContext, an2Context, scenario }) => {
+    const [feasible, blocked] = await Promise.all([
+      anContext.request.post(`/api/an/takt-requests/${scenario.requests.WITHIN_BASELINE}/availability-checks`),
+      an2Context.request.post(`/api/an/takt-requests/${scenario.requests.NOT_PERMITTED}/availability-checks`),
+    ]);
+    expect(feasible.status(), await feasible.text()).toBe(201);
+    expect((await feasible.json()).publicResultPayload.recommendedDecision).toBe("ACCEPTED");
+    expect(blocked.status(), await blocked.text()).toBe(409);
+    expect((await blocked.json()).error).toMatch(/POLICY|NOT_PERMITTED/i);
+  });
+
+  test("AN1 cannot cross-read AN2/AN3 policies, snapshots, resources, or schedules", async ({ anContext, scenario }) => {
+    const paths = [
+      `/api/an/takt-requests/${scenario.requests.NOT_PERMITTED}/snapshot`,
+      `/api/an/leistungsanfragen/${scenario.boundaryRequestIds.an3Expiring}/details`,
+      `/api/an/takt-requests/${scenario.requests.NOT_PERMITTED}/resource-requirements`,
+      `/api/an/leistungsanfragen/${scenario.requests.NOT_PERMITTED}/coordination`,
+      `/api/an/nu/resource-types/${scenario.resourceTypeIds[1]}`,
+    ];
+    for (const path of paths) {
+      const response = await anContext.request.get(path);
+      expect([403, 404], `${path}: ${await response.text()}`).toContain(response.status());
+    }
+
+    const resources = await anContext.request.get("/api/an/resources");
+    expect(resources.status(), await resources.text()).toBe(200);
+    expect((await resources.json()).every((resource: { id: string }) => resource.id === scenario.resourceIds[0])).toBe(true);
+  });
+
+  test("AN3 exposes the validity boundary and AN4 joins before rejecting its child policy", async ({ an3Context, an4Context, scenario }) => {
+    const an3Details = await an3Context.request.get(`/api/an/takt-requests/${scenario.boundaryRequestIds.an3Expiring}/details`);
+    expect(an3Details.status(), await an3Details.text()).toBe(200);
+    expect((await an3Details.json()).effectivePolicy.validUntil).toBe("2027-06-30T23:59:59.000Z");
+
+    const invitations = await an4Context.request.get("/api/an/project-invitations");
+    expect(invitations.status(), await invitations.text()).toBe(200);
+    const invitation = (await invitations.json()).find((row: { id: string; receiverAnOrgId: string; status: string }) => row.status === "PENDING");
+    expect(invitation).toBeTruthy();
+    const joined = await an4Context.request.post(`/api/an/project-invitations/${invitation.id}/accept`, {
+      data: { policyAccepted: true },
+    });
+    expect(joined.status(), await joined.text()).toBe(200);
+
+    const page = await an4Context.newPage();
+    await gotoAnRequest(page, scenario.boundaryRequestIds.an4ChildReject);
+    await expect(page.getByTestId("policy-consent-panel")).toBeVisible();
+    await page.getByTestId("button-reject-policy").click();
+    await expect(page.getByTestId("policy-consent-rejected")).toBeVisible();
   });
 });
 

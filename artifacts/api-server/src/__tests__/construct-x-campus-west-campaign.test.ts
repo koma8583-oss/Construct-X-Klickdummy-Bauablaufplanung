@@ -12,11 +12,14 @@ import jwt from "jsonwebtoken";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   agDb as db,
+  anDb,
   coordinationPoliciesTable,
   leistungenTable,
   organizationsTable,
   projectMembershipsTable,
   projectsTable,
+  resourcesTable,
+  resourceTypesTable,
   taktDependenciesTable,
   taktRequestSnapshotsTable,
   taktRequestsTable,
@@ -38,20 +41,29 @@ const ANS = ["AN1", "AN2", "AN3", "AN4"] as const;
 const anId = (an: typeof ANS[number]) => `${PREFIX}-${an.toLowerCase()}`;
 const AG_USER = `${PREFIX}-ag-user`;
 const OTHER_AG_USER = `${PREFIX}-other-ag-user`;
+const AN_USERS = ANS.map((an) => `${PREFIX}-${an.toLowerCase()}-user`);
 const PROJECT = "PRJ-CW-2027";
 const OTHER_PROJECT = `${PREFIX}-other-project`;
 const LEISTUNGEN = ["L-101", "L-201", "L-301", "L-401"] as const;
 const AGREEMENT = `${PREFIX}-agreement-an1`;
 const MEMBERSHIP = `${PREFIX}-membership-an1`;
+const COMPANY_NAMES = [
+  "Baukoordination West GmbH",
+  "Stahlbau Ruhr GmbH",
+  "Elektro West GmbH",
+  "TGA Technik GmbH",
+  "Maler Süd GmbH",
+] as const;
 const requestNumbers: string[] = [];
 
 const secret = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
-const token = (userId: string, orgId: string) => jwt.sign({
-  userId, orgId, orgType: "AG", hubAdmin: false, roles: ["AG_ADMIN"],
+const token = (userId: string, orgId: string, orgType: "AG" | "AN" = "AG") => jwt.sign({
+  userId, orgId, orgType, hubAdmin: false, roles: [orgType === "AG" ? "AG_ADMIN" : "AN_ADMIN"],
 }, secret, { expiresIn: "1h" });
 
 const agToken = token(AG_USER, AG);
 const otherAgToken = token(OTHER_AG_USER, OTHER_AG);
+const anTokens = ANS.map((an, index) => token(AN_USERS[index], anId(an), "AN"));
 
 const baseline = {
   policyType: "PROJECT_AGREEMENT" as const,
@@ -89,18 +101,24 @@ async function cleanup() {
   await db.delete(projectsTable).where(inArray(projectsTable.id, [PROJECT, OTHER_PROJECT])).catch(() => {});
   await db.delete(usersTable).where(inArray(usersTable.id, [AG_USER, OTHER_AG_USER])).catch(() => {});
   await db.delete(organizationsTable).where(inArray(organizationsTable.id, [AG, OTHER_AG, ...ANS.map(anId)])).catch(() => {});
+  await anDb.delete(resourcesTable).where(inArray(resourcesTable.anOrgId, ANS.map(anId))).catch(() => {});
+  await anDb.delete(resourceTypesTable).where(inArray(resourceTypesTable.anOrgId, ANS.map(anId))).catch(() => {});
+  await anDb.delete(organizationsTable).where(inArray(organizationsTable.id, ANS.map(anId))).catch(() => {});
   requestNumbers.length = 0;
 }
 
 beforeAll(async () => {
   await cleanup();
   await db.insert(organizationsTable).values([
-    { id: AG, name: "Baukoordination West GmbH", type: "AG" },
+    { id: AG, name: COMPANY_NAMES[0], type: "AG" },
     { id: OTHER_AG, name: "Fremdmandant GmbH", type: "AG" },
-    ...ANS.map((an) => ({ id: anId(an), name: `Campus West ${an}`, type: "AN" as const })),
+    ...ANS.map((an, index) => ({ id: anId(an), name: COMPANY_NAMES[index + 1], type: "AN" as const })),
   ]);
+  await anDb.insert(organizationsTable).values(
+    ANS.map((an, index) => ({ id: anId(an), name: COMPANY_NAMES[index + 1], type: "AN" as const })),
+  ).onConflictDoNothing();
   await db.insert(usersTable).values([
-    { id: AG_USER, name: "Campus-West AG", email: "cw27-ag@test.invalid", passwordHash: "x" },
+    { id: AG_USER, name: COMPANY_NAMES[0], email: "cw27-ag@test.invalid", passwordHash: "x" },
     { id: OTHER_AG_USER, name: "Campus-West Fremd-AG", email: "cw27-other@test.invalid", passwordHash: "x" },
   ]);
   await db.insert(projectsTable).values([
@@ -118,17 +136,63 @@ beforeAll(async () => {
     { id: `${PREFIX}-dep-201-301`, projectId: PROJECT, predecessorId: "L-201", successorId: "L-301", type: "EA", lagDays: 2 },
     { id: `${PREFIX}-dep-301-401`, projectId: PROJECT, predecessorId: "L-301", successorId: "L-401", type: "EA", lagDays: 0 },
   ]);
-  await db.insert(coordinationPoliciesTable).values({
-    id: AGREEMENT, policyKey: `${PREFIX}:agreement:an1`, version: 1, kind: "PROJECT_AGREEMENT",
-    projectId: PROJECT, providerOrgId: AG, recipientOrgId: anId("AN1"), lifecycleStatus: "ACCEPTED",
-    policySnapshot: baseline, effectivePolicy: baseline,
+  const agreementFor = (
+    an: typeof ANS[number],
+    permissions = baseline.permissions,
+    validUntil = baseline.validUntil,
+  ) => ({
+    id: an === "AN1" ? AGREEMENT : `${PREFIX}-agreement-${an.toLowerCase()}`,
+    policyKey: `${PREFIX}:agreement:${an.toLowerCase()}`,
+    version: 1,
+    kind: "PROJECT_AGREEMENT" as const,
+    projectId: PROJECT,
+    providerOrgId: AG,
+    recipientOrgId: anId(an),
+    lifecycleStatus: "ACCEPTED" as const,
+    policySnapshot: { ...baseline, recipientOrganizationId: anId(an), permissions },
+    effectivePolicy: {
+      ...baseline,
+      recipientOrganizationId: anId(an),
+      permissions,
+      childPermissions: permissions,
+      validUntil,
+    },
   });
+  await db.insert(coordinationPoliciesTable).values([
+    agreementFor("AN1"),
+    agreementFor("AN2", ["READ"]),
+    agreementFor("AN3", baseline.permissions, "2027-06-30T23:59:59.000Z"),
+    agreementFor("AN4"),
+    {
+      id: `${PREFIX}-child-an4`,
+      policyKey: `${PREFIX}:performance:an4`,
+      version: 1,
+      kind: "PERFORMANCE_REQUEST" as const,
+      projectId: PROJECT,
+      providerOrgId: AG,
+      recipientOrgId: anId("AN4"),
+      parentPolicyId: `${PREFIX}-agreement-an4`,
+      lifecycleStatus: "CONSENT_REQUIRED" as const,
+      deltaClass: "REQUIRES_CONSENT" as const,
+      policySnapshot: { ...baseline, recipientOrganizationId: anId("AN4") },
+      effectivePolicy: { ...baseline, recipientOrganizationId: anId("AN4") },
+    },
+  ]);
   await db.insert(projectMembershipsTable).values([
     { id: MEMBERSHIP, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN1"), status: "ACTIVE", invitationId: `${PREFIX}-invite-an1`, correlationId: `${PREFIX}-correlation-an1`, projectAgreementPolicyId: AGREEMENT },
-    { id: `${PREFIX}-membership-an2`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN2"), status: "INVITED", invitationId: `${PREFIX}-invite-an2`, correlationId: `${PREFIX}-correlation-an2` },
-    { id: `${PREFIX}-membership-an3`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN3"), status: "ACTIVE", invitationId: `${PREFIX}-invite-an3`, correlationId: `${PREFIX}-correlation-an3` },
-    { id: `${PREFIX}-membership-an4`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN4"), status: "INVITED", invitationId: `${PREFIX}-invite-an4`, correlationId: `${PREFIX}-correlation-an4` },
+    { id: `${PREFIX}-membership-an2`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN2"), status: "ACTIVE", invitationId: `${PREFIX}-invite-an2`, correlationId: `${PREFIX}-correlation-an2`, projectAgreementPolicyId: `${PREFIX}-agreement-an2` },
+    { id: `${PREFIX}-membership-an3`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN3"), status: "ACTIVE", invitationId: `${PREFIX}-invite-an3`, correlationId: `${PREFIX}-correlation-an3`, projectAgreementPolicyId: `${PREFIX}-agreement-an3`, invitationExpiresAt: new Date("2027-06-30T23:59:59.000Z") },
+    { id: `${PREFIX}-membership-an4`, projectId: PROJECT, agOrgId: AG, anOrgId: anId("AN4"), status: "INVITED", invitationId: `${PREFIX}-invite-an4`, correlationId: `${PREFIX}-correlation-an4`, projectAgreementPolicyId: `${PREFIX}-agreement-an4` },
   ]);
+  const resourceTypeIds = ANS.map((an) => `${PREFIX}-resource-type-${an.toLowerCase()}`);
+  await anDb.insert(resourceTypesTable).values([
+    { id: resourceTypeIds[0], anOrgId: anId("AN1"), name: "Stahlbau-Team", category: "CREW", capacityUnit: "PERSONS" },
+    { id: resourceTypeIds[1], anOrgId: anId("AN2"), name: "Elektro-Team", category: "CREW", capacityUnit: "PERSONS" },
+  ]).onConflictDoNothing();
+  await anDb.insert(resourcesTable).values([
+    { id: `${PREFIX}-resource-an1`, anOrgId: anId("AN1"), type: "CREW", name: "Stahlbau Ruhr Montageteam", resourceTypeId: resourceTypeIds[0], capacity: 8, capacityUnit: "PERSONS" },
+    { id: `${PREFIX}-resource-an2`, anOrgId: anId("AN2"), type: "CREW", name: "Elektro West Montageteam", resourceTypeId: resourceTypeIds[1], capacity: 2, capacityUnit: "PERSONS" },
+  ]).onConflictDoNothing();
 });
 
 afterAll(cleanup);
@@ -138,10 +202,29 @@ describe("Construct-X Campus West campaign", () => {
     const memberships = await request(app).get(`/api/projects/${PROJECT}/memberships`).set("Authorization", `Bearer ${agToken}`);
     expect(memberships.status).toBe(200);
     expect(memberships.body.map((row: { anOrgId: string; status: string }) => [row.anOrgId, row.status]).sort())
-      .toEqual([[anId("AN1"), "ACTIVE"], [anId("AN2"), "INVITED"], [anId("AN3"), "ACTIVE"], [anId("AN4"), "INVITED"]].sort());
+      .toEqual([[anId("AN1"), "ACTIVE"], [anId("AN2"), "ACTIVE"], [anId("AN3"), "ACTIVE"], [anId("AN4"), "INVITED"]].sort());
     const foreign = await request(app).get(`/api/projects/${PROJECT}/memberships`).set("Authorization", `Bearer ${otherAgToken}`);
     expect(foreign.status).toBe(200);
     expect(foreign.body).toEqual([]);
+  });
+
+  it("keeps the five Campus-West companies, complete service chain, and AN-local resource boundary exact", async () => {
+    const companies = await db.select({ id: organizationsTable.id, name: organizationsTable.name })
+      .from(organizationsTable).where(inArray(organizationsTable.id, [AG, ...ANS.map(anId)]));
+    expect(companies.map(({ name }) => name).sort()).toEqual([...COMPANY_NAMES].sort());
+
+    const dependencies = await db.select().from(taktDependenciesTable)
+      .where(eq(taktDependenciesTable.projectId, PROJECT));
+    expect(dependencies.map(({ predecessorId, successorId, lagDays }) => [predecessorId, successorId, lagDays]))
+      .toEqual([["L-101", "L-201", 0], ["L-201", "L-301", 2], ["L-301", "L-401", 0]]);
+
+    const an1Resources = await request(app).get("/api/an/resources").set("Authorization", `Bearer ${anTokens[0]}`);
+    expect(an1Resources.status).toBe(200);
+    expect(an1Resources.body).toHaveLength(1);
+    expect(an1Resources.body[0].anOrgId).toBe(anId("AN1"));
+    const foreignResource = await request(app).get(`/api/an/nu/resource-types/${PREFIX}-resource-type-an2`)
+      .set("Authorization", `Bearer ${anTokens[0]}`);
+    expect(foreignResource.status).toBe(404);
   });
 
   it("classifies baseline, consent, and forbidden child deltas without changing membership", async () => {
@@ -156,6 +239,28 @@ describe("Construct-X Campus West campaign", () => {
     expect(resolvePolicyDelta(baseline, { ...candidate, validUntil: "2100-01-01T00:00:00.000Z" }).deltaClass).toBe("REQUIRES_CONSENT");
     expect(resolvePolicyDelta(baseline, { ...candidate, recipientOrganizationId: anId("AN2") }).deltaClass).toBe("NOT_PERMITTED");
     expect((await db.select().from(projectMembershipsTable).where(eq(projectMembershipsTable.id, MEMBERSHIP)))[0]?.status).toBe("ACTIVE");
+  });
+
+  it("keeps AN3 valid through 2027-06-30 and lets AN4 join before its child policy is rejected", async () => {
+    const [an3Agreement] = await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, `${PREFIX}-agreement-an3`));
+    expect((an3Agreement.effectivePolicy as { validUntil: string }).validUntil).toBe("2027-06-30T23:59:59.000Z");
+
+    const [an4BeforeJoin] = await db.select({ status: projectMembershipsTable.status })
+      .from(projectMembershipsTable).where(eq(projectMembershipsTable.id, `${PREFIX}-membership-an4`));
+    expect(an4BeforeJoin.status).toBe("INVITED");
+    await db.update(projectMembershipsTable).set({ status: "ACTIVE", acceptedAt: new Date("2027-01-10T10:00:00.000Z") })
+      .where(eq(projectMembershipsTable.id, `${PREFIX}-membership-an4`));
+    const [an4AfterJoin] = await db.select({ status: projectMembershipsTable.status })
+      .from(projectMembershipsTable).where(eq(projectMembershipsTable.id, `${PREFIX}-membership-an4`));
+    expect(an4AfterJoin.status).toBe("ACTIVE");
+
+    const [child] = await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, `${PREFIX}-child-an4`));
+    expect(child.lifecycleStatus).toBe("CONSENT_REQUIRED");
+    await db.update(coordinationPoliciesTable).set({ lifecycleStatus: "REJECTED" })
+      .where(eq(coordinationPoliciesTable.id, child.id));
+    const [rejected] = await db.select({ lifecycleStatus: coordinationPoliciesTable.lifecycleStatus })
+      .from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, child.id));
+    expect(rejected.lifecycleStatus).toBe("REJECTED");
   });
 
   it("creates an immutable, whitelist-only performance request with its parent policy", async () => {

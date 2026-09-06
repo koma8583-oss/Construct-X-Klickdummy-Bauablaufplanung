@@ -12,9 +12,12 @@ export type Scenario = {
 };
 
 type Fixtures = {
-  scenario: Scenario;
+  scenario: Seed;
   agContext: BrowserContext;
   anContext: BrowserContext;
+  an2Context: BrowserContext;
+  an3Context: BrowserContext;
+  an4Context: BrowserContext;
 };
 
 const baseUrl = () => process.env.E2E_BASE_URL ?? "http://localhost:80";
@@ -49,6 +52,27 @@ export const test = base.extend<Fixtures>({
     const viewport = testInfo.project.use.viewport as { width: number; height: number } | undefined;
     const context = await browser.newContext({ baseURL: baseUrl(), viewport });
     await signIn(context, "/an/", scenario.an[0]);
+    await use(context);
+    await context.close();
+  },
+  an2Context: async ({ browser, scenario }, use, testInfo) => {
+    const viewport = testInfo.project.use.viewport as { width: number; height: number } | undefined;
+    const context = await browser.newContext({ baseURL: baseUrl(), viewport });
+    await signIn(context, "/an/", scenario.an[1]);
+    await use(context);
+    await context.close();
+  },
+  an3Context: async ({ browser, scenario }, use, testInfo) => {
+    const viewport = testInfo.project.use.viewport as { width: number; height: number } | undefined;
+    const context = await browser.newContext({ baseURL: baseUrl(), viewport });
+    await signIn(context, "/an/", scenario.an[2]);
+    await use(context);
+    await context.close();
+  },
+  an4Context: async ({ browser, scenario }, use, testInfo) => {
+    const viewport = testInfo.project.use.viewport as { width: number; height: number } | undefined;
+    const context = await browser.newContext({ baseURL: baseUrl(), viewport });
+    await signIn(context, "/an/", scenario.an[3]);
     await use(context);
     await context.close();
   },
