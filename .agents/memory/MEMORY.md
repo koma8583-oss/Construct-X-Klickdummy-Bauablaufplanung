@@ -64,3 +64,4 @@
 - [Performance request child policies](performance-request-child-policies.md) — normal Leistungsanfragen inherit an accepted project agreement and never depend on DataOffer acceptance.
 - [Schedule-response retry identity](schedule-response-retry-identity.md) — root-addressed AN response retries must remain bound to the same schedule child after its terminal status transition.
 - [Legacy policy gates](legacy-policy-gates.md) — historical projections may omit child metadata, but synchronized parent state must still enforce revoke and validity gates.
+- [Shared post-merge schema order](post-merge-schema-order.md) — push empty role schemas before raw migrations; use public only for legacy enum lookup, then reapply ACLs.

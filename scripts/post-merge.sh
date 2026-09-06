@@ -4,37 +4,37 @@ pnpm install --frozen-lockfile
 
 apply_ag_migrations() {
   local database_url="$1"
-  PGOPTIONS="-c search_path=ag,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=ag,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0001_leistungen_canonical_rename.sql
-  PGOPTIONS="-c search_path=ag,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=ag,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0002_project_memberships.sql
-  PGOPTIONS="-c search_path=ag,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=ag,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0004_project_membership_data_publication_link.sql
-  PGOPTIONS="-c search_path=ag,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=ag,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0023_construct_x_coordination_policies.sql
 }
 
 apply_an_migrations() {
   local database_url="$1"
-  PGOPTIONS="-c search_path=an,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=an,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0003_an_project_invitations.sql
-  PGOPTIONS="-c search_path=an,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=an,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0016_an_project_invitation_offer_snapshot.sql
-  PGOPTIONS="-c search_path=an,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=an,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0005_an_leistungsanfragen.sql
-  PGOPTIONS="-c search_path=an,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=an,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0007_an_leistungsantworten.sql
-  PGOPTIONS="-c search_path=an,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=an,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0024_an_policy_consent.sql
 }
 
 apply_hub_migrations() {
   local database_url="$1"
-  PGOPTIONS="-c search_path=hub,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=hub,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0006_dataspace_exchange_payload_hash.sql
-  PGOPTIONS="-c search_path=hub,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=hub,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0017_message_delivery_attempts.sql
-  PGOPTIONS="-c search_path=hub,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
+  PGOPTIONS="-c search_path=hub,public,pg_catalog" psql "$database_url" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0022_dataspace_access_grants.sql
 }
 
@@ -103,10 +103,6 @@ echo "Applying the shared PostgreSQL schema and role bootstrap"
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0025_shared_database_roles.sql
 
-apply_ag_migrations "$database_admin_url"
-apply_an_migrations "$database_admin_url"
-apply_hub_migrations "$database_admin_url"
-
 role_schema_is_empty() {
   local schema_name="$1"
   [[ "$(psql "$database_admin_url" -Atqc \
@@ -122,6 +118,13 @@ fi
 if role_schema_is_empty hub; then
   DATABASE_URL="$database_admin_url" DB_ROLE=hub pnpm --filter @workspace/db run push-force
 fi
+
+# Raw migrations depend on the complete role-local schema and enum types.
+# Fresh installs therefore push first; existing installs skip the push and
+# apply the same migrations in place.
+apply_ag_migrations "$database_admin_url"
+apply_an_migrations "$database_admin_url"
+apply_hub_migrations "$database_admin_url"
 
 # Re-apply grants after Drizzle creates any new table or sequence.
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
