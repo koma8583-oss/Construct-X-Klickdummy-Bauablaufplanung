@@ -759,6 +759,20 @@ export async function runAnAvailabilityCheck(
   const availableResources: Array<Record<string, unknown>> = [];
   const missingQualifications: string[] = [];
   const tentativeWarnings: Array<Record<string, unknown>> = [];
+  const warnedTentativeBookingIds = new Set<string>();
+  const addTentativeWarning = (
+    booking: typeof resourceBookingsTable.$inferSelect,
+    resourceId: string,
+  ) => {
+    if (warnedTentativeBookingIds.has(booking.id)) return;
+    warnedTentativeBookingIds.add(booking.id);
+    tentativeWarnings.push({
+      resourceId,
+      bookingId: booking.id,
+      overlapStart: booking.startAt.toISOString(),
+      overlapEnd: booking.endAt.toISOString(),
+    });
+  };
 
   for (const requirement of requirements) {
     const start = new Date(requirement.periodStart || projection.plannedStart);
@@ -810,14 +824,7 @@ export async function runAnAvailabilityCheck(
           0,
         );
       for (const booking of matchingConcreteBookings.filter((entry) => entry.status === "TENTATIVE")) {
-        if (!tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
-          tentativeWarnings.push({
-            resourceId: resource.id,
-            bookingId: booking.id,
-            overlapStart: booking.startAt.toISOString(),
-            overlapEnd: booking.endAt.toISOString(),
-          });
-        }
+        addTentativeWarning(booking, resource.id);
       }
       return total + Math.max(0, (resource.capacity ?? 1) - confirmedConcreteUse);
     }, 0);
@@ -825,14 +832,7 @@ export async function runAnAvailabilityCheck(
     // it once after summing the residual capacity of concrete resources.
     const availableCapacity = Math.max(0, availableCapacityBeforeTypeBookings - confirmedTypeUse);
     for (const booking of matchingTypeBookings.filter((entry) => entry.status === "TENTATIVE")) {
-      if (!tentativeWarnings.some((warning) => warning.bookingId === booking.id)) {
-        tentativeWarnings.push({
-          resourceId: requirement.localResourceTypeId,
-          bookingId: booking.id,
-          overlapStart: booking.startAt.toISOString(),
-          overlapEnd: booking.endAt.toISOString(),
-        });
-      }
+      addTentativeWarning(booking, requirement.localResourceTypeId);
     }
 
     if (availableCapacity < requiredCapacity) {

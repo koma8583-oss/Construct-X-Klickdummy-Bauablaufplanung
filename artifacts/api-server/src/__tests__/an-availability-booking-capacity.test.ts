@@ -104,6 +104,21 @@ async function addBooking(input: {
   });
 }
 
+async function addRequirement(requestId: string, requirementId: string, requiredCapacity: number) {
+  await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values({
+    id: requirementId,
+    anLeistungsanfrageId: `${requestId}-projection`,
+    externalResourceTypeCode: "CREW",
+    externalResourceTypeName: "Crew",
+    localResourceTypeId: RESOURCE_TYPE,
+    requiredCapacity: requiredCapacity.toString(),
+    capacityUnit: "PERSONS",
+    utilizationPercent: 100,
+    periodStart: WINDOW_START,
+    periodEnd: WINDOW_END,
+  });
+}
+
 async function runCheck(requestId: string): Promise<{
   result: string;
   internal: InternalResult;
@@ -220,6 +235,58 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     ]);
   });
 
+  it("sums multiple overlapping type-level reservations against the shared pool", async () => {
+    const requestId = "t362-multiple-type-level";
+    await seedRequest(requestId, 5);
+    await addBooking({
+      id: "t362-type-booking-a",
+      resourceId: null,
+      quantity: 1,
+      status: "CONFIRMED",
+    });
+    await addBooking({
+      id: "t362-type-booking-b",
+      resourceId: null,
+      quantity: 2,
+      status: "CONFIRMED",
+    });
+
+    const check = await runCheck(requestId);
+
+    // Two resources provide 8 units; both shared reservations consume 3.
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 5 }),
+    ]);
+    expect(check.internal.conflicts).toEqual([]);
+  });
+
+  it("subtracts overlapping concrete and type-level reservations from residual capacity", async () => {
+    const requestId = "t362-concrete-and-type-level";
+    await seedRequest(requestId, 2);
+    await addBooking({
+      id: "t362-concrete-full",
+      resourceId: RESOURCE_A,
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+    await addBooking({
+      id: "t362-type-overlap",
+      resourceId: null,
+      quantity: 2,
+      status: "CONFIRMED",
+    });
+
+    const check = await runCheck(requestId);
+
+    // Resource A is full; the shared reservation leaves two units on B.
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 2 }),
+    ]);
+    expect(check.internal.conflicts).toEqual([]);
+  });
+
   it("concrete booking utilization reduces only its resource capacity", async () => {
     const requestId = "t362-concrete-utilization";
     await seedRequest(requestId, 6);
@@ -264,6 +331,33 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     ]);
   });
 
+  it("emits one warning per overlapping tentative booking even across requirements", async () => {
+    const requestId = "t362-multiple-tentative";
+    await seedRequest(requestId, 8);
+    await addRequirement(requestId, `${requestId}-second-requirement`, 1);
+    await addBooking({
+      id: "t362-tentative-concrete",
+      resourceId: RESOURCE_A,
+      quantity: 4,
+      status: "TENTATIVE",
+    });
+    await addBooking({
+      id: "t362-tentative-type",
+      resourceId: null,
+      quantity: 2,
+      status: "TENTATIVE",
+    });
+
+    const check = await runCheck(requestId);
+
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.tentativeWarnings).toHaveLength(2);
+    expect(check.internal.tentativeWarnings.map((warning) => warning.bookingId)).toEqual([
+      "t362-tentative-concrete",
+      "t362-tentative-type",
+    ]);
+  });
+
   it("cancelled bookings do not consume AN-local capacity", async () => {
     const requestId = "t362-cancelled";
     await seedRequest(requestId, 8);
@@ -279,6 +373,32 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     expect(check.result).toBe("FEASIBLE");
     expect(check.internal.availableResources).toEqual([
       expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 8 }),
+    ]);
+    expect(check.internal.tentativeWarnings).toEqual([]);
+  });
+
+  it("excludes cancelled reservations while counting overlapping active reservations", async () => {
+    const requestId = "t362-cancelled-with-active";
+    await seedRequest(requestId, 6);
+    await addBooking({
+      id: "t362-cancelled-type",
+      resourceId: null,
+      quantity: 4,
+      status: "CANCELLED",
+    });
+    await addBooking({
+      id: "t362-active-type",
+      resourceId: null,
+      quantity: 2,
+      status: "CONFIRMED",
+    });
+
+    const check = await runCheck(requestId);
+
+    // Only the active reservation consumes the shared 8-unit pool.
+    expect(check.result).toBe("FEASIBLE");
+    expect(check.internal.availableResources).toEqual([
+      expect.objectContaining({ resourceTypeId: RESOURCE_TYPE, quantity: 6 }),
     ]);
     expect(check.internal.tentativeWarnings).toEqual([]);
   });
