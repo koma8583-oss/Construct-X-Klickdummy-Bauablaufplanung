@@ -10,26 +10,37 @@ const routes = [
 ];
 
 function targetPort(pathname) {
-  return routes.find((route) => pathname === route.prefix || pathname.startsWith(route.prefix))?.port ?? 5173;
+  return (
+    routes.find(
+      (route) => pathname === route.prefix || pathname.startsWith(route.prefix),
+    )?.port ?? 5173
+  );
 }
 
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url ?? "/", "http://ci-proxy").pathname;
   const upstreamPort = targetPort(pathname);
   const headers = { ...request.headers, host: `127.0.0.1:${upstreamPort}` };
-  const upstream = http.request({
-    hostname: "127.0.0.1",
-    port: upstreamPort,
-    method: request.method,
-    path: request.url,
-    headers,
-  }, (upstreamResponse) => {
-    response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
-    upstreamResponse.pipe(response);
-  });
+  const upstream = http.request(
+    {
+      hostname: "127.0.0.1",
+      port: upstreamPort,
+      method: request.method,
+      path: request.url,
+      headers,
+    },
+    (upstreamResponse) => {
+      response.writeHead(
+        upstreamResponse.statusCode ?? 502,
+        upstreamResponse.headers,
+      );
+      upstreamResponse.pipe(response);
+    },
+  );
 
   upstream.on("error", (error) => {
-    if (!response.headersSent) response.writeHead(502, { "content-type": "text/plain" });
+    if (!response.headersSent)
+      response.writeHead(502, { "content-type": "text/plain" });
     response.end(`CI proxy upstream error: ${error.message}`);
   });
   request.pipe(upstream);

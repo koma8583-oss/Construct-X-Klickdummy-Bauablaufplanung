@@ -105,21 +105,31 @@ jobs:
 
           wait_for_http() {
             local url="$1"
+            local expected_status="$2"
             for attempt in {1..60}; do
               local status
               status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url" || true)"
-              if [[ "$status" != "000" ]]; then return 0; fi
+              if [[ "$status" = "$expected_status" ]]; then return 0; fi
               sleep 1
             done
-            echo "Timed out waiting for $url" >&2
+            echo "Timed out waiting for $url to return $expected_status" >&2
             return 1
           }
 
-          wait_for_http http://127.0.0.1:8080/auth-service/login
-          wait_for_http http://127.0.0.1:4173/
-          wait_for_http http://127.0.0.1:4173/an/
-          wait_for_http http://127.0.0.1:4173/hub/
-          pnpm run e2e
+          wait_for_http http://127.0.0.1:8080/auth-service/login 404
+          wait_for_http http://127.0.0.1:5173/ 200
+          wait_for_http http://127.0.0.1:5174/an/ 200
+          wait_for_http http://127.0.0.1:5175/hub/ 200
+          wait_for_http http://127.0.0.1:4173/ 200
+          wait_for_http http://127.0.0.1:4173/an/ 200
+          wait_for_http http://127.0.0.1:4173/hub/ 200
+          pnpm run e2e:ci
+
+      - name: Collect CI diagnostics
+        if: always()
+        run: |
+          mkdir -p ci-diagnostics
+          cp /tmp/ci-*.log ci-diagnostics/ 2>/dev/null || true
 
       - name: Upload CI diagnostics
         if: always()
@@ -128,6 +138,6 @@ jobs:
           name: ci-diagnostics
           if-no-files-found: ignore
           path: |
-            /tmp/ci-*.log
+            ci-diagnostics
             e2e/e2e/test-results
-            e2e/playwright-report
+            e2e/e2e/playwright-report

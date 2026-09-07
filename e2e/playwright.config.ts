@@ -8,11 +8,16 @@ export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.CI,
+  retries: 0,
+  workers: process.env.CI ? 1 : undefined,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   outputDir: "e2e/test-results",
-  reporter: [["list"], ["html", { outputFolder: "e2e/playwright-report", open: "never" }]],
+  reporter: [
+    ["list"],
+    ["html", { outputFolder: "e2e/playwright-report", open: "never" }],
+  ],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:80",
     trace: "retain-on-failure",
@@ -21,7 +26,20 @@ export default defineConfig({
     actionTimeout: 10_000,
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    { name: "mobile", use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 } } },
+    {
+      name: "desktop",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+      },
+    },
+    {
+      name: "mobile",
+      use: {
+        ...devices["iPhone 13"],
+        browserName: "chromium",
+        viewport: { width: 390, height: 844 },
+      },
+    },
   ],
 });
