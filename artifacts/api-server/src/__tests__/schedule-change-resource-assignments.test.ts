@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  evaluateResourceRequirements,
   restoreConcreteResourceAssignments,
   shiftRequirementsToWindow,
 } from "../services/resource-availability-service";
@@ -24,6 +25,7 @@ function requirement(overrides: Partial<{
     resourceTypeId: "type-crew",
     requiredCapacity: overrides.requiredCapacity ?? 1,
     utilizationPercent: 100,
+    requiredQualification: null,
     periodStart: overrides.periodStart ?? null,
     periodEnd: overrides.periodEnd ?? null,
   };
@@ -148,6 +150,55 @@ describe("restoreConcreteResourceAssignments", () => {
       ["2026-09-10", "2026-09-12"],
     ]);
   });
+
+  it("keeps partially overlapping concrete segments on separate resources after shifting", () => {
+    const requirements = [
+      requirement({ id: "segment-a", periodStart: "2026-09-01", periodEnd: "2026-09-03" }),
+      requirement({ id: "segment-b", periodStart: "2026-09-02", periodEnd: "2026-09-04" }),
+    ];
+    const result = restoreConcreteResourceAssignments(
+      requirements,
+      [
+        booking("booking-a", "resource-a", "2026-09-01T00:00:00Z", "2026-09-05T00:00:00Z"),
+        booking("booking-b", "resource-b", "2026-09-02T00:00:00Z", "2026-09-05T00:00:00Z"),
+      ],
+      resources,
+      [],
+      oldStart,
+      oldEnd,
+      newStart,
+    );
+
+    expect(result.map((item) => item.resourceId)).toEqual(["resource-a", "resource-b"]);
+    expect(result.map((item) => [item.periodStart, item.periodEnd])).toEqual([
+      ["2026-09-08", "2026-09-10"],
+      ["2026-09-09", "2026-09-11"],
+    ]);
+  });
+
+  it("preserves the shifted period on a type-level residual after concrete reuse", () => {
+    const result = restoreConcreteResourceAssignments(
+      [requirement({ requiredCapacity: 6, periodStart: "2026-09-02", periodEnd: "2026-09-04" })],
+      [booking("booking-a", "resource-a", "2026-09-02T00:00:00Z", "2026-09-05T00:00:00Z")],
+      [{ ...resources[0], capacity: 4 }, resources[1]],
+      [],
+      oldStart,
+      oldEnd,
+      newStart,
+    );
+
+    expect(result).toMatchObject([{
+      resourceId: "resource-a",
+      quantity: 0,
+      periodStart: "2026-09-09",
+      periodEnd: "2026-09-11",
+    }, {
+      resourceId: null,
+      quantity: 2,
+      periodStart: "2026-09-09",
+      periodEnd: "2026-09-11",
+    }]);
+  });
 });
 
 describe("shiftRequirementsToWindow", () => {
@@ -175,5 +226,34 @@ describe("shiftRequirementsToWindow", () => {
       new Date("2026-10-26T08:00:00+01:00"),
     );
     expect(shifted).toEqual([{ periodStart: "2026-10-26", periodEnd: "2026-10-27" }]);
+  });
+
+  it("retains peak-capacity conflicts when partially overlapping periods move together", () => {
+    const requirements = [
+      requirement({ id: "segment-a", periodStart: "2026-09-01", periodEnd: "2026-09-03" }),
+      requirement({ id: "segment-b", periodStart: "2026-09-02", periodEnd: "2026-09-04" }),
+    ];
+    const shifted = shiftRequirementsToWindow(requirements, oldStart, newStart);
+    const resourcesForOneUnit = [{
+      ...resources[0],
+      capacity: 1,
+      type: "CREW",
+      name: "Crew",
+      qualifications: null,
+    }];
+    const evaluate = (periods: typeof requirements) => evaluateResourceRequirements({
+      requirements: periods,
+      resources: resourcesForOneUnit,
+      bookings: [],
+      windowStart: periods === requirements ? oldStart : newStart,
+      windowEnd: periods === requirements ? oldEnd : new Date("2026-09-13T00:00:00Z"),
+    });
+
+    expect(evaluate(requirements).conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+    expect(evaluate(shifted).conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
   });
 });

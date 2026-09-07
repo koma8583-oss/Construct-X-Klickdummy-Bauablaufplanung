@@ -168,8 +168,18 @@ export async function applyAcceptedAnScheduleChange(
     targetWindowStart,
     oldWindowStart,
   );
+  const targetRequirements = input.useRequirementPeriods === false
+    ? oldRequirements.map((requirement) => ({
+      ...requirement,
+      periodStart: null,
+      periodEnd: null,
+    }))
+    : requirements.map((requirement) => ({
+      ...requirement,
+      resourceTypeId: requirement.localResourceTypeId,
+    }));
   const feasibility = evaluateResourceRequirements({
-    requirements: oldRequirements
+    requirements: targetRequirements
       .filter((requirement): requirement is typeof requirement & { resourceTypeId: string } =>
         Boolean(requirement.resourceTypeId),
       )

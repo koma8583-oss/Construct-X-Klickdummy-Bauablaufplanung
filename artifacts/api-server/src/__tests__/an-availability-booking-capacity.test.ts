@@ -100,6 +100,62 @@ async function seedRequest(requestId: string, requiredCapacity: number) {
   });
 }
 
+async function seedShiftedScheduleRequest(requestId: string) {
+  const targetStart = "2027-06-08";
+  const targetEnd = "2027-06-13";
+  await anDb.insert(anLeistungsanfragenTable).values({
+    id: `${requestId}-projection`,
+    externalLeistungsanfrageId: requestId,
+    externalRequestVersion: 1,
+    sourceMessageId: `${requestId}-message`,
+    payloadHash: `${requestId}-hash`,
+    correlationId: requestId,
+    senderAgOrgId: AG_ORG,
+    receiverAnOrgId: AN_ORG,
+    projectReference: `${requestId}-project`,
+    leistungReference: `${requestId}-leistung`,
+    plannedStart: targetStart,
+    plannedEnd: targetEnd,
+    policySnapshot: { recipientOrganizationId: AN_ORG },
+    payloadSnapshot: {
+      requestId,
+      requestKind: "SCHEDULE_CHANGE",
+      sourceRequestId: requestId,
+      baseTimeWindow: {
+        start: WINDOW_START,
+        end: "2027-06-06",
+      },
+    },
+    status: "DETAILS_RETRIEVED",
+  });
+  await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values([
+    {
+      id: `${requestId}-requirement-a`,
+      anLeistungsanfrageId: `${requestId}-projection`,
+      externalResourceTypeCode: "CREW",
+      externalResourceTypeName: "Crew",
+      localResourceTypeId: RESOURCE_TYPE,
+      requiredCapacity: "4",
+      capacityUnit: "PERSONS",
+      utilizationPercent: 100,
+      periodStart: "2027-06-09",
+      periodEnd: "2027-06-11",
+    },
+    {
+      id: `${requestId}-requirement-b`,
+      anLeistungsanfrageId: `${requestId}-projection`,
+      externalResourceTypeCode: "CREW",
+      externalResourceTypeName: "Crew",
+      localResourceTypeId: RESOURCE_TYPE,
+      requiredCapacity: "4",
+      capacityUnit: "PERSONS",
+      utilizationPercent: 100,
+      periodStart: "2027-06-10",
+      periodEnd: "2027-06-12",
+    },
+  ]);
+}
+
 async function addBooking(input: {
   id: string;
   resourceId: string | null;
@@ -326,6 +382,75 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
       sourceReferenceId: `${requestId}-projection`,
       status: "CONFIRMED",
     });
+  });
+
+  it("rejects an infeasible shifted overlap before replacing any bookings", async () => {
+    const requestId = "t362-shifted-overlap-conflict";
+    await seedShiftedScheduleRequest(requestId);
+    await addBooking({
+      id: "t362-shifted-overlap-block",
+      resourceId: RESOURCE_A,
+      sourceType: "MANUAL_BLOCK",
+      startAt: "2027-06-10T00:00:00Z",
+      endAt: "2027-06-11T00:00:00Z",
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date("2027-06-08T00:00:00Z"),
+      targetEnd: new Date("2027-06-13T00:00:00Z"),
+      note: "reject shifted overlap",
+      useRequirementPeriods: true,
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.id).toBe("t362-shifted-overlap-block");
+  });
+
+  it("recreates concrete bookings on the shifted requirement sub-periods", async () => {
+    const requestId = "t362-shifted-overlap-recreation";
+    await seedShiftedScheduleRequest(requestId);
+    await addBooking({
+      id: "t362-shifted-concrete-a",
+      resourceId: RESOURCE_A,
+      sourceType: "TAKT_REQUEST",
+      sourceReferenceId: `${requestId}-projection`,
+      startAt: "2027-06-02T00:00:00Z",
+      endAt: "2027-06-05T00:00:00Z",
+      status: "CONFIRMED",
+    });
+    await addBooking({
+      id: "t362-shifted-concrete-b",
+      resourceId: RESOURCE_B,
+      sourceType: "TAKT_REQUEST",
+      sourceReferenceId: `${requestId}-projection`,
+      startAt: "2027-06-03T00:00:00Z",
+      endAt: "2027-06-06T00:00:00Z",
+      status: "CONFIRMED",
+    });
+
+    await anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date("2027-06-08T00:00:00Z"),
+      targetEnd: new Date("2027-06-13T00:00:00Z"),
+      note: "recreate shifted requirements",
+      useRequirementPeriods: true,
+    }));
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(2);
+    expect(bookings.map((booking) => [
+      booking.resourceId,
+      booking.startAt.toISOString(),
+      booking.endAt.toISOString(),
+    ]).sort()).toEqual([
+      [RESOURCE_A, "2027-06-09T00:00:00.000Z", "2027-06-12T00:00:00.000Z"],
+      [RESOURCE_B, "2027-06-10T00:00:00.000Z", "2027-06-13T00:00:00.000Z"],
+    ]);
   });
 
   it("does not reuse one shared resource across competing qualifications", () => {
