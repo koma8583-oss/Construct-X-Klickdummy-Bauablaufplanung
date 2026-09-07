@@ -194,6 +194,10 @@ beforeAll(async () => {
       subject: "T38 Anfrage",
       message: "Bitte Details prüfen.",
       dataPublicationId: "t38-publication-001",
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["plannedTimeWindow"],
+      parentPolicyId: PROJECT_AGREEMENT_ID,
+      parentPolicyVersion: 1,
     });
   expect(createRes.status).toBe(201);
   requestId = createRes.body.id;
@@ -419,7 +423,11 @@ describe("AN details review — explicit status transition", () => {
     const createRes = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+      .send({
+        taktId: TAKT_ID, nuOrgId: NU_ORG,
+        purpose: "LEISTUNGSKOORDINATION", selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: PROJECT_AGREEMENT_ID, parentPolicyVersion: 1,
+      });
     expect(createRes.status).toBe(201);
     const draftId = createRes.body.id;
 
