@@ -67,11 +67,14 @@ for migration in \
 done
 
 # Reapply canonical grants/physical ownership after additive migrations and then
-# add the tightly scoped atomic Hub outbox interface.
+# add the tightly scoped atomic Hub outbox interface plus invariants that must
+# survive both legacy and fresh shared-database bootstraps.
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0025_shared_database_roles.sql
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0026_atomic_hub_outbox.sql
+psql "$database_admin_url" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0027_deadline_reminder_dedup.sql
 
 PGOPTIONS="-c search_path=ag,public,pg_catalog" \
   psql "$database_admin_url" -v ON_ERROR_STOP=1 <<'SQL'
