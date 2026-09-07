@@ -319,6 +319,12 @@ sharedBoundary("shared database with isolated AG, AN and Hub schemas", () => {
     await expect(hubPool.query("SELECT 1 FROM an.resources LIMIT 1")).rejects.toMatchObject({
       code: expect.stringMatching(/42501|42P01/),
     });
+    await expect(agPool.query("SELECT 1 FROM hub.message_outbox LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
+    await expect(anPool.query("SELECT 1 FROM hub.message_outbox LIMIT 1")).rejects.toMatchObject({
+      code: expect.stringMatching(/42501|42P01/),
+    });
   });
 
   it("delivers a project invitation locally while keeping invitation data on AN and transport data on Hub", async () => {

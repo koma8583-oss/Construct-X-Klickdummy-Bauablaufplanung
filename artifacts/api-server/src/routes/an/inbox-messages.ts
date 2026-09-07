@@ -11,10 +11,8 @@
  * AN Datenraum view alongside data-offer notifications.
  */
 import { Router } from "express";
-import { anDb as db } from "@workspace/db";
-import { messageInboxTable } from "@workspace/db";
-import { eq, inArray, desc, and } from "drizzle-orm";
 import { requireJwt } from "../../middlewares/requireJwt";
+import { listHubInbox } from "../../services/hub-transport-service";
 
 const router = Router();
 
@@ -31,22 +29,13 @@ router.get("/inbox-messages", requireJwt, async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db
-    .select()
-    .from(messageInboxTable)
-    .where(
-      and(
-        eq(messageInboxTable.recipientOrgId, orgId),
-        inArray(messageInboxTable.messageType, [
-          "TAKT_REQUEST_REMINDER",
-          "TAKT_REQUEST_EXPIRED",
-        ] as ["TAKT_REQUEST_REMINDER", "TAKT_REQUEST_EXPIRED"])
-      )
-    )
-    .orderBy(desc(messageInboxTable.receivedAt))
-    .limit(50);
+  const rows = await listHubInbox(orgId, { limit: 50 });
+  const filtered = rows.filter((row) =>
+    row.messageType === "TAKT_REQUEST_REMINDER" ||
+    row.messageType === "TAKT_REQUEST_EXPIRED",
+  );
 
-  res.json(rows);
+  res.json(filtered);
 });
 
 export default router;

@@ -14,9 +14,13 @@ const baseUrl = roleEnv
   ? process.env.DATABASE_URL ?? process.env[roleEnv]
   : undefined;
 const schemaFile =
-  role === "ag" || role === "an" || role === "hub"
-    ? "./src/schema/shared.ts"
-    : undefined;
+  role === "ag"
+    ? "./src/schema/ag.ts"
+    : role === "an"
+      ? "./src/schema/an.ts"
+      : role === "hub"
+        ? "./src/schema/hub-database.ts"
+        : undefined;
 
 if (!schemaFile || !schema || !baseUrl) {
   throw new Error(

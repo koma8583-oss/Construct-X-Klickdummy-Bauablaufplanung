@@ -14,20 +14,19 @@
  * TaktRequest.status is NEVER changed here — markAsRead only updates inbox status.
  */
 import { Router } from "express";
-import { hubDb, messageInboxTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";
-import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import {
   MessageNotFoundError,
   RecipientForbiddenError,
 } from "../lib/transport/transport-errors";
 import type { DataspaceMessageStatus, DataspaceMessageType } from "@workspace/api-zod";
+import {
+  getHubInboxMessage,
+  listHubInbox,
+  markHubInboxMessageAsRead,
+} from "../services/hub-transport-service";
 
 const router = Router();
-
-// Module-level transport singleton — stateless, safe to share across requests.
-const transport = new LocalHubTransport();
 
 // ── Valid enum value sets (used for query param validation) ───────────────────
 
@@ -96,7 +95,7 @@ router.get("/messages/inbox", requireJwt, async (req, res): Promise<void> => {
   const limitVal  = Math.min(Math.max(parseInt(q.limit  ?? "50", 10)  || 50,  1), 100);
   const offsetVal = Math.max(parseInt(q.offset ?? "0",  10) || 0, 0);
 
-  const messages = await transport.getInbox(nuOrgId, {
+  const messages = await listHubInbox(nuOrgId, {
     status: statusFilter,
     messageType: typeFilter,
     correlationId: q.correlationId ?? undefined,
@@ -109,10 +108,6 @@ router.get("/messages/inbox", requireJwt, async (req, res): Promise<void> => {
 
 // ── GET /messages/inbox/:messageId ────────────────────────────────────────────
 // Returns a single inbox message by messageId.
-// The transport's getInbox() filters by correlationId, not messageId, so we
-// query the DB directly to look up a specific messageId + recipientOrgId pair.
-// This is intentional: route handlers may use the DB for read-only cross-cuts
-// that the transport interface does not expose.
 router.get(
   "/messages/inbox/:messageId",
   requireJwt,
@@ -122,17 +117,8 @@ router.get(
 
     const messageId = req.params.messageId as string;
 
-    // Look up the row scoped to the caller's org (safe — no cross-org leakage)
-    const [row] = await hubDb
-      .select()
-      .from(messageInboxTable)
-      .where(
-        and(
-          eq(messageInboxTable.messageId, messageId),
-          eq(messageInboxTable.recipientOrgId, nuOrgId),
-        ),
-      )
-      .limit(1);
+    // The Hub facade applies the recipient-org scope before returning anything.
+    const row = await getHubInboxMessage(messageId, nuOrgId);
 
     if (!row) {
       // Check whether the messageId exists for a DIFFERENT recipient so we can
@@ -159,7 +145,7 @@ router.post(
     const messageId = req.params.messageId as string;
 
     try {
-      await transport.markAsRead(messageId, nuOrgId);
+      await markHubInboxMessageAsRead(messageId, nuOrgId);
     } catch (err) {
       if (err instanceof MessageNotFoundError) {
         res.status(404).json({ error: err.message });
@@ -172,17 +158,7 @@ router.post(
       throw err;
     }
 
-    // Reload the updated inbox row to return current readAt
-    const [row] = await hubDb
-      .select()
-      .from(messageInboxTable)
-      .where(
-        and(
-          eq(messageInboxTable.messageId, messageId),
-          eq(messageInboxTable.recipientOrgId, nuOrgId),
-        ),
-      )
-      .limit(1);
+    const row = await getHubInboxMessage(messageId, nuOrgId);
 
     res.json({
       messageId,

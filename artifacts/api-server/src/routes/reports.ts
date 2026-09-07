@@ -9,7 +9,7 @@
  * No full payloads; KPI numbers only.
  */
 import { Router } from "express";
-import { anDb, db } from "@workspace/db";
+import { anDb, db, hubDb } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
   anLeistungsantwortenTable,
@@ -171,7 +171,7 @@ router.get(
   requireJwt,
   requireRole("HUB_ADMIN"),
   async (req, res): Promise<void> => {
-    const [outboxAgg] = await db
+    const [outboxAgg] = await hubDb
       .select({
         pending:   sql<number>`COUNT(*) FILTER (WHERE ${messageOutboxTable.status} = 'PENDING')`,
         delivered: sql<number>`COUNT(*) FILTER (WHERE ${messageOutboxTable.status} = 'DELIVERED')`,

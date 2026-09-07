@@ -17,9 +17,8 @@
 import crypto from "node:crypto";
 import {
   db,
-  hubDb,
-  messageOutboxTable,
-  messageDeliveryAttemptsTable,
+  type MessageOutbox,
+  type MessageDeliveryAttempt,
 } from "@workspace/db";
 import {
   dataPublicationsTable,
@@ -31,7 +30,7 @@ import {
   taktDependenciesTable,
   organizationsTable,
 } from "@workspace/db";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createDataspaceExchange } from "./dataspace/dataspace-exchange-factory";
 import {
   deliverLocalDataOffer,
@@ -43,6 +42,12 @@ import type {
   ExternalPolicySnapshot,
   ExternalProjectInvitation,
 } from "./dataspace/external-contracts";
+import {
+  getHubOutboxMessage,
+  listHubDeliveryAttempts,
+  listHubOutboxByCorrelation,
+  listHubOutboxMessages,
+} from "./hub-transport-service";
 
 export class PublicationNotFoundError extends Error {
   constructor(id: string) {
@@ -76,8 +81,8 @@ export class PublicationDeliveryError extends Error {
 export const MAX_PUBLICATION_DELIVERY_ATTEMPTS = 5;
 
 function toDataPublicationDelivery(
-  row: typeof messageOutboxTable.$inferSelect,
-  attemptHistory: Array<typeof messageDeliveryAttemptsTable.$inferSelect>,
+  row: MessageOutbox,
+  attemptHistory: MessageDeliveryAttempt[],
 ) {
   return {
     messageId: row.messageId,
@@ -105,19 +110,9 @@ export async function getDataPublicationDeliveries(
   );
   if (messageIds.length === 0) return new Map<string, ReturnType<typeof toDataPublicationDelivery>>();
 
-  const outboxRows = await hubDb
-    .select()
-    .from(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, messageIds as [string, ...string[]]));
-  const attempts = await hubDb
-    .select()
-    .from(messageDeliveryAttemptsTable)
-    .where(inArray(messageDeliveryAttemptsTable.messageId, messageIds as [string, ...string[]]))
-    .orderBy(
-      asc(messageDeliveryAttemptsTable.attemptedAt),
-      asc(messageDeliveryAttemptsTable.attemptNumber),
-    );
-  const attemptsByMessageId = new Map<string, Array<typeof messageDeliveryAttemptsTable.$inferSelect>>();
+  const outboxRows = await listHubOutboxMessages(messageIds);
+  const attempts = await listHubDeliveryAttempts(messageIds);
+  const attemptsByMessageId = new Map<string, MessageDeliveryAttempt[]>();
   for (const attempt of attempts) {
     const existing = attemptsByMessageId.get(attempt.messageId) ?? [];
     existing.push(attempt);
@@ -157,16 +152,11 @@ async function reconcileLinkedProjectInvitation(
   }
 
   const messageId = `project-invitation-${membership.invitationId}`;
-  const [invitationOutbox] = await hubDb
-    .select()
-    .from(messageOutboxTable)
-    .where(and(
-      eq(messageOutboxTable.messageId, messageId),
-      eq(messageOutboxTable.senderOrgId, agOrgId),
-      eq(messageOutboxTable.recipientOrgId, anOrgId),
-      eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
-    ))
-    .limit(1);
+  const invitationOutbox = await getHubOutboxMessage(messageId, {
+    senderOrgId: agOrgId,
+    recipientOrgId: anOrgId,
+    messageType: "PROJECT_INVITATION",
+  });
   if (!invitationOutbox) {
     throw new PublicationDeliveryError(
       "PROJECT_INVITATION_DELIVERY_NOT_FOUND",
@@ -177,11 +167,7 @@ async function reconcileLinkedProjectInvitation(
   const payload = invitationOutbox.payload as unknown as ExternalProjectInvitation;
   const exchange = createDataspaceExchange();
   let delivery = await deliverLocalProjectInvitation(payload, exchange);
-  const [currentInvitationOutbox] = await hubDb
-    .select({ status: messageOutboxTable.status })
-    .from(messageOutboxTable)
-    .where(eq(messageOutboxTable.messageId, messageId))
-    .limit(1);
+  const currentInvitationOutbox = await getHubOutboxMessage(messageId);
   if (
     delivery.status === "PENDING" ||
     delivery.status === "FAILED" ||
@@ -246,16 +232,11 @@ export async function retryDataPublicationDelivery(
   }
 
   const messageId = `dataspace-offer-${publicationId}-${anOrgId}`;
-  const [outbox] = await hubDb
-    .select()
-    .from(messageOutboxTable)
-    .where(and(
-      eq(messageOutboxTable.messageId, messageId),
-      eq(messageOutboxTable.senderOrgId, agOrgId),
-      eq(messageOutboxTable.recipientOrgId, anOrgId),
-      eq(messageOutboxTable.messageType, "DATA_OFFER_PUBLISHED"),
-    ))
-    .limit(1);
+  const outbox = await getHubOutboxMessage(messageId, {
+    senderOrgId: agOrgId,
+    recipientOrgId: anOrgId,
+    messageType: "DATA_OFFER_PUBLISHED",
+  });
   if (!outbox) {
     throw new PublicationDeliveryError(
       "PUBLICATION_DELIVERY_NOT_FOUND",
@@ -273,21 +254,16 @@ export async function retryDataPublicationDelivery(
       ))
       .limit(1)
     : [];
-  const [linkedInvitationOutbox] = linkedMembership
-    ? await hubDb
-      .select()
-      .from(messageOutboxTable)
-      .where(and(
-        eq(
-          messageOutboxTable.messageId,
-          `project-invitation-${linkedMembership.invitationId}`,
-        ),
-        eq(messageOutboxTable.senderOrgId, agOrgId),
-        eq(messageOutboxTable.recipientOrgId, anOrgId),
-        eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
-      ))
-      .limit(1)
-    : [];
+  const linkedInvitationOutbox = linkedMembership
+    ? await getHubOutboxMessage(
+      `project-invitation-${linkedMembership.invitationId}`,
+      {
+        senderOrgId: agOrgId,
+        recipientOrgId: anOrgId,
+        messageType: "PROJECT_INVITATION",
+      },
+    )
+    : null;
   const invitationNeedsRecovery = Boolean(
     linkedInvitationOutbox &&
     ["PENDING", "FAILED"].includes(linkedInvitationOutbox.status),
@@ -927,10 +903,10 @@ export async function publishCombinedDataPublicationNotifications(
   if (!pub || pub.status !== "PUBLISHED") {
     throw new PublicationStatusError("Combined data publication is not active.");
   }
-  const outboxRows = await db.select().from(messageOutboxTable).where(and(
-    eq(messageOutboxTable.correlationId, publicationId),
-    eq(messageOutboxTable.messageType, "DATA_OFFER_PUBLISHED"),
-  ));
+  const outboxRows = await listHubOutboxByCorrelation(
+    publicationId,
+    "DATA_OFFER_PUBLISHED",
+  );
   for (const outbox of outboxRows) {
     if (!["PENDING", "FAILED"].includes(outbox.status)) continue;
     try {

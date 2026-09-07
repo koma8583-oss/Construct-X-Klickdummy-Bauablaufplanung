@@ -15,8 +15,6 @@ import {
   takteTable,
   projectsTable,
   organizationsTable,
-  messageOutboxTable,
-  messageInboxTable,
   taktResponsesTable,
   taktResponseAlternativesTable,
   taktResponseDecisionsTable,
@@ -35,6 +33,11 @@ import {
 } from "./legacy-takt-mappers";
 import { getCoordination } from "../services/service-change-proposal-service";
 import { policyAccessDecision } from "../services/leistungsanfrage-policy-guard";
+import {
+  getHubInboxMessage,
+  getHubOutboxMessage,
+  listHubOutboxMessages,
+} from "../services/hub-transport-service";
 
 // ── Detail view types (Task 5.4) ──────────────────────────────────────────────
 
@@ -187,14 +190,6 @@ export async function getTaktRequestDetailForGu(
       snapshotSchemaVersion: taktRequestSnapshotsTable.schemaVersion,
       snapshotPayload: taktRequestSnapshotsTable.snapshotPayload,
       snapshotCreatedAt: taktRequestSnapshotsTable.createdAt,
-      // ── Outbox ───────────────────────────────────────────────────────────
-      outboxStatus: messageOutboxTable.status,
-      outboxPayload: messageOutboxTable.payload,
-      outboxAttemptCount: messageOutboxTable.attemptCount,
-      outboxLastAttemptAt: messageOutboxTable.lastAttemptAt,
-      outboxFailureReason: messageOutboxTable.failureReason,
-      // ── Inbox (readAt only) ───────────────────────────────────────────────
-      inboxReadAt: messageInboxTable.readAt,
       // ── Response ─────────────────────────────────────────────────────────
       responseId: taktResponsesTable.id,
       responseDecision: taktResponsesTable.decision,
@@ -225,20 +220,6 @@ export async function getTaktRequestDetailForGu(
       eq(taktRequestSnapshotsTable.taktRequestId, taktRequestsTable.id),
     )
     .leftJoin(
-      messageOutboxTable,
-      eq(
-        messageOutboxTable.messageId,
-        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
-      ),
-    )
-    .leftJoin(
-      messageInboxTable,
-      eq(
-        messageInboxTable.messageId,
-        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
-      ),
-    )
-    .leftJoin(
       taktResponsesTable,
       eq(taktResponsesTable.taktRequestId, taktRequestsTable.id),
     )
@@ -255,6 +236,12 @@ export async function getTaktRequestDetailForGu(
     .limit(1);
 
   if (!row) return null;
+
+  const notificationMessageId = `taktrequest-notification-${row.id}`;
+  const [outbox, inbox] = await Promise.all([
+    getHubOutboxMessage(notificationMessageId),
+    getHubInboxMessage(notificationMessageId, row.nuOrgId),
+  ]);
 
   // ── Alternatives (1:many — separate query) ──────────────────────────────
   let alternatives: TaktRequestDetailResponseAlt[] = [];
@@ -300,12 +287,12 @@ export async function getTaktRequestDetailForGu(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     transport: {
-      status: (row.outboxStatus ?? null) as TaktRequestDetailTransport["status"],
-      notificationPayload: (row.outboxPayload ?? null) as Record<string, unknown> | null,
-      attemptCount: row.outboxAttemptCount ?? null,
-      lastAttemptAt: row.outboxLastAttemptAt ?? null,
-      failureReason: row.outboxFailureReason ?? null,
-      inboxReadAt: row.inboxReadAt ?? null,
+      status: (outbox?.status ?? null) as TaktRequestDetailTransport["status"],
+      notificationPayload: (outbox?.payload ?? null) as Record<string, unknown> | null,
+      attemptCount: outbox?.attemptCount ?? null,
+      lastAttemptAt: outbox?.lastAttemptAt ?? null,
+      failureReason: outbox?.failureReason ?? null,
+      inboxReadAt: inbox?.readAt ?? null,
     },
     snapshot: row.snapshotId
       ? {
@@ -366,7 +353,7 @@ export async function getTaktRequestDetailForGu(
       snapshotCreatedAt: row.snapshotCreatedAt ?? null,
       sentAt: row.sentAt ?? null,
       deliveredAt: row.deliveredAt ?? null,
-      inboxReadAt: row.inboxReadAt ?? null,
+      inboxReadAt: inbox?.readAt ?? null,
       detailsRetrievedAt: row.detailsRetrievedAt ?? null,
       checkedAt: null,
       responseCreatedAt: row.responseCreatedAt ?? null,
@@ -568,7 +555,6 @@ export async function listTaktRequestsForGuEnriched(
       nuOrgId: taktRequestsTable.nuOrgId,
       nuOrgName: nuOrg.name,
       status: taktRequestsTable.status,
-      outboxStatus: messageOutboxTable.status,
       responseRequiredBy: taktRequestsTable.responseRequiredBy,
       expiresAt: taktRequestsTable.expiresAt,
       expiredAt: taktRequestsTable.expiredAt,
@@ -583,21 +569,19 @@ export async function listTaktRequestsForGuEnriched(
     .innerJoin(takteTable, eq(taktRequestsTable.taktId, takteTable.id))
     .innerJoin(projectsTable, eq(takteTable.projectId, projectsTable.id))
     .innerJoin(nuOrg, eq(taktRequestsTable.nuOrgId, nuOrg.id))
-    .leftJoin(
-      messageOutboxTable,
-      eq(
-        messageOutboxTable.messageId,
-        sql`'taktrequest-notification-' || ${taktRequestsTable.id}`,
-      ),
-    )
     .where(and(...conditions));
+
+  const outboxRows = await listHubOutboxMessages(
+    rows.map((row) => `taktrequest-notification-${row.id}`),
+  );
+  const outboxByMessageId = new Map(outboxRows.map((row) => [row.messageId, row]));
 
   return Promise.all(rows.map(async (r) => {
     const coordination = await getCoordination(r.id, guOrgId);
     return {
       ...r,
       status: r.status as TaktRequestStatus,
-      outboxStatus: (r.outboxStatus ?? null) as TaktRequestListItem["outboxStatus"],
+       outboxStatus: (outboxByMessageId.get(`taktrequest-notification-${r.id}`)?.status ?? null) as TaktRequestListItem["outboxStatus"],
       projectId: r.projectId ?? "",
       currentAgreement: coordination?.currentAgreement ?? null,
       openProposal: coordination?.openProposal

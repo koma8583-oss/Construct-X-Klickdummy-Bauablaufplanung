@@ -42,3 +42,9 @@ private AN planning data.
 **How to apply:** When tightening the canonical route guard, keep only
 `coordination` and `change-proposals` paths in this exception; do not broaden it
 to general requests, Leistung data, or dependencies.
+
+Transport ownership must be enforced twice: role-specific Drizzle schema compositions must omit Hub transport tables from AG/AN, and PostgreSQL ACLs must deny direct `hub.*` access to those roles. Re-running the boundary migration must repair grants from older installations.
+
+**Why:** Removing imports alone does not protect an already-migrated database, while ACL-only protection still lets future schema pushes recreate unauthorized tables.
+
+**How to apply:** Keep `schema/ag.ts` and `schema/an.ts` transport-free, keep transport access behind the Hub facade, and add direct cross-role SQL denial assertions to the shared-boundary suite.

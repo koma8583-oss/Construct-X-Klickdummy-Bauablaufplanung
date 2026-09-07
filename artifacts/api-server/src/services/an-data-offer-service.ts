@@ -1,10 +1,10 @@
 import {
   anDb,
   anProjectInvitationsTable,
-  messageOutboxTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type { ExternalDataOfferResponse } from "./dataspace/external-contracts";
+import { enqueueHubMessage } from "./hub-transport-service";
 
 export class AnDataOfferError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -91,17 +91,17 @@ export async function decideAnDataOffer(input: {
         "Die Leistungsfreigabe wurde bereits beantwortet.",
       );
     }
-    await tx.insert(messageOutboxTable).values({
-      messageId: payload.metadata.messageId,
-      schemaVersion: "1.0",
-      messageType: "DATA_OFFER_RESPONSE",
-      senderOrgId: input.anOrgId,
-      recipientOrgId: offer.senderAgOrgId,
-      correlationId: offer.correlationId,
-      payload: payload as unknown as Record<string, unknown>,
-      status: "PENDING",
-    });
     return [row];
+  });
+  await enqueueHubMessage({
+    messageId: payload.metadata.messageId,
+    schemaVersion: "1.0",
+    messageType: "DATA_OFFER_RESPONSE",
+    senderOrgId: input.anOrgId,
+    recipientOrgId: offer.senderAgOrgId,
+    correlationId: offer.correlationId,
+    payload: payload as unknown as Record<string, unknown>,
+    status: "PENDING",
   });
 
   return { offer: updated, payload };

@@ -1,7 +1,6 @@
 import {
   anDb,
   anProjectInvitationsTable,
-  messageOutboxTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type {
@@ -9,6 +8,7 @@ import type {
   ExternalDataOffer,
   ExternalProjectInvitationResponse,
 } from "./dataspace/external-contracts";
+import { enqueueHubMessage } from "./hub-transport-service";
 
 export class AnProjectInvitationError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -214,17 +214,17 @@ export async function decideAnProjectInvitation(input: {
       eq(anProjectInvitationsTable.status, "PENDING"),
     )).returning();
     if (!row) throw new AnProjectInvitationError("PROJECT_INVITATION_ALREADY_RESOLVED", "Die Einladung wurde bereits beantwortet.");
-    await tx.insert(messageOutboxTable).values({
-      messageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION_RESPONSE",
-      senderOrgId: input.anOrgId,
-      recipientOrgId: invitation.senderAgOrgId,
-      correlationId: invitation.correlationId,
-      payload: payload as unknown as Record<string, unknown>,
-      status: "PENDING",
-    });
     return [row];
+  });
+  await enqueueHubMessage({
+    messageId,
+    schemaVersion: "1.0",
+    messageType: "PROJECT_INVITATION_RESPONSE",
+    senderOrgId: input.anOrgId,
+    recipientOrgId: invitation.senderAgOrgId,
+    correlationId: invitation.correlationId,
+    payload: payload as unknown as Record<string, unknown>,
+    status: "PENDING",
   });
   return { invitation: updated, payload };
 }

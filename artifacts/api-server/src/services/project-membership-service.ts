@@ -1,8 +1,8 @@
 import {
   agDb as db,
   organizationsTable,
-  messageOutboxTable,
-  messageDeliveryAttemptsTable,
+  type MessageOutbox,
+  type MessageDeliveryAttempt,
   projectsTable,
   takteTable,
   projectMembershipsTable,
@@ -26,6 +26,12 @@ import { createPolicySnapshot } from "./policy-snapshot-service";
 import { toInvitationPolicy } from "./policy-contract-adapters";
 import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 import { createConstructXPolicy } from "./construct-x-policy-service";
+import {
+  enqueueHubMessage,
+  getHubOutboxMessage,
+  listHubDeliveryAttempts,
+  listHubOutboxMessages,
+} from "./hub-transport-service";
 
 export class ProjectMembershipError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -35,8 +41,8 @@ export class ProjectMembershipError extends Error {
 }
 
 function toProjectInvitationDelivery(
-  row: typeof messageOutboxTable.$inferSelect,
-  attemptHistory: Array<typeof messageDeliveryAttemptsTable.$inferSelect>,
+  row: MessageOutbox,
+  attemptHistory: MessageDeliveryAttempt[],
 ) {
   return {
     messageId: row.messageId,
@@ -104,18 +110,10 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
     `project-invitation-response-${m.invitationId}-ACTIVE`,
     `project-invitation-response-${m.invitationId}-REJECTED`,
   ]);
-  const deliveries = await db.select().from(messageOutboxTable)
-    .where(inArray(messageOutboxTable.messageId, messageIds));
-  const attempts = messageIds.length === 0
-    ? []
-    : await db.select().from(messageDeliveryAttemptsTable)
-      .where(inArray(messageDeliveryAttemptsTable.messageId, messageIds))
-      .orderBy(
-        asc(messageDeliveryAttemptsTable.attemptedAt),
-        asc(messageDeliveryAttemptsTable.attemptNumber),
-      );
+  const deliveries = await listHubOutboxMessages(messageIds);
+  const attempts = await listHubDeliveryAttempts(messageIds);
   const byMessageId = new Map(deliveries.map((row) => [row.messageId, row]));
-  const attemptsByMessageId = new Map<string, Array<typeof messageDeliveryAttemptsTable.$inferSelect>>();
+  const attemptsByMessageId = new Map<string, MessageDeliveryAttempt[]>();
   for (const attempt of attempts) {
     const messageAttempts = attemptsByMessageId.get(attempt.messageId) ?? [];
     messageAttempts.push(attempt);
@@ -156,11 +154,7 @@ export async function listFailedProjectInvitationDeliveries(projectId: string, a
 }
 
 export async function retryProjectInvitationDelivery(messageId: string, agOrgId: string) {
-  const [outbox] = await db.select().from(messageOutboxTable)
-    .where(and(
-      eq(messageOutboxTable.messageId, messageId),
-      eq(messageOutboxTable.senderOrgId, agOrgId),
-    )).limit(1);
+  const outbox = await getHubOutboxMessage(messageId, { senderOrgId: agOrgId });
   if (!outbox || !["PROJECT_INVITATION", "PROJECT_INVITATION_RESPONSE"].includes(outbox.messageType)) {
     throw new ProjectMembershipError("PROJECT_INVITATION_DELIVERY_NOT_FOUND", "Zustellung der Projekteinladung nicht gefunden.");
   }
@@ -385,17 +379,17 @@ export async function inviteParticipant(input: {
         projectAgreementPolicyId: projectAgreement.policyId,
       invitedAt: now,
     }).returning();
-    await tx.insert(messageOutboxTable).values({
-      messageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION",
-      senderOrgId: input.agOrgId,
-      recipientOrgId: anOrgId,
-      correlationId,
-      payload: invitationPayload as unknown as Record<string, unknown>,
-      status: "PENDING",
-    });
     return [created];
+  });
+  await enqueueHubMessage({
+    messageId,
+    schemaVersion: "1.0",
+    messageType: "PROJECT_INVITATION",
+    senderOrgId: input.agOrgId,
+    recipientOrgId: anOrgId,
+    correlationId,
+    payload: invitationPayload as unknown as Record<string, unknown>,
+    status: "PENDING",
   });
   const exchange = createDataspaceExchange();
   const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
@@ -494,12 +488,9 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
   );
   if (existingByInvitationId.length > 0) {
-    const existingMessages = await db.select({ payload: messageOutboxTable.payload })
-      .from(messageOutboxTable)
-      .where(inArray(
-        messageOutboxTable.messageId,
-        invitationIds.map((invitationId) => `project-invitation-${invitationId}`) as [string, ...string[]],
-      ));
+    const existingMessages = await listHubOutboxMessages(
+      invitationIds.map((invitationId) => `project-invitation-${invitationId}`),
+    );
     const samePolicy = existingMessages.length === anOrgIds.length &&
       existingMessages.every((message) => {
         const payload = message.payload as { policySnapshot?: { templateVersion?: number; templateId?: string } };
@@ -685,16 +676,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
            connectorDiscovery: "NOT_CONFIGURED",
          },
       };
-      await tx.insert(messageOutboxTable).values({
-        messageId,
-        schemaVersion: "1.0",
-        messageType: "PROJECT_INVITATION",
-        senderOrgId: input.agOrgId,
-        recipientOrgId: anOrgId,
-        correlationId,
-        payload: invitationPayload as unknown as Record<string, unknown>,
-        status: "PENDING",
-      });
       invitationRows.push({ membership, payload: invitationPayload });
     }
   });
@@ -723,6 +704,18 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     throw error;
   }
 
+  for (const row of invitationRows) {
+    await enqueueHubMessage({
+      messageId: row.payload.metadata.messageId,
+      schemaVersion: "1.0",
+      messageType: "PROJECT_INVITATION",
+      senderOrgId: row.payload.metadata.senderOrgId,
+      recipientOrgId: row.payload.metadata.receiverOrgId,
+      correlationId: row.payload.metadata.correlationId,
+      payload: row.payload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
+  }
   await dispatchProjectInvitationPackage(
     invitationRows.map(({ membership }) => membership.invitationId),
     input.agOrgId,
@@ -746,11 +739,11 @@ async function dispatchProjectInvitationPackage(
   preparedRows?: Array<{ membership: typeof projectMembershipsTable.$inferSelect; payload: ExternalProjectInvitation }>,
 ) {
   const messageIds = invitationIds.map((invitationId) => `project-invitation-${invitationId}`);
-  const rows = preparedRows ?? await db.select().from(messageOutboxTable).where(and(
-    inArray(messageOutboxTable.messageId, messageIds as [string, ...string[]]),
-    eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
-    eq(messageOutboxTable.senderOrgId, agOrgId),
-  )).then((outboxRows) => outboxRows.map((outbox) => ({
+  const rows = preparedRows ?? await listHubOutboxMessages(messageIds).then((outboxRows) => outboxRows
+    .filter((outbox) =>
+      outbox.messageType === "PROJECT_INVITATION" &&
+      outbox.senderOrgId === agOrgId,
+    ).map((outbox) => ({
     membership: null,
     payload: outbox.payload as unknown as ExternalProjectInvitation,
   })));
@@ -940,17 +933,17 @@ async function resolveInvitation(
         throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Das verknüpfte Datenangebot wurde bereits beantwortet.");
       }
     }
-    await tx.insert(messageOutboxTable).values({
-      messageId: responseMessageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION_RESPONSE",
-      senderOrgId: anOrgId,
-      recipientOrgId: membership.agOrgId,
-      correlationId: membership.correlationId,
-      payload: responsePayload as unknown as Record<string, unknown>,
-      status: "PENDING",
-    });
     return [row];
+  });
+  await enqueueHubMessage({
+    messageId: responseMessageId,
+    schemaVersion: "1.0",
+    messageType: "PROJECT_INVITATION_RESPONSE",
+    senderOrgId: anOrgId,
+    recipientOrgId: membership.agOrgId,
+    correlationId: membership.correlationId,
+    payload: responsePayload as unknown as Record<string, unknown>,
+    status: "PENDING",
   });
   const exchange = createDataspaceExchange();
   const delivery = await deliverLocalProjectInvitationResponse(responsePayload, exchange);

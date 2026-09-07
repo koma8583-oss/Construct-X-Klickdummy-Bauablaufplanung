@@ -165,8 +165,18 @@ beforeAll(async () => {
   await db.delete(organizationsTable).where(
     inArray(organizationsTable.id, [AG_ID, OTHER_AG_ID, AN_ID, OTHER_AN_ID, BACKFILL_AN_ID]),
   ).catch(() => {});
+  await hubDb.delete(organizationsTable).where(
+    inArray(organizationsTable.id, [AG_ID, OTHER_AG_ID, AN_ID, OTHER_AN_ID, BACKFILL_AN_ID]),
+  ).catch(() => {});
 
   await db.insert(organizationsTable).values([
+    { id: AG_ID, name: "Task 239 AG", type: "AG" },
+    { id: OTHER_AG_ID, name: "Task 239 Other AG", type: "AG" },
+    { id: AN_ID, name: "Task 239 AN", type: "AN" },
+    { id: OTHER_AN_ID, name: "Task 239 Other AN", type: "AN" },
+    { id: BACKFILL_AN_ID, name: "Task 239 Backfill AN", type: "AN" },
+  ]).onConflictDoNothing();
+  await hubDb.insert(organizationsTable).values([
     { id: AG_ID, name: "Task 239 AG", type: "AG" },
     { id: OTHER_AG_ID, name: "Task 239 Other AG", type: "AG" },
     { id: AN_ID, name: "Task 239 AN", type: "AN" },
@@ -268,6 +278,9 @@ afterAll(async () => {
     inArray(usersTable.id, [AG_USER_ID, OTHER_AG_USER_ID, AN_USER_ID, OTHER_AN_USER_ID]),
   ).catch(() => {});
   await db.delete(organizationsTable).where(
+    inArray(organizationsTable.id, [AG_ID, OTHER_AG_ID, AN_ID, OTHER_AN_ID, BACKFILL_AN_ID]),
+  ).catch(() => {});
+  await hubDb.delete(organizationsTable).where(
     inArray(organizationsTable.id, [AG_ID, OTHER_AG_ID, AN_ID, OTHER_AN_ID, BACKFILL_AN_ID]),
   ).catch(() => {});
 });

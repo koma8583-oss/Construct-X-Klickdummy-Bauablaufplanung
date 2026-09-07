@@ -21,8 +21,6 @@ import {
   takteTable,
   taktRequestsTable,
   projectsTable,
-  messageOutboxTable,
-  hubMessagesTable,
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
@@ -79,6 +77,7 @@ import {
 } from "../services/nu-response-service";
 import type { MessageEnvelope, TransportResult } from "../lib/transport/message-transport";
 import { createDataspaceExchange } from "../services/dataspace/dataspace-exchange-factory";
+import { writeHubMessage } from "../services/hub-transport-service";
 import {
   deliverLocalServiceRequest,
   deliverLocalServiceResponse,
@@ -1188,7 +1187,7 @@ router.post(
       }
 
       // ── 9. Write hub audit message ─────────────────────────────────────
-      await db.insert(hubMessagesTable).values({
+      await writeHubMessage({
         type: "TAKT_REQUEST_SENT",
         senderOrgId: guOrgId,
         recipientOrgId: existing.nuOrgId,
@@ -2004,7 +2003,7 @@ router.post(
         if (guDecisionHubType) {
           const taktReq = await getTaktRequestById(id);
           if (taktReq) {
-            await db.insert(hubMessagesTable).values({
+            await writeHubMessage({
               type: guDecisionHubType as any,
               senderOrgId: guOrgId,
               recipientOrgId: taktReq.nuOrgId,

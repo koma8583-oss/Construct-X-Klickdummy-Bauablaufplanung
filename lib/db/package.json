@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./schema/an": "./src/schema/an.ts"
+    "./schema/ag": "./src/schema/ag.ts",
+    "./schema/an": "./src/schema/an.ts",
+    "./schema/hub-database": "./src/schema/hub-database.ts"
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",

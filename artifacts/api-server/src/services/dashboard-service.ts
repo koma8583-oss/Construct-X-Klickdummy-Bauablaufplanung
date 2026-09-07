@@ -4,15 +4,15 @@ import {
   dataPublicationRecipientsTable,
   dataPublicationsTable,
   anLeistungsanfragenTable,
-  messageOutboxTable,
   organizationsTable,
   projectMembershipsTable,
   projectsTable,
   takteTable,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getCoordinationTasks, type CoordinationTask } from "./coordination-task-service";
 import { listAnProjectInvitations } from "./an-project-invitation-service";
+import { listHubFailedMessages } from "./hub-transport-service";
 
 type DashboardActionKind =
   | CoordinationTask["taskType"]
@@ -221,14 +221,7 @@ export async function getAgDashboard(agOrgId: string) {
     db.select().from(dataPublicationsTable).where(eq(dataPublicationsTable.agOrgId, agOrgId)),
     getAgProjectCollaborations(agOrgId),
     getCoordinationTasks({ orgId: agOrgId, role: "AG" }),
-    db.select().from(messageOutboxTable).where(and(
-      eq(messageOutboxTable.senderOrgId, agOrgId),
-      eq(messageOutboxTable.status, "FAILED"),
-      or(
-        eq(messageOutboxTable.messageType, "PROJECT_INVITATION"),
-        eq(messageOutboxTable.messageType, "DATA_OFFER_PUBLISHED"),
-      ),
-    )),
+    listHubFailedMessages(agOrgId, ["PROJECT_INVITATION", "DATA_OFFER_PUBLISHED"]),
     db.select({
       takt: takteTable,
       projectName: projectsTable.name,

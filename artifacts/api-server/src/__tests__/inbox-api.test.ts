@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { hubDb as db } from "@workspace/db";
+import { agDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -74,47 +74,53 @@ async function cleanupFixtures() {
   const orgIds = [GU_ORG, NU_ORG, NU_ORG_2];
   const orgSql = orgIds.map(id => `'${id}'`).join(",");
 
-  await db.execute(sql`DELETE FROM dataspace_exchanges
+  await hubDb.execute(sql`DELETE FROM dataspace_exchanges
     WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
        OR receiver_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
-  await db.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
-  await db.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
-  await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
+  await hubDb.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
+  await hubDb.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
+  await agDb.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
     SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`);
-  await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
-  await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`);
-  await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
-  await db.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
-  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID));
-  await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
-  await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
-  await db.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
+  await agDb.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`);
+  await agDb.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`);
+  await agDb.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
+  await agDb.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
+  await agDb.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID));
+  await agDb.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
+  await agDb.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
+  await agDb.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
+  await hubDb.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
 }
 
 beforeAll(async () => {
   await cleanupFixtures();
-  await db.insert(organizationsTable).values([
+  await agDb.insert(organizationsTable).values([
+    { id: GU_ORG,   name: "T37 GU Org",  type: "AG" },
+    { id: NU_ORG,   name: "T37 NU Org",  type: "AN" },
+    { id: NU_ORG_2, name: "T37 NU Org2", type: "AN" },
+  ]).onConflictDoNothing();
+  await hubDb.insert(organizationsTable).values([
     { id: GU_ORG,   name: "T37 GU Org",  type: "AG" },
     { id: NU_ORG,   name: "T37 NU Org",  type: "AN" },
     { id: NU_ORG_2, name: "T37 NU Org2", type: "AN" },
   ]).onConflictDoNothing();
 
-  await db.insert(usersTable).values([
+  await agDb.insert(usersTable).values([
     { id: GU_USER,   name: "GU",   email: "t37-gu@example.com",   passwordHash: "x" },
     { id: NU_USER,   name: "NU",   email: "t37-nu@example.com",   passwordHash: "x" },
     { id: NU_USER_2, name: "NU2",  email: "t37-nu2@example.com",  passwordHash: "x" },
   ]).onConflictDoNothing();
 
-  await db.insert(projectsTable).values({
+  await agDb.insert(projectsTable).values({
     id: PROJECT_ID, agOrgId: GU_ORG, name: "T37 Project",
   }).onConflictDoNothing();
 
-  await db.insert(projectContractorsTable).values({
+  await agDb.insert(projectContractorsTable).values({
     projectId: PROJECT_ID, anOrgId: NU_ORG, assignmentStatus: "ACTIVE",
   }).onConflictDoNothing();
   const agreementId = "t37-agreement";
-  await db.insert(coordinationPoliciesTable).values({
+  await agDb.insert(coordinationPoliciesTable).values({
     id: agreementId,
     policyKey: agreementId,
     version: 1,
@@ -163,7 +169,7 @@ beforeAll(async () => {
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
     },
   }).onConflictDoNothing();
-  await db.insert(projectMembershipsTable).values({
+  await agDb.insert(projectMembershipsTable).values({
     id: "t37-membership",
     projectId: PROJECT_ID,
     agOrgId: GU_ORG,
@@ -174,7 +180,7 @@ beforeAll(async () => {
     projectAgreementPolicyId: agreementId,
   }).onConflictDoNothing();
 
-  await db.insert(takteTable).values({
+  await agDb.insert(takteTable).values({
     id: TAKT_ID, projectId: PROJECT_ID,
     taktBezeichnung: "T37 Takt Alpha",
     zone: "Block A", gewerk: "Rohbau",

@@ -120,13 +120,12 @@ import {
   resolveChangeProposal,
 } from "../services/service-change-proposal-service";
 import { LeistungsanfragePolicyAccessError } from "../services/leistungsanfrage-policy-guard";
+import { writeHubMessage } from "../services/hub-transport-service";
 import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
   coordinationPoliciesTable,
-  messageOutboxTable,
-  hubMessagesTable,
 } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import type { TaktCoordinationDecisionType } from "@workspace/db";
@@ -1573,7 +1572,7 @@ router.post(
         ));
       }
 
-      await db.insert(hubMessagesTable).values({
+      await writeHubMessage({
         type: "TAKT_REQUEST_SENT",
         senderOrgId: guOrgId,
         recipientOrgId: existing.nuOrgId,
@@ -2054,7 +2053,7 @@ router.post(
         if (guDecisionHubType) {
           const taktReq = await getTaktRequestById(id);
           if (taktReq) {
-            await db.insert(hubMessagesTable).values({
+            await writeHubMessage({
               type: guDecisionHubType as any,
               senderOrgId: guOrgId,
               recipientOrgId: taktReq.nuOrgId,

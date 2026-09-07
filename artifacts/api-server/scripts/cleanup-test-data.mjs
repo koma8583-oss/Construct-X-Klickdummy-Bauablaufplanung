@@ -9,6 +9,7 @@ if (!connectionString) {
 }
 
 const schemas = ["ag", "an", "hub"];
+const transportSchema = "hub";
 
 // Cleanup is intentionally allowlisted. The suite uses one shared physical
 // database, so a broad match could remove real development data.
@@ -98,9 +99,10 @@ try {
     }
   }
 
-  // Delivery history is append-only and has no FK to the outbox in all
-  // deployments. Remove it explicitly from each logical transport schema.
-  for (const schema of schemas) {
+  // Transport is Hub-owned. Do not probe or mutate AG/AN copies here: their
+  // absence is part of the shared-database boundary.
+  {
+    const schema = transportSchema;
     const { rows } = await client.query(
       "SELECT to_regclass($1) AS table_name",
       [`${schema}.message_delivery_attempts`],

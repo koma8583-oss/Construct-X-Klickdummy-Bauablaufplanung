@@ -134,11 +134,13 @@ BEGIN
   END LOOP;
 END $$;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA hub TO taktkoord_hub;
-GRANT USAGE ON SCHEMA hub TO taktkoord_ag, taktkoord_an;
-GRANT ALL ON TABLE
-  hub.message_outbox, hub.message_inbox, hub.message_delivery_attempts,
-  hub.dataspace_exchanges
-  TO taktkoord_ag, taktkoord_an;
+
+-- AG and AN never access Hub transport tables directly. Application code uses
+-- the Hub facade, which runs with taktkoord_hub. Explicitly revoke both the
+-- schema and table privileges so rerunning this migration repairs installations
+-- created by the earlier broad-grant version.
+REVOKE USAGE ON SCHEMA hub FROM taktkoord_ag, taktkoord_an;
+REVOKE ALL ON ALL TABLES IN SCHEMA hub FROM taktkoord_ag, taktkoord_an;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA ag REVOKE ALL ON TABLES FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA ag REVOKE ALL ON SEQUENCES FROM PUBLIC;
