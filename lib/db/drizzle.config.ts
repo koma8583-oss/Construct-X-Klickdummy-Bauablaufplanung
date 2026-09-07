@@ -9,10 +9,13 @@ const roleEnv =
 const schema =
   role === "ag" ? "ag" :
   role === "an" ? "an" :
-  role === "hub" ? "hub" : undefined;
-const baseUrl = roleEnv
-  ? process.env.DATABASE_URL ?? process.env[roleEnv]
-  : undefined;
+  role === "hub" ? "hub" :
+  role === "bootstrap" ? "public" : undefined;
+const baseUrl = role === "bootstrap"
+  ? process.env.DATABASE_URL
+  : roleEnv
+    ? process.env.DATABASE_URL ?? process.env[roleEnv]
+    : undefined;
 const schemaFile =
   role === "ag"
     ? "./src/schema/ag.ts"
@@ -20,16 +23,22 @@ const schemaFile =
       ? "./src/schema/an.ts"
       : role === "hub"
         ? "./src/schema/hub-database.ts"
-        : undefined;
+        : role === "bootstrap"
+          ? "./src/schema/shared.ts"
+          : undefined;
 
 if (!schemaFile || !schema || !baseUrl) {
   throw new Error(
-    "DB_ROLE must be ag, an or hub and DATABASE_URL (or the corresponding role URL) must be set",
+    "DB_ROLE must be ag, an, hub or bootstrap and DATABASE_URL (or the corresponding role URL) must be set",
   );
 }
 
 const databaseUrl = new URL(baseUrl);
-const searchPath = schema === "hub" ? "hub,pg_catalog" : `${schema},hub,pg_catalog`;
+const searchPath = role === "bootstrap"
+  ? "public,pg_catalog"
+  : schema === "hub"
+    ? "hub,pg_catalog"
+    : `${schema},hub,pg_catalog`;
 databaseUrl.searchParams.set(
   "options",
   `-c search_path=${searchPath}`,
@@ -40,10 +49,10 @@ export default defineConfig({
     __dirname,
     schemaFile,
   ),
-  // Unqualified pgEnum definitions are shared in public. Include public during
-  // introspection so role-specific pushes reuse existing enum types instead of
-  // trying to recreate them for AG, AN and Hub independently.
-  schemaFilter: [schema, "public"],
+  // Fresh databases are bootstrapped once in public so unqualified pgEnum
+  // definitions are created exactly once. Runtime/upgrade pushes remain scoped
+  // to their canonical role schema.
+  schemaFilter: [schema],
   dialect: "postgresql",
   dbCredentials: {
     url: databaseUrl.toString(),
