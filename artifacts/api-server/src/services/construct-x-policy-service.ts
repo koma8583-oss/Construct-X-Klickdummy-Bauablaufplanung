@@ -227,11 +227,18 @@ export function resolvePolicyDelta(
       (candidateType === "SCHEDULE_CHANGE" &&
         unique(base?.childPolicyTypes).includes("SCHEDULE_CHANGE"));
     const meaningfulChanges = projectAgreementAllowsChildRefinement
-      // A business purpose, the concrete Leistung and its whitelisted field
-       // subset and a narrower validity interval are refinements of the
-       // accepted project agreement, not a new grant.
+      // The concrete Leistung, field subset and narrower validity interval are
+      // refinements, not new grants. Leistungskoordination is the baseline
+      // child purpose; another allowed purpose is a deliberate per-request
+      // delta and therefore needs the AN's explicit consent.
       ? diff.changed.filter((field) => ![
-        "purpose", "workPackageReference", "selectedFields", "permissions", "prohibitions",
+        ...(
+          allowedPurposes === undefined ||
+          candidate.purpose === "LEISTUNGSKOORDINATION"
+            ? ["purpose"]
+            : []
+        ),
+        "workPackageReference", "selectedFields", "permissions", "prohibitions",
         // A child may narrow its capability window. Escaping the parent
         // interval is rejected above for every child type.
         "validFrom", "validUntil",

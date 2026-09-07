@@ -262,7 +262,8 @@ describe("Construct-X Campus West campaign", () => {
 
     const dependencies = await db.select().from(taktDependenciesTable)
       .where(eq(taktDependenciesTable.projectId, PROJECT));
-    expect(dependencies.map(({ predecessorId, successorId, lagDays }) => [predecessorId, successorId, lagDays]))
+    expect(dependencies.map(({ predecessorId, successorId, lagDays }) => [predecessorId, successorId, lagDays])
+      .sort(([left], [right]) => String(left).localeCompare(String(right))))
       .toEqual([["L-101", "L-201", 0], ["L-201", "L-301", 2], ["L-301", "L-401", 0]]);
 
     const an1Resources = await request(app).get("/api/an/resources").set("Authorization", `Bearer ${anTokens[0]}`);

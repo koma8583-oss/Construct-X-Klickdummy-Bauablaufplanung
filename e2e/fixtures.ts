@@ -8,7 +8,14 @@ export type Scenario = {
   an: Array<{ email: string; password: string }>;
   requests: Record<PolicyClass, string>;
   consentDeltaClass: PolicyClass;
-  notPermittedAttempt: { status: number; error: string };
+  notPermittedAttempt: {
+    status: number;
+    code: string;
+    requestCountBefore: number;
+    requestCountAfter: number;
+    projectionCountBefore: number;
+    projectionCountAfter: number;
+  };
   bilateralRequestId: string;
   bilateralProposalId: string;
   multiRequestIds: string[];
@@ -111,7 +118,9 @@ async function createAndSendRequest(
   return requestId;
 }
 
-async function prepareCampusWest(seed: Seed): Promise<void> {
+type ScenarioMode = "within" | "consent" | "denied" | "full";
+
+async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> {
   const agApi = await authenticatedSeedApi(seed.ag);
   const anApis = await Promise.all(seed.an.map(authenticatedSeedApi));
   try {
@@ -164,17 +173,84 @@ async function prepareCampusWest(seed: Seed): Promise<void> {
       });
     }
 
+    if (mode === "within") {
+      seed.requests.WITHIN_BASELINE = await createAndSendRequest(agApi, seed, agreementDetails, {
+        key: "WITHIN_BASELINE", serviceIndex: 0, anIndex: 0,
+      });
+      return;
+    }
+
+    if (mode === "consent") {
+      const consent = await createAndSendRequest(agApi, seed, agreementDetails, {
+        key: "REQUIRES_CONSENT", serviceIndex: 1, anIndex: 0, purpose: "RAHMENTERMINE",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+      });
+      const consentDetails = await requireOk(
+        await anApis[0].get(`/api/an/takt-requests/${consent}/details`),
+        "read consent policy classification",
+      );
+      const consentDeltaClass =
+        consentDetails.effectivePolicy?.deltaClass ?? consentDetails.policyDeltaClass;
+      if (consentDeltaClass !== "REQUIRES_CONSENT") {
+        throw new Error(`Expected REQUIRES_CONSENT, received ${String(consentDeltaClass)}`);
+      }
+      seed.requests.REQUIRES_CONSENT = consent;
+      seed.consentDeltaClass = consentDeltaClass;
+      return;
+    }
+
+    if (mode === "denied") {
+      const requestsBeforeDenied = await requireOk(
+        await agApi.get("/api/takt-requests"),
+        "list requests before forbidden attempt",
+      ) as unknown[];
+      const projectionsBeforeDenied = await requireOk(
+        await anApis[0].get("/api/an/leistungsanfragen"),
+        "list projections before forbidden attempt",
+      ) as unknown[];
+      const denied = await agApi.post("/api/takt-requests", {
+        data: {
+          taktId: seed.serviceIds[2],
+          nuOrgId: seed.anOrgIds[0],
+          responseRequiredBy: "2027-04-30T17:00:00.000Z",
+          purpose: "RAHMENTERMINE",
+          selectedFields: ["resourceRequirements"],
+          parentPolicyId: agreementDetails.get(seed.anOrgIds[0])?.id,
+          parentPolicyVersion: agreementDetails.get(seed.anOrgIds[0])?.version,
+        },
+      });
+      const deniedBody = await denied.json() as { error?: string; code?: string };
+      const requestsAfterDenied = await requireOk(
+        await agApi.get("/api/takt-requests"),
+        "list requests after forbidden attempt",
+      ) as unknown[];
+      const projectionsAfterDenied = await requireOk(
+        await anApis[0].get("/api/an/leistungsanfragen"),
+        "list projections after forbidden attempt",
+      ) as unknown[];
+      if (denied.status() !== 409 || (deniedBody.code ?? deniedBody.error) !== "POLICY_NOT_PERMITTED") {
+        throw new Error(`Expected POLICY_NOT_PERMITTED (409), received ${denied.status()}: ${JSON.stringify(deniedBody)}`);
+      }
+      if (
+        requestsAfterDenied.length !== requestsBeforeDenied.length ||
+        projectionsAfterDenied.length !== projectionsBeforeDenied.length
+      ) {
+        throw new Error("Forbidden policy attempt created a request or AN projection");
+      }
+      seed.notPermittedAttempt = {
+        status: denied.status(),
+        code: deniedBody.code ?? deniedBody.error ?? "",
+        requestCountBefore: requestsBeforeDenied.length,
+        requestCountAfter: requestsAfterDenied.length,
+        projectionCountBefore: projectionsBeforeDenied.length,
+        projectionCountAfter: projectionsAfterDenied.length,
+      };
+      return;
+    }
+
     const within = await createAndSendRequest(agApi, seed, agreementDetails, {
       key: "WITHIN_BASELINE", serviceIndex: 0, anIndex: 0,
     });
-    const consent = await createAndSendRequest(agApi, seed, agreementDetails, {
-      key: "REQUIRES_CONSENT", serviceIndex: 1, anIndex: 0, purpose: "RAHMENTERMINE",
-      selectedFields: ["workPackage", "plannedTimeWindow"],
-    });
-    const consentDetails = await requireOk(
-      await anApis[0].get(`/api/an/takt-requests/${consent}/details`),
-      "read consent policy classification",
-    );
     const bilateral = await createAndSendRequest(agApi, seed, agreementDetails, {
       key: "BILATERAL", serviceIndex: 3, anIndex: 0,
     });
@@ -188,31 +264,7 @@ async function prepareCampusWest(seed: Seed): Promise<void> {
       key: "AN3_EXPIRING", serviceIndex: 1, anIndex: 2,
     });
 
-    // This is a real policy/field validation attempt: no forbidden request
-    // row or AN projection is manufactured when the API rejects it.
-    const denied = await agApi.post("/api/takt-requests", {
-      data: {
-        taktId: seed.serviceIds[2],
-        nuOrgId: seed.anOrgIds[0],
-        responseRequiredBy: "2027-04-30T17:00:00.000Z",
-        purpose: "RAHMENTERMINE",
-        selectedFields: ["resourceRequirements"],
-        parentPolicyId: agreementDetails.get(seed.anOrgIds[0])?.id,
-        parentPolicyVersion: agreementDetails.get(seed.anOrgIds[0])?.version,
-      },
-    });
-    const deniedText = await denied.text();
-
-    seed.requests = {
-      WITHIN_BASELINE: within,
-      REQUIRES_CONSENT: consent,
-      NOT_PERMITTED: "",
-    };
-    seed.consentDeltaClass = consentDetails.effectivePolicy?.deltaClass ?? consentDetails.policyDeltaClass;
-    seed.notPermittedAttempt = {
-      status: denied.status(),
-      error: deniedText,
-    };
+    seed.requests.WITHIN_BASELINE = within;
     seed.bilateralRequestId = bilateral;
     seed.multiRequestIds = [multiOne, multiTwo];
     seed.boundaryRequestIds.an3Expiring = expiring;
@@ -264,9 +316,16 @@ async function prepareCampusWest(seed: Seed): Promise<void> {
 }
 
 export const test = base.extend<Fixtures>({
-  scenario: [async ({}, use) => {
+  scenario: [async ({}, use, testInfo) => {
     const value = await seedCampusWest();
-    await prepareCampusWest(value);
+    const mode: ScenarioMode = testInfo.title.includes("WITHIN_BASELINE")
+      ? "within"
+      : testInfo.title.includes("REQUIRES_CONSENT")
+        ? "consent"
+        : testInfo.title.includes("NOT_PERMITTED")
+          ? "denied"
+          : "full";
+    await prepareCampusWest(value, mode);
     try {
       await use(value);
     } finally {

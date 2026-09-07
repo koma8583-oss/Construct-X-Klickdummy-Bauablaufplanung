@@ -8,26 +8,29 @@ async function gotoAnRequest(page: import("@playwright/test").Page, requestId: s
 }
 
 test.describe("Campus-West · AG/AN policy coordination", () => {
-  test("WITHIN_BASELINE exposes details without a second consent", async ({ anContext, scenario }) => {
+  test("WITHIN_BASELINE exposes only its released snapshot without a second consent", async ({ anContext, anApi, scenario }) => {
     const page = await anContext.newPage();
     await gotoAnRequest(page, scenario.requests.WITHIN_BASELINE);
     const completedReview = page.getByTestId("phase-1").locator("summary").filter({ hasText: /Phase 1/ });
     if (await completedReview.count()) await completedReview.click();
     await expect(page.getByTestId("request-overview")).toBeVisible();
     await expect(page.getByTestId("overview-service")).toContainText("L-101");
+    await expect(page.getByTestId("policy-consent-panel")).toHaveCount(0);
+    const details = await anApi.get(`/api/an/takt-requests/${scenario.requests.WITHIN_BASELINE}/details`);
+    expect(details.status(), await details.text()).toBe(200);
+    const serialized = JSON.stringify(await details.json());
+    expect(serialized).toContain("plannedTimeWindow");
+    expect(serialized).not.toContain("resourceBookings");
+    for (const internalId of [scenario.agOrgId, ...scenario.anOrgIds, ...scenario.resourceIds]) {
+      expect(serialized).not.toContain(internalId);
+    }
   });
 
   for (const decision of ["ACCEPT", "REJECT"] as const) {
     test(`REQUIRES_CONSENT ${decision === "ACCEPT" ? "Accept" : "Reject"} is explicit`, async ({ anContext, scenario }) => {
       const page = await anContext.newPage();
       await gotoAnRequest(page, scenario.requests.REQUIRES_CONSENT);
-      if (scenario.consentDeltaClass !== "REQUIRES_CONSENT") {
-        await expect(page.getByTestId("policy-consent-panel")).toHaveCount(0);
-        const completedReview = page.getByTestId("phase-1").locator("summary").filter({ hasText: /Phase 1/ });
-        if (await completedReview.count()) await completedReview.click();
-        await expect(page.getByTestId("request-overview")).toBeVisible();
-        return;
-      }
+      expect(scenario.consentDeltaClass).toBe("REQUIRES_CONSENT");
       await expect(page.getByTestId("policy-consent-panel")).toBeVisible();
       await page.getByTestId(decision === "ACCEPT" ? "button-accept-policy" : "button-reject-policy").click();
       await expect(page.getByTestId(decision === "ACCEPT" ? "policy-consent-accepted" : "policy-consent-rejected")).toBeVisible();
@@ -35,8 +38,10 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
   }
 
   test("NOT_PERMITTED rejects the real API attempt without creating a request", async ({ scenario }) => {
-    expect(scenario.notPermittedAttempt.status).toBeGreaterThanOrEqual(400);
-    expect(scenario.notPermittedAttempt.error).toMatch(/policy|permission|not.?permitted|field|selected/i);
+    expect(scenario.notPermittedAttempt.status).toBe(409);
+    expect(scenario.notPermittedAttempt.code).toBe("POLICY_NOT_PERMITTED");
+    expect(scenario.notPermittedAttempt.requestCountAfter).toBe(scenario.notPermittedAttempt.requestCountBefore);
+    expect(scenario.notPermittedAttempt.projectionCountAfter).toBe(scenario.notPermittedAttempt.projectionCountBefore);
     expect(scenario.requests.NOT_PERMITTED).toBe("");
   });
 
