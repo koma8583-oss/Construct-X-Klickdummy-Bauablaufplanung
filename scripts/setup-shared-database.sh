@@ -17,33 +17,30 @@ apply_migration() {
     psql "$database_admin_url" -v ON_ERROR_STOP=1 -f "$migration_file"
 }
 
-# The same setup supports both fresh CI/development databases and upgrades.
-# First create the shared schemas/roles. On a fresh database the role schemas
-# are still empty afterwards, so Drizzle creates only the tables owned by each
-# role-specific schema. Existing shared or legacy-public installations keep
-# their data and skip schema creation when tables already exist.
+# Detect a genuinely fresh database before creating any role schemas. Fresh CI
+# databases get one complete temporary public schema so all unqualified pgEnum
+# types are created exactly once. The boundary migration then copies each table
+# only to its canonical owner schema. Existing shared or legacy-public databases
+# skip this bootstrap and follow the normal upgrade path.
+fresh_database="$(psql "$database_admin_url" -Atqc "
+  SELECT CASE WHEN
+    to_regnamespace('ag') IS NULL
+    AND to_regnamespace('an') IS NULL
+    AND to_regnamespace('hub') IS NULL
+    AND to_regclass('public.organizations') IS NULL
+    AND to_regclass('public.users') IS NULL
+  THEN 'yes' ELSE 'no' END
+")"
+
+if [[ "$fresh_database" == "yes" ]]; then
+  echo "Bootstrapping fresh shared database in temporary public schema"
+  DATABASE_URL="$database_admin_url" DB_ROLE=bootstrap \
+    pnpm --filter @workspace/db run push-force
+fi
+
 echo "Applying shared PostgreSQL role and schema boundaries"
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0025_shared_database_roles.sql
-
-role_schema_is_empty() {
-  local schema_name="$1"
-  [[ "$(psql "$database_admin_url" -Atqc \
-    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${schema_name}' AND table_type = 'BASE TABLE'")" == "0" ]]
-}
-
-if role_schema_is_empty ag; then
-  echo "Bootstrapping fresh AG schema"
-  DATABASE_URL="$database_admin_url" DB_ROLE=ag pnpm --filter @workspace/db run push-force
-fi
-if role_schema_is_empty an; then
-  echo "Bootstrapping fresh AN schema"
-  DATABASE_URL="$database_admin_url" DB_ROLE=an pnpm --filter @workspace/db run push-force
-fi
-if role_schema_is_empty hub; then
-  echo "Bootstrapping fresh Hub schema"
-  DATABASE_URL="$database_admin_url" DB_ROLE=hub pnpm --filter @workspace/db run push-force
-fi
 
 for migration in \
   0001_leistungen_canonical_rename.sql \
@@ -69,15 +66,14 @@ for migration in \
   apply_migration hub "lib/db/migrations/$migration"
 done
 
-# Drizzle creates tables as the bootstrap owner. Reapplying the boundary
-# migration repairs table/sequence ACLs and removes any non-owner table that a
-# stale schema push left behind.
+# Reapply canonical grants/physical ownership after additive migrations and then
+# add the tightly scoped atomic Hub outbox interface.
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0025_shared_database_roles.sql
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0026_atomic_hub_outbox.sql
 
-PGOPTIONS="-c search_path=ag,pg_catalog" \
+PGOPTIONS="-c search_path=ag,public,pg_catalog" \
   psql "$database_admin_url" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN
@@ -173,3 +169,27 @@ BEGIN
   END LOOP;
 END $$;
 SQL
+
+# The public tables are only a deterministic fresh-database staging area. Once
+# canonical role schemas and their constraints exist, remove those duplicate
+# application tables while retaining shared public enum types referenced by the
+# role-owned tables. Never do this automatically for an existing legacy-public
+# installation; that remains an explicit upgrade decision.
+if [[ "$fresh_database" == "yes" ]]; then
+  echo "Removing temporary public bootstrap tables"
+  psql "$database_admin_url" -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+DECLARE table_row record;
+BEGIN
+  FOR table_row IN
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename NOT LIKE 'drizzle%'
+      AND tablename NOT LIKE '__drizzle%'
+  LOOP
+    EXECUTE format('DROP TABLE public.%I CASCADE', table_row.tablename);
+  END LOOP;
+END $$;
+SQL
+fi
