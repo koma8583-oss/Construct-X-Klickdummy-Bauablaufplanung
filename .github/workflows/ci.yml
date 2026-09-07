@@ -64,7 +64,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Initialize the shared test database
-        run: DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" bash scripts/post-merge.sh
+        run: DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" bash scripts/setup-shared-database.sh
 
       - name: Typecheck API, GU, and NU
         run: pnpm run validate:types
