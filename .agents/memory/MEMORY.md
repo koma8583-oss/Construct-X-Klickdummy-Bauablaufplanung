@@ -68,3 +68,4 @@
 - [Atomic cross-schema outbox](atomic-cross-schema-outbox.md) — pre-create Hub envelopes through a SECURITY DEFINER bridge inside the AG/AN transaction; deliver only after commit.
 - [First-delivery outbox claims](first-delivery-outbox-claims.md) — pre-created PENDING/FAILED envelopes must enter the same atomic claim path as retries before transport delivery.
 - [CI gate conclusions](ci-gate-conclusions.md) — required browser gates must reject skipped/flaky work and prove each project executed; discovery or retry-success is not release evidence.
+- [GitHub workflow API scope](github-workflow-api-scope.md) — workflow-file contents operations may need a scope the connected GitHub API does not expose.
