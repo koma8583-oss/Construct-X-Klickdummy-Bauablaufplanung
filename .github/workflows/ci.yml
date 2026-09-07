@@ -70,19 +70,29 @@ jobs:
             bash scripts/setup-shared-database.sh 2>&1 | tee /tmp/ci-db.log
 
       - name: Typecheck API, GU, and NU
-        run: pnpm run validate:types
+        run: |
+          set -o pipefail
+          pnpm run validate:types 2>&1 | tee /tmp/ci-typecheck.log
 
       - name: Run API tests
-        run: pnpm run test:api
+        run: |
+          set -o pipefail
+          pnpm run test:api 2>&1 | tee /tmp/ci-api-tests.log
 
       - name: Run GU tests
-        run: pnpm run test:ag
+        run: |
+          set -o pipefail
+          pnpm run test:ag 2>&1 | tee /tmp/ci-ag-tests.log
 
       - name: Run NU tests
-        run: pnpm run test:an
+        run: |
+          set -o pipefail
+          pnpm run test:an 2>&1 | tee /tmp/ci-an-tests.log
 
       - name: Build every workspace package
-        run: pnpm run build
+        run: |
+          set -o pipefail
+          pnpm run build 2>&1 | tee /tmp/ci-build.log
 
       - name: Start built services and execute desktop/mobile Playwright
         run: |
@@ -126,7 +136,7 @@ jobs:
           wait_for_http http://127.0.0.1:4173/ 200
           wait_for_http http://127.0.0.1:4173/an/ 200
           wait_for_http http://127.0.0.1:4173/hub/ 200
-          pnpm run e2e:ci
+          pnpm run e2e:ci 2>&1 | tee /tmp/ci-e2e.log
 
       - name: Collect CI diagnostics
         if: always()
