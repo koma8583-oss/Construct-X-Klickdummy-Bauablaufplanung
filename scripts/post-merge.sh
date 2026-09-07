@@ -1,5 +1,5 @@
 #!/bin/bash
 set -e
 pnpm install --frozen-lockfile
-scripts/setup-shared-database.sh
+bash scripts/setup-shared-database.sh
 pnpm -w run typecheck:libs
