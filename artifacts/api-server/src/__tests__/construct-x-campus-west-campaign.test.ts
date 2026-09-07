@@ -339,6 +339,54 @@ describe("Construct-X Campus West campaign", () => {
     expect((await db.select().from(projectMembershipsTable).where(eq(projectMembershipsTable.id, MEMBERSHIP)))[0]?.status).toBe("ACTIVE");
   });
 
+  it("keeps policy preview and batch creation bound to the selected parent policy", async () => {
+    const preview = await request(app)
+      .post("/api/leistungsanfragen/policy-preview")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktIds: ["L-101"],
+        nuOrgId: anId("AN1"),
+        purpose: "RAHMENTERMINE",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: AGREEMENT,
+        parentPolicyVersion: 1,
+      });
+    expect(preview.status).toBe(200);
+    expect(preview.body.items).toEqual([
+      expect.objectContaining({ taktId: "L-101", deltaClass: "NOT_PERMITTED" }),
+    ]);
+
+    const wrongParent = await request(app)
+      .post("/api/leistungsanfragen/policy-preview")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktIds: ["L-101"],
+        nuOrgId: anId("AN1"),
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: `${PREFIX}-agreement-an2`,
+        parentPolicyVersion: 1,
+      });
+    expect(wrongParent.status).toBe(200);
+    expect(wrongParent.body.items).toEqual([
+      expect.objectContaining({ taktId: "L-101", deltaClass: "NOT_PERMITTED" }),
+    ]);
+
+    const forbiddenPurpose = await request(app)
+      .post("/api/takt-requests/batch")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktId: "L-101",
+        nuOrgIds: [anId("AN1")],
+        purpose: "RAHMENTERMINE",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: AGREEMENT,
+        parentPolicyVersion: 1,
+      });
+    expect(forbiddenPurpose.status, JSON.stringify(forbiddenPurpose.body)).toBe(409);
+    expect(forbiddenPurpose.body.error).toBe("POLICY_NOT_PERMITTED");
+  });
+
   it("rejects a forbidden child before request creation or Dataspace delivery side effects", async () => {
     const requestNumber = "CW27-L101-NOT-PERMITTED";
     const [parent] = await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, AGREEMENT));

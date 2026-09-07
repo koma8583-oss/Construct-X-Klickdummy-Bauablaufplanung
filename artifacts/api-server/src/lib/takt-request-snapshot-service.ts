@@ -477,12 +477,13 @@ export async function createTaktRequestWithSnapshot(
       recipientOrganizationId: input.nuOrgId,
       purpose,
       projectReference: project.id,
-      workPackageReference: input.taktId,
+      ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
     },
   });
   const candidateSnapshot = {
     ...basePolicySnapshot,
     policyType: "PERFORMANCE_REQUEST" as const,
+    ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
     selectedFields: input.selectedFields ?? LEISTUNGSFREIGABE_FIELD_WHITELISTS[purpose],
   };
   const resolution = resolvePolicyDelta(

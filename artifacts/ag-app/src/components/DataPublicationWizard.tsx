@@ -71,6 +71,16 @@ function policyTerms(agreement: ContractorOption["parentAgreement"]): PolicyTerm
     return [{ label, value: Array.isArray(value) ? value.join(", ") : String(value) }];
   });
 }
+
+function policyStringList(
+  agreement: ContractorOption["parentAgreement"],
+  key: "allowedPurposes" | "allowedFieldScope",
+): string[] | undefined {
+  const value = agreement?.effectivePolicy?.[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) return [];
+  return [...new Set(value)];
+}
 interface Props {
   open: boolean; onOpenChange: (open: boolean) => void; projectId: string; projectName: string;
   contractors: ContractorOption[]; takte?: Takt[]; initialRecipientIds?: string[];
@@ -106,12 +116,54 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
     Object.keys(parentPolicy.effectivePolicy).length > 0,
   );
   const inheritedTerms = policyTerms(parentPolicy);
-  const allowed = purpose ? FIELDS[purpose] : [];
+  const configuredPurposes = policyStringList(parentPolicy, "allowedPurposes");
+  const allowedPurposes = useMemo(
+    () => PURPOSES.filter((item) =>
+      configuredPurposes === undefined
+        ? true
+        : configuredPurposes.includes(item.value),
+    ),
+    [configuredPurposes],
+  );
+  const configuredFieldScope = policyStringList(parentPolicy, "allowedFieldScope");
+  const allowed = useMemo(
+    () => purpose
+      ? FIELDS[purpose].filter((field) =>
+        configuredFieldScope === undefined || configuredFieldScope.includes(field),
+      )
+      : [],
+    [purpose, configuredFieldScope],
+  );
   const selectable = useMemo(() => takte.filter((item) => item.status !== "STORNIERT" && item.lifecycleStatus !== "CANCELLED"), [takte]);
   useEffect(() => { if (!open) return; setStep(0); setRecipient(""); setPurpose(""); setLeistungen(new Set()); setFields(new Set()); setPreview([]); setSubmitting(false); setSendResults([]); }, [open]);
-  useEffect(() => { if (purpose) setFields(new Set(FIELDS[purpose])); }, [purpose]);
-  const valid = step === 0 ? !!chosen && parentPolicyIsConcrete : step === 1 ? !!purpose : step === 2 ? leistungen.size > 0 : step === 3 ? fields.size > 0 : true;
+  useEffect(() => {
+    if (purpose && !allowedPurposes.some((item) => item.value === purpose)) {
+      setPurpose("");
+      setFields(new Set());
+      setPreview([]);
+    }
+  }, [allowedPurposes, purpose]);
+  const valid = step === 0 ? !!chosen && parentPolicyIsConcrete : step === 1 ? !!purpose && allowedPurposes.some((item) => item.value === purpose) : step === 2 ? leistungen.size > 0 : step === 3 ? fields.size > 0 : true;
   const toggle = (field: string) => setFields((previous) => { const next = new Set(previous); next.has(field) ? next.delete(field) : next.add(field); return next; });
+  const selectRecipient = (orgId: string) => {
+    setRecipient(orgId);
+    setPurpose("");
+    setLeistungen(new Set());
+    setFields(new Set());
+    setPreview([]);
+    setSendResults([]);
+  };
+  const selectPurpose = (value: string) => {
+    const nextPurpose = value as Purpose;
+    setPurpose(nextPurpose);
+    setFields(new Set(
+      FIELDS[nextPurpose].filter((field) =>
+        configuredFieldScope === undefined || configuredFieldScope.includes(field),
+      ),
+    ));
+    setPreview([]);
+    setSendResults([]);
+  };
   const previewPolicy = async () => {
     if (!purpose || !chosen || !parentPolicyIsConcrete || !parentPolicy) return false;
     setPreviewing(true);
@@ -184,10 +236,10 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
     </DialogHeader>
     <div className="flex gap-1">{STEPS.map((label, index) => <div key={label} className={`flex-1 text-center text-xs ${index === step ? "font-semibold text-primary" : "text-muted-foreground"}`}>{index + 1}. {label}</div>)}</div>
     <div className="min-h-[300px] py-3">
-      {step === 0 && <div className="space-y-3"><p className="text-sm text-muted-foreground">Wählen Sie genau einen aktiven AN. Die gültige Projektvereinbarung wird automatisch verwendet.</p>{active.map((item) => <button data-testid={`button-select-contractor-${item.orgId}`} type="button" key={item.orgId} onClick={() => setRecipient(item.orgId)} className={`w-full rounded-lg border p-3 text-left ${recipient === item.orgId ? "border-primary bg-primary/5" : ""}`}><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">Aktive Mitgliedschaft · Projektvereinbarung akzeptiert</p></button>)}{chosen && (parentPolicyIsConcrete ? <div data-testid="parent-agreement" className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Projektvereinbarung</b><br />{parentPolicy!.id} · v{parentPolicy!.version}<dl className="mt-3 space-y-2">{inheritedTerms.map((term) => <div key={term.label}><dt className="text-xs font-medium text-muted-foreground">{term.label}</dt>{" "}<dd>{term.value}</dd></div>)}</dl></div> : <p data-testid="parent-policy-missing" role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Für diese Freigabe fehlt eine vollständige, versionierte Projektvereinbarung. Bitte laden Sie die Mitgliedschaft neu; ein Versand ist aus Sicherheitsgründen nicht möglich.</p>)}{!active.length && <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">Kein AN mit akzeptierter Projektvereinbarung verfügbar.</p>}</div>}
-      {step === 1 && <div className="space-y-3"><p className="text-sm">Wählen Sie den geschäftlichen Zweck, keine technische Richtlinienvorlage.</p><Select value={purpose} onValueChange={(value) => setPurpose(value as Purpose)}><SelectTrigger><SelectValue placeholder="Zweck wählen…" /></SelectTrigger><SelectContent>{PURPOSES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>{purpose && <p className="text-sm text-muted-foreground">{PURPOSES.find((item) => item.value === purpose)?.description}</p>}</div>}
+      {step === 0 && <div className="space-y-3"><p className="text-sm text-muted-foreground">Wählen Sie genau einen aktiven AN. Die gültige Projektvereinbarung wird automatisch verwendet.</p>{active.map((item) => <button data-testid={`button-select-contractor-${item.orgId}`} type="button" key={item.orgId} onClick={() => selectRecipient(item.orgId)} className={`w-full rounded-lg border p-3 text-left ${recipient === item.orgId ? "border-primary bg-primary/5" : ""}`}><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">Aktive Mitgliedschaft · Projektvereinbarung akzeptiert</p></button>)}{chosen && (parentPolicyIsConcrete ? <div data-testid="parent-agreement" className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Projektvereinbarung</b><br />{parentPolicy!.id} · v{parentPolicy!.version}<dl className="mt-3 space-y-2">{inheritedTerms.map((term) => <div key={term.label}><dt className="text-xs font-medium text-muted-foreground">{term.label}</dt>{" "}<dd>{term.value}</dd></div>)}</dl></div> : <p data-testid="parent-policy-missing" role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Für diese Freigabe fehlt eine vollständige, versionierte Projektvereinbarung. Bitte laden Sie die Mitgliedschaft neu; ein Versand ist aus Sicherheitsgründen nicht möglich.</p>)}{!active.length && <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">Kein AN mit akzeptierter Projektvereinbarung verfügbar.</p>}</div>}
+      {step === 1 && <div className="space-y-3"><p className="text-sm">Wählen Sie den geschäftlichen Zweck, keine technische Richtlinienvorlage.</p>{allowedPurposes.length ? <Select value={purpose} onValueChange={selectPurpose}><SelectTrigger><SelectValue placeholder="Zweck wählen…" /></SelectTrigger><SelectContent>{allowedPurposes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select> : <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Die akzeptierte Projektvereinbarung erlaubt keine Leistungsfreigabe-Zwecke.</p>}{purpose && <p className="text-sm text-muted-foreground">{PURPOSES.find((item) => item.value === purpose)?.description}</p>}</div>}
       {step === 2 && <div className="space-y-2"><p className="text-sm">Wählen Sie eine oder mehrere Leistungen.</p>{selectable.map((item) => <label key={item.id} className="flex gap-3 rounded-lg border p-3"><Checkbox checked={leistungen.has(item.id)} onCheckedChange={() => setLeistungen((previous) => { const next = new Set(previous); next.has(item.id) ? next.delete(item.id) : next.add(item.id); return next; })} /><span>{item.kurzbezeichnung || item.taktBezeichnung}</span></label>)}</div>}
-      {step === 3 && <div className="space-y-3"><div data-testid="inherited-policy-context" className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Aus akzeptierter Projektvereinbarung übernommen</b><p className="mt-1 text-xs text-muted-foreground">Dieser Kontext ist schreibgeschützt und wird nicht als Leistungsdatenfeld dupliziert.</p><div className="mt-2 space-y-1">{inheritedTerms.map((term) => <p key={term.label}><span className="font-medium">{term.label}:</span> {term.value}</p>)}</div></div><p className="text-sm">Zusätzliche Angaben für {PURPOSES.find((item) => item.value === purpose)?.label}</p>{allowed.map((field) => <label className="flex gap-2 text-sm" key={field}><Checkbox checked={fields.has(field)} onCheckedChange={() => toggle(field)} />{LABELS[field]}</label>)}</div>}
+      {step === 3 && <div className="space-y-3"><div data-testid="inherited-policy-context" className="rounded-lg border bg-muted/30 p-3 text-sm"><b>Aus akzeptierter Projektvereinbarung übernommen</b><p className="mt-1 text-xs text-muted-foreground">Dieser Kontext ist schreibgeschützt und wird nicht als Leistungsdatenfeld dupliziert.</p><div className="mt-2 space-y-1">{inheritedTerms.map((term) => <p key={term.label}><span className="font-medium">{term.label}:</span> {term.value}</p>)}</div></div><p className="text-sm">Zusätzliche Angaben für {PURPOSES.find((item) => item.value === purpose)?.label}</p>{allowed.length ? allowed.map((field) => <label className="flex gap-2 text-sm" key={field}><Checkbox checked={fields.has(field)} onCheckedChange={() => toggle(field)} />{LABELS[field]}</label>) : <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Die Projektvereinbarung erlaubt für diesen Zweck keine zusätzlichen Felder.</p>}</div>}
       {step === 4 && <div className="space-y-3 rounded-lg border p-4 text-sm"><p><b>AN:</b> {chosen?.name}</p><p><b>Zweck:</b> {PURPOSES.find((item) => item.value === purpose)?.label}</p><p><b>Leistungen:</b> {leistungen.size}</p><p><b>Zusätzliche Angaben:</b> {[...fields].map((field) => LABELS[field]).join(", ")}</p><div data-testid="policy-preview" className="space-y-2 border-t pt-3"><b>Konkrete Child-Policy und Abweichungen</b>{preview.map((item) => <div key={item.taktId} className={`rounded border p-2 ${item.deltaClass === "NOT_PERMITTED" ? "border-destructive/40 bg-destructive/5" : item.deltaClass === "REQUIRES_CONSENT" ? "border-amber-500/40 bg-amber-500/10" : "border-emerald-600/30 bg-emerald-600/5"}`}><span className="font-medium">{selectable.find((leistung) => leistung.id === item.taktId)?.kurzbezeichnung ?? item.taktId}: {item.deltaClass}</span>{item.diff?.summary?.map((summary) => <p key={summary} className="mt-1 text-xs text-muted-foreground">{summary}</p>)}{item.diff?.changed?.length ? <p className="mt-1 text-xs text-muted-foreground">Eingegrenzte oder geänderte Bereiche: {item.diff.changed.join(", ")}</p> : null}{item.error && <p className="mt-1 text-xs text-destructive">{item.error}</p>}</div>)}</div>{sendResults.length > 0 && <div data-testid="batch-send-results" className="space-y-2 border-t pt-3"><b>Versandergebnis</b>{sendResults.map((item) => <p key={item.taktId} className={item.status === "SENT" ? "text-emerald-700" : "text-destructive"}>{item.name}: {item.status === "SENT" ? "gesendet" : `fehlgeschlagen – ${item.error}`}</p>)}</div>}<p className="flex gap-2 text-muted-foreground"><Lock className="h-4 w-4" />Projektangaben bleiben durch die Projektvereinbarung abgedeckt.</p></div>}
     </div>
     <DialogFooter className="flex !flex-row justify-between"><Button variant="outline" disabled={pending} onClick={() => step ? setStep(step - 1) : onOpenChange(false)}>{step ? <><ChevronLeft className="mr-1 h-4 w-4" />Zurück</> : "Abbrechen"}</Button>{step < 4 ? <Button disabled={!valid || pending} onClick={() => void next()}>{previewing ? "Wird geprüft…" : <>Weiter <ChevronRight className="ml-1 h-4 w-4" /></>}</Button> : <Button disabled={pending || preview.some((item) => item.deltaClass === "NOT_PERMITTED") || preview.length !== leistungen.size || (sendResults.length > 0 && !sendResults.some((item) => item.status === "FAILED"))} onClick={() => void submit()}>{pending ? "Wird gesendet…" : sendResults.some((item) => item.status === "FAILED") ? <><Send className="mr-1 h-4 w-4" />Fehlgeschlagene erneut senden</> : <><Send className="mr-1 h-4 w-4" />Senden</>}</Button>}</DialogFooter>

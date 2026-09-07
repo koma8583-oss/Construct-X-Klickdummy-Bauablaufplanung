@@ -196,13 +196,15 @@ export function resolvePolicyDelta(
   const baseRetention = toTime(base?.retentionUntil);
   const broadenedRetention =
     candidateRetention != null && baseRetention != null && candidateRetention > baseRetention;
-  const purposeNotAllowed = Boolean(
-    base?.allowedPurposes?.length &&
-    candidate.purpose &&
-    !base.allowedPurposes.includes(candidate.purpose),
-  );
-  const allowedFieldScope = unique(base?.allowedFieldScope);
-  const fieldScopeNotAllowed = allowedFieldScope.length > 0 &&
+  const allowedPurposes = Array.isArray(base?.allowedPurposes)
+    ? unique(base.allowedPurposes)
+    : undefined;
+  const purposeNotAllowed = allowedPurposes !== undefined &&
+    (!candidate.purpose || !allowedPurposes.includes(candidate.purpose));
+  const allowedFieldScope = Array.isArray(base?.allowedFieldScope)
+    ? unique(base.allowedFieldScope)
+    : undefined;
+  const fieldScopeNotAllowed = allowedFieldScope !== undefined &&
     unique(candidate.selectedFields).some((field) => !allowedFieldScope.includes(field));
 
   let deltaClass: CoordinationPolicyDeltaClass;

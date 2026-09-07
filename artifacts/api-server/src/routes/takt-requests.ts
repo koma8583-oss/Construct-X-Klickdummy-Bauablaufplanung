@@ -511,11 +511,21 @@ router.post("/leistungsanfragen/policy-preview", requireJwt, requireRole("AG_ADM
       const base = createPolicySnapshot({
         templateId: purpose === "RAHMENTERMINE" ? "SCHEDULE_COORDINATION" : "PERFORMANCE_COORDINATION",
         providerContext: { organizationId: guOrgId, userId: req.user!.userId!, organizationType: "AG" },
-        overrides: { recipientOrganizationId: nuOrgId, purpose, projectReference: takt.projectId, workPackageReference: taktId },
+        overrides: {
+          recipientOrganizationId: nuOrgId,
+          purpose,
+          projectReference: takt.projectId,
+          ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: taktId }),
+        },
       });
       const resolution = resolvePolicyDelta(
         agreement?.lifecycleStatus === "ACCEPTED" ? agreement.effectivePolicy as Record<string, unknown> : undefined,
-        { ...base, policyType: "PERFORMANCE_REQUEST", selectedFields },
+        {
+          ...base,
+          policyType: "PERFORMANCE_REQUEST",
+          ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: taktId }),
+          selectedFields,
+        },
       );
       return {
         taktId,
@@ -826,6 +836,8 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
     message: z.string().max(2000).optional(),
     purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
     selectedFields: z.array(z.string().min(1)).optional(),
+    parentPolicyId: z.string().min(1).optional(),
+    parentPolicyVersion: z.number().int().positive().optional(),
   }).safeParse(req.body);
 
   if (!parsed.success) {
@@ -847,6 +859,8 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
       guOrgId,
       createdByUserId: userId,
       responseRequiredBy: parsed.data.responseRequiredBy ? new Date(parsed.data.responseRequiredBy) : undefined,
+      parentPolicyId: parsed.data.parentPolicyId,
+      parentPolicyVersion: parsed.data.parentPolicyVersion,
     });
 
     await Promise.all(result.requests.flatMap((request) => [
