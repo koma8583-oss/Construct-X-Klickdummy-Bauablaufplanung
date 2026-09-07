@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { hubDb as db } from "@workspace/db";
 import { webhookSubscriptionsTable, webhookEventsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireJwt } from "../middlewares/requireJwt";

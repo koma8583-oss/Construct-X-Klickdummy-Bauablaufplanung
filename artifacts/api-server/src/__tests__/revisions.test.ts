@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -63,8 +63,8 @@ let taktVersion   = 1;
 
 beforeAll(async () => {
   // Pre-cleanup: remove any stale data from a previous crashed run
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG)).catch(() => {});
   const staleReqs65 = await db.select({ id: taktRequestsTable.id }).from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT)).catch(() => []);
@@ -165,8 +165,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // FK order: outbox/inbox → versions → decisions → responses → snapshots → requests → takt
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG));
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG));
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG));
   const reqIds65 = await db.select({ id: taktRequestsTable.id }).from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT));
@@ -396,7 +396,7 @@ describe("sendImmediately = true", () => {
   });
 
   it("sends a TAKT_REQUEST_REVISED inbox message to NU", async () => {
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(

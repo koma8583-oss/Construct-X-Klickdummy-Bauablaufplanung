@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  agDb, anDb, anLeistungsanfragenTable, anProjectInvitationsTable,
+  agDb, anDb, hubDb, anLeistungsanfragenTable, anProjectInvitationsTable,
   coordinationPoliciesTable, messageOutboxTable, organizationsTable, projectMembershipsTable, projectsTable,
 } from "@workspace/db";
 import { deliverLocalProjectInvitation, deliverLocalServiceRequest } from "../services/dataspace/local-dataspace-delivery";
@@ -198,7 +198,7 @@ describe("Phase 1 delivered-request root synchronization", () => {
 afterEach(async () => {
   const created = ids.splice(0);
   for (const id of created) {
-    await agDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, `project-invitation-response-${id}-ACTIVE`)).catch(() => {});
+    await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, `project-invitation-response-${id}-ACTIVE`)).catch(() => {});
     await anDb.delete(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, id)).catch(() => {});
     await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.invitationId, id)).catch(() => {});
     await agDb.delete(projectMembershipsTable).where(eq(projectMembershipsTable.id, id)).catch(() => {});

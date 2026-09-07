@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq, inArray, or } from "drizzle-orm";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   hubMessagesTable,
   messageInboxTable,
@@ -256,21 +256,21 @@ beforeAll(async () => {
 });
 
 async function cleanupFixtures() {
-  const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
+  const localRequests = await anDb.select({ id: anLeistungsanfragenTable.id })
     .from(anLeistungsanfragenTable).where(inArray(anLeistungsanfragenTable.receiverAnOrgId, NU_ORGS));
   const localRequestIds = localRequests.map(({ id }) => id);
   if (localRequestIds.length) {
-    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
     const localResponseIds = localResponses.map(({ id }) => id);
     if (localResponseIds.length) {
-      await db.delete(anLeistungsantwortAlternativenTable)
+      await anDb.delete(anLeistungsantwortAlternativenTable)
         .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
-      await db.delete(anLeistungsantwortenTable)
+      await anDb.delete(anLeistungsantwortenTable)
         .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
     }
-    await db.delete(anLeistungsanfragenTable)
+    await anDb.delete(anLeistungsanfragenTable)
       .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
   }
   const takts = [BATCH_TAKT_ID, SELECTION_TAKT_ID, CONCURRENT_TAKT_ID];
@@ -296,13 +296,13 @@ async function cleanupFixtures() {
     await db.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
   }
 
-  await db.delete(hubMessagesTable).where(
+  await hubDb.delete(hubMessagesTable).where(
     or(
       eq(hubMessagesTable.senderOrgId, GU_ORG),
       inArray(hubMessagesTable.recipientOrgId, NU_ORGS),
     ),
   );
-  await db.delete(messageInboxTable).where(
+  await hubDb.delete(messageInboxTable).where(
     or(
       eq(messageInboxTable.senderOrgId, GU_ORG),
       inArray(messageInboxTable.senderOrgId, NU_ORGS),
@@ -310,7 +310,7 @@ async function cleanupFixtures() {
       inArray(messageInboxTable.recipientOrgId, NU_ORGS),
     ),
   );
-  await db.delete(messageOutboxTable).where(
+  await hubDb.delete(messageOutboxTable).where(
     or(
       eq(messageOutboxTable.senderOrgId, GU_ORG),
       inArray(messageOutboxTable.senderOrgId, NU_ORGS),
@@ -318,7 +318,7 @@ async function cleanupFixtures() {
       inArray(messageOutboxTable.recipientOrgId, NU_ORGS),
     ),
   );
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
     eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
     inArray(dataspaceExchangesTable.senderOrgId, NU_ORGS),
@@ -462,7 +462,7 @@ describe("parallel TaktRequest selection", () => {
       );
     expect(decisionEvents).toHaveLength(1);
 
-    const cancellationOutbox = await db
+    const cancellationOutbox = await hubDb
       .select({ correlationId: messageOutboxTable.correlationId, payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(
@@ -475,7 +475,7 @@ describe("parallel TaktRequest selection", () => {
     expect(cancellationOutbox.map((message) => (message.payload as { comment: string }).comment))
       .toEqual([ "PARALLEL_REQUEST_OTHER_AN_CONFIRMED", "PARALLEL_REQUEST_OTHER_AN_CONFIRMED" ]);
 
-    const cancellationInbox = await db
+    const cancellationInbox = await hubDb
       .select({ correlationId: messageInboxTable.correlationId })
       .from(messageInboxTable)
       .where(
@@ -506,7 +506,7 @@ describe("parallel TaktRequest selection", () => {
         ),
       );
     expect(cancellationEventsAfterRetry).toHaveLength(2);
-    const cancellationOutboxAfterRetry = await db
+    const cancellationOutboxAfterRetry = await hubDb
       .select({ id: messageOutboxTable.id })
       .from(messageOutboxTable)
       .where(
@@ -564,7 +564,7 @@ describe("parallel TaktRequest selection", () => {
       );
     expect(cancellationEvents).toHaveLength(1);
 
-    const cancellationMessages = await db
+    const cancellationMessages = await hubDb
       .select({ id: messageOutboxTable.id })
       .from(messageOutboxTable)
       .where(

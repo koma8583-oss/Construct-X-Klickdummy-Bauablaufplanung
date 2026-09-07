@@ -28,7 +28,6 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations";
-import { leistungsanfragenTable as taktRequestsTable } from "./leistungsanfragen";
 import { usersTable } from "./users";
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
@@ -152,8 +151,7 @@ export const availabilityChecksTable = pgTable(
 
     /** TaktRequest being evaluated */
     taktRequestId: text("takt_request_id")
-      .notNull()
-      .references(() => taktRequestsTable.id),
+      .notNull(),
 
     /** Lifecycle status of this check run */
     status: availabilityCheckStatusEnum("status").notNull().default("PENDING"),

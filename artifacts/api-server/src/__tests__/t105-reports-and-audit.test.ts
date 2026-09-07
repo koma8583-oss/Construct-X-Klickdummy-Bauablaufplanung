@@ -28,7 +28,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
   anLeistungsantwortenTable,
@@ -203,7 +203,7 @@ beforeAll(async () => {
   }).onConflictDoNothing();
 
   // One active resource for NU_ORG_A (explicit id, same as t104 pattern)
-  await db.insert(resourcesTable).values({
+  await anDb.insert(resourcesTable).values({
     id: "t105-res-a",
     anOrgId: NU_ORG_A,
     name: "T105 Resource",
@@ -212,7 +212,7 @@ beforeAll(async () => {
   }).onConflictDoNothing();
 
   // One resource booking for NU_ORG_A (TENTATIVE)
-  await db.insert(resourceBookingsTable).values({
+  await anDb.insert(resourceBookingsTable).values({
     nuOrgId: NU_ORG_A,
     resourceId: "t105-res-a",
     status: "TENTATIVE" as const,
@@ -230,9 +230,9 @@ afterAll(async () => {
   await db.delete(taktRequestRemindersTable)
     .where(eq(taktRequestRemindersTable.taktRequestId, TR_OPEN));
 
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.senderOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.senderOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
 
   await anDb.delete(anLeistungsantwortenTable).where(eq(anLeistungsantwortenTable.id, AN_RESPONSE_ID));
@@ -241,8 +241,8 @@ afterAll(async () => {
   await db.delete(taktResponsesTable).where(eq(taktResponsesTable.id, RESP_ID));
   await db.delete(taktRequestsTable)
     .where(inArray(taktRequestsTable.id, [TR_OPEN, TR_DONE]));
-  await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, "t105-booking-a"));
-  await db.delete(resourcesTable).where(eq(resourcesTable.id, "t105-res-a"));
+  await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, "t105-booking-a"));
+  await anDb.delete(resourcesTable).where(eq(resourcesTable.id, "t105-res-a"));
   await db.delete(projectContractorsTable)
     .where(and(eq(projectContractorsTable.projectId, PROJ_A), eq(projectContractorsTable.anOrgId, NU_ORG_A)));
   await db.delete(takteTable).where(inArray(takteTable.id, [TAKT_A, TAKT_B]));

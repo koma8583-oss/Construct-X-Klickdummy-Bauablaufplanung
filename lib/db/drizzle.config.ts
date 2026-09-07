@@ -40,6 +40,7 @@ export default defineConfig({
     __dirname,
     schemaFile,
   ),
+  schemaFilter: [schema],
   dialect: "postgresql",
   dbCredentials: {
     url: databaseUrl.toString(),

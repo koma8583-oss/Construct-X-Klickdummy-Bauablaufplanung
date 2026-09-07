@@ -40,21 +40,60 @@ try {
   await client.query("BEGIN");
   await client.query("CREATE TEMP TABLE cleanup_ids (id text PRIMARY KEY) ON COMMIT DROP");
 
-  for (const schema of schemas) {
+  const fixtureRoots = [
+    ["ag", "organizations", "name"],
+    ["ag", "projects", "name"],
+    ["ag", "users", "name"],
+    ["an", "organizations", "name"],
+    ["an", "users", "name"],
+    ["hub", "organizations", "name"],
+    ["hub", "users", "name"],
+  ];
+  for (const [schema, table, nameColumn] of fixtureRoots) {
+    const emailClause = table === "users"
+      ? ` OR email ~* '${testFixtureIdOrEmailPattern}'`
+      : "";
     await client.query(`
       INSERT INTO cleanup_ids (id)
-      SELECT id::text FROM ${qualified(schema, "organizations")}
-      WHERE name ~* '${testFixtureNamePattern}'
+      SELECT id::text FROM ${qualified(schema, table)}
+      WHERE ${quote(nameColumn)} ~* '${testFixtureNamePattern}'
          OR id::text ~* '${testFixtureIdOrEmailPattern}'
-      UNION
-      SELECT id::text FROM ${qualified(schema, "projects")}
-      WHERE name ~* '${testFixtureNamePattern}'
-         OR id::text ~* '${testFixtureIdOrEmailPattern}'
-      UNION
-      SELECT id::text FROM ${qualified(schema, "users")}
-      WHERE name ~* '${testFixtureNamePattern}'
-         OR id::text ~* '${testFixtureIdOrEmailPattern}'
-         OR email ~* '${testFixtureIdOrEmailPattern}'
+         ${emailClause}
+      ON CONFLICT DO NOTHING
+    `);
+  }
+
+  // Rows created before role-local foreign keys were restored can be orphaned
+  // and have random primary keys. Discover them through stable external test
+  // references as well, then feed their primary keys into the same traversal.
+  const referenceColumns = [
+    "source_request_id", "external_leistungsanfrage_id", "request_number",
+    "message_id", "correlation_id", "invitation_id", "project_reference",
+    "source_reference_id", "deduplication_key", "email",
+  ];
+  const { rows: referenceTargets } = await client.query(`
+    SELECT columns.table_schema, columns.table_name, columns.column_name,
+           primary_column.column_name AS primary_key
+    FROM information_schema.columns columns
+    JOIN information_schema.table_constraints primary_constraint
+      ON primary_constraint.table_schema = columns.table_schema
+     AND primary_constraint.table_name = columns.table_name
+     AND primary_constraint.constraint_type = 'PRIMARY KEY'
+    JOIN information_schema.key_column_usage primary_column
+      ON primary_column.constraint_schema = primary_constraint.constraint_schema
+     AND primary_column.constraint_name = primary_constraint.constraint_name
+     AND primary_column.ordinal_position = 1
+    WHERE columns.table_schema = ANY($1::text[])
+      AND columns.column_name = ANY($2::text[])
+      AND columns.data_type IN ('text', 'character varying', 'character')
+  `, [schemas, referenceColumns]);
+  for (const target of referenceTargets) {
+    await client.query(`
+      INSERT INTO cleanup_ids (id)
+      SELECT ${quote(target.primary_key)}::text
+      FROM ${qualified(target.table_schema, target.table_name)}
+      WHERE ${quote(target.column_name)}::text ~* '${testFixtureIdOrEmailPattern}'
+      ON CONFLICT DO NOTHING
     `);
   }
 

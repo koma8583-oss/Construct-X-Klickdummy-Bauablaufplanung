@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { hubDb as db } from "@workspace/db";
 import {
   webhookSubscriptionsTable,
   webhookEventsTable,

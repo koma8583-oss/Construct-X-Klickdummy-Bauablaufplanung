@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -276,7 +276,7 @@ describe("POST /takt-requests/:id/send", () => {
 
     // The message_outbox payload should be the minimal notification, not the snapshot.
     // We verify by checking the outbox row directly.
-    const rows = await db.execute(
+    const rows = await hubDb.execute(
       sql`SELECT payload FROM message_outbox WHERE message_id = ${"taktrequest-notification-" + requestId} LIMIT 1`,
     ) as unknown as Array<{ payload: Record<string, unknown> }>;
 
@@ -342,7 +342,7 @@ describe("POST /takt-requests/:id/send", () => {
     expect(res2.body.messageId).toBe(res1.body.messageId);
 
     // Verify only one outbox row
-    const countRows = await db.execute(
+    const countRows = await hubDb.execute(
       sql`SELECT COUNT(*) as cnt FROM message_outbox WHERE correlation_id = ${requestId}`,
     ) as unknown as Array<{ cnt: string }>;
     if (countRows.length > 0) {

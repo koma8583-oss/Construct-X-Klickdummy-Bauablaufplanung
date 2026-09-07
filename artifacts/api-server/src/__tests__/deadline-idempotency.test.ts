@@ -15,7 +15,7 @@
  */
 
 import { describe, it, beforeAll, afterAll, expect, vi } from 'vitest';
-import { agDb as db } from '@workspace/db';
+import { agDb as db, hubDb } from '@workspace/db';
 import {
   organizationsTable,
   usersTable,
@@ -107,10 +107,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Delete in FK order: outbox/inbox → reminders → requests → takte → projects → users → orgs
-  await db.execute(
+  await hubDb.execute(
     sql`DELETE FROM message_outbox WHERE recipient_org_id = ${nuOrgId} OR recipient_org_id = ${guOrgId}`
   );
-  await db.execute(
+  await hubDb.execute(
     sql`DELETE FROM message_inbox WHERE recipient_org_id = ${nuOrgId} OR recipient_org_id = ${guOrgId}`
   );
   await db.delete(taktRequestRemindersTable).where(

@@ -436,8 +436,12 @@ export const taktRequestAuditEventsTable = pgTable(
       .notNull()
       .references(() => taktRequestsTable.id, { onDelete: "cascade" }),
     eventType: leistungsanfrageAuditEventTypeEnum("event_type").notNull(),
-    actorOrgId: text("actor_org_id").references(() => organizationsTable.id),
-    actorUserId: text("actor_user_id").references(() => usersTable.id),
+    actorOrgId: text("actor_org_id").references(() => organizationsTable.id, {
+      onDelete: "set null",
+    }),
+    actorUserId: text("actor_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
     actorRole: leistungsanfrageAuditActorRoleEnum("actor_role"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),

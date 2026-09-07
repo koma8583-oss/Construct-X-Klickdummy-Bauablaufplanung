@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import * as jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -264,9 +264,9 @@ afterAll(async () => {
     .execute(sql`DELETE FROM data_publication_recipients WHERE publication_id = ${pubId}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM data_publications WHERE id = ${pubId}`).catch(() => {});
-  await db
+  await hubDb
     .execute(sql`DELETE FROM message_outbox WHERE sender_org_id IN (${sql.raw(`'${AG_ORG}', '${AN_ORG}'`)})`).catch(() => {});
-  await db
+  await hubDb
     .execute(sql`DELETE FROM message_inbox WHERE recipient_org_id IN (${sql.raw(`'${AG_ORG}', '${AN_ORG}'`)})`).catch(() => {});
   await db
     .execute(sql`DELETE FROM leistungen WHERE id = ${TAKT}`).catch(() => {});

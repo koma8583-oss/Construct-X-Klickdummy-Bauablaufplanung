@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -209,8 +209,8 @@ afterAll(async () => {
   const orgIds = [GU_ORG, NU_ORG, NU_ORG_2, GU_ORG_2];
   const orgSql = orgIds.map(id => `'${id}'`).join(",");
 
-  await db.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  await db.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
     SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`).catch(() => {});

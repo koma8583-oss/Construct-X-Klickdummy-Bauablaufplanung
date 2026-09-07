@@ -74,10 +74,14 @@ export const leistungsanfrageAuditEventsTable = pgTable(
     eventType: leistungsanfrageAuditEventTypeEnum("event_type").notNull(),
 
     /** Organisation that triggered the event; null for SYSTEM events */
-    actorOrgId: text("actor_org_id").references(() => organizationsTable.id),
+    actorOrgId: text("actor_org_id").references(() => organizationsTable.id, {
+      onDelete: "set null",
+    }),
 
     /** User that triggered the event; null for automated/system events */
-    actorUserId: text("actor_user_id").references(() => usersTable.id),
+    actorUserId: text("actor_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
 
     /** Caller's role at the time of the event */
     actorRole: leistungsanfrageAuditActorRoleEnum("actor_role"),

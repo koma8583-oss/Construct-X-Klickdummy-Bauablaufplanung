@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -63,9 +63,9 @@ let reqCloseId     = "";  // to test CLOSE_WITHOUT_AGREEMENT transport
 
 beforeAll(async () => {
   // Pre-cleanup: remove any stale data from a previous crashed run
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
     eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
     eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
@@ -192,9 +192,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // FK order: outbox/inbox → versions → decisions → alternatives → responses → requests → takt
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG));
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG));
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, GU_ORG),
     eq(dataspaceExchangesTable.receiverOrgId, GU_ORG),
     eq(dataspaceExchangesTable.senderOrgId, NU_ORG),
@@ -241,7 +241,7 @@ describe("CONFIRM_ACCEPTED", () => {
   });
 
   it("creates exactly one TAKT_RESPONSE_ACCEPTED outbox message", async () => {
-    const msgs = await db
+    const msgs = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(and(
@@ -253,7 +253,7 @@ describe("CONFIRM_ACCEPTED", () => {
   });
 
   it("NU inbox receives the TAKT_RESPONSE_ACCEPTED message", async () => {
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -270,7 +270,7 @@ describe("CONFIRM_ACCEPTED", () => {
   });
 
   it("confirmed time window is correctly transmitted", async () => {
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -287,7 +287,7 @@ describe("CONFIRM_ACCEPTED", () => {
   });
 
   it("payload does NOT contain internal GU or NU data", async () => {
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -315,7 +315,7 @@ describe("CONFIRM_ACCEPTED", () => {
     expect(res2.status).toBe(409);
 
     // Outbox still has exactly 1 TAKT_RESPONSE_ACCEPTED for this request
-    const msgs = await db
+    const msgs = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(and(
@@ -337,7 +337,7 @@ describe("ACCEPT_ALTERNATIVE", () => {
 
     expect(res.status).toBe(201);
 
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -365,7 +365,7 @@ describe("REQUEST_REVISION", () => {
 
     expect(res.status).toBe(201);
 
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -382,7 +382,7 @@ describe("REQUEST_REVISION", () => {
   });
 
   it("NU2 (different org) cannot see the revision message in their inbox", async () => {
-    const msgs = await db
+    const msgs = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -404,7 +404,7 @@ describe("CLOSE_WITHOUT_AGREEMENT", () => {
 
     expect(res.status).toBe(201);
 
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -420,7 +420,7 @@ describe("CLOSE_WITHOUT_AGREEMENT", () => {
   });
 
   it("TAKT_REQUEST_CANCELLED payload contains only allowed fields (no business data)", async () => {
-    const [inbox] = await db
+    const [inbox] = await hubDb
       .select()
       .from(messageInboxTable)
       .where(and(
@@ -441,7 +441,7 @@ describe("CLOSE_WITHOUT_AGREEMENT", () => {
 // ── NU org isolation ─────────────────────────────────────────────────────────
 
 it("NU2 org has no messages in their inbox from any GU decision in this suite", async () => {
-  const msgs = await db
+  const msgs = await hubDb
     .select()
     .from(messageInboxTable)
     .where(eq(messageInboxTable.recipientOrgId, NU2_ORG));

@@ -35,7 +35,7 @@
  *   - alternatives contain no internal fields
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { anDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -138,11 +138,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`DELETE FROM availability_checks WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM availability_checks WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 't45-%'`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = '${sql.raw(GU_ORG)}'`).catch(() => {});
-  await db.execute(sql`DELETE FROM resources WHERE an_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resources WHERE an_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE project_id = '${sql.raw(PROJECT)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
@@ -213,7 +213,7 @@ describe("runAvailabilityCheck — FEASIBLE result", () => {
     await seedRequest({ id: reqId, taktId });
 
     // Seed an active NU resource with no bookings in the window
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Free Crew", capacity: 4,
       capacityUnit: "PERSONS", active: true,
     }).returning();
@@ -229,7 +229,7 @@ describe("runAvailabilityCheck — FEASIBLE result", () => {
     expect(check.internalResultPayload?.conflicts).toHaveLength(0);
     expect(check.internalResultPayload?.availableResources.length).toBeGreaterThan(0);
 
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
   it("TaktRequest transitions to UNDER_REVIEW", async () => {
@@ -269,12 +269,12 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     await seedTakt(taktId);
     await seedRequest({ id: reqId, taktId });
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Booked Crew", active: true,
     }).returning();
 
     // Booking fully covers the takt window (2026-11-01 to 2026-11-14) at 100%
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: res.id,
       sourceType: "MANUAL_BLOCK",
@@ -291,8 +291,8 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     expect(check.internalResultPayload?.conflicts.length).toBeGreaterThan(0);
     expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
   it("CANCELLED booking does NOT produce conflict", async () => {
@@ -301,12 +301,12 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     await seedTakt(taktId);
     await seedRequest({ id: reqId, taktId });
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Cancelled Booking Crew", active: true,
     }).returning();
 
     // Booking in window but CANCELLED → should not conflict
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: res.id,
       sourceType: "MANUAL_BLOCK",
@@ -324,8 +324,8 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     expect(hasResource).toBe(true);
     expect(check.result).toBe("FEASIBLE");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
   it("treats a single-day planned window as inclusive", async () => {
@@ -340,10 +340,10 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
       }),
     });
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Single Day Crew", active: true,
     }).returning();
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: res.id,
       sourceType: "MANUAL_BLOCK",
@@ -359,8 +359,8 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     expect(check.result).not.toBe("FEASIBLE");
     expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
   it("other NU's bookings are not considered", async () => {
@@ -370,16 +370,16 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     await seedRequest({ id: reqId, taktId });
 
     // NU_A has a free crew resource
-    const [resA] = await db.insert(resourcesTable).values({
+    const [resA] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 NU-A Crew", active: true,
     }).returning();
 
     // NU_B has a booking in the same window — should NOT affect NU_A's check
-    const [resB] = await db.insert(resourcesTable).values({
+    const [resB] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_B, type: "CREW", name: "T45 NU-B Crew", active: true,
     }).returning();
 
-    const [bookingB] = await db.insert(resourceBookingsTable).values({
+    const [bookingB] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_B,
       resourceId: resB.id,
       sourceType: "MANUAL_BLOCK",
@@ -394,9 +394,9 @@ describe("runAvailabilityCheck — RESOURCE_CONFLICT result", () => {
     // NU_A's check should be FEASIBLE — NU_B's bookings are invisible
     expect(check.result).toBe("FEASIBLE");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, bookingB.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, resA.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, resB.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, bookingB.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, resA.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, resB.id));
   });
 });
 
@@ -407,11 +407,11 @@ describe("runAvailabilityCheck — privacy invariants", () => {
     await seedTakt(taktId);
     await seedRequest({ id: reqId, taktId });
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Privacy Crew", active: true,
     }).returning();
 
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: res.id,
       sourceType: "LOCAL_PROJECT",
@@ -435,8 +435,8 @@ describe("runAvailabilityCheck — privacy invariants", () => {
       expect((alt as Record<string, unknown>)["_outsideBuffer"]).toBeUndefined();
     }
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 
   it("technical error produces FAILED check, not domain rejection of TaktRequest", async () => {
@@ -699,12 +699,12 @@ describe("generateAlternatives — Task 4.6", () => {
       }),
     });
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: NU_ORG_A, type: "CREW", name: "T45 Fully Blocked Crew", active: true,
     }).returning();
 
     // Block beyond horizon
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: res.id,
       sourceType: "MANUAL_BLOCK",
@@ -719,7 +719,7 @@ describe("generateAlternatives — Task 4.6", () => {
     expect(check.publicResultPayload?.recommendedDecision).toBe("REJECTED");
     expect(check.publicResultPayload?.alternatives).toHaveLength(0);
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
   });
 });

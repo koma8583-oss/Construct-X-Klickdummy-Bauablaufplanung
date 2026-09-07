@@ -24,7 +24,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../app";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   anDb,
   anLeistungsanfragenTable,
@@ -341,10 +341,10 @@ afterAll(async () => {
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId)).catch(() => {});
   // Clear outbox/inbox rows before deleting users/orgs (FK constraints)
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, agOrgId)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, anOrgId)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, anOrgId)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, agOrgId)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, agOrgId)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, anOrgId)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, anOrgId)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, agOrgId)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, agUserId)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, anUserId)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, agOrgId)).catch(() => {});

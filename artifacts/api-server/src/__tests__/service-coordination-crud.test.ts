@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq } from "drizzle-orm";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   leistungsanfragenTable,
   leistungenTable,
@@ -130,7 +130,7 @@ beforeAll(async () => {
   ]).onConflictDoNothing();
 
   // Resource type owned by NU_ORG
-  await db.insert(resourceTypesTable).values({
+  await anDb.insert(resourceTypesTable).values({
     id: RT_ID,
     code: "tsc-crud-rt",
     name: "TSC-CRUD ResourceType",
@@ -171,7 +171,7 @@ afterAll(async () => {
   await db.delete(leistungenTable)
     .where(eq(leistungenTable.id, LEISTUNG_B))
     .catch(() => {});
-  await db.delete(resourceTypesTable)
+  await anDb.delete(resourceTypesTable)
     .where(eq(resourceTypesTable.id, RT_ID))
     .catch(() => {});
   await db.delete(projectsTable)

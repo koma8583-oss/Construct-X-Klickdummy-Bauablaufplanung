@@ -816,6 +816,7 @@ async function resolveInvitation(
     invitationId: membership.invitationId,
     projectReference: membership.projectId,
     decision: decision === "ACTIVE" ? "ACCEPTED" : "REJECTED",
+    ...(decision === "ACTIVE" ? { policyAccepted: policyAccepted === true } : {}),
     ...(message ? { message } : {}),
     respondedAt: now.toISOString(),
   };

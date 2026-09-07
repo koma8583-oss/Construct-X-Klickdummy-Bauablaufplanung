@@ -149,7 +149,7 @@ afterAll(async () => {
       eq(messageInboxTable.recipientOrgId, agOrgId),
     ),
   );
-  await db.delete(messageInboxTable).where(
+  await hubDb.delete(messageInboxTable).where(
     or(
       eq(messageInboxTable.senderOrgId, anOrgId),
       eq(messageInboxTable.recipientOrgId, anOrgId),
@@ -157,7 +157,7 @@ afterAll(async () => {
       eq(messageInboxTable.recipientOrgId, agOrgId),
     ),
   );
-  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN (${agOrgId}, ${anOrgId}) OR receiver_org_id IN (${agOrgId}, ${anOrgId})`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN (${agOrgId}, ${anOrgId}) OR receiver_org_id IN (${agOrgId}, ${anOrgId})`).catch(() => {});
   await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.id, pubId));
   await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.dataPublicationId, pubId));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId));

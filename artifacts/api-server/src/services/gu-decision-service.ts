@@ -501,7 +501,7 @@ export async function createGuDecision(
         senderOrgId: siblingPayload.metadata.senderOrgId,
         recipientOrgId: siblingPayload.metadata.receiverOrgId,
         correlationId: siblingPayload.metadata.correlationId,
-        payload: siblingPayload as unknown as Record<string, unknown>,
+        payload: coordinationDecisionTransportPayload(siblingPayload),
         status: "PENDING",
       });
     }

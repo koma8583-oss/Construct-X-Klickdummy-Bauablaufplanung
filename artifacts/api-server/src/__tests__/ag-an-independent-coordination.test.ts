@@ -11,6 +11,8 @@ import { sql, and, eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 import {
   agDb as db,
+  anDb,
+  hubDb,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -55,24 +57,24 @@ const agToken = token(AG_USER, AG, "AG");
 const anToken = token(AN_USER, AN, "AN");
 
 async function cleanup() {
-  const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
+  const localRequests = await anDb.select({ id: anLeistungsanfragenTable.id })
     .from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN));
   const localRequestIds = localRequests.map(({ id }) => id);
   if (localRequestIds.length) {
-    await db.delete(anAvailabilityChecksTable)
+    await anDb.delete(anAvailabilityChecksTable)
       .where(inArray(anAvailabilityChecksTable.anLeistungsanfrageId, localRequestIds));
-    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
     const localResponseIds = localResponses.map(({ id }) => id);
     if (localResponseIds.length) {
-      await db.delete(anLeistungsantwortAlternativenTable)
+      await anDb.delete(anLeistungsantwortAlternativenTable)
         .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
-      await db.delete(anLeistungsantwortenTable)
+      await anDb.delete(anLeistungsantwortenTable)
         .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
     }
-    await db.delete(anLeistungsanfragenTable)
+    await anDb.delete(anLeistungsanfragenTable)
       .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
   }
   const requests = await db.select({ id: taktRequestsTable.id })
@@ -91,11 +93,11 @@ async function cleanup() {
     await db.delete(taktRequestSnapshotsTable).where(inArray(taktRequestSnapshotsTable.taktRequestId, requestIds));
     await db.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
   }
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, AG),
     eq(dataspaceExchangesTable.receiverOrgId, AG),
     eq(dataspaceExchangesTable.senderOrgId, AN),
@@ -204,7 +206,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
     requestId = created.body.id;
-    const beforeInbound = await db.select({ id: anLeistungsanfragenTable.id })
+    const beforeInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(beforeInbound).toHaveLength(0);
@@ -214,18 +216,18 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect([200, 201]).toContain(sent.status);
     expect(sent.body.status).toMatch(/SENT|DELIVERED/);
-    const afterInbound = await db.select({ id: anLeistungsanfragenTable.id })
+    const afterInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(afterInbound).toHaveLength(1);
-    const [outboundEnvelope] = await db.select({ payload: messageOutboxTable.payload })
+    const [outboundEnvelope] = await hubDb.select({ payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, requestId));
     const outboundPayload = outboundEnvelope.payload as {
       policySnapshot?: { policyId: string; templateId: string; templateVersion: number; code: string };
     };
     expect(outboundPayload.policySnapshot).toBeDefined();
-    const inbound = await db.select({ status: dataspaceExchangesTable.status })
+    const inbound = await hubDb.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -234,7 +236,7 @@ describe("independent AG–AN coordination flow", () => {
       ));
     expect(inbound).toHaveLength(1);
     expect(inbound[0].status).toBe("PROCESSED");
-    const [anProjection] = await db.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
+    const [anProjection] = await anDb.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(anProjection.policySnapshot).toEqual(outboundPayload.policySnapshot);
@@ -271,7 +273,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(reviewed.status).toBe(200);
     expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     const agStatusBeforeAvailability = agRequestBefore.status;
-    const [localProjection] = await db.select({ id: anLeistungsanfragenTable.id })
+    const [localProjection] = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(localProjection).toBeDefined();
@@ -287,7 +289,7 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(latestAvailability.status).toBe(200);
     expect(latestAvailability.body.checkId).toBe(availability.body.checkId);
-    const localChecks = await db.select({ id: anAvailabilityChecksTable.id })
+    const localChecks = await anDb.select({ id: anAvailabilityChecksTable.id })
       .from(anAvailabilityChecksTable)
       .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, localProjection.id));
     expect(localChecks).toHaveLength(1);
@@ -304,7 +306,7 @@ describe("independent AG–AN coordination flow", () => {
         comment: "Kapazität bestätigt",
       });
     expect(response.status).toBe(201);
-    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, localProjection.id));
     expect(localResponses).toHaveLength(1);
@@ -315,7 +317,7 @@ describe("independent AG–AN coordination flow", () => {
     const [agResponse] = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
     expect(agResponse).toBeDefined();
-    const responseInbound = await db.select({ status: dataspaceExchangesTable.status })
+    const responseInbound = await hubDb.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -331,7 +333,7 @@ describe("independent AG–AN coordination flow", () => {
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: agResponse.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
-    const [confirmedProjection] = await db.select({ status: anLeistungsanfragenTable.status })
+    const [confirmedProjection] = await anDb.select({ status: anLeistungsanfragenTable.status })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(confirmedProjection.status).toBe("CONFIRMED");

@@ -23,7 +23,7 @@
  * Fixture prefix: "t42-"
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { anDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   resourcesTable,
@@ -76,7 +76,7 @@ beforeAll(async () => {
   }).onConflictDoNothing();
 
   // One resource per NU org
-  await db.insert(resourcesTable).values([
+  await anDb.insert(resourcesTable).values([
     { id: RESOURCE_A, anOrgId: NU_ORG_A, type: "EMPLOYEE", name: "T42 Worker A" },
     { id: RESOURCE_B, anOrgId: NU_ORG_B, type: "EMPLOYEE", name: "T42 Worker B" },
   ]).onConflictDoNothing();
@@ -96,13 +96,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Clean up in dependency order
-  await db.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM nu_local_projects WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
-  await db.execute(sql`DELETE FROM resource_assignments WHERE resource_id IN ('${sql.raw(RESOURCE_A)}','${sql.raw(RESOURCE_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM nu_local_projects WHERE nu_org_id IN ('${sql.raw(NU_ORG_A)}','${sql.raw(NU_ORG_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resource_assignments WHERE resource_id IN ('${sql.raw(RESOURCE_A)}','${sql.raw(RESOURCE_B)}')`).catch(() => {});
   if (delegationId) {
     await db.execute(sql`DELETE FROM delegations WHERE id = '${sql.raw(delegationId)}'`).catch(() => {});
   }
-  await db.execute(sql`DELETE FROM resources WHERE id IN ('${sql.raw(RESOURCE_A)}','${sql.raw(RESOURCE_B)}')`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resources WHERE id IN ('${sql.raw(RESOURCE_A)}','${sql.raw(RESOURCE_B)}')`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = '${sql.raw(USER_ID)}'`).catch(() => {});
@@ -113,7 +113,7 @@ afterAll(async () => {
 
 describe("nu_local_projects", () => {
   it("can save a local project", async () => {
-    const [proj] = await db.insert(nuLocalProjectsTable).values({
+    const [proj] = await anDb.insert(nuLocalProjectsTable).values({
       nuOrgId: NU_ORG_A,
       localProjectCode: "P-001",
       displayName: "Innenausbau Nord",
@@ -130,32 +130,32 @@ describe("nu_local_projects", () => {
     expect(proj.status).toBe("ACTIVE");
 
     // cleanup
-    await db.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, proj.id));
+    await anDb.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, proj.id));
   });
 
   it("localProjectCode is unique within one NU org", async () => {
-    await db.insert(nuLocalProjectsTable).values({
+    await anDb.insert(nuLocalProjectsTable).values({
       nuOrgId: NU_ORG_A, localProjectCode: "P-DUP", displayName: "Project Dup 1",
     });
 
     await expect(
-      db.insert(nuLocalProjectsTable).values({
+      anDb.insert(nuLocalProjectsTable).values({
         nuOrgId: NU_ORG_A, localProjectCode: "P-DUP", displayName: "Project Dup 2",
       }),
     ).rejects.toThrow();
 
     // cleanup
-    await db.delete(nuLocalProjectsTable).where(
+    await anDb.delete(nuLocalProjectsTable).where(
       and(eq(nuLocalProjectsTable.nuOrgId, NU_ORG_A), eq(nuLocalProjectsTable.localProjectCode, "P-DUP")),
     );
   });
 
   it("same localProjectCode is valid for a different NU org", async () => {
-    const [projA] = await db.insert(nuLocalProjectsTable).values({
+    const [projA] = await anDb.insert(nuLocalProjectsTable).values({
       nuOrgId: NU_ORG_A, localProjectCode: "P-SHARED", displayName: "Org A project",
     }).returning();
 
-    const [projB] = await db.insert(nuLocalProjectsTable).values({
+    const [projB] = await anDb.insert(nuLocalProjectsTable).values({
       nuOrgId: NU_ORG_B, localProjectCode: "P-SHARED", displayName: "Org B project",
     }).returning();
 
@@ -163,8 +163,8 @@ describe("nu_local_projects", () => {
     expect(projA.localProjectCode).toBe(projB.localProjectCode);
 
     // cleanup
-    await db.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, projA.id));
-    await db.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, projB.id));
+    await anDb.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, projA.id));
+    await anDb.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, projB.id));
   });
 });
 
@@ -172,7 +172,7 @@ describe("nu_local_projects", () => {
 
 describe("resource_bookings", () => {
   it("can save a valid booking", async () => {
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: RESOURCE_A,
       sourceType: "MANUAL_BLOCK",
@@ -189,12 +189,12 @@ describe("resource_bookings", () => {
     expect(booking.utilizationPercent).toBe(100);
     expect(booking.status).toBe("CONFIRMED");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
   });
 
   it("booking without an existing resource is rejected (FK violation)", async () => {
     await expect(
-      db.insert(resourceBookingsTable).values({
+      anDb.insert(resourceBookingsTable).values({
         nuOrgId: NU_ORG_A,
         resourceId: "non-existent-resource-id",
         sourceType: "MANUAL_BLOCK",
@@ -210,7 +210,7 @@ describe("resource_bookings", () => {
     // RESOURCE_A belongs to NU_ORG_A but this booking claims NU_ORG_B
     // The DB allows this (no cross-column FK constraint), but the application
     // must enforce it. We test the detection logic directly.
-    const [resource] = await db
+    const [resource] = await anDb
       .select()
       .from(resourcesTable)
       .where(eq(resourcesTable.id, RESOURCE_A))
@@ -239,11 +239,11 @@ describe("resource_bookings", () => {
   });
 
   it("booking with localProjectId links to a nu_local_project", async () => {
-    const [proj] = await db.insert(nuLocalProjectsTable).values({
+    const [proj] = await anDb.insert(nuLocalProjectsTable).values({
       nuOrgId: NU_ORG_A, localProjectCode: "P-BOOK-TEST", displayName: "Booking test project",
     }).returning();
 
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: RESOURCE_A,
       localProjectId: proj.id,
@@ -258,13 +258,13 @@ describe("resource_bookings", () => {
     expect(booking.localProjectId).toBe(proj.id);
     expect(booking.sourceType).toBe("LOCAL_PROJECT");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, proj.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(nuLocalProjectsTable).where(eq(nuLocalProjectsTable.id, proj.id));
   });
 
   it("TAKT_REQUEST booking stores sourceReferenceId as plain string (no FK required)", async () => {
     const taktRequestId = "some-takt-request-uuid";
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: RESOURCE_A,
       sourceType: "TAKT_REQUEST",
@@ -276,17 +276,17 @@ describe("resource_bookings", () => {
     }).returning();
 
     expect(booking.sourceReferenceId).toBe(taktRequestId);
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
   });
 
   it("stores concrete and type-level bookings for the same period", async () => {
-    const [resourceType] = await db.insert(resourceTypesTable).values({
+    const [resourceType] = await anDb.insert(resourceTypesTable).values({
       anOrgId: NU_ORG_A,
       name: "T42 Mixed Booking Type",
       category: "PERSONNEL",
     }).returning();
 
-    const [concreteBooking] = await db.insert(resourceBookingsTable).values({
+    const [concreteBooking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: RESOURCE_A,
       resourceTypeId: resourceType.id,
@@ -296,7 +296,7 @@ describe("resource_bookings", () => {
       utilizationPercent: 100,
       status: "CONFIRMED",
     }).returning();
-    const [typeBooking] = await db.insert(resourceBookingsTable).values({
+    const [typeBooking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: NU_ORG_A,
       resourceId: null,
       resourceTypeId: resourceType.id,
@@ -314,9 +314,9 @@ describe("resource_bookings", () => {
     expect(typeBooking.resourceTypeId).toBe(resourceType.id);
     expect(Number(typeBooking.quantity)).toBe(2);
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, resourceType.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, resourceType.id));
   });
 });
 
@@ -324,7 +324,7 @@ describe("resource_bookings", () => {
 
 describe("resource_assignments — backward compatibility", () => {
   it("existing resource_assignments rows remain intact after schema changes", async () => {
-    const [assignment] = await db.insert(resourceAssignmentsTable).values({
+    const [assignment] = await anDb.insert(resourceAssignmentsTable).values({
       resourceId: RESOURCE_A,
       delegationId: delegationId,
       fromDate: "2026-10-01",
@@ -337,12 +337,12 @@ describe("resource_assignments — backward compatibility", () => {
     expect(assignment.delegationId).toBe(delegationId);
 
     // Verify it can be queried
-    const [fetched] = await db
+    const [fetched] = await anDb
       .select()
       .from(resourceAssignmentsTable)
       .where(eq(resourceAssignmentsTable.id, assignment.id));
     expect(fetched.id).toBe(assignment.id);
 
-    await db.delete(resourceAssignmentsTable).where(eq(resourceAssignmentsTable.id, assignment.id));
+    await anDb.delete(resourceAssignmentsTable).where(eq(resourceAssignmentsTable.id, assignment.id));
   });
 });

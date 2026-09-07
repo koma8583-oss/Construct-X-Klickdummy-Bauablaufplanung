@@ -30,6 +30,27 @@ import { deliverLocalCoordinationDecision, deliverLocalServiceRequest } from "./
 import type { ExternalCoordinationDecision, ExternalServiceRequest, ExternalServiceResponse } from "./dataspace/external-contracts";
 import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
+function coordinationDecisionTransportPayload(
+  payload: ExternalCoordinationDecision,
+): Record<string, unknown> {
+  if (payload.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
+    return {
+      taktRequestId: payload.requestId,
+      comment: payload.comment ?? null,
+      closedAt: payload.closedAt,
+    };
+  }
+  return {
+    taktRequestId: payload.requestId,
+    decisionType: payload.decisionType,
+    acceptedAlternativeId: payload.acceptedAlternativeId ?? null,
+    confirmedTimeWindow: payload.confirmedTimeWindow ?? null,
+    taktVersion: payload.taktVersion,
+    comment: payload.comment ?? null,
+    ...(payload.closedAt ? { closedAt: payload.closedAt } : {}),
+  };
+}
+
 export type CoordinationParty = "AG" | "AN";
 export interface ScheduleDelta { startDays: number; endDays: number; durationDays: number; hasChange: boolean; }
 
@@ -710,7 +731,7 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
          senderOrgId: decision.metadata.senderOrgId,
          recipientOrgId: decision.metadata.receiverOrgId,
          correlationId: decision.metadata.correlationId,
-         payload: decision as unknown as Record<string, unknown>,
+          payload: coordinationDecisionTransportPayload(decision),
          status: "PENDING",
        });
        return { proposal: updated, payload: null, request, decision };
@@ -756,7 +777,7 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
        senderOrgId: decision.metadata.senderOrgId,
        recipientOrgId: decision.metadata.receiverOrgId,
        correlationId: decision.metadata.correlationId,
-       payload: decision as unknown as Record<string, unknown>,
+        payload: coordinationDecisionTransportPayload(decision),
        status: "PENDING",
      });
      return { proposal: updated, payload: null, request, decision };

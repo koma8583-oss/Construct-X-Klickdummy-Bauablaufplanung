@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -235,9 +235,9 @@ afterAll(async () => {
   // Delete in FK-safe order
   await db.delete(taktRequestAuditEventsTable)
     .where(eq(taktRequestAuditEventsTable.requestId, REQUEST_ID));
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(eq(messageInboxTable.correlationId, REQUEST_ID));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.correlationId, REQUEST_ID));
   await db.delete(taktRequestSnapshotsTable)
     .where(eq(taktRequestSnapshotsTable.taktRequestId, REQUEST_ID));

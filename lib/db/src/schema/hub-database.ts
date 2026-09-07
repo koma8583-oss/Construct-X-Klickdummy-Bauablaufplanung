@@ -10,3 +10,4 @@ export * from "./hub";
 export * from "./messages";
 export * from "./dataspace-exchanges";
 export * from "./dataspace-access-grants";
+export * from "./webhooks";

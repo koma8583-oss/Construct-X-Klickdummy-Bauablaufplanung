@@ -33,7 +33,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
   organizationsTable,
@@ -180,6 +180,33 @@ beforeAll(async () => {
   ]).onConflictDoNothing();
 
   // Clear remnants from interrupted runs in FK order before reusing fixed IDs.
+  const staleOrgIds = [GU_ORG, NU_ORG, NU_ORG_B] as [string, ...string[]];
+  await hubDb.delete(dataspaceExchangesTable).where(or(
+    inArray(dataspaceExchangesTable.senderOrgId, staleOrgIds),
+    inArray(dataspaceExchangesTable.receiverOrgId, staleOrgIds),
+  ));
+  await hubDb.delete(messageInboxTable)
+    .where(inArray(messageInboxTable.recipientOrgId, staleOrgIds));
+  await hubDb.delete(messageOutboxTable)
+    .where(inArray(messageOutboxTable.senderOrgId, staleOrgIds));
+  await anDb.delete(anLeistungsanfragenTable)
+    .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
+  const staleRequests = await db.select({ id: taktRequestsTable.id })
+    .from(taktRequestsTable)
+    .where(eq(taktRequestsTable.guOrgId, GU_ORG));
+  for (const { id } of staleRequests) {
+    const staleResponses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable)
+      .where(eq(taktResponsesTable.taktRequestId, id));
+    for (const { id: responseId } of staleResponses) {
+      await db.delete(taktResponseAlternativesTable)
+        .where(eq(taktResponseAlternativesTable.responseId, responseId));
+    }
+    await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, id));
+    await db.delete(taktRequestAuditEventsTable).where(eq(taktRequestAuditEventsTable.requestId, id));
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.correlationId, id));
+    await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.correlationId, id));
+  }
   await db.delete(taktRequestSnapshotsTable).where(
     sql`"leistungsanfrage_id" IN (SELECT id FROM leistungsanfragen WHERE gu_org_id = ${GU_ORG})`,
   );
@@ -242,7 +269,7 @@ afterAll(async () => {
   const testOrgIds = [GU_ORG, NU_ORG, NU_ORG_B] as [string, ...string[]];
 
   // 1. dataspace_exchanges — FK to organizations (sender_org_id / receiver_org_id)
-  await db.delete(dataspaceExchangesTable)
+  await hubDb.delete(dataspaceExchangesTable)
     .where(or(
       inArray(dataspaceExchangesTable.senderOrgId, testOrgIds),
       inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds),
@@ -259,9 +286,9 @@ afterAll(async () => {
       .where(eq(taktRequestAuditEventsTable.requestId, id));
 
     // Messages (inbox + outbox by correlationId)
-    await db.delete(messageInboxTable)
+    await hubDb.delete(messageInboxTable)
       .where(eq(messageInboxTable.correlationId, id));
-    await db.delete(messageOutboxTable)
+    await hubDb.delete(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, id));
 
     // Response alternatives + responses
@@ -281,9 +308,9 @@ afterAll(async () => {
   }
 
   // 3. Remaining org-level outbox/inbox messages (e.g. by senderOrgId)
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.senderOrgId, testOrgIds));
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));

@@ -15,6 +15,8 @@ import {
   listAnLeistungsanfragen,
   runAnAvailabilityCheck,
   updateAnResourceRequirement,
+  createAnResourceRequirement,
+  listAnResourceRequirements,
   getAnCoordination,
   createAnScheduleChangeProposal,
   resolveAnScheduleChangeProposal,
@@ -24,9 +26,7 @@ import { LeistungsanfragePolicyAccessError } from "../../services/leistungsanfra
 import {
   InvalidRequirementPeriodError,
   ResourceRequirementNotFoundError,
-  createResourceRequirement,
   deleteResourceRequirement,
-  listResourceRequirements,
   requirementUpdateSchema,
   requirementCreateSchema,
 } from "../../services/resource-requirements-service";
@@ -455,7 +455,7 @@ router.get("/takt-requests/:id/resource-requirements", requireJwt, async (req: a
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
   if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
-  const rows = await listResourceRequirements(req.params.id as string, anOrgId);
+  const rows = await listAnResourceRequirements(req.params.id as string, anOrgId);
   if (rows === null) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
     return;
@@ -466,7 +466,7 @@ router.get("/leistungsanfragen/:id/resource-requirements", requireJwt, async (re
   const anOrgId = requireAn(req, res);
   if (!anOrgId) return;
   if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res)) return;
-  const rows = await listResourceRequirements(req.params.id as string, anOrgId);
+  const rows = await listAnResourceRequirements(req.params.id as string, anOrgId);
   if (rows === null) {
     res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
     return;
@@ -483,7 +483,7 @@ router.post("/takt-requests/:id/resource-requirements", requireJwt, async (req: 
     return;
   }
   try {
-    const row = await createResourceRequirement(req.params.id as string, anOrgId, parsed.data);
+    const row = await createAnResourceRequirement(req.params.id as string, anOrgId, parsed.data);
     if (row === null) {
       res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
       return;
@@ -507,7 +507,7 @@ router.post("/leistungsanfragen/:id/resource-requirements", requireJwt, async (r
     return;
   }
   try {
-    const row = await createResourceRequirement(req.params.id as string, anOrgId, parsed.data);
+    const row = await createAnResourceRequirement(req.params.id as string, anOrgId, parsed.data);
     if (row === null) {
       res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
       return;

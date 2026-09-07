@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq, inArray } from "drizzle-orm";
 import {
   hubDb as db,
+  hubDb,
   dataspaceAccessGrantsTable,
   messageDeliveryAttemptsTable,
   messageOutboxTable,
@@ -47,20 +48,20 @@ const TEST_MESSAGE_IDS = [
 ];
 
 async function cleanupMessageFixtures() {
-  await db.delete(dataspaceAccessGrantsTable)
+  await hubDb.delete(dataspaceAccessGrantsTable)
     .where(eq(dataspaceAccessGrantsTable.assetId, MIXED_RESOURCE_ASSET_ID))
     .catch(() => {});
-  await db.delete(messageDeliveryAttemptsTable)
+  await hubDb.delete(messageDeliveryAttemptsTable)
     .where(inArray(messageDeliveryAttemptsTable.messageId, [...TEST_MESSAGE_IDS, ...SERVICE_REQUEST_MESSAGE_IDS]))
     .catch(() => {});
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.messageId, [
       ...PROJECT_INVITATION_MESSAGE_IDS,
       DATA_OFFER_MESSAGE_ID,
       ...SERVICE_REQUEST_MESSAGE_IDS,
     ]))
     .catch(() => {});
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID))
     .catch(() => {});
 }
@@ -459,7 +460,7 @@ describe("dataspace exchange boundary", () => {
           "Project invitation policySnapshot changed during JSON serialization at policySnapshot.description",
         );
       expect(connectorFetch).toHaveBeenCalledOnce();
-      const [failedMutation] = await db.select().from(messageOutboxTable)
+      const [failedMutation] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, "project-invitation-serialization-mutation"));
       expect(failedMutation.status).toBe("FAILED");
       expect(failedMutation.failureReason).toContain("policySnapshot.description");
@@ -544,9 +545,9 @@ describe("dataspace exchange boundary", () => {
       await expect(exchange.publishProjectInvitation(invitationPayload))
         .rejects.toThrow(invitationFailureReason);
 
-      const [failedInvitation] = await db.select().from(messageOutboxTable)
+      const [failedInvitation] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, invitationMessageId));
-      const [failedInvitationAttempt] = await db.select().from(messageDeliveryAttemptsTable)
+      const [failedInvitationAttempt] = await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, invitationMessageId));
       expect(failedInvitation).toMatchObject({
         status: "FAILED",
@@ -569,10 +570,10 @@ describe("dataspace exchange boundary", () => {
         attemptCount: 2,
       });
 
-      const invitationHistory = (await db.select().from(messageDeliveryAttemptsTable)
+      const invitationHistory = (await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, invitationMessageId)))
         .sort((left, right) => left.attemptNumber - right.attemptNumber);
-      const [deliveredInvitation] = await db.select().from(messageOutboxTable)
+      const [deliveredInvitation] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, invitationMessageId));
       expect(invitationHistory).toHaveLength(2);
       expect(invitationHistory.map((attempt) => [attempt.attemptNumber, attempt.status]))
@@ -592,9 +593,9 @@ describe("dataspace exchange boundary", () => {
       await expect(exchange.publishProjectInvitationResponse(responsePayload))
         .rejects.toThrow(responseFailureReason);
 
-      const [failedResponse] = await db.select().from(messageOutboxTable)
+      const [failedResponse] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, responseMessageId));
-      const [failedResponseAttempt] = await db.select().from(messageDeliveryAttemptsTable)
+      const [failedResponseAttempt] = await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, responseMessageId));
       expect(failedResponse).toMatchObject({
         status: "FAILED",
@@ -617,10 +618,10 @@ describe("dataspace exchange boundary", () => {
         attemptCount: 2,
       });
 
-      const responseHistory = (await db.select().from(messageDeliveryAttemptsTable)
+      const responseHistory = (await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, responseMessageId)))
         .sort((left, right) => left.attemptNumber - right.attemptNumber);
-      const [deliveredResponse] = await db.select().from(messageOutboxTable)
+      const [deliveredResponse] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, responseMessageId));
       expect(responseHistory).toHaveLength(2);
       expect(responseHistory.map((attempt) => [attempt.attemptNumber, attempt.status]))
@@ -721,10 +722,10 @@ describe("dataspace exchange boundary", () => {
       ));
       expect(connectorFetch).toHaveBeenCalledTimes(2);
 
-      const history = (await db.select().from(messageDeliveryAttemptsTable)
+      const history = (await hubDb.select().from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, messageId)))
         .sort((left, right) => left.attemptNumber - right.attemptNumber);
-      const [outbox] = await db.select().from(messageOutboxTable)
+      const [outbox] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, messageId));
       expect(history).toHaveLength(2);
       expect(history.map((attempt) => [attempt.attemptNumber, attempt.status]))
@@ -781,7 +782,7 @@ describe("dataspace exchange boundary", () => {
         "connector temporarily unavailable",
       );
 
-      const [failed] = await db.select().from(messageOutboxTable)
+      const [failed] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, COORDINATION_DECISION_MESSAGE_ID));
       expect(failed.status).toBe("FAILED");
       expect(failed.payload).toEqual(decisionPayload);
@@ -867,7 +868,7 @@ describe("dataspace exchange boundary", () => {
     try {
       await expect(new TractusXEdcExchange().publishDataOffer(payload))
         .rejects.toThrow(/NOT_CONFIGURED/);
-      const [first] = await db.select().from(messageOutboxTable)
+      const [first] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, DATA_OFFER_MESSAGE_ID));
       expect(first).toMatchObject({
         status: "FAILED",
@@ -878,7 +879,7 @@ describe("dataspace exchange boundary", () => {
 
       await expect(new TractusXEdcExchange().retryDataOffer(DATA_OFFER_MESSAGE_ID))
         .rejects.toThrow(/NOT_CONFIGURED/);
-      const [retried] = await db.select().from(messageOutboxTable)
+      const [retried] = await hubDb.select().from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, DATA_OFFER_MESSAGE_ID));
       expect(retried.payload).toEqual(first.payload);
       expect(connectorFetch).not.toHaveBeenCalled();

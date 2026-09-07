@@ -32,7 +32,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -94,7 +94,7 @@ beforeAll(async () => {
     { id: USER_ID, name: "T104 User", email: "t104@test.local", passwordHash: "x" },
   ]).onConflictDoNothing();
 
-  await db.insert(resourcesTable).values([
+  await anDb.insert(resourcesTable).values([
     { id: RES_A, anOrgId: NU_ORG_A, name: "T104 Resource A", type: "CREW" as const, active: true },
     { id: RES_B, anOrgId: NU_ORG_B, name: "T104 Resource B", type: "CREW" as const, active: true },
   ]).onConflictDoNothing();
@@ -122,11 +122,11 @@ afterAll(async () => {
   const { messageOutboxTable, messageInboxTable } = await import("@workspace/db");
 
   // Flush outbox/inbox rows referencing test orgs (created by transport during reminder tests)
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.senderOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.recipientOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, [GU_ORG, NU_ORG_A, NU_ORG_B]));
 
   await db.delete(taktRequestRemindersTable)
@@ -134,7 +134,7 @@ afterAll(async () => {
   await db.delete(taktRequestsTable)
     .where(eq(taktRequestsTable.id, "t104-req-reminder"));
   await db.delete(delegationsTable).where(eq(delegationsTable.id, DELEG_ID));
-  await db.delete(resourcesTable).where(inArray(resourcesTable.id, [RES_A, RES_B]));
+  await anDb.delete(resourcesTable).where(inArray(resourcesTable.id, [RES_A, RES_B]));
   await db.delete(takteTable).where(eq(takteTable.id, TAKT_ID));
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJ_ID));
   await db.delete(usersTable).where(eq(usersTable.id, USER_ID));
@@ -168,7 +168,7 @@ describe("Resource org isolation", () => {
       .set("Authorization", `Bearer ${nuAToken}`);
     expect(res.status).toBe(404);
     // Confirm resource B is still active
-    const [b] = await db.select().from(resourcesTable).where(eq(resourcesTable.id, RES_B));
+    const [b] = await anDb.select().from(resourcesTable).where(eq(resourcesTable.id, RES_B));
     expect(b?.active).toBe(true);
   });
 
@@ -197,12 +197,12 @@ describe("Resource org isolation", () => {
     expect(delRes.status).toBe(204);
 
     // Row still exists, but active = false
-    const [row] = await db.select().from(resourcesTable).where(eq(resourcesTable.id, newId));
+    const [row] = await anDb.select().from(resourcesTable).where(eq(resourcesTable.id, newId));
     expect(row).toBeDefined();
     expect(row?.active).toBe(false);
 
     // Cleanup
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, newId));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, newId));
   });
 
   it("[6] legacy resource-assignment routes are removed from the AN API", async () => {
@@ -237,7 +237,7 @@ describe("Resource org isolation", () => {
     expect(ids).not.toContain(newId);
 
     // Cleanup
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, newId));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, newId));
   });
 
 });
@@ -269,25 +269,28 @@ describe("Transactional registration", () => {
   const emailAG = "t104-reg-ag@test.local";
   const emailAN = "t104-reg-an@test.local";
 
-  afterAll(async () => {
+  async function cleanupRegisteredUsers() {
     // Clean up registered test users by email
-    const users = await db.select({ id: usersTable.id })
+    const users = await hubDb.select({ id: usersTable.id })
       .from(usersTable)
       .where(inArray(usersTable.email, [emailAG, emailAN]));
     const ids = users.map(u => u.id);
     if (ids.length > 0) {
       const { userOrganizationsTable, organizationsTable: orgs } = await import("@workspace/db");
-      const memberships = await db.select({ orgId: userOrganizationsTable.orgId })
+      const memberships = await hubDb.select({ orgId: userOrganizationsTable.orgId })
         .from(userOrganizationsTable)
         .where(inArray(userOrganizationsTable.userId, ids));
       const orgIds = memberships.map(m => m.orgId);
-      await db.delete(userOrganizationsTable).where(inArray(userOrganizationsTable.userId, ids));
+      await hubDb.delete(userOrganizationsTable).where(inArray(userOrganizationsTable.userId, ids));
       if (orgIds.length > 0) {
-        await db.delete(orgs).where(inArray(orgs.id, orgIds));
+        await hubDb.delete(orgs).where(inArray(orgs.id, orgIds));
       }
-      await db.delete(usersTable).where(inArray(usersTable.id, ids));
+      await hubDb.delete(usersTable).where(inArray(usersTable.id, ids));
     }
-  });
+  }
+
+  beforeAll(cleanupRegisteredUsers);
+  afterAll(cleanupRegisteredUsers);
 
   it("[11] AG registration → access token includes AG_ADMIN role", async () => {
     const res = await request(app)
@@ -322,7 +325,7 @@ describe("Transactional registration", () => {
     expect(res.status).toBe(409);
 
     // Confirm only one user with this email exists (no partial duplicate)
-    const rows = await db.select().from(usersTable).where(eq(usersTable.email, emailAG));
+    const rows = await hubDb.select().from(usersTable).where(eq(usersTable.email, emailAG));
     expect(rows.length).toBe(1);
   });
 
@@ -542,7 +545,7 @@ describe("Reminder transport status (via evaluateTaktRequestDeadlines)", () => {
     // Remove reminders between tests so each test starts clean
     await db.delete(taktRequestRemindersTable)
       .where(eq(taktRequestRemindersTable.taktRequestId, REQ_ID));
-    await db.delete(messageOutboxTable)
+    await hubDb.delete(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, REQ_ID));
     // Reset reminderCount
     await db.update(taktRequestsTable)

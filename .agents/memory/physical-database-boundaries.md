@@ -48,3 +48,15 @@ Transport ownership must be enforced twice: role-specific Drizzle schema composi
 **Why:** Removing imports alone does not protect an already-migrated database, while ACL-only protection still lets future schema pushes recreate unauthorized tables.
 
 **How to apply:** Keep `schema/ag.ts` and `schema/an.ts` transport-free, keep transport access behind the Hub facade, and add direct cross-role SQL denial assertions to the shared-boundary suite.
+
+Boundary migrations must recover legacy transport rows into Hub before dropping obsolete AG/AN copies. Copy in dependency order using shared columns, preserve canonical Hub rows on conflicts, and only then enforce the owner allowlists.
+
+**Why:** Older shared-schema deployments can contain pending deliveries or idempotency history exclusively in a now-foreign role schema; dropping those copies first silently loses transport state.
+
+**How to apply:** Any migration that removes a role-owned table must include an upgrade fixture with source-only rows and conflicts, proving canonical ownership retains all recoverable data across repeated bootstrap runs.
+
+Hub transport participant IDs are external and must not reference the local identity directory, but Hub-internal ownership links are different: refresh tokens, Hub admins, webhook subscriptions, and webhook events retain their local cascade FKs.
+
+**Why:** Treating every Hub FK as an external-identity constraint removes cleanup and integrity guarantees for authentication and webhook records.
+
+**How to apply:** Filter FK removal by both child-table purpose and identity parent; regression checks must assert transport identity FKs are absent while Hub-local cascade FKs remain.

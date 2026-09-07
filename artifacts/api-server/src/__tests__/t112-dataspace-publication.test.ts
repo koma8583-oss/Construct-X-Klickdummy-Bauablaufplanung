@@ -59,7 +59,7 @@ let nonCatalogPolicyId: string;
 let agToken: string;
 let anToken: string;
 let anotherAgToken: string;
-const testTaktId = "t112-performance-takt";
+const testTaktId = `t112-performance-takt-${crypto.randomUUID()}`;
 
 beforeAll(async () => {
   // AG org + user
@@ -127,7 +127,7 @@ beforeAll(async () => {
     gewerk: "ELK",
     plannedStart: "2025-03-01",
     plannedEnd: "2025-03-05",
-  }).onConflictDoNothing();
+  });
 
   // Add anOrgId as ACTIVE contractor
   await db.insert(projectContractorsTable).values({
@@ -205,22 +205,22 @@ afterAll(async () => {
   await anDb
     .delete(anProjectInvitationsTable)
     .where(eq(anProjectInvitationsTable.receiverAnOrgId, anOrgId));
-  await db
+  await hubDb
     .delete(dataspaceExchangesTable)
     .where(or(
       inArray(dataspaceExchangesTable.senderOrgId, testOrgIds as [string, ...string[]]),
       inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds as [string, ...string[]]),
     ));
-  await db
+  await hubDb
     .delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.recipientOrgId, testOrgIds as [string, ...string[]]));
-  await db
+  await hubDb
     .delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.senderOrgId, testOrgIds as [string, ...string[]]));
-  await db
+  await hubDb
     .delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, testOrgIds as [string, ...string[]]));
-  await db
+  await hubDb
     .delete(messageInboxTable)
     .where(inArray(messageInboxTable.senderOrgId, testOrgIds as [string, ...string[]]));
 
@@ -667,22 +667,22 @@ describe("Suspended publication", () => {
     await db.delete(projectMembershipsTable).where(
       eq(projectMembershipsTable.anOrgId, freshAnOrgId),
     );
-    await db
+    await hubDb
       .delete(messageOutboxTable)
       .where(eq(messageOutboxTable.recipientOrgId, freshAnOrgId));
-    await db
+    await hubDb
       .delete(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, freshAnOrgId));
-    await db
+    await hubDb
       .delete(messageInboxTable)
       .where(eq(messageInboxTable.recipientOrgId, freshAnOrgId));
-    await db
+    await hubDb
       .delete(messageInboxTable)
       .where(eq(messageInboxTable.senderOrgId, freshAnOrgId));
     await anDb
       .delete(anProjectInvitationsTable)
       .where(eq(anProjectInvitationsTable.receiverAnOrgId, freshAnOrgId));
-    await db
+    await hubDb
       .delete(dataspaceExchangesTable)
       .where(or(
         eq(dataspaceExchangesTable.senderOrgId, freshAnOrgId),

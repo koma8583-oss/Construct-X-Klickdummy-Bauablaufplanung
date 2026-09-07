@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { hubDb } from "@workspace/db";
 import request from "supertest";
 import app from "../app";
 import {
@@ -109,8 +110,8 @@ async function flushRelated() {
   await db.delete(coordinationPoliciesTable)
     .where(eq(coordinationPoliciesTable.projectId, PROJECT_ID)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT_ID)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER_ID)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER_ID)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG_ID)).catch(() => {});
@@ -218,8 +219,8 @@ async function createAndSendRequest(taktIdSuffix = ""): Promise<{
   }
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.taktId, taktId)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, taktId)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID)).catch(() => {});
 
   // Insert takt directly
   await db.insert(takteTable).values({
@@ -321,7 +322,7 @@ describe("t69-scenarioA: CONFIRM_ACCEPTED", () => {
   });
 
   it("t69-A4: TAKT_RESPONSE_ACCEPTED outbox message was created", async () => {
-    const msgs = await db.select().from(messageOutboxTable)
+    const msgs = await hubDb.select().from(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
     const accepted = msgs.find((m) => m.messageType === "TAKT_RESPONSE_ACCEPTED");
     expect(accepted).toBeDefined();
@@ -345,7 +346,7 @@ describe("t69-scenarioA: CONFIRM_ACCEPTED", () => {
   });
 
   it("t69-A7: No internal NU data in outbox message payload", async () => {
-    const msgs = await db.select().from(messageOutboxTable)
+    const msgs = await hubDb.select().from(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
     const accepted = msgs.find((m) => m.messageType === "TAKT_RESPONSE_ACCEPTED");
     const payload = JSON.stringify(accepted?.payload ?? {});
@@ -387,7 +388,7 @@ describe("t69-scenarioB: ACCEPT_ALTERNATIVE", () => {
       .send({ decisionType: "ACCEPT_ALTERNATIVE", acceptedAlternativeId: altId, idempotencyKey: "t69-b-idk" });
     expect(res.status).toBe(201);
     expect(res.body.decisionType).toBe("ACCEPT_ALTERNATIVE");
-    expect(res.body.acceptedAlternativeId).toBe(altId);
+    expect(res.body.acceptedAlternativeId).toBe("ALT-t69-1");
     expect(res.body.updatedRequestStatus).toBe("ACCEPTED");
   });
 
@@ -592,14 +593,14 @@ describe("t69-scenarioE: CLOSE_WITHOUT_AGREEMENT", () => {
   });
 
   it("t69-E4: TAKT_REQUEST_CANCELLED outbox message created", async () => {
-    const msgs = await db.select().from(messageOutboxTable)
+    const msgs = await hubDb.select().from(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
     const cancelled = msgs.find((m) => m.messageType === "TAKT_REQUEST_CANCELLED");
     expect(cancelled).toBeDefined();
   });
 
   it("t69-E5: No internal NU data in CANCELLED message", async () => {
-    const msgs = await db.select().from(messageOutboxTable)
+    const msgs = await hubDb.select().from(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
     const cancelled = msgs.find((m) => m.messageType === "TAKT_REQUEST_CANCELLED");
     const payload = JSON.stringify(cancelled?.payload ?? {});

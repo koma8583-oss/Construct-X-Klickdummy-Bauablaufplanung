@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray, or } from "drizzle-orm";
 import {
   anDb as db,
+  hubDb,
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
   dataspaceExchangesTable,
@@ -109,7 +110,7 @@ async function seedBooking(projectionId: string) {
 
 async function cleanup() {
   await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.nuOrgId, AN)).catch(() => {});
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, AG),
     eq(dataspaceExchangesTable.receiverOrgId, AN),
   )).catch(() => {});
