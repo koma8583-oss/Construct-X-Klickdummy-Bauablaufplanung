@@ -16,6 +16,7 @@ import {
   runAnAvailabilityCheck,
   updateAnResourceRequirement,
   createAnResourceRequirement,
+  deleteAnResourceRequirement,
   listAnResourceRequirements,
   getAnCoordination,
   createAnScheduleChangeProposal,
@@ -32,8 +33,13 @@ import {
 } from "../../services/resource-requirements-service";
 import { requireJwt } from "../../middlewares/requireJwt";
 import { writeAuditEvent } from "../../lib/takt-request-audit-service";
+import { policyAccessConflictBody } from "./policy-access-response";
 
 const router = Router();
+
+function sendPolicyAccessConflict(res: any, error: LeistungsanfragePolicyAccessError): void {
+  res.status(409).json(policyAccessConflictBody(error));
+}
 
 function requireAn(req: Parameters<typeof router.get>[1] extends never ? never : any, res: any): string | null {
   const user = req.user;
@@ -122,6 +128,7 @@ async function ensurePolicyDetailsAvailable(
   externalLeistungsanfrageId: string,
   anOrgId: string,
   res: any,
+  action: "RESOURCE" | "AVAILABILITY" = "RESOURCE",
 ): Promise<boolean> {
   const result = await getAnLeistungsanfrageDetail(externalLeistungsanfrageId, anOrgId);
   if (!result) {
@@ -132,6 +139,8 @@ async function ensurePolicyDetailsAvailable(
     const blockedReason = "policyBlockedReason" in result ? result.policyBlockedReason : undefined;
     res.status(409).json({
       error: blockedReason ?? "POLICY_CONSENT_REQUIRED",
+      code: blockedReason ?? "POLICY_CONSENT_REQUIRED",
+      action,
       policyDeltaClass: result.policyDeltaClass,
       policyDiff: result.policyDiff,
     });
@@ -164,7 +173,7 @@ async function updateRequirement(req: any, res: any) {
     res.json(result);
   } catch (error) {
     if (error instanceof LeistungsanfragePolicyAccessError) {
-      res.status(409).json({ error: error.code, action: error.action });
+      sendPolicyAccessConflict(res, error);
       return;
     }
     if (error instanceof ResourceRequirementNotFoundError) {
@@ -231,7 +240,7 @@ async function respond(req: any, res: any) {
     });
   } catch (error) {
     if (error instanceof LeistungsanfragePolicyAccessError) {
-      res.status(409).json({ error: error.code, action: error.action });
+      sendPolicyAccessConflict(res, error);
       return;
     }
     if (error instanceof ResponseConflictError) {
@@ -403,12 +412,13 @@ function canRunAvailabilityCheck(req: any, res: any): boolean {
 async function runAvailability(req: any, res: any) {
   const anOrgId = requireAn(req, res);
   if (!anOrgId || !canRunAvailabilityCheck(req, res)) return;
+  if (!await ensurePolicyDetailsAvailable(req.params.id as string, anOrgId, res, "AVAILABILITY")) return;
   let check;
   try {
     check = await runAnAvailabilityCheck(req.params.id as string, anOrgId, req.user.userId);
   } catch (error) {
     if (error instanceof LeistungsanfragePolicyAccessError) {
-      res.status(409).json({ error: error.code, action: error.action });
+      sendPolicyAccessConflict(res, error);
       return;
     }
     throw error;
@@ -428,7 +438,7 @@ async function latestAvailability(req: any, res: any) {
     result = await getLatestAnAvailabilityCheck(req.params.id as string, anOrgId);
   } catch (error) {
     if (error instanceof LeistungsanfragePolicyAccessError) {
-      res.status(409).json({ error: error.code, action: error.action });
+      sendPolicyAccessConflict(res, error);
       return;
     }
     throw error;
@@ -490,6 +500,10 @@ router.post("/takt-requests/:id/resource-requirements", requireJwt, async (req: 
     }
     res.status(201).json(row);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      sendPolicyAccessConflict(res, error);
+      return;
+    }
     if (error instanceof InvalidRequirementPeriodError) {
       res.status(422).json({ error: error.code });
       return;
@@ -514,6 +528,10 @@ router.post("/leistungsanfragen/:id/resource-requirements", requireJwt, async (r
     }
     res.status(201).json(row);
   } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      sendPolicyAccessConflict(res, error);
+      return;
+    }
     if (error instanceof InvalidRequirementPeriodError) {
       res.status(422).json({ error: error.code });
       return;
@@ -521,6 +539,37 @@ router.post("/leistungsanfragen/:id/resource-requirements", requireJwt, async (r
     throw error;
   }
 });
+
+async function deleteRequirement(req: any, res: any) {
+  const anOrgId = requireAn(req, res);
+  if (!anOrgId) return;
+  try {
+    const result = await deleteAnResourceRequirement(
+      req.params.id as string,
+      req.params.reqId as string,
+      anOrgId,
+    );
+    if (!result) {
+      res.status(404).json({ error: "Leistungsanfrage was not received in the AN context" });
+      return;
+    }
+    res.status(204).end();
+  } catch (error) {
+    if (error instanceof LeistungsanfragePolicyAccessError) {
+      sendPolicyAccessConflict(res, error);
+      return;
+    }
+    if (error instanceof ResourceRequirementNotFoundError) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
+router.delete("/takt-requests/:id/resource-requirements/:reqId", requireJwt, deleteRequirement);
+router.delete("/leistungsanfragen/:id/resource-requirements/:reqId", requireJwt, deleteRequirement);
+
 router.post("/takt-requests/:id/responses", requireJwt, respond);
 router.post("/leistungsanfragen/:id/responses", requireJwt, respond);
 router.get("/takt-requests/:id/coordination", requireJwt, coordination);

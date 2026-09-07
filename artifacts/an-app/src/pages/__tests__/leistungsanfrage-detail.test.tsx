@@ -76,10 +76,17 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+type DetailRenderOptions = {
+  availabilityResponse?: Response;
+  availabilityMutationResponse?: Response;
+  resourceMutationResponse?: Response;
+};
+
 function renderDetail(
   coordination: CoordinationState = initialCoordination(),
   detailResponse = detail,
   resourceResponse = jsonResponse([]),
+  options: DetailRenderOptions = {},
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -90,8 +97,13 @@ function renderDetail(
     if (
       url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)
       || url.endsWith(`/api/leistungsanfragen/${requestId}/resource-requirements`)
-    ) return resourceResponse;
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({ error: "No local availability checks found" }, 404);
+      || url.includes(`/api/an/leistungsanfragen/${requestId}/resource-requirements/`)
+      || url.includes(`/api/leistungsanfragen/${requestId}/resource-requirements/`)
+    ) return method === "GET" ? resourceResponse : options.resourceMutationResponse ?? jsonResponse({});
+    if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/availability-checks`)) {
+      return options.availabilityMutationResponse ?? jsonResponse({});
+    }
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return options.availabilityResponse ?? jsonResponse({ error: "No local availability checks found" }, 404);
     if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/responses`)) return jsonResponse({ responseId: "response-1", decision: "ACCEPTED", requestStatus: "RESPONDED" }, 201);
     if (method === "POST" && url.includes(`/api/an/leistungsanfragen/${requestId}/change-proposals`)) {
       const path = new URL(url, "http://localhost").pathname;
@@ -146,6 +158,51 @@ describe("AN Leistungsanfrage detail", () => {
     const block = await screen.findByTestId("resource-policy-block");
     expect(block).toHaveTextContent("Ressourcendetails noch nicht freigegeben");
     expect(block).toHaveTextContent("Bestätigen Sie zuerst");
+  });
+
+  it("erklärt einen Policy-Block beim Start der Verfügbarkeitsprüfung", async () => {
+    renderDetail(initialCoordination(), detail, jsonResponse([]), {
+      availabilityMutationResponse: jsonResponse({
+        error: "POLICY_CONSENT_REQUIRED",
+        code: "POLICY_CONSENT_REQUIRED",
+        action: "AVAILABILITY",
+      }, 409),
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("button-run-availability"));
+    const block = await screen.findByTestId("availability-policy-block");
+    expect(block).toHaveTextContent("Verfügbarkeitsprüfung noch nicht freigegeben");
+    expect(block).toHaveTextContent("Bestätigen Sie zuerst");
+  });
+
+  it("erklärt einen Policy-Block bei einer geschützten Ressourcenänderung", async () => {
+    const resource = [{
+      id: "resource-1",
+      resourceTypeName: "Team",
+      resourceTypeCode: "TEAM",
+      requiredCapacity: 2,
+      capacityUnit: "Personen",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+      notes: null,
+    }];
+    renderDetail(initialCoordination(), detail, jsonResponse(resource), {
+      resourceMutationResponse: jsonResponse({
+        error: "NOT_PERMITTED",
+        code: "NOT_PERMITTED",
+        action: "RESOURCE",
+      }, 409),
+    });
+
+    const user = userEvent.setup();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    await user.click(await screen.findByTestId("button-delete-resource-resource-1"));
+    const block = await screen.findByTestId("resource-policy-block");
+    expect(block).toHaveTextContent("Ressourcendetails durch Policy gesperrt");
+    expect(block).toHaveTextContent("Projektvereinbarung");
   });
 
   it("führt eine Anfrage innerhalb der Projektvereinbarung von Details über Machbarkeit zur Rückmeldung", async () => {

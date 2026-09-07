@@ -95,16 +95,37 @@ function list(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-type ResourcePolicyBlock = "NOT_PERMITTED" | "POLICY_NOT_PERMITTED" | "POLICY_CONSENT_REQUIRED";
+type PolicyAccessBlock = "NOT_PERMITTED" | "POLICY_CONSENT_REQUIRED";
 
-function getResourcePolicyBlock(error: unknown): ResourcePolicyBlock | null {
+function getPolicyAccessBlock(error: unknown): PolicyAccessBlock | null {
   if (!error || typeof error !== "object") return null;
-  const response = error as { status?: unknown; data?: unknown };
+  const response = error as { status?: unknown; data?: unknown; message?: unknown };
   if (response.status !== 409) return null;
-  const code = object(response.data).error;
-  return code === "NOT_PERMITTED" || code === "POLICY_NOT_PERMITTED" || code === "POLICY_CONSENT_REQUIRED"
-    ? code
-    : null;
+  const dataCode = object(response.data).error;
+  const messageCode = typeof response.message === "string" ? response.message : undefined;
+  const code = dataCode ?? messageCode;
+  if (code === "POLICY_NOT_PERMITTED") return "NOT_PERMITTED";
+  return code === "NOT_PERMITTED" || code === "POLICY_CONSENT_REQUIRED" ? code : null;
+}
+
+function PolicyAccessNotice({ block, subject, testId }: {
+  block: PolicyAccessBlock;
+  subject: "Ressourcendetails" | "Verfügbarkeitsprüfung";
+  testId: string;
+}) {
+  const consentRequired = block === "POLICY_CONSENT_REQUIRED";
+  return (
+    <div data-testid={testId} className="mb-3 rounded-lg border border-amber-600/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-900 dark:text-amber-100">
+      <p className="font-semibold">
+        {consentRequired ? `${subject} noch nicht freigegeben` : `${subject} durch Policy gesperrt`}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-100/80">
+        {consentRequired
+          ? "Bestätigen Sie zuerst die neuen Nutzungsbedingungen oben. Danach kann diese Aktion ausgeführt werden."
+          : "Der Auftraggeber muss die Projektvereinbarung oder die Leistungsfreigabe anpassen. Erst danach kann diese Aktion ausgeführt werden."}
+      </p>
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -327,23 +348,14 @@ function ResourceSection({ id, requirements, canEdit, defaultStart, defaultEnd, 
     remove.mutate({ leistungsanfrageId: id, reqId: requirementId }, { onSuccess: () => { toast({ title: "Ressourcenbedarf entfernt" }); refresh(); }, onError: () => toast({ title: "Ressourcenbedarf konnte nicht entfernt werden", variant: "destructive" }) });
   };
   const requirementError = client.getQueryState(getListLeistungsanfrageResourceRequirementsQueryKey(id))?.error;
-  const policyBlock = getResourcePolicyBlock(requirementError);
+  const policyBlock = getPolicyAccessBlock(requirementError)
+    ?? getPolicyAccessBlock(create.error)
+    ?? getPolicyAccessBlock(remove.error);
 
   return (
     <div data-testid="resource-block">
       {policyBlock ? (
-        <div data-testid="resource-policy-block" className="mb-3 rounded-lg border border-amber-600/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-900 dark:text-amber-100">
-          <p className="font-semibold">
-            {policyBlock === "POLICY_CONSENT_REQUIRED"
-              ? "Ressourcendetails noch nicht freigegeben"
-              : "Ressourcendetails durch Policy gesperrt"}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-100/80">
-            {policyBlock === "POLICY_CONSENT_REQUIRED"
-              ? "Bestätigen Sie zuerst die neuen Nutzungsbedingungen oben. Danach können die Ressourcendetails geladen werden."
-              : "Der Auftraggeber muss die Projektvereinbarung oder die Leistungsfreigabe anpassen. Erst danach können die Ressourcendetails angezeigt werden."}
-          </p>
-        </div>
+        <PolicyAccessNotice block={policyBlock} subject="Ressourcendetails" testId="resource-policy-block" />
       ) : loadError ? (
         <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Ressourcenbedarf konnte nicht aktualisiert werden. Bereits veröffentlichte Angaben bleiben sichtbar.</p>
       ) : null}
@@ -483,7 +495,15 @@ function OwnScheduleChangeStart({
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: "include", ...init });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Aktion konnte nicht ausgeführt werden.");
+  if (!response.ok) {
+    const error = new Error(body.error || "Aktion konnte nicht ausgeführt werden.") as Error & {
+      status: number;
+      data: unknown;
+    };
+    error.status = response.status;
+    error.data = body;
+    throw error;
+  }
   return body as T;
 }
 
@@ -537,7 +557,7 @@ function AvailabilitySection({ id, canRespond, latest, loadError, requestedStart
   id: string;
   canRespond: boolean;
   latest: any;
-  loadError?: boolean;
+  loadError?: unknown;
   requestedStart: string;
   requestedEnd: string;
   onContinueWithoutCheck: () => void;
@@ -549,6 +569,8 @@ function AvailabilitySection({ id, canRespond, latest, loadError, requestedStart
   const publicResult = latest?.publicResult;
   const result = latest?.result as string | undefined;
   const runCheck = () => run.mutate({ leistungsanfrageId: id }, { onSuccess: () => { toast({ title: "Verfügbarkeitsprüfung aktualisiert" }); void client.invalidateQueries({ queryKey: ["/api/an/leistungsanfragen", id, "availability-checks/latest"] }); }, onError: () => toast({ title: "Verfügbarkeitsprüfung konnte nicht gestartet werden", variant: "destructive" }) });
+  const latestError = client.getQueryState(["/api/an/leistungsanfragen", id, "availability-checks/latest"])?.error;
+  const policyBlock = getPolicyAccessBlock(latestError) ?? getPolicyAccessBlock(run.error);
   const complete = latest?.status === "COMPLETED";
   const alternatives = Array.isArray(publicResult?.alternatives) ? publicResult.alternatives : [];
   const recommendation = result === "FEASIBLE"
@@ -562,7 +584,9 @@ function AvailabilitySection({ id, canRespond, latest, loadError, requestedStart
 
   return (
     <div data-testid="availability-block">
-      {loadError && <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Das letzte Prüfergebnis konnte nicht geladen werden. Sie können die Prüfung erneut starten.</p>}
+      {policyBlock
+        ? <PolicyAccessNotice block={policyBlock} subject="Verfügbarkeitsprüfung" testId="availability-policy-block" />
+        : Boolean(loadError) && <p className="mb-3 rounded-lg border border-amber-600/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">Das letzte Prüfergebnis konnte nicht geladen werden. Sie können die Prüfung erneut starten.</p>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3"><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${result === "FEASIBLE" ? "bg-emerald-600/10 text-emerald-700" : complete ? "bg-accent/30 text-primary" : "bg-muted text-muted-foreground"}`}>{complete ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}</div><div><p data-testid="availability-result" className="font-semibold">{resultLabel}</p><p className="mt-1 text-sm text-muted-foreground">Prüfzeitraum: {dateText(requestedStart)} – {dateText(requestedEnd)}. {complete ? "Das Ergebnis berücksichtigt den erfassten Ressourcenbedarf." : "Starten Sie die Prüfung, um eine belastbare Empfehlung für die Rückmeldung zu erhalten."}</p></div></div>
         <Button data-testid="button-run-availability" variant="outline" disabled={run.isPending || !canRespond} onClick={runCheck}>{run.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}{complete ? "Erneut prüfen" : "Prüfung starten"}</Button>
@@ -730,9 +754,10 @@ export default function LeistungsanfrageDetailPage() {
        {!policyConsentPending && <><div data-testid="phase-progress" className="grid gap-2 md:grid-cols-3">{[1, 2, 3].map((number) => <div key={number} className={`rounded-xl border px-4 py-3 ${phase === number ? "border-primary/40 bg-primary/5" : phase > number ? "border-emerald-700/20 bg-emerald-600/5" : "border-border bg-card"}`}><p className="text-xs text-muted-foreground">Phase {number}</p><p className="mt-1 text-sm font-semibold">{phaseHeading(number)}</p></div>)}</div>
        {phase > 1 ? <details data-testid="phase-1" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 1 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Anfrage prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4"><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} /></div></details> : <section data-testid="phase-1" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Phase 1</p><h2 className="mt-1 text-xl font-semibold">Anfrage prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Prüfen Sie die veröffentlichte Leistung und schließen Sie diese Phase bewusst ab.</p></div><RequestOverview details={details} requestedStart={requestedStart} requestedEnd={requestedEnd} onReview={policyDetailsAvailable && details.status === "RECEIVED" ? () => void reviewDetails() : undefined} /></section>}
 
-      {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => undefined} onUseRecommendation={useRecommendation} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören für den angefragten Zeitraum in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
 
-       {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">{hasAgreement ? "Koordination" : "Rückmeldung senden"}</h2><p className="mt-1 text-sm text-muted-foreground">{hasAgreement ? "Bestätigte Leistungen können nur über eine bilaterale Neuabstimmung geändert werden." : "Termin bestätigen, Alternative vorschlagen oder Nicht-Machbarkeit melden."}</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : scheduleProposal ? <ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : hasAgreement ? <OwnScheduleChangeStart requestId={id} currentAgreement={coordinationQuery.data?.currentAgreement} pending={ownScheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : <ResponseForm key={effectiveResponsePreset?.decision ?? "manual"} id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={effectiveResponsePreset} />}</div></section>}</>}
+        {phase === 1 ? <div className="space-y-3">{phasePreview(2)}{phasePreview(3)}</div> : phase > 2 ? <details data-testid="phase-2" className="group rounded-xl border border-border bg-card p-4"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"><span><span className="block text-xs text-muted-foreground">Phase 2 · abgeschlossen</span><span className="mt-1 block text-sm font-semibold">Machbarkeit prüfen</span></span><ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary><div className="mt-4 grid gap-5 rounded-2xl border border-border bg-card p-5 lg:grid-cols-2"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={false} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={false} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => undefined} onUseRecommendation={useRecommendation} /></div></div></details> : <section data-testid="phase-2" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 2</p><h2 className="mt-1 text-xl font-semibold">Machbarkeit prüfen</h2><p className="mt-1 text-sm text-muted-foreground">Ressourcenbedarf und Verfügbarkeit gehören für den angefragten Zeitraum in einen gemeinsamen Prüfschritt.</p></div><div className="grid gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm lg:grid-cols-2 lg:p-6"><div><h3 className="mb-4 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-primary" />Ressourcenbedarf</h3><ResourceSection id={id} requirements={requirements} canEdit={canRespond} defaultStart={defaultStart} defaultEnd={defaultEnd} loadError={requirementQuery.isError} /></div><div className="border-t border-border/70 pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"><h3 className="mb-4 flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" />Verfügbarkeit</h3><AvailabilitySection id={id} canRespond={canRespond} latest={availabilityQuery.data} loadError={availabilityQuery.isError} requestedStart={requestedStart} requestedEnd={requestedEnd} onContinueWithoutCheck={() => setPhaseOverride(3)} onUseRecommendation={useRecommendation} /></div></div></section>}
+
+        {phase < 3 ? phasePreview(3) : <section data-testid="phase-3" className="space-y-3"><div><p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Phase 3</p><h2 className="mt-1 text-xl font-semibold">{hasAgreement ? "Koordination" : "Rückmeldung senden"}</h2><p className="mt-1 text-sm text-muted-foreground">{hasAgreement ? "Bestätigte Leistungen können nur über eine bilaterale Neuabstimmung geändert werden." : "Termin bestätigen, Alternative vorschlagen oder Nicht-Machbarkeit melden."}</p></div><div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">{terminal ? <TerminalNotice status={details.status} /> : scheduleProposal ? <ScheduleChangeResponse requestId={id} proposal={scheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : hasAgreement ? <OwnScheduleChangeStart requestId={id} currentAgreement={coordinationQuery.data?.currentAgreement} pending={ownScheduleProposal} onChanged={() => { void coordinationQuery.refetch(); void detailQuery.refetch(); }} /> : <ResponseForm key={effectiveResponsePreset?.decision ?? "manual"} id={id} canRespond={canRespond} requestedStart={requestedStart} requestedEnd={requestedEnd} preset={effectiveResponsePreset} />}</div></section>}</>}
     </main>
   );
 }

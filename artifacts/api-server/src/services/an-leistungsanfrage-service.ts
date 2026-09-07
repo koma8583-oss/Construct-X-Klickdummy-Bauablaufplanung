@@ -769,6 +769,28 @@ export async function createAnResourceRequirement(
   };
 }
 
+export async function deleteAnResourceRequirement(
+  externalLeistungsanfrageId: string,
+  requirementId: string,
+  anOrgId: string,
+) {
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  assertProjectionPolicyAccess(projection, "RESOURCE");
+
+  const [deleted] = await anDb.delete(anLeistungsanfrageResourceRequirementsTable)
+    .where(and(
+      eq(anLeistungsanfrageResourceRequirementsTable.id, requirementId),
+      eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id),
+    ))
+    .returning({ id: anLeistungsanfrageResourceRequirementsTable.id });
+  if (!deleted) throw new ResourceRequirementNotFoundError();
+  return deleted;
+}
+
 export async function getAnDashboard(anOrgId: string) {
   const requests = await anDb.select().from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))

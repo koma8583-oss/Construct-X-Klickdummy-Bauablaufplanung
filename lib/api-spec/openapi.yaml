@@ -2413,7 +2413,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Request is not in a state that allows a check
+          description: >
+            Policy conflict or request state conflict. For policy conflicts,
+            error and code are either POLICY_CONSENT_REQUIRED or NOT_PERMITTED;
+            action is AVAILABILITY.
           content:
             application/json:
               schema:
@@ -2460,6 +2463,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            Policy conflict. error and code are either POLICY_CONSENT_REQUIRED
+            or NOT_PERMITTED; action is AVAILABILITY.
 
   /takt-requests/{requestId}/responses:
     post:
@@ -2996,7 +3003,9 @@ paths:
         "404":
           description: Leistungsanfrage nicht gefunden
         "409":
-          description: Status lässt keine Prüfung zu
+          description: >
+            Policy- oder Statuskonflikt. Bei Policy-Konflikten sind error und
+            code POLICY_CONSENT_REQUIRED oder NOT_PERMITTED; action ist AVAILABILITY.
 
   /leistungsanfragen/{leistungsanfrageId}/availability-checks/latest:
     get:
@@ -3022,6 +3031,10 @@ paths:
           description: Nur AN-Organisationen dürfen Verfügbarkeitsprüfungen abrufen
         "404":
           description: Leistungsanfrage nicht gefunden oder keine Prüfung vorhanden
+        "409":
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist AVAILABILITY.
 
   /leistungsanfragen/{leistungsanfrageId}/responses:
     post:
@@ -3061,6 +3074,10 @@ paths:
           description: Nur AN-Organisationen dürfen antworten
         "404":
           description: Leistungsanfrage nicht gefunden
+        "409":
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist RESOURCE.
         "409":
           description: Abweichende Antwort bereits eingereicht
 
@@ -3260,6 +3277,10 @@ paths:
           description: Zugriff verweigert
         "404":
           description: Ressourceanforderung nicht gefunden
+        "409":
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist RESOURCE.
 
   # ── NU-internal: local projects ─────────────────────────────────────────────
 
