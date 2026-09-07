@@ -1,22 +1,29 @@
 /**
- * Global Vitest setup — runs before the test files.
+ * Global Vitest setup — runs before every API test file.
  *
- * Sets environment variables required by tests so they are available
- * via process.env regardless of how the test runner boots.
+ * The API tests import the app directly instead of starting index.ts. Keep the
+ * same non-production environment and also run startup-equivalent canonical
+ * policy seeding so tests never depend on a developer database having been
+ * seeded beforehand.
  */
 
-// The API tests import the app directly instead of starting index.ts. Pin the
-// same non-production behavior that the test suite expects on every runner.
+import { runWithDatabaseRole } from "@workspace/db";
+import { seedPolicyTemplates } from "../lib/seed-policy-templates";
+
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "test";
 }
 
-// Internal job token used by t79 tests.
-// The actual production value is set as a Replit Secret (INTERNAL_JOB_TOKEN).
-// This fallback lets tests run in CI without a real secret.
 if (!process.env.INTERNAL_JOB_TOKEN) {
   process.env.INTERNAL_JOB_TOKEN = "ci-test-internal-token-do-not-use-in-prod";
 }
 
-// Allow internal routes in all test runs
 process.env.INTERNAL_ROUTES_ENABLED = "true";
+
+// index.ts normally performs this at service startup. Vitest imports app.ts
+// directly, so reproduce only that deterministic startup prerequisite here.
+// The seed is idempotent and runs through the AG role because policy_templates
+// is AG-owned in the shared physical database.
+await runWithDatabaseRole("ag", async () => {
+  await seedPolicyTemplates();
+});
