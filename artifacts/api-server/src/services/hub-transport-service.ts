@@ -16,6 +16,7 @@ import {
   type InsertMessageOutbox,
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import {
   MessageNotFoundError,
   RecipientForbiddenError,
@@ -29,6 +30,34 @@ export async function enqueueHubMessage(message: InsertMessageOutbox) {
     .onConflictDoNothing({ target: messageOutboxTable.messageId })
     .returning();
   return row ?? null;
+}
+
+/**
+ * Insert a Hub envelope from an already-open AG/AN domain transaction.
+ *
+ * AG and AN deliberately do not have table privileges in the Hub schema.
+ * The migration grants only EXECUTE on this narrowly scoped SECURITY DEFINER
+ * function, so the INSERT runs on the caller's PostgreSQL transaction while
+ * the Hub table remains inaccessible to the domain role.
+ */
+export async function enqueueHubMessageInTransaction(
+  tx: { execute(query: SQL): Promise<unknown> },
+  message: InsertMessageOutbox,
+) {
+  await tx.execute(sql`
+    SELECT hub.enqueue_outbox_message(
+      ${message.messageId},
+      ${message.schemaVersion ?? "1.0"},
+      ${message.messageType},
+      ${message.senderOrgId},
+      ${message.recipientOrgId},
+      ${message.correlationId},
+      ${message.causationId ?? null},
+      ${JSON.stringify(message.payload)}::jsonb,
+      ${message.status ?? "PENDING"}
+    )
+  `);
+  return message;
 }
 
 export async function getHubOutboxMessage(

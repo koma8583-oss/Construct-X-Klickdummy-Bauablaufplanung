@@ -27,7 +27,7 @@ import { toInvitationPolicy } from "./policy-contract-adapters";
 import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
 import { createConstructXPolicy } from "./construct-x-policy-service";
 import {
-  enqueueHubMessage,
+  enqueueHubMessageInTransaction,
   getHubOutboxMessage,
   listHubDeliveryAttempts,
   listHubOutboxMessages,
@@ -379,17 +379,17 @@ export async function inviteParticipant(input: {
         projectAgreementPolicyId: projectAgreement.policyId,
       invitedAt: now,
     }).returning();
+    await enqueueHubMessageInTransaction(tx, {
+      messageId,
+      schemaVersion: "1.0",
+      messageType: "PROJECT_INVITATION",
+      senderOrgId: input.agOrgId,
+      recipientOrgId: anOrgId,
+      correlationId,
+      payload: invitationPayload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
     return [created];
-  });
-  await enqueueHubMessage({
-    messageId,
-    schemaVersion: "1.0",
-    messageType: "PROJECT_INVITATION",
-    senderOrgId: input.agOrgId,
-    recipientOrgId: anOrgId,
-    correlationId,
-    payload: invitationPayload as unknown as Record<string, unknown>,
-    status: "PENDING",
   });
   const exchange = createDataspaceExchange();
   const delivery = await deliverLocalProjectInvitation(invitationPayload, exchange);
@@ -677,6 +677,16 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
          },
       };
       invitationRows.push({ membership, payload: invitationPayload });
+      await enqueueHubMessageInTransaction(tx, {
+        messageId,
+        schemaVersion: "1.0",
+        messageType: "PROJECT_INVITATION",
+        senderOrgId: input.agOrgId,
+        recipientOrgId: anOrgId,
+        correlationId,
+        payload: invitationPayload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      });
     }
   });
   } catch (error) {
@@ -704,18 +714,6 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
     throw error;
   }
 
-  for (const row of invitationRows) {
-    await enqueueHubMessage({
-      messageId: row.payload.metadata.messageId,
-      schemaVersion: "1.0",
-      messageType: "PROJECT_INVITATION",
-      senderOrgId: row.payload.metadata.senderOrgId,
-      recipientOrgId: row.payload.metadata.receiverOrgId,
-      correlationId: row.payload.metadata.correlationId,
-      payload: row.payload as unknown as Record<string, unknown>,
-      status: "PENDING",
-    });
-  }
   await dispatchProjectInvitationPackage(
     invitationRows.map(({ membership }) => membership.invitationId),
     input.agOrgId,
@@ -933,17 +931,17 @@ async function resolveInvitation(
         throw new ProjectMembershipError("PROJECT_INVITATION_ALREADY_RESOLVED", "Das verknüpfte Datenangebot wurde bereits beantwortet.");
       }
     }
+    await enqueueHubMessageInTransaction(tx, {
+      messageId: responseMessageId,
+      schemaVersion: "1.0",
+      messageType: "PROJECT_INVITATION_RESPONSE",
+      senderOrgId: anOrgId,
+      recipientOrgId: membership.agOrgId,
+      correlationId: membership.correlationId,
+      payload: responsePayload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
     return [row];
-  });
-  await enqueueHubMessage({
-    messageId: responseMessageId,
-    schemaVersion: "1.0",
-    messageType: "PROJECT_INVITATION_RESPONSE",
-    senderOrgId: anOrgId,
-    recipientOrgId: membership.agOrgId,
-    correlationId: membership.correlationId,
-    payload: responsePayload as unknown as Record<string, unknown>,
-    status: "PENDING",
   });
   const exchange = createDataspaceExchange();
   const delivery = await deliverLocalProjectInvitationResponse(responsePayload, exchange);

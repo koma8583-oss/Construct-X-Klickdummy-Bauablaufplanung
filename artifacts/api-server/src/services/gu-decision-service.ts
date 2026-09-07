@@ -57,6 +57,7 @@ import {
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import { deliverLocalCoordinationDecision } from "./dataspace/local-dataspace-delivery";
 import type { ExternalCoordinationDecision } from "./dataspace/external-contracts";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 const logger = pino({ name: "gu-decision-service" });
 
@@ -467,8 +468,48 @@ export async function createGuDecision(
       .where(eq(taktRequestsTable.id, taktRequestId))
       .limit(1);
 
+    const publicDecision = toPublicDecision(decision, publicAcceptedAlternativeId);
+    const decisionPayload = buildGuDecisionMessage({
+      decision: publicDecision,
+      request,
+      newTaktVersion,
+      confirmedTimeWindow: bookingStart && bookingEnd
+        ? { start: bookingStart.toISOString(), end: bookingEnd.toISOString() }
+        : null,
+    });
+    if (decisionPayload) {
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: decisionPayload.metadata.messageId,
+        schemaVersion: decisionPayload.metadata.schemaVersion,
+        messageType: coordinationMessageType(decisionPayload.decisionType),
+        senderOrgId: decisionPayload.metadata.senderOrgId,
+        recipientOrgId: decisionPayload.metadata.receiverOrgId,
+        correlationId: decisionPayload.metadata.correlationId,
+        payload: coordinationDecisionTransportPayload(decisionPayload),
+        status: "PENDING",
+      });
+    }
+    for (const sibling of autoCancelledRequests) {
+      const siblingPayload = buildAutomaticSiblingCancellation(sibling, {
+        senderOrgId: guOrgId,
+        selectedRequestId: taktRequestId,
+        decisionId: decision.id,
+        closedAt: decision.decidedAt?.toISOString() ?? new Date().toISOString(),
+      });
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: siblingPayload.metadata.messageId,
+        schemaVersion: siblingPayload.metadata.schemaVersion,
+        messageType: "TAKT_REQUEST_CANCELLED",
+        senderOrgId: siblingPayload.metadata.senderOrgId,
+        recipientOrgId: siblingPayload.metadata.receiverOrgId,
+        correlationId: siblingPayload.metadata.correlationId,
+        payload: siblingPayload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      });
+    }
+
     return {
-      decision: toPublicDecision(decision, publicAcceptedAlternativeId),
+      decision: publicDecision,
       updatedRequest: withCanonicalTaktRequest(updatedRequest),
       newTaktVersion: newTaktVersion
         ? withCanonicalVersion(newTaktVersion)
@@ -527,6 +568,7 @@ export async function createGuDecision(
         selectedRequestId: taktRequestId,
         decisionId: result.decision.id,
         requestVersion: sibling.requestVersion,
+        closedAt: result.decision.decidedAt?.toISOString() ?? new Date().toISOString(),
       });
     } catch (err) {
       logger.warn({ err, requestId: sibling.id, decisionId: result.decision.id }, "Sibling cancellation transport failed after GU decision commit");
@@ -554,22 +596,60 @@ interface SendGuDecisionMessageParams {
 }
 
 async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promise<void> {
-  const { decision, request, newTaktVersion, confirmedTimeWindow } = params;
+  const payload = buildGuDecisionMessage(params);
+  if (payload) {
+    await deliverLocalCoordinationDecision(payload);
+  }
+}
 
-  if (
-    decision.decisionType === "CONFIRM_ACCEPTED" ||
-    decision.decisionType === "ACCEPT_ALTERNATIVE"
-  ) {
-    const messageId = `gu-decision-${decision.id}`;
-    await deliverLocalCoordinationDecision({
-      metadata: {
-        messageId,
-        correlationId: decision.taktRequestId,
-        schemaVersion: "1.0",
-        senderOrgId: request.guOrgId,
-        receiverOrgId: request.nuOrgId,
-        createdAt: new Date().toISOString(),
-      },
+function coordinationMessageType(
+  decisionType: TaktCoordinationDecisionType,
+): "TAKT_RESPONSE_ACCEPTED" | "TAKT_RESPONSE_REVISION_REQUESTED" | "TAKT_REQUEST_CANCELLED" {
+  return decisionType === "CLOSE_WITHOUT_AGREEMENT"
+    ? "TAKT_REQUEST_CANCELLED"
+    : decisionType === "REQUEST_REVISION"
+      ? "TAKT_RESPONSE_REVISION_REQUESTED"
+      : "TAKT_RESPONSE_ACCEPTED";
+}
+
+function coordinationDecisionTransportPayload(
+  payload: ExternalCoordinationDecision,
+): Record<string, unknown> {
+  if (payload.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
+    return {
+      taktRequestId: payload.requestId,
+      comment: payload.comment ?? null,
+      closedAt: payload.closedAt,
+    };
+  }
+  return {
+    taktRequestId: payload.requestId,
+    decisionType: payload.decisionType,
+    acceptedAlternativeId: payload.acceptedAlternativeId ?? null,
+    confirmedTimeWindow: payload.confirmedTimeWindow ?? null,
+    taktVersion: payload.taktVersion,
+    comment: payload.comment ?? null,
+    ...(payload.closedAt ? { closedAt: payload.closedAt } : {}),
+  };
+}
+
+function buildGuDecisionMessage(
+  params: SendGuDecisionMessageParams,
+): ExternalCoordinationDecision | null {
+  const { decision, request, newTaktVersion, confirmedTimeWindow } = params;
+  const messageId = `gu-decision-${decision.id}`;
+  const metadata = {
+    messageId,
+    correlationId: decision.taktRequestId,
+    schemaVersion: "1.0" as const,
+    senderOrgId: request.guOrgId,
+    receiverOrgId: request.nuOrgId,
+    createdAt: decision.decidedAt?.toISOString() ?? new Date().toISOString(),
+  };
+
+  if (decision.decisionType === "CONFIRM_ACCEPTED" || decision.decisionType === "ACCEPT_ALTERNATIVE") {
+    return {
+      metadata,
       requestId: decision.taktRequestId,
       requestVersion: request.taktVersion,
       taktVersion: newTaktVersion?.version ?? request.taktVersion,
@@ -577,44 +657,52 @@ async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promi
       acceptedAlternativeId: decision.acceptedAlternativeId ?? null,
       confirmedTimeWindow,
       comment: decision.comment ?? null,
-    } satisfies ExternalCoordinationDecision);
-  } else if (decision.decisionType === "REQUEST_REVISION") {
-    const messageId = `gu-decision-${decision.id}`;
-    await deliverLocalCoordinationDecision({
-      metadata: {
-        messageId,
-        correlationId: decision.taktRequestId,
-        schemaVersion: "1.0",
-        senderOrgId: request.guOrgId,
-        receiverOrgId: request.nuOrgId,
-        createdAt: new Date().toISOString(),
-      },
+    } satisfies ExternalCoordinationDecision;
+  }
+  if (decision.decisionType === "REQUEST_REVISION") {
+    return {
+      metadata,
       requestId: decision.taktRequestId,
       requestVersion: request.taktVersion,
       taktVersion: newTaktVersion?.version ?? request.taktVersion,
       decisionType: "REQUEST_REVISION",
       comment: decision.comment ?? null,
-    } satisfies ExternalCoordinationDecision);
-  } else if (decision.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
-    const messageId = `gu-decision-${decision.id}`;
-    const closedAt = decision.decidedAt?.toISOString() ?? new Date().toISOString();
-    await deliverLocalCoordinationDecision({
-      metadata: {
-        messageId,
-        correlationId: decision.taktRequestId,
-        schemaVersion: "1.0",
-        senderOrgId: request.guOrgId,
-        receiverOrgId: request.nuOrgId,
-        createdAt: new Date().toISOString(),
-      },
+    } satisfies ExternalCoordinationDecision;
+  }
+  if (decision.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
+    return {
+      metadata,
       requestId: decision.taktRequestId,
       requestVersion: request.taktVersion,
       taktVersion: newTaktVersion?.version ?? request.taktVersion,
       decisionType: "CLOSE_WITHOUT_AGREEMENT",
       comment: decision.comment ?? null,
-      closedAt,
-    } satisfies ExternalCoordinationDecision);
+      closedAt: decision.decidedAt?.toISOString() ?? new Date().toISOString(),
+    } satisfies ExternalCoordinationDecision;
   }
+  return null;
+}
+
+function buildAutomaticSiblingCancellation(
+  sibling: { id: string; nuOrgId: string; requestNumber: string; requestVersion: number },
+  input: { senderOrgId: string; selectedRequestId: string; decisionId: string; closedAt: string },
+): ExternalCoordinationDecision {
+  return {
+    metadata: {
+      messageId: `gu-group-cancel-${sibling.id}-${input.decisionId}`,
+      correlationId: sibling.id,
+      schemaVersion: "1.0",
+      senderOrgId: input.senderOrgId,
+      receiverOrgId: sibling.nuOrgId,
+      createdAt: input.closedAt,
+    },
+    requestId: sibling.id,
+    requestVersion: sibling.requestVersion,
+    taktVersion: sibling.requestVersion,
+    decisionType: "CLOSE_WITHOUT_AGREEMENT",
+    comment: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
+    closedAt: input.closedAt,
+  } satisfies ExternalCoordinationDecision;
 }
 
 async function sendAutomaticSiblingCancellation(params: {
@@ -624,23 +712,20 @@ async function sendAutomaticSiblingCancellation(params: {
   selectedRequestId: string;
   decisionId: string;
   requestVersion: number;
+  closedAt: string;
 }): Promise<void> {
-  const messageId = `gu-group-cancel-${params.requestId}-${params.decisionId}`;
-  const closedAt = new Date().toISOString();
-  await deliverLocalCoordinationDecision({
-    metadata: {
-      messageId,
-      correlationId: params.requestId,
-      schemaVersion: "1.0",
-      senderOrgId: params.senderOrgId,
-      receiverOrgId: params.recipientOrgId,
-      createdAt: new Date().toISOString(),
+  await deliverLocalCoordinationDecision(buildAutomaticSiblingCancellation(
+    {
+      id: params.requestId,
+      nuOrgId: params.recipientOrgId,
+      requestNumber: "",
+      requestVersion: params.requestVersion,
     },
-    requestId: params.requestId,
-    requestVersion: params.requestVersion,
-    taktVersion: params.requestVersion,
-    decisionType: "CLOSE_WITHOUT_AGREEMENT",
-    comment: "PARALLEL_REQUEST_OTHER_AN_CONFIRMED",
-    closedAt,
-  } satisfies ExternalCoordinationDecision);
+    {
+      senderOrgId: params.senderOrgId,
+      selectedRequestId: params.selectedRequestId,
+      decisionId: params.decisionId,
+      closedAt: params.closedAt,
+    },
+  ));
 }

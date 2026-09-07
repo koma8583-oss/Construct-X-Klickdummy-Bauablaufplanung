@@ -28,6 +28,7 @@ import {
 } from "./dataspace/external-mappers";
 import { deliverLocalCoordinationDecision, deliverLocalServiceRequest } from "./dataspace/local-dataspace-delivery";
 import type { ExternalCoordinationDecision, ExternalServiceRequest, ExternalServiceResponse } from "./dataspace/external-contracts";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 export type CoordinationParty = "AG" | "AN";
 export interface ScheduleDelta { startDays: number; endDays: number; durationDays: number; hasChange: boolean; }
@@ -624,6 +625,16 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       } : {}),
       ...(snapshotPayload ? { publicSnapshot: publicSnapshotFromRecord(snapshotPayload) } : {}),
     });
+    await enqueueHubMessageInTransaction(tx, {
+      messageId: payload.metadata.messageId,
+      schemaVersion: payload.metadata.schemaVersion,
+      messageType: "TAKT_REQUEST_REVISED",
+      senderOrgId: payload.metadata.senderOrgId,
+      recipientOrgId: payload.metadata.receiverOrgId,
+      correlationId: payload.metadata.correlationId,
+      payload: serviceRequestTransportPayload(payload),
+      status: "PENDING",
+    });
     return { proposal, payload };
   });
   const delivery = await deliverLocalServiceRequest(result.payload);
@@ -633,6 +644,31 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
     ...(current ?? result.proposal),
     transportStatus: delivery.status,
     transportMessageId: result.payload.metadata.messageId,
+  };
+}
+
+function serviceRequestTransportPayload(payload: ExternalServiceRequest): Record<string, unknown> {
+  return {
+    taktRequestId: payload.requestId,
+    leistungsanfrageId: payload.requestId,
+    ...(payload.senderOrganizationName ? { senderOrganizationName: payload.senderOrganizationName } : {}),
+    ...(payload.senderUserId ? { senderUserId: payload.senderUserId } : {}),
+    ...(payload.comment ? { comment: payload.comment } : {}),
+    projectReference: payload.projectReference,
+    ...(payload.projectName ? { projectName: payload.projectName } : {}),
+    ...(payload.leistungReference ? { leistungReference: payload.leistungReference } : {}),
+    taktVersion: payload.requestVersion,
+    ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+    ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+    ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
+    ...(payload.baseTimeWindow ? { baseTimeWindow: payload.baseTimeWindow } : {}),
+    responseRequiredBy: null,
+    plannedStart: payload.plannedStart,
+    plannedEnd: payload.plannedEnd,
+    resourceRequirements: payload.resourceRequirements,
+    ...(payload.publicSnapshot ? { publicSnapshot: payload.publicSnapshot } : {}),
+    policy: payload.policy ?? null,
+    ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
   };
 }
 
@@ -649,7 +685,32 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
       const [updated] = await tx.update(serviceChangeProposalsTable).set({ status: "REJECTED", resolvedAt: new Date(), resolvedByUserId: input.userId }).where(and(eq(serviceChangeProposalsTable.id, input.proposalId), eq(serviceChangeProposalsTable.status, "OPEN"))).returning();
       if (!updated) throw Object.assign(new Error("CHANGE_PROPOSAL_ALREADY_RESOLVED"), { statusCode: 409 });
       await setScheduleChangePolicyLifecycle(tx, { request, proposal: updated, lifecycleStatus: "REJECTED" });
-      return { proposal: updated, payload: null, request };
+       const decision: ExternalCoordinationDecision = {
+         metadata: {
+           messageId: `coordination-decision:${updated.id}:${updated.status}`,
+           correlationId: updated.id,
+           schemaVersion: "1.0",
+           senderOrgId: request.guOrgId,
+           receiverOrgId: request.nuOrgId,
+           createdAt: new Date().toISOString(),
+         },
+         requestId: updated.id,
+         requestVersion: 1,
+         taktVersion: 1,
+         decisionType: "CLOSE_WITHOUT_AGREEMENT",
+         closedAt: new Date().toISOString(),
+       };
+       await enqueueHubMessageInTransaction(tx, {
+         messageId: decision.metadata.messageId,
+         schemaVersion: decision.metadata.schemaVersion,
+         messageType: "TAKT_REQUEST_CANCELLED",
+         senderOrgId: decision.metadata.senderOrgId,
+         recipientOrgId: decision.metadata.receiverOrgId,
+         correlationId: decision.metadata.correlationId,
+         payload: decision as unknown as Record<string, unknown>,
+         status: "PENDING",
+       });
+       return { proposal: updated, payload: null, request, decision };
     }
     const [updated] = await tx.update(serviceChangeProposalsTable).set({
       status: "ACCEPTED",
@@ -667,29 +728,39 @@ export async function resolveChangeProposal(input: { requestId: string; proposal
     await setScheduleChangePolicyLifecycle(tx, {
       request, proposal: updated, lifecycleStatus: "ACCEPTED", consentedByOrgId: input.orgId,
     });
-    return { proposal: updated, payload: null, request };
+     const decision: ExternalCoordinationDecision = {
+       metadata: {
+         messageId: `coordination-decision:${updated.id}:${updated.status}`,
+         correlationId: updated.id,
+         schemaVersion: "1.0",
+         senderOrgId: request.guOrgId,
+         receiverOrgId: request.nuOrgId,
+         createdAt: new Date().toISOString(),
+       },
+       requestId: updated.id,
+       requestVersion: 1,
+       taktVersion: 1,
+       decisionType: "CONFIRM_ACCEPTED",
+       confirmedTimeWindow: {
+         start: updated.start.toISOString(),
+         end: updated.end.toISOString(),
+       },
+     };
+     await enqueueHubMessageInTransaction(tx, {
+       messageId: decision.metadata.messageId,
+       schemaVersion: decision.metadata.schemaVersion,
+       messageType: "TAKT_RESPONSE_ACCEPTED",
+       senderOrgId: decision.metadata.senderOrgId,
+       recipientOrgId: decision.metadata.receiverOrgId,
+       correlationId: decision.metadata.correlationId,
+       payload: decision as unknown as Record<string, unknown>,
+       status: "PENDING",
+     });
+     return { proposal: updated, payload: null, request, decision };
   });
-  const decision: ExternalCoordinationDecision = {
-    metadata: {
-      messageId: `coordination-decision:${result.proposal.id}:${result.proposal.status}`,
-      correlationId: result.proposal.id,
-      schemaVersion: "1.0",
-      senderOrgId: result.request.guOrgId,
-      receiverOrgId: result.request.nuOrgId,
-      createdAt: new Date().toISOString(),
-    },
-    requestId: result.proposal.id,
-    requestVersion: 1,
-    taktVersion: 1,
-    decisionType: result.proposal.status === "ACCEPTED" ? "CONFIRM_ACCEPTED" : "CLOSE_WITHOUT_AGREEMENT",
-    confirmedTimeWindow: result.proposal.status === "ACCEPTED"
-      ? { start: result.proposal.start.toISOString(), end: result.proposal.end.toISOString() }
-      : null,
-    closedAt: result.proposal.status === "REJECTED" ? new Date().toISOString() : undefined,
-  };
-  const delivery = await deliverLocalCoordinationDecision(decision);
+  const delivery = await deliverLocalCoordinationDecision(result.decision);
   const [current] = await agDb.select().from(serviceChangeProposalsTable).where(eq(serviceChangeProposalsTable.id, result.proposal.id)).limit(1);
-  return { ...(current ?? result.proposal), transportStatus: delivery.status, transportMessageId: decision.metadata.messageId };
+  return { ...(current ?? result.proposal), transportStatus: delivery.status, transportMessageId: result.decision.metadata.messageId };
 }
 
 export async function applyIncomingScheduleChangeResponseOnAg(payload: ExternalServiceResponse) {

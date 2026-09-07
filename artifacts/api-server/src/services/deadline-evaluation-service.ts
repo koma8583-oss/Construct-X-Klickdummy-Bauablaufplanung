@@ -30,7 +30,7 @@ import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import type { ReminderType } from "@workspace/db";
 import type { DeadlineConfig } from "./deadline-config";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
-import { enqueueHubMessage } from "./hub-transport-service";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 import pino from "pino";
 
 // Reuse the transaction type established in reschedule.ts
@@ -340,6 +340,22 @@ async function expireRequest(
       taktReference:    req.taktId,
     };
 
+    for (const [recipientOrgId, msgId] of [
+      [req.guOrgId, msgIdGu],
+      [req.nuOrgId, msgIdNu],
+    ] as [string, string][]) {
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: msgId,
+        schemaVersion: "1.0",
+        messageType: "TAKT_REQUEST_EXPIRED",
+        senderOrgId: req.guOrgId,
+        recipientOrgId,
+        correlationId: req.id,
+        payload: expiredPayload,
+        status: "PENDING",
+      });
+    }
+
     return true;
   });
 
@@ -360,16 +376,6 @@ async function expireRequest(
     [req.nuOrgId, msgIdNu],
   ] as [string, string][]) {
     try {
-      await enqueueHubMessage({
-        messageId: msgId,
-        schemaVersion: "1.0",
-        messageType: "TAKT_REQUEST_EXPIRED",
-        senderOrgId: req.guOrgId,
-        recipientOrgId,
-        correlationId: req.id,
-        payload: expiredPayload,
-        status: "PENDING",
-      });
       await transport.send({
         messageId:      msgId,
         schemaVersion:  "1.0",

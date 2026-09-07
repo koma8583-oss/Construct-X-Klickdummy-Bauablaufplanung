@@ -38,11 +38,37 @@ import {
   type LeistungsanfragePolicyState,
 } from "./leistungsanfrage-policy-guard";
 import { evaluateResourceRequirements } from "./resource-availability-service";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
 type Projection = typeof anLeistungsanfragenTable.$inferSelect;
 type PayloadSnapshot = Record<string, unknown>;
+
+function serviceRequestTransportPayload(payload: ExternalServiceRequest): Record<string, unknown> {
+  return {
+    taktRequestId: payload.requestId,
+    leistungsanfrageId: payload.requestId,
+    ...(payload.senderOrganizationName ? { senderOrganizationName: payload.senderOrganizationName } : {}),
+    ...(payload.senderUserId ? { senderUserId: payload.senderUserId } : {}),
+    ...(payload.comment ? { comment: payload.comment } : {}),
+    projectReference: payload.projectReference,
+    ...(payload.projectName ? { projectName: payload.projectName } : {}),
+    ...(payload.leistungReference ? { leistungReference: payload.leistungReference } : {}),
+    taktVersion: payload.requestVersion,
+    ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+    ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+    ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
+    ...(payload.baseTimeWindow ? { baseTimeWindow: payload.baseTimeWindow } : {}),
+    responseRequiredBy: null,
+    plannedStart: payload.plannedStart,
+    plannedEnd: payload.plannedEnd,
+    resourceRequirements: payload.resourceRequirements,
+    ...(payload.publicSnapshot ? { publicSnapshot: payload.publicSnapshot } : {}),
+    policy: payload.policy ?? null,
+    ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
+  };
+}
 type WorkflowAction = "RESPOND_TO_REQUEST" | "DECIDE_RESPONSE" | "RESPOND_TO_CHANGE_PROPOSAL" | "NO_ACTION";
 type WorkflowOwner = "AG" | "AN";
 type WorkflowView = {
@@ -1291,6 +1317,16 @@ export async function createAnScheduleChangeProposal(input: {
           })),
         );
       }
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: payload.metadata.messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType: "TAKT_REQUEST_REVISED",
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        payload: serviceRequestTransportPayload(payload),
+        status: "PENDING",
+      });
     });
     await runAnAvailabilityCheck(input.requestId, input.anOrgId, input.userId, {
       projectionId: localProjectionId,

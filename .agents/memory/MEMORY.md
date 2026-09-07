@@ -65,3 +65,4 @@
 - [Schedule-response retry identity](schedule-response-retry-identity.md) — root-addressed AN response retries must remain bound to the same schedule child after its terminal status transition.
 - [Legacy policy gates](legacy-policy-gates.md) — historical projections may omit child metadata, but synchronized parent state must still enforce revoke and validity gates.
 - [Shared post-merge schema order](post-merge-schema-order.md) — push empty role schemas before raw migrations; use public only for legacy enum lookup, then reapply ACLs.
+- [Atomic cross-schema outbox](atomic-cross-schema-outbox.md) — pre-create Hub envelopes through a SECURITY DEFINER bridge inside the AG/AN transaction; deliver only after commit.
