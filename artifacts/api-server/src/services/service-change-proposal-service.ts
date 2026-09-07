@@ -628,7 +628,10 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
     await enqueueHubMessageInTransaction(tx, {
       messageId: payload.metadata.messageId,
       schemaVersion: payload.metadata.schemaVersion,
-      messageType: "TAKT_REQUEST_REVISED",
+       // This payload is sent through deliverLocalServiceRequest, whose
+       // connector envelope is TAKT_REQUEST_NOTIFICATION (with the schedule
+       // context selected from requestKind).
+       messageType: "TAKT_REQUEST_NOTIFICATION",
       senderOrgId: payload.metadata.senderOrgId,
       recipientOrgId: payload.metadata.receiverOrgId,
       correlationId: payload.metadata.correlationId,

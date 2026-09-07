@@ -380,6 +380,7 @@ type ScheduleProposal = {
   end: string;
   comment?: string | null;
   proposerRole?: "AG" | "AN";
+  proposer?: "AG" | "AN";
 };
 
 function OwnScheduleChangeStart({
@@ -678,11 +679,13 @@ export default function LeistungsanfrageDetailPage() {
   }).policyDeltaClass === "REQUIRES_CONSENT"
     && (details as AnLeistungsanfrageDetails & { policyConsentStatus?: string | null }).policyConsentStatus === "PENDING";
   const canRespond = policyDetailsAvailable && !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
-  const scheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AG"
-    ? coordinationQuery.data.openProposal
+  const openProposal = coordinationQuery.data?.openProposal;
+  const openProposalRole = openProposal?.proposerRole ?? openProposal?.proposer;
+  const scheduleProposal = openProposalRole === "AG"
+    ? openProposal
     : null;
-  const ownScheduleProposal = coordinationQuery.data?.openProposal?.proposerRole === "AN"
-    ? coordinationQuery.data.openProposal
+  const ownScheduleProposal = openProposalRole === "AN"
+    ? openProposal
     : null;
   const effectiveResponsePreset = responsePreset ?? (
     phaseOverride === 3 && availabilityQuery.data?.result === "FEASIBLE"

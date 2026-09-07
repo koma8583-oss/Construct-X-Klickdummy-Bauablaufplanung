@@ -1323,7 +1323,10 @@ export async function createAnScheduleChangeProposal(input: {
       await enqueueHubMessageInTransaction(tx, {
         messageId: payload.metadata.messageId,
         schemaVersion: payload.metadata.schemaVersion,
-        messageType: "TAKT_REQUEST_REVISED",
+         // deliverLocalServiceRequest publishes the stable service-request
+         // notification for schedule changes as well. Pre-create the exact
+         // same envelope type so the atomic outbox row is idempotent.
+         messageType: "TAKT_REQUEST_NOTIFICATION",
         senderOrgId: payload.metadata.senderOrgId,
         recipientOrgId: payload.metadata.receiverOrgId,
         correlationId: payload.metadata.correlationId,

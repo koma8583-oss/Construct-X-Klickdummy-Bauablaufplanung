@@ -439,17 +439,15 @@ export async function createGuDecision(
     } else {
       // For CONFIRM_ACCEPTED / ACCEPT_ALTERNATIVE, the applyConfirm* functions
       // already updated lifecycle_status on takte. Make sure request status = ACCEPTED.
-      if (request.status !== "ACCEPTED") {
-        await tx
-          .update(taktRequestsTable)
-          .set({
-            status: "ACCEPTED",
-            ...(bookingStart && bookingEnd
-              ? { agreedStart: bookingStart, agreedEnd: bookingEnd }
-              : {}),
-          })
-          .where(eq(taktRequestsTable.id, taktRequestId));
-      }
+      await tx
+        .update(taktRequestsTable)
+        .set({
+          status: "ACCEPTED",
+          ...(bookingStart && bookingEnd
+            ? { agreedStart: bookingStart, agreedEnd: bookingEnd }
+            : {}),
+        })
+        .where(eq(taktRequestsTable.id, taktRequestId));
     }
 
     if (autoCancelledRequests.length > 0) {

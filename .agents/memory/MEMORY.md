@@ -66,3 +66,4 @@
 - [Legacy policy gates](legacy-policy-gates.md) — historical projections may omit child metadata, but synchronized parent state must still enforce revoke and validity gates.
 - [Shared post-merge schema order](post-merge-schema-order.md) — push empty role schemas before raw migrations; use public only for legacy enum lookup, then reapply ACLs.
 - [Atomic cross-schema outbox](atomic-cross-schema-outbox.md) — pre-create Hub envelopes through a SECURITY DEFINER bridge inside the AG/AN transaction; deliver only after commit.
+- [First-delivery outbox claims](first-delivery-outbox-claims.md) — pre-created PENDING/FAILED envelopes must enter the same atomic claim path as retries before transport delivery.
