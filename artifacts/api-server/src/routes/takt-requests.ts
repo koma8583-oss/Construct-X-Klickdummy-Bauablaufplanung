@@ -558,8 +558,10 @@ router.post(
       nuOrgId:             z.string().min(1),
       requestNumber:       z.string().min(1).optional(),
       responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
-      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
-      selectedFields: z.array(z.string().min(1)).optional(),
+      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+      selectedFields: z.array(z.string().min(1)).min(1),
+      parentPolicyId: z.string().min(1),
+      parentPolicyVersion: z.number().int().positive(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -598,6 +600,8 @@ router.post(
         createdByUserId: userId,
         purpose: parsed.data.purpose,
         selectedFields: parsed.data.selectedFields,
+        parentPolicyId: parsed.data.parentPolicyId,
+        parentPolicyVersion: parsed.data.parentPolicyVersion,
       });
     } catch (err) {
       if (err instanceof ProjectMembershipError) {
@@ -707,10 +711,10 @@ router.post("/takt-requests", requireJwt, requireRole("AG_ADMIN", "GENERAL_PLANN
     responseRequiredBy:  z.string().datetime({ offset: true }).optional(),
     subject:             z.string().max(255).optional(),
     message:             z.string().max(2000).optional(),
-    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
-    selectedFields: z.array(z.string().min(1)).optional(),
-    parentPolicyId: z.string().min(1).optional(),
-    parentPolicyVersion: z.number().int().positive().optional(),
+    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+    selectedFields: z.array(z.string().min(1)).min(1),
+    parentPolicyId: z.string().min(1),
+    parentPolicyVersion: z.number().int().positive(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -834,10 +838,10 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
     responseRequiredBy: z.string().datetime({ offset: true }).optional(),
     subject: z.string().max(255).optional(),
     message: z.string().max(2000).optional(),
-    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]).optional(),
-    selectedFields: z.array(z.string().min(1)).optional(),
-    parentPolicyId: z.string().min(1).optional(),
-    parentPolicyVersion: z.number().int().positive().optional(),
+    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+    selectedFields: z.array(z.string().min(1)).min(1),
+    parentPolicyId: z.string().min(1),
+    parentPolicyVersion: z.number().int().positive(),
   }).safeParse(req.body);
 
   if (!parsed.success) {

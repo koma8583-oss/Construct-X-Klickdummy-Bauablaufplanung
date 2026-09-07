@@ -405,6 +405,7 @@ describe("Construct-X Campus West campaign", () => {
       await expect(createTaktRequestWithSnapshot({
         taktId: "L-101", guOrgId: AG, nuOrgId: anId("AN1"), requestNumber, createdByUserId: AG_USER,
         purpose: "LEISTUNGSKOORDINATION", selectedFields: ["resourceRequirements"],
+        parentPolicyId: AGREEMENT, parentPolicyVersion: 1,
       })).rejects.toBeInstanceOf(PolicyNotPermittedError);
       const [outboxAfter, projectionAfter, historyAfter, membership] = await Promise.all([
         hubDb.select().from(messageOutboxTable),
@@ -452,7 +453,8 @@ describe("Construct-X Campus West campaign", () => {
     requestNumbers.push(requestNumber);
     const created = await createTaktRequestWithSnapshot({
       taktId: "L-101", guOrgId: AG, nuOrgId: anId("AN1"), requestNumber, createdByUserId: AG_USER,
-      purpose: "LEISTUNGSKOORDINATION",
+      purpose: "LEISTUNGSKOORDINATION", selectedFields: [...baseline.allowedFieldScope],
+      parentPolicyId: AGREEMENT, parentPolicyVersion: 1,
     });
     expect(created.request).not.toHaveProperty("dataPublicationId"); // DataOffer is never coupled to a Leistung request.
     expect(created.snapshot.snapshotPayload).toMatchObject({ taktReference: "L-101", projectReference: PROJECT });

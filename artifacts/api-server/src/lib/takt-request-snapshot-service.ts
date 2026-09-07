@@ -37,38 +37,17 @@ import type { TaktDependency } from "@workspace/db";
 import type { TaktRequestSnapshotPayload } from "@workspace/api-zod";
 import { withCanonicalTakt } from "./legacy-takt-mappers";
 import { assertActiveProjectMembership, ProjectMembershipError } from "../services/project-membership-service";
+import {
+  LEISTUNGSFREIGABE_FIELD_WHITELISTS,
+  PARENT_COVERED_LEISTUNGSFREIGABE_FIELDS,
+  type LeistungsfreigabePurpose,
+} from "./leistungsfreigabe-policy";
 
 /** Business purposes for a Leistung request.  These are deliberately not
  * policy-template ids: an AG chooses a business purpose, while the server
  * derives the child policy from the accepted project agreement. */
-export const LEISTUNGSFREIGABE_FIELD_WHITELISTS = {
-  RAHMENTERMINE: [
-    // The selectable Rahmentermine scope is intentionally exhaustive:
-    // service name/description, trade, period/buffer, work area and relevant
-    // dependencies. Technical references are added by the serializer below,
-    // never accepted as release fields.
-    "trade", "workPackage", "kurzbezeichnung",
-    "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors",
-  ],
-  LEISTUNGSKOORDINATION: [
-    "taktReference", "taktVersion", "trade", "workPackage", "kurzbezeichnung",
-    "location", "plannedTimeWindow", "bufferTimeWindow", "requiredOutput",
-    "resourceRequirements", "constraints", "predecessors", "successors", "documentReferences",
-  ],
-  AUSFUEHRUNGSINFORMATIONEN: [
-    "taktReference", "taktVersion", "trade", "workPackage", "kurzbezeichnung",
-    "location", "plannedTimeWindow", "bufferTimeWindow", "requiredOutput",
-    "constraints", "predecessors", "successors", "documentReferences",
-  ],
-  INDIVIDUELLE_FREIGABE: [
-    "taktReference", "taktVersion", "trade", "workPackage", "kurzbezeichnung",
-    "location", "plannedTimeWindow", "bufferTimeWindow", "requiredOutput",
-    "resourceRequirements", "constraints", "predecessors", "successors", "documentReferences",
-  ],
-} as const;
-
-export type LeistungsfreigabePurpose = keyof typeof LEISTUNGSFREIGABE_FIELD_WHITELISTS;
-const PARENT_COVERED_FIELDS = new Set(["projectLocation", "projectDescription"]);
+export { LEISTUNGSFREIGABE_FIELD_WHITELISTS };
+export type { LeistungsfreigabePurpose };
 
 export class InvalidLeistungsfreigabeFieldsError extends Error {
   constructor(message: string) {
@@ -92,7 +71,7 @@ export function selectLeistungsfreigabeFields(
 ): Record<string, unknown> {
   const permitted = LEISTUNGSFREIGABE_FIELD_WHITELISTS[purpose];
   const fields = selectedFields ? [...new Set(selectedFields)] : [...permitted];
-  const illegal = fields.filter((field) => !permitted.includes(field as never) || PARENT_COVERED_FIELDS.has(field));
+  const illegal = fields.filter((field) => !permitted.includes(field as never) || PARENT_COVERED_LEISTUNGSFREIGABE_FIELDS.has(field));
   if (illegal.length) {
     throw new InvalidLeistungsfreigabeFieldsError(
       `Fields are not permitted for ${purpose}: ${illegal.join(", ")}.`,
@@ -308,12 +287,12 @@ export interface CreateTaktRequestWithSnapshotInput {
   subject?: string;
   /** Optional free-text message from GU to NU */
   message?: string;
-  purpose?: LeistungsfreigabePurpose;
-  /** Explicit child-owned fields. Omitted only for backwards-compatible callers. */
-  selectedFields?: string[];
+  purpose: LeistungsfreigabePurpose;
+  /** Explicit child-owned fields selected for this child policy. */
+  selectedFields: string[];
   /** Immutable parent policy selected by the AG from the effective-policy response. */
-  parentPolicyId?: string;
-  parentPolicyVersion?: number;
+  parentPolicyId: string;
+  parentPolicyVersion: number;
   /** Compatibility input for old routes. It is intentionally ignored: normal
    * Leistungsanfragen never create or link a DataPublication. */
   dataPublicationId?: string;
@@ -411,8 +390,8 @@ export async function createTaktRequestWithSnapshot(
     );
   }
   if (
-    (input.parentPolicyId !== undefined && input.parentPolicyId !== agreement.id) ||
-    (input.parentPolicyVersion !== undefined && input.parentPolicyVersion !== agreement.version)
+    input.parentPolicyId !== agreement.id ||
+    input.parentPolicyVersion !== agreement.version
   ) {
     throw new ProjectMembershipError(
       "PROJECT_AGREEMENT_CHANGED",
@@ -460,7 +439,7 @@ export async function createTaktRequestWithSnapshot(
     predecessors,
     successors,
   });
-  const purpose = input.purpose ?? "LEISTUNGSKOORDINATION";
+  const purpose = input.purpose;
   const releasedPayload = selectLeistungsfreigabeFields(basePayload, purpose, input.selectedFields);
 
   // Merge optional coordination context into the snapshot.
@@ -484,7 +463,7 @@ export async function createTaktRequestWithSnapshot(
     ...basePolicySnapshot,
     policyType: "PERFORMANCE_REQUEST" as const,
     ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
-    selectedFields: input.selectedFields ?? LEISTUNGSFREIGABE_FIELD_WHITELISTS[purpose],
+    selectedFields: input.selectedFields,
   };
   const resolution = resolvePolicyDelta(
     agreement?.effectivePolicy as Record<string, unknown> | undefined,
@@ -608,10 +587,10 @@ export interface CreateTaktRequestBatchInput {
   createdByUserId: string;
   subject?: string;
   message?: string;
-  purpose?: LeistungsfreigabePurpose;
-  selectedFields?: string[];
-  parentPolicyId?: string;
-  parentPolicyVersion?: number;
+  purpose: LeistungsfreigabePurpose;
+  selectedFields: string[];
+  parentPolicyId: string;
+  parentPolicyVersion: number;
 }
 
 export interface CreateTaktRequestBatchResult {

@@ -1317,6 +1317,10 @@ export default function ProjectDetail() {
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
+          purpose: values.purpose,
+          selectedFields: values.selectedFields,
+          parentPolicyId: values.parentPolicyId,
+          parentPolicyVersion: values.parentPolicyVersion,
         },
       });
       await Promise.all(created.requests.map(requestItem =>
@@ -2943,9 +2947,7 @@ export default function ProjectDetail() {
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        policies={policyRegistry}
-        policiesLoading={policiesLoading}
-        policiesError={policiesError}
+        taktId={selectedTakt?.id ?? ''}
         isSubmitting={isDelegating}
         onSubmit={handleDelegateTakt}
       />

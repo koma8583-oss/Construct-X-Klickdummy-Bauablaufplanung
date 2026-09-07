@@ -9,8 +9,7 @@ import {
   useCreateDataPublication, usePublishDataPublication,
   useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
   useListTaktRequests, useDeleteTakt,
-  getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
-  useGetPolicyTemplateRegistry,
+   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,11 +68,6 @@ export default function TaktDetail() {
       }>>;
     },
   });
-  const {
-    data: policyRegistry,
-    isLoading: policiesLoading,
-    isError: policiesError,
-  } = useGetPolicyTemplateRegistry();
   const updateTakt = useUpdateTakt();
   const createDataPublication = useCreateDataPublication(projectId);
   const publishDataPublication = usePublishDataPublication();
@@ -188,6 +182,10 @@ export default function TaktDetail() {
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
+          purpose: values.purpose,
+          selectedFields: values.selectedFields,
+          parentPolicyId: values.parentPolicyId,
+          parentPolicyVersion: values.parentPolicyVersion,
         },
       });
       await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));
@@ -394,9 +392,7 @@ export default function TaktDetail() {
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        policies={policyRegistry}
-        policiesLoading={policiesLoading}
-        policiesError={policiesError}
+        taktId={takt.id}
         isSubmitting={savingAssignment}
         onSubmit={handleAssign}
       />

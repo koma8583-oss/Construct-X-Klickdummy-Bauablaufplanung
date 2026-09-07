@@ -22,6 +22,7 @@ function isOrganizationIdentifier(value: string | null | undefined, organization
 export type VergabePartner = {
   anOrgId: string;
   label: string;
+  parentAgreement?: ProjectMembership['projectAgreement'];
 };
 
 export type VergabePolicySelection = {
@@ -90,6 +91,9 @@ export function buildAssignablePartners(
     partners.push({
       anOrgId,
       label: `${displayName} – ${trade?.trim() || 'Alle Gewerke'}`,
+      parentAgreement: (memberships ?? []).find(
+        (membership) => membership.anOrgId === anOrgId && membership.status === 'ACTIVE',
+      )?.projectAgreement,
     });
   };
 

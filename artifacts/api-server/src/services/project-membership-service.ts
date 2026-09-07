@@ -11,6 +11,10 @@ import {
   policyTemplatesTable,
   coordinationPoliciesTable,
 } from "@workspace/db";
+import {
+  LEISTUNGSFREIGABE_PARENT_FIELD_SCOPE,
+  LEISTUNGSFREIGABE_PURPOSES,
+} from "../lib/leistungsfreigabe-policy";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import {
   listDataspaceParticipants,
@@ -585,6 +589,8 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
             "USE_FOR_RESOURCE_COORDINATION",
             "USE_FOR_EXECUTION_COORDINATION",
           ],
+          allowedPurposes: LEISTUNGSFREIGABE_PURPOSES,
+          allowedFieldScope: LEISTUNGSFREIGABE_PARENT_FIELD_SCOPE,
         },
       });
       await tx.insert(coordinationPoliciesTable).values({

@@ -62,6 +62,7 @@ export * from './createResourceRequirementRequest';
 export * from './createTaktDependencyRequest';
 export * from './createTaktRequest';
 export * from './createTaktRequestBody';
+export * from './createTaktRequestBodyPurpose';
 export * from './createWebhookRequest';
 export * from './dashboardAction';
 export * from './dashboardActionKind';

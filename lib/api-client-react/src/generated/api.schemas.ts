@@ -1961,6 +1961,19 @@ export interface InboxMarkReadResponse {
 }
 
 /**
+ * Business purpose of the Leistungsfreigabe.
+ */
+export type CreateTaktRequestBodyPurpose = typeof CreateTaktRequestBodyPurpose[keyof typeof CreateTaktRequestBodyPurpose];
+
+
+export const CreateTaktRequestBodyPurpose = {
+  RAHMENTERMINE: 'RAHMENTERMINE',
+  LEISTUNGSKOORDINATION: 'LEISTUNGSKOORDINATION',
+  AUSFUEHRUNGSINFORMATIONEN: 'AUSFUEHRUNGSINFORMATIONEN',
+  INDIVIDUELLE_FREIGABE: 'INDIVIDUELLE_FREIGABE',
+} as const;
+
+/**
  * Body for POST /takt-requests — GU creates a TaktRequest draft with snapshot.
  */
 export interface CreateTaktRequestBody {
@@ -1986,6 +1999,24 @@ export interface CreateTaktRequestBody {
      * @maxLength 2000
      */
   message?: string;
+  /** Business purpose of the Leistungsfreigabe. */
+  purpose: CreateTaktRequestBodyPurpose;
+  /**
+     * Explicit child-owned fields; the server enforces the purpose whitelist and Parent-Policy scope.
+     * @minItems 1
+     * @items.minLength 1
+     */
+  selectedFields: string[];
+  /**
+     * Exact accepted parent policy selected from the effective-policy response.
+     * @minLength 1
+     */
+  parentPolicyId: string;
+  /**
+     * Exact version of the selected parent policy.
+     * @minimum 1
+     */
+  parentPolicyVersion: number;
 }
 
 /**
@@ -2019,22 +2050,22 @@ export interface TaktRequestBatchInput {
   /** @maxLength 2000 */
   message?: string;
   /** Business purpose of the Leistungsfreigabe. */
-  purpose?: TaktRequestBatchInputPurpose;
+  purpose: TaktRequestBatchInputPurpose;
   /**
      * Explicit child-owned fields; the server enforces the purpose whitelist.
      * @items.minLength 1
      */
-  selectedFields?: string[];
+  selectedFields: string[];
   /**
      * Exact accepted parent policy selected from the effective-policy response.
      * @minLength 1
      */
-  parentPolicyId?: string;
+  parentPolicyId: string;
   /**
      * Exact version of the selected parent policy.
      * @minimum 1
      */
-  parentPolicyVersion?: number;
+  parentPolicyVersion: number;
 }
 
 /**
