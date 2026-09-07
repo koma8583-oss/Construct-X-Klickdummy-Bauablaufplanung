@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-release-gate:
+    name: Quality and release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: taktkoord
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d taktkoord"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/taktkoord
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/taktkoord
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
+      SESSION_SECRET: ci-only-session-secret-not-for-production
+      NODE_ENV: test
+      DEADLINE_WORKER_ENABLED: "false"
+      CI: "true"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Initialize the shared test database
+        run: DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" bash scripts/post-merge.sh
+
+      - name: Typecheck API, GU, and NU
+        run: pnpm run validate:types
+
+      - name: Run API tests
+        run: pnpm run test:api
+
+      - name: Run GU tests
+        run: pnpm run test:ag
+
+      - name: Run NU tests
+        run: pnpm run test:an
+
+      - name: Build every workspace package
+        run: pnpm run build
+
+      - name: Start built services and execute desktop/mobile Playwright
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            for pid in "${PROXY_PID:-}" "${HUB_PID:-}" "${AN_PID:-}" "${AG_PID:-}" "${API_PID:-}"; do
+              if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi
+            done
+          }
+          trap cleanup EXIT
+
+          PORT=8080 NODE_ENV=test pnpm --filter @workspace/api-server run start > /tmp/ci-api.log 2>&1 &
+          API_PID=$!
+          PORT=5173 BASE_PATH=/ pnpm --filter @workspace/ag-app run serve > /tmp/ci-ag.log 2>&1 &
+          AG_PID=$!
+          PORT=5174 BASE_PATH=/an/ pnpm --filter @workspace/an-app run serve > /tmp/ci-an.log 2>&1 &
+          AN_PID=$!
+          PORT=5175 BASE_PATH=/hub/ pnpm --filter @workspace/hub-app run serve > /tmp/ci-hub.log 2>&1 &
+          HUB_PID=$!
+          node scripts/ci-proxy.mjs > /tmp/ci-proxy.log 2>&1 &
+          PROXY_PID=$!
+
+          wait_for_http() {
+            local url="$1"
+            for attempt in {1..60}; do
+              local status
+              status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url" || true)"
+              if [[ "$status" != "000" ]]; then return 0; fi
+              sleep 1
+            done
+            echo "Timed out waiting for $url" >&2
+            return 1
+          }
+
+          wait_for_http http://127.0.0.1:8080/auth-service/login
+          wait_for_http http://127.0.0.1:4173/
+          wait_for_http http://127.0.0.1:4173/an/
+          wait_for_http http://127.0.0.1:4173/hub/
+          pnpm run e2e
+
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics
+          if-no-files-found: ignore
+          path: |
+            /tmp/ci-*.log
+            e2e/e2e/test-results
+            e2e/playwright-report
