@@ -9,7 +9,16 @@ import { addCalendarDays } from "../lib/calendar-date-utils";
 import {
   restoreConcreteResourceAssignments,
   shiftRequirementsToWindow,
+  evaluateResourceRequirements,
 } from "./resource-availability-service";
+import { sql } from "drizzle-orm";
+
+export class AcceptedScheduleCapacityConflictError extends Error {
+  constructor() {
+    super("The accepted schedule is no longer feasible with current confirmed bookings");
+    this.name = "AcceptedScheduleCapacityConflictError";
+  }
+}
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -38,16 +47,20 @@ type RequirementRef = {
   utilizationPercent: number;
   periodStart: string | null;
   periodEnd: string | null;
+  requiredQualification: string | null;
 };
 
 type BookingRef = {
   id: string;
   sourceReferenceId: string | null;
+  sourceType: string;
   resourceTypeId: string | null;
   resourceId: string | null;
   startAt: Date;
   endAt: Date;
   utilizationPercent: number;
+  quantity: string | null;
+  status: "CONFIRMED";
 };
 
 /**
@@ -69,6 +82,15 @@ export async function applyAcceptedAnScheduleChange(
     .where(eq(anLeistungsanfragenTable.id, input.projectionId))
     .limit(1);
   if (!projection) throw new Error("AN schedule-change projection could not be found");
+
+  // Serialize every confirmed-booking decision for one AN. The feasibility
+  // read and booking write below then observe a stable shared capacity pool,
+  // so concurrent acceptances cannot both consume the same remaining units.
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${"an-confirmed-capacity:" + projection.receiverAnOrgId}, 0)
+    )
+  `);
 
   const snapshot = projection.payloadSnapshot as Record<string, unknown>;
   const sourceRequestId = typeof snapshot.sourceRequestId === "string"
@@ -105,26 +127,33 @@ export async function applyAcceptedAnScheduleChange(
   const previousBookings: BookingRef[] = await tx.select({
     id: resourceBookingsTable.id,
     sourceReferenceId: resourceBookingsTable.sourceReferenceId,
+    sourceType: resourceBookingsTable.sourceType,
     resourceTypeId: resourceBookingsTable.resourceTypeId,
     resourceId: resourceBookingsTable.resourceId,
     startAt: resourceBookingsTable.startAt,
     endAt: resourceBookingsTable.endAt,
     utilizationPercent: resourceBookingsTable.utilizationPercent,
+    quantity: resourceBookingsTable.quantity,
+    status: resourceBookingsTable.status,
   }).from(resourceBookingsTable).where(and(
     eq(resourceBookingsTable.nuOrgId, projection.receiverAnOrgId),
-    eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
     eq(resourceBookingsTable.status, "CONFIRMED"),
   ));
   const chainBookings = previousBookings.filter((booking: BookingRef) =>
+    booking.sourceType === "TAKT_REQUEST" &&
     chainProjectionIds.includes(booking.sourceReferenceId ?? ""),
   );
   const otherConfirmedBookings = previousBookings.filter((booking: BookingRef) =>
+    booking.sourceType !== "TAKT_REQUEST" ||
     !chainProjectionIds.includes(booking.sourceReferenceId ?? ""),
   );
   const resources = await tx.select({
     id: resourcesTable.id,
     resourceTypeId: resourcesTable.resourceTypeId,
+    type: resourcesTable.type,
+    name: resourcesTable.name,
     capacity: resourcesTable.capacity,
+    qualifications: resourcesTable.qualifications,
     active: resourcesTable.active,
   }).from(resourcesTable).where(and(
     eq(resourcesTable.anOrgId, projection.receiverAnOrgId),
@@ -139,6 +168,47 @@ export async function applyAcceptedAnScheduleChange(
     targetWindowStart,
     oldWindowStart,
   );
+  const feasibility = evaluateResourceRequirements({
+    requirements: oldRequirements
+      .filter((requirement): requirement is typeof requirement & { resourceTypeId: string } =>
+        Boolean(requirement.resourceTypeId),
+      )
+      .map((requirement) => ({
+        id: requirement.id,
+        resourceTypeId: requirement.resourceTypeId,
+        requiredCapacity: requirement.requiredCapacity,
+        utilizationPercent: requirement.utilizationPercent,
+        requiredQualification: requirement.requiredQualification,
+        periodStart: requirement.periodStart,
+        periodEnd: requirement.periodEnd,
+      })),
+    resources: resources.map((resource: any) => ({
+      id: resource.id,
+      resourceTypeId: resource.resourceTypeId,
+      type: resource.type,
+      name: resource.name,
+      capacity: resource.capacity,
+      qualifications: resource.qualifications,
+    })),
+    bookings: otherConfirmedBookings.map((booking: any) => ({
+      id: booking.id,
+      resourceId: booking.resourceId,
+      resourceTypeId: booking.resourceTypeId,
+      quantity: booking.quantity,
+      startAt: booking.startAt,
+      endAt: booking.endAt,
+      status: booking.status,
+      utilizationPercent: booking.utilizationPercent,
+    })),
+    windowStart: input.targetStart,
+    windowEnd: input.targetEnd,
+  });
+  if (
+    requirements.some((requirement) => !requirement.localResourceTypeId) ||
+    feasibility.conflicts.length > 0
+  ) {
+    throw new AcceptedScheduleCapacityConflictError();
+  }
   const assignments = restoreConcreteResourceAssignments(
     oldRequirements,
     chainBookings.filter((booking): booking is BookingRef & { resourceId: string } =>

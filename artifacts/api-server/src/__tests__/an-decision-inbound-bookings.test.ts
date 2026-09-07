@@ -13,6 +13,7 @@ import {
   organizationsTable,
   resourceBookingsTable,
   resourceTypesTable,
+  resourcesTable,
 } from "@workspace/db";
 import {
   externalCoordinationDecisionSchema,
@@ -25,6 +26,7 @@ const PREFIX = "an-decision-inbound";
 const AG = `${PREFIX}-ag`;
 const AN = `${PREFIX}-an`;
 const TYPE = `${PREFIX}-type`;
+const RESOURCE = `${PREFIX}-resource`;
 
 function decision(
   messageId: string,
@@ -115,6 +117,7 @@ async function cleanup() {
     eq(dataspaceExchangesTable.receiverOrgId, AN),
   )).catch(() => {});
   await db.delete(anLeistungsanfragenTable).where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN)).catch(() => {});
+  await db.delete(resourcesTable).where(eq(resourcesTable.anOrgId, AN)).catch(() => {});
   await db.delete(resourceTypesTable).where(eq(resourceTypesTable.anOrgId, AN)).catch(() => {});
   await db.delete(organizationsTable).where(inArray(organizationsTable.id, [AG, AN])).catch(() => {});
 }
@@ -130,6 +133,16 @@ beforeAll(async () => {
     anOrgId: AN,
     name: "Local workers",
     category: "PERSONNEL",
+    active: true,
+  });
+  await db.insert(resourcesTable).values({
+    id: RESOURCE,
+    anOrgId: AN,
+    resourceTypeId: TYPE,
+    type: "CREW",
+    name: "Local worker pool",
+    capacity: 8,
+    capacityUnit: "PERSONS",
     active: true,
   });
 });

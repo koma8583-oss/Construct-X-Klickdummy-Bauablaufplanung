@@ -12,6 +12,7 @@ import { anDb } from "@workspace/db";
 import {
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
   availabilityChecksTable,
   organizationsTable,
   resourceBookingsTable,
@@ -21,6 +22,10 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { runAnAvailabilityCheck } from "../services/an-leistungsanfrage-service";
 import { evaluateResourceRequirements } from "../services/resource-availability-service";
+import {
+  AcceptedScheduleCapacityConflictError,
+  applyAcceptedAnScheduleChange,
+} from "../services/an-schedule-change-booking-service";
 
 const AG_ORG = "t362-ag-org";
 const AN_ORG = "t362-an-org";
@@ -98,6 +103,8 @@ async function seedRequest(requestId: string, requiredCapacity: number) {
 async function addBooking(input: {
   id: string;
   resourceId: string | null;
+  sourceReferenceId?: string;
+  sourceType?: "MANUAL_BLOCK" | "TAKT_REQUEST";
   quantity?: number;
   utilizationPercent?: number;
   status: "CONFIRMED" | "TENTATIVE" | "CANCELLED";
@@ -109,8 +116,8 @@ async function addBooking(input: {
     nuOrgId: AN_ORG,
     resourceId: input.resourceId,
     resourceTypeId: RESOURCE_TYPE,
-    sourceType: "MANUAL_BLOCK",
-    sourceReferenceId: input.id,
+    sourceType: input.sourceType ?? "MANUAL_BLOCK",
+    sourceReferenceId: input.sourceReferenceId ?? input.id,
     startAt: new Date(input.startAt ?? `${WINDOW_START}T00:00:00Z`),
     endAt: new Date(input.endAt ?? "2027-06-03T00:00:00Z"),
     utilizationPercent: input.utilizationPercent ?? 100,
@@ -158,6 +165,14 @@ async function runCheck(requestId: string): Promise<{
 async function cleanupRequestRows() {
   await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
   await anDb.delete(availabilityChecksTable).where(eq(availabilityChecksTable.nuOrgId, AN_ORG));
+  await anDb.delete(anLeistungsantwortenTable).where(
+    inArray(
+      anLeistungsantwortenTable.anLeistungsanfrageId,
+      anDb.select({ id: anLeistungsanfragenTable.id })
+        .from(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN_ORG)),
+    ),
+  );
   await anDb.delete(anLeistungsanfrageResourceRequirementsTable).where(
     inArray(
       anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId,
@@ -220,6 +235,99 @@ afterAll(async () => {
 });
 
 describe("runAnAvailabilityCheck — booking capacity semantics", () => {
+  it("rejects a stale feasible alternative before creating an over-capacity booking", async () => {
+    const requestId = "t362-stale-alternative";
+    await seedRequest(requestId, 8);
+    expect((await runCheck(requestId)).result).toBe("FEASIBLE");
+    const [beforeAcceptance] = await anDb.select({ status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.id, `${requestId}-projection`));
+
+    await addBooking({
+      id: "t362-capacity-consumed-after-check",
+      resourceId: null,
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      targetEnd: new Date("2027-06-03T00:00:00Z"),
+      note: "accept stale alternative",
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.id).toBe("t362-capacity-consumed-after-check");
+    const [projection] = await anDb.select({ status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.id, `${requestId}-projection`));
+    expect(projection?.status).toBe(beforeAcceptance?.status);
+  });
+
+  it("allows only one concurrent acceptance to consume the shared pool", async () => {
+    const firstRequestId = "t362-concurrent-first";
+    const secondRequestId = "t362-concurrent-second";
+    await seedRequest(firstRequestId, 6);
+    await seedRequest(secondRequestId, 6);
+
+    const accept = (requestId: string) => anDb.transaction((tx) =>
+      applyAcceptedAnScheduleChange(tx, {
+        projectionId: `${requestId}-projection`,
+        targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+        targetEnd: new Date("2027-06-03T00:00:00Z"),
+        note: "concurrent acceptance",
+      }),
+    );
+    const results = await Promise.allSettled([
+      accept(firstRequestId),
+      accept(secondRequestId),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      status: "rejected",
+      reason: expect.any(AcceptedScheduleCapacityConflictError),
+    });
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.quantity).toBe("6.00");
+  });
+
+  it("preserves and counts a manual booking whose source reference matches the projection", async () => {
+    const requestId = "t362-manual-reference-collision";
+    await seedRequest(requestId, 8);
+    await addBooking({
+      id: "t362-manual-reference-collision-booking",
+      resourceId: null,
+      sourceReferenceId: `${requestId}-projection`,
+      sourceType: "MANUAL_BLOCK",
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      targetEnd: new Date("2027-06-03T00:00:00Z"),
+      note: "accept with colliding manual source reference",
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]).toMatchObject({
+      id: "t362-manual-reference-collision-booking",
+      sourceType: "MANUAL_BLOCK",
+      sourceReferenceId: `${requestId}-projection`,
+      status: "CONFIRMED",
+    });
+  });
+
   it("does not reuse one shared resource across competing qualifications", () => {
     const result = evaluateResourceRequirements({
       requirements: [
