@@ -40,7 +40,10 @@ export default defineConfig({
     __dirname,
     schemaFile,
   ),
-  schemaFilter: [schema],
+  // Unqualified pgEnum definitions are shared in public. Include public during
+  // introspection so role-specific pushes reuse existing enum types instead of
+  // trying to recreate them for AG, AN and Hub independently.
+  schemaFilter: [schema, "public"],
   dialect: "postgresql",
   dbCredentials: {
     url: databaseUrl.toString(),
