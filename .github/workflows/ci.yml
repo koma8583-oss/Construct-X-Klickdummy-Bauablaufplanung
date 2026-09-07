@@ -64,7 +64,10 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Initialize the shared test database
-        run: DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" bash scripts/setup-shared-database.sh
+        run: |
+          set -o pipefail
+          DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" \
+            bash scripts/setup-shared-database.sh 2>&1 | tee /tmp/ci-db.log
 
       - name: Typecheck API, GU, and NU
         run: pnpm run validate:types
