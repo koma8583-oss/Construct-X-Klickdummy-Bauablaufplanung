@@ -299,6 +299,120 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     ]);
   });
 
+  it.each([
+    ["null qualification metadata", null],
+    ["missing qualification metadata", undefined],
+    ["empty qualification metadata", []],
+    ["different qualification metadata", ["OTHER"]],
+  ])("fails closed for %s when a qualification is required", (_label, qualifications) => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "qualification-required",
+        resourceTypeId: "qualification-required-type",
+        requiredCapacity: 1,
+        utilizationPercent: 100,
+        requiredQualification: "SCC",
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [{
+        id: "qualification-unproven-resource",
+        resourceTypeId: "qualification-required-type",
+        type: "CREW",
+        name: "Unproven crew",
+        capacity: 4,
+        qualifications,
+      }],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({
+        conflictType: "MISSING_QUALIFICATION",
+        missingQualification: "SCC",
+      }),
+    ]);
+    expect(result.missingQualifications).toEqual(["SCC"]);
+  });
+
+  it("does not let unproven resources make a qualified mixed pool feasible", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "mixed-qualified-demand",
+        resourceTypeId: "mixed-qualification-type",
+        requiredCapacity: 7,
+        utilizationPercent: 100,
+        requiredQualification: "SCC",
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [
+        {
+          id: "mixed-unproven-resource",
+          resourceTypeId: "mixed-qualification-type",
+          type: "CREW",
+          name: "Unproven crew",
+          capacity: 4,
+          qualifications: null,
+        },
+        {
+          id: "mixed-other-qualified-resource",
+          resourceTypeId: "mixed-qualification-type",
+          type: "CREW",
+          name: "Other qualified crew",
+          capacity: 4,
+          qualifications: ["OTHER"],
+        },
+      ],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({
+        conflictType: "MISSING_QUALIFICATION",
+        missingQualification: "SCC",
+      }),
+    ]);
+    expect(result.bookingRequirements).toHaveLength(0);
+  });
+
+  it("keeps resources without qualification requirements usable", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "qualification-optional",
+        resourceTypeId: "qualification-optional-type",
+        requiredCapacity: 4,
+        utilizationPercent: 100,
+        requiredQualification: null,
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [{
+        id: "qualification-optional-resource",
+        resourceTypeId: "qualification-optional-type",
+        type: "CREW",
+        name: "Unqualified but usable crew",
+        capacity: 4,
+        qualifications: null,
+      }],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.bookingRequirements).toEqual([
+      expect.objectContaining({
+        resourceTypeId: "qualification-optional-type",
+        requiredQualification: null,
+      }),
+    ]);
+  });
+
   it("uses the peak demand in a partial overlap and records the segment accounting", () => {
     const result = evaluateResourceRequirements({
       requirements: [

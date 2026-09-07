@@ -724,7 +724,10 @@ async function executeLegacyCheck(
 
   // ── Rule 8: Required qualifications ─────────────────────────────────────────
   const allQuals = nuResources.flatMap(r =>
-    Array.isArray(r.qualifications) ? (r.qualifications as string[]) : [],
+    Array.isArray(r.qualifications)
+      ? r.qualifications.filter((qualification): qualification is string =>
+        typeof qualification === "string")
+      : [],
   );
 
   for (const req of snapshot.resourceRequirements) {

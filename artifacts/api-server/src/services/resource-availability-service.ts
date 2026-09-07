@@ -257,12 +257,12 @@ function resourceMatchesQualification(
   qualification: string | null,
 ): boolean {
   if (!qualification) return true;
-  // Legacy projections may not carry qualification metadata at all. An
-  // explicit empty list remains a real "no qualification" declaration.
-  if (resource.qualifications === null || resource.qualifications === undefined) return true;
-  return Array.isArray(resource.qualifications) &&
-    (resource.qualifications as string[]).some((value) =>
-      normalizedQualification(value) === qualification);
+  // A concrete qualification requirement must be proven by an explicit,
+  // matching entry. Missing, null, empty, malformed, and unknown metadata is
+  // therefore non-matching; only the no-requirement case is open.
+  if (!Array.isArray(resource.qualifications)) return false;
+  return resource.qualifications.some((value) =>
+    typeof value === "string" && normalizedQualification(value) === qualification);
 }
 
 /**

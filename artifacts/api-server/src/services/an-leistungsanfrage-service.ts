@@ -884,6 +884,9 @@ export async function runAnAvailabilityCheck(
   missingQualifications.length = 0;
   tentativeWarnings.length = 0;
   missingQualifications.push(...sharedEvaluation.missingQualifications);
+  const normalizedMissingQualifications = new Set(
+    sharedEvaluation.missingQualifications.map((qualification) => qualification.trim().toLocaleLowerCase()),
+  );
   for (const requirement of requirements) {
     const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
     if (!requirement.localResourceTypeId) {
@@ -904,7 +907,7 @@ export async function runAnAvailabilityCheck(
         conflict.conflictType === "CAPACITY_EXCEEDED");
       conflicts.push({
         conflictType: requirement.requiredQualification &&
-          sharedEvaluation.missingQualifications.includes(requirement.requiredQualification)
+          normalizedMissingQualifications.has(requirement.requiredQualification.trim().toLocaleLowerCase())
           ? "MISSING_QUALIFICATION"
           : "CAPACITY_EXCEEDED",
         resourceId: null,
