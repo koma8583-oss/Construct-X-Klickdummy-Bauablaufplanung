@@ -17,33 +17,33 @@ apply_migration() {
     psql "$database_admin_url" -v ON_ERROR_STOP=1 -f "$migration_file"
 }
 
-# Supported upgrade inputs are either an already partitioned shared database or
-# the legacy public Drizzle schema from which 0025 can create owner copies.
-# Refuse an empty (or unrelated) database before creating role schemas, so the
-# operator gets an actionable error rather than a later missing-table list.
-psql "$database_admin_url" -v ON_ERROR_STOP=1 <<'SQL'
-DO $$
-BEGIN
-  IF NOT (
-    (
-      to_regnamespace('ag') IS NOT NULL
-      AND to_regnamespace('an') IS NOT NULL
-      AND to_regnamespace('hub') IS NOT NULL
-    )
-    OR (
-      to_regclass('public.organizations') IS NOT NULL
-      AND to_regclass('public.users') IS NOT NULL
-    )
-  ) THEN
-    RAISE EXCEPTION USING
-      MESSAGE = 'Shared database setup requires existing ag/an/hub schemas or a legacy public Drizzle schema (public.organizations and public.users); the target database is empty or unsupported';
-  END IF;
-END $$;
-SQL
-
+# The same setup supports both fresh CI/development databases and upgrades.
+# First create the shared schemas/roles. On a fresh database the role schemas
+# are still empty afterwards, so Drizzle creates only the tables owned by each
+# role-specific schema. Existing shared or legacy-public installations keep
+# their data and skip schema creation when tables already exist.
 echo "Applying shared PostgreSQL role and schema boundaries"
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0025_shared_database_roles.sql
+
+role_schema_is_empty() {
+  local schema_name="$1"
+  [[ "$(psql "$database_admin_url" -Atqc \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${schema_name}' AND table_type = 'BASE TABLE'")" == "0" ]]
+}
+
+if role_schema_is_empty ag; then
+  echo "Bootstrapping fresh AG schema"
+  DATABASE_URL="$database_admin_url" DB_ROLE=ag pnpm --filter @workspace/db run push-force
+fi
+if role_schema_is_empty an; then
+  echo "Bootstrapping fresh AN schema"
+  DATABASE_URL="$database_admin_url" DB_ROLE=an pnpm --filter @workspace/db run push-force
+fi
+if role_schema_is_empty hub; then
+  echo "Bootstrapping fresh Hub schema"
+  DATABASE_URL="$database_admin_url" DB_ROLE=hub pnpm --filter @workspace/db run push-force
+fi
 
 for migration in \
   0001_leistungen_canonical_rename.sql \
