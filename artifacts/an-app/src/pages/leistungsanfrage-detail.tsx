@@ -708,17 +708,20 @@ export default function LeistungsanfrageDetailPage() {
   const ownScheduleProposal = openProposalRole === "AN"
     ? openProposal
     : null;
-  const hasAgreement = details.status === "CONFIRMED" || Boolean(coordinationQuery.data?.currentAgreement);
+  const agreementStatus = ["RESPONDED", "CONFIRMED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status);
+  const hasAgreement = details.status === "CONFIRMED"
+    || (agreementStatus && Boolean(coordinationQuery.data?.currentAgreement));
   const terminal = ["RESPONDED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status)
     && !hasAgreement
     && !scheduleProposal;
   const canRespond = policyDetailsAvailable && !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
+  const scheduleProposalRequiresResponse = agreementStatus && Boolean(openProposal);
   const effectiveResponsePreset = responsePreset ?? (
     phaseOverride === 3 && availabilityQuery.data?.result === "FEASIBLE"
       ? { decision: "ACCEPTED" as const }
       : null
   );
-  const derivedPhase = terminal || Boolean(openProposal)
+  const derivedPhase = terminal || scheduleProposalRequiresResponse
     ? 3
     : !details.detailsRetrievedAt
       ? 1
