@@ -44,6 +44,7 @@ import type {
 } from "./dataspace/external-contracts";
 import {
   getHubOutboxMessage,
+  enqueueHubMessageInTransaction,
   listHubDeliveryAttempts,
   listHubOutboxByCorrelation,
   listHubOutboxMessages,
@@ -780,23 +781,29 @@ export async function publishDataPublication(
   // 3. Hash
   const contentHash = computeContentHash(snapshot);
 
-  // 4. Persist snapshot + transition to PUBLISHED
+  // 4. Persist snapshot + transition to PUBLISHED and pre-create every
+  // transport envelope in the same PostgreSQL transaction. Delivery itself is
+  // intentionally post-commit; a worker/retry can drain the durable PENDING
+  // rows after a process crash.
   const now = new Date();
-  await db
-    .update(dataPublicationsTable)
-    .set({
-      contentSnapshot: snapshot,
-      contentHash,
-      status: "PUBLISHED",
-      publishedAt: now,
-      validFrom: pub.validFrom ?? now,
-      publishedByUserId,
-    })
-    .where(eq(dataPublicationsTable.id, publicationId));
+  const notifications = await db.transaction(async (tx) => {
+    await tx
+      .update(dataPublicationsTable)
+      .set({
+        contentSnapshot: snapshot,
+        contentHash,
+        status: "PUBLISHED",
+        publishedAt: now,
+        validFrom: pub.validFrom ?? now,
+        publishedByUserId,
+      })
+      .where(eq(dataPublicationsTable.id, publicationId));
 
-  // 5. Notify each recipient
-  for (const recipient of recipients) {
-    try {
+    const prepared: Array<{
+      recipientId: string;
+      payload: ExternalDataOffer;
+    }> = [];
+    for (const recipient of recipients) {
       const payload = createPublicationDataOffer({
         publication: pub,
         policy,
@@ -807,6 +814,24 @@ export async function publishDataPublication(
         contentHash,
         contentSnapshot: snapshot,
       });
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: payload.metadata.messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+        messageType: "DATA_OFFER_PUBLISHED",
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        payload: payload as unknown as Record<string, unknown>,
+        status: "PENDING",
+      });
+      prepared.push({ recipientId: recipient.id, payload });
+    }
+    return prepared;
+  });
+
+  // 5. Dispatch only after the domain transaction commits.
+  for (const { recipientId, payload } of notifications) {
+    try {
       const exchange = createDataspaceExchange();
       const delivery = await deliverLocalDataOffer(
         payload,
@@ -818,12 +843,12 @@ export async function publishDataPublication(
         await db
           .update(dataPublicationRecipientsTable)
           .set({ notifiedAt: now })
-          .where(eq(dataPublicationRecipientsTable.id, recipient.id));
+          .where(eq(dataPublicationRecipientsTable.id, recipientId));
       }
     } catch (error) {
       console.warn("[dataspace] data-offer delivery failed", {
         publicationId,
-        recipientOrgId: recipient.anOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
         error: error instanceof Error ? error.message : String(error),
       });
       // Best-effort — delivery failure must not abort the publish

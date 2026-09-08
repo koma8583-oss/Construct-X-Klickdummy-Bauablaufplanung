@@ -14,3 +14,9 @@ Transport cleanup is Hub-only in the shared-schema layout; fixtures that resolve
 **Why:** AG/AN roles must not probe or mutate Hub transport copies, while participant discovery is intentionally sourced from the Hub directory.
 
 **How to apply:** Point outbox/inbox/delivery/exchange cleanup at `hub`, and seed/clean the Hub directory explicitly in suites that exercise Dataspace participant resolution.
+
+Central cleanup must also discover test rows through stable external-reference columns, not only primary keys. Historical rows created before FK repair can have random IDs and no surviving parent while still carrying a test-prefixed source request, message, or correlation ID.
+
+**Why:** Orphaned idempotency rows can make a clean rerun look like a retry even after all visibly related fixtures were deleted.
+
+**How to apply:** Seed cleanup traversal from narrowly allowlisted test patterns in both root IDs and semantic external-reference columns, then follow role-local FKs and delete in dependency order.

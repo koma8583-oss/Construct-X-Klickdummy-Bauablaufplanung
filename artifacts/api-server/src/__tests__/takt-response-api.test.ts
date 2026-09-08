@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -156,16 +156,19 @@ afterAll(async () => {
     DELETE FROM an_leistungsantworten WHERE source_request_id LIKE 't48-req-%';
     DELETE FROM an_leistungsanfragen WHERE external_leistungsanfrage_id LIKE 't48-req-%';
   `);
+  await hubDb.execute(sql`
+    DELETE FROM message_inbox WHERE correlation_id LIKE 't48-req-%';
+    DELETE FROM message_outbox WHERE correlation_id LIKE 't48-req-%';
+    DELETE FROM dataspace_exchanges
+      WHERE sender_org_id IN ('t48-gu-org', 't48-nu-org-a', 't48-nu-org-b')
+         OR receiver_org_id IN ('t48-gu-org', 't48-nu-org-a', 't48-nu-org-b');
+  `);
   await db.execute(sql`
     DELETE FROM leistungsantworten         WHERE leistungsanfrage_id LIKE 't48-req-%';
-    DELETE FROM message_inbox              WHERE correlation_id      LIKE 't48-req-%';
-    DELETE FROM message_outbox             WHERE correlation_id      LIKE 't48-req-%';
     DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 't48-req-%';
     DELETE FROM leistungsanfragen          WHERE id                  LIKE 't48-req-%';
     DELETE FROM leistungen                 WHERE id                  LIKE 't48-takt-%';
     DELETE FROM projects               WHERE id = 't48-project';
-    DELETE FROM dataspace_exchanges    WHERE sender_org_id   IN ('t48-gu-org', 't48-nu-org-a', 't48-nu-org-b')
-                                          OR receiver_org_id IN ('t48-gu-org', 't48-nu-org-a', 't48-nu-org-b');
     DELETE FROM users                  WHERE id IN ('t48-gu-user', 't48-nu-user');
     DELETE FROM organizations          WHERE id IN ('t48-gu-org', 't48-nu-org-a', 't48-nu-org-b');
   `);
@@ -358,7 +361,7 @@ describe("POST /an/takt-requests/:id/responses — Dataspace delivery to AG", ()
         acceptedTimeWindow: { start: "2026-09-15T05:00:00Z", end: "2026-09-19T14:00:00Z" },
       });
 
-    const [exchange] = await db.select()
+    const [exchange] = await hubDb.select()
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -415,7 +418,7 @@ describe("POST /an/takt-requests/:id/responses — Dataspace delivery to AG", ()
 
     const [agResponse] = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
-    const [exchange] = await db.select({ status: dataspaceExchangesTable.status })
+    const [exchange] = await hubDb.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable).where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
         eq(dataspaceExchangesTable.businessObjectId, reqId),
@@ -531,7 +534,7 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
 
     // The retry reuses the same exchange message and cannot create a second
     // AG response or inbound exchange record.
-    const before = await db.select()
+    const before = await hubDb.select()
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.correlationId, reqId),
@@ -545,7 +548,7 @@ describe("POST /takt-requests/:id/responses — idempotency", () => {
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", reasonCode: "NO_CAPACITY" });
 
-    const after = await db.select()
+    const after = await hubDb.select()
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.correlationId, reqId),

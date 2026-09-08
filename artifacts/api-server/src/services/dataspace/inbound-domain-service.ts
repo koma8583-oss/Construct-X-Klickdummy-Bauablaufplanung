@@ -581,6 +581,28 @@ export async function processIncomingProjectInvitationResponse(payload: External
       updatedAt: new Date(),
     }).where(and(eq(projectMembershipsTable.id, membership.id), eq(projectMembershipsTable.status, "INVITED"))).returning();
     if (!updated) throw new Error("Inbound project invitation response conflicts with the current membership status");
+    if (membership.projectAgreementPolicyId) {
+      await tx.update(coordinationPoliciesTable).set(
+        nextStatus === "ACTIVE"
+          ? {
+            lifecycleStatus: "ACCEPTED",
+            consentedAt: respondedAt,
+            consentedByOrgId: membership.anOrgId,
+            updatedAt: new Date(),
+          }
+          : {
+            lifecycleStatus: "REJECTED",
+            consentedAt: null,
+            consentedByOrgId: null,
+            updatedAt: new Date(),
+          },
+      ).where(and(
+        eq(coordinationPoliciesTable.id, membership.projectAgreementPolicyId),
+        nextStatus === "ACTIVE"
+          ? inArray(coordinationPoliciesTable.lifecycleStatus, ["PUBLISHED", "CONSENT_REQUIRED", "ACCEPTED"])
+          : inArray(coordinationPoliciesTable.lifecycleStatus, ["PUBLISHED", "CONSENT_REQUIRED"]),
+      ));
+    }
     await tx.update(dataPublicationRecipientsTable).set(
       nextStatus === "ACTIVE"
         ? { status: "ACCEPTED", policyAcceptedAt: respondedAt }

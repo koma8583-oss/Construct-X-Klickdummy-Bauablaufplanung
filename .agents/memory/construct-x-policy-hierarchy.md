@@ -26,3 +26,9 @@ AN projections store validity and retention inside the effective policy, not as 
 **Why:** Passing a projection directly to the guard silently skipped validity checks, while list and direct-service paths could otherwise disclose fields or persist responses despite a protected detail route.
 
 **How to apply:** Normalize projection policy state before every domain guard, redact snapshot-derived list fields when DETAILS is denied, and reload the real request, recipient, status, and referenced policy before any response write.
+
+Policy construction must honor each template's allowed overrides: schedule-coordination policies do not accept workPackageReference, while performance policies do. Preview and persisted child-policy construction must use the same purpose-specific shape.
+
+**Why:** Passing performance-only overrides into the schedule template raises an unhandled policy-template error before the intended NOT_PERMITTED decision can be returned.
+
+**How to apply:** Omit workPackageReference for RAHMENTERMINE in both preview and snapshot creation; keep parent-purpose and field-scope checks authoritative in resolvePolicyDelta.

@@ -15,7 +15,7 @@
  * Fixture prefix: "dtc-"
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { anDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -107,13 +107,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`DELETE FROM availability_checks WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM availability_checks WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE an_org_id = ${ORG_NU}`).catch(() => {});
-  await db.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resource_bookings WHERE nu_org_id = ${ORG_NU}`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id LIKE 'dtc-req-%'`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ${ORG_AG}`).catch(() => {});
-  await db.execute(sql`DELETE FROM resources WHERE an_org_id = ${ORG_NU}`).catch(() => {});
-  await db.execute(sql`DELETE FROM resource_types WHERE an_org_id = ${ORG_NU}`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resources WHERE an_org_id = ${ORG_NU}`).catch(() => {});
+  await anDb.execute(sql`DELETE FROM resource_types WHERE an_org_id = ${ORG_NU}`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE project_id = ${PROJECT}`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = ${PROJECT}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${USER_ID}`).catch(() => {});
@@ -124,7 +124,7 @@ afterAll(async () => {
 
 describe("DTC test 1 — resource type stores dtcClass URI", () => {
   it("creates a ResourceType with the full DTC URI and derived category", async () => {
-    const [rt] = await db.insert(resourceTypesTable).values({
+    const [rt] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU,
       name: "Facharbeiter Trockenbau",
       category: "PERSONNEL",
@@ -137,7 +137,7 @@ describe("DTC test 1 — resource type stores dtcClass URI", () => {
     expect(rt.code).toBe("LAB-DRYWALL");
     expect(rt.category).toBe("PERSONNEL");
 
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
   });
 });
 
@@ -146,7 +146,7 @@ describe("DTC test 1 — resource type stores dtcClass URI", () => {
 describe("DTC test 2 — MACHINE category maps to AsPlannedEquipment", () => {
   it("stores EQUIPMENT DTC class for a MACHINE-category type", async () => {
     // According to the migration mapping: MACHINE → EQUIPMENT (AsPlannedEquipment)
-    const [rt] = await db.insert(resourceTypesTable).values({
+    const [rt] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU,
       name: "Kran",
       category: "MACHINE",
@@ -156,7 +156,7 @@ describe("DTC test 2 — MACHINE category maps to AsPlannedEquipment", () => {
     expect(rt.category).toBe("MACHINE");
     expect(rt.dtcClass).toBe(DTC.EQUIPMENT);
 
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
   });
 });
 
@@ -164,12 +164,12 @@ describe("DTC test 2 — MACHINE category maps to AsPlannedEquipment", () => {
 
 describe("DTC test 3 — resource must link to a ResourceType", () => {
   it("creates a resource linked to a resource type", async () => {
-    const [rt] = await db.insert(resourceTypesTable).values({
+    const [rt] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU, name: "Kolonne Trockenbau", category: "CREW",
       dtcClass: DTC.WORKER_CREW, capacityUnit: "PERSONS",
     }).returning();
 
-    const [res] = await db.insert(resourcesTable).values({
+    const [res] = await anDb.insert(resourcesTable).values({
       anOrgId: ORG_NU, type: "CREW", name: "Kolonne A",
       resourceTypeId: rt.id, capacity: 6,
     }).returning();
@@ -177,8 +177,8 @@ describe("DTC test 3 — resource must link to a ResourceType", () => {
     expect(res.resourceTypeId).toBe(rt.id);
     expect(res.capacity).toBe(6);
 
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, res.id));
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
   });
 });
 
@@ -186,12 +186,12 @@ describe("DTC test 3 — resource must link to a ResourceType", () => {
 
 describe("DTC test 4 — type-level booking without resourceId", () => {
   it("inserts a booking with resourceTypeId but no resourceId", async () => {
-    const [rt] = await db.insert(resourceTypesTable).values({
+    const [rt] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU, name: "Gerät DTC4", category: "EQUIPMENT",
       dtcClass: DTC.EQUIPMENT,
     }).returning();
 
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU,
       resourceId: null,
       resourceTypeId: rt.id,
@@ -206,8 +206,8 @@ describe("DTC test 4 — type-level booking without resourceId", () => {
     expect(booking.resourceTypeId).toBe(rt.id);
     expect(Number(booking.quantity)).toBe(2);
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rt.id));
   });
 });
 
@@ -219,35 +219,35 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
 
   beforeAll(async () => {
     // Primary resource type: 6 persons capacity (2 resources × 3 persons each)
-    const [rt] = await db.insert(resourceTypesTable).values({
+    const [rt] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU, name: "Trockenbauer DTC", category: "PERSONNEL",
       dtcClass: DTC.WORKER, capacityUnit: "PERSONS",
     }).returning();
     rtId = rt.id;
 
     // Secondary resource type (should not affect primary checks)
-    const [rtOther] = await db.insert(resourceTypesTable).values({
+    const [rtOther] = await anDb.insert(resourceTypesTable).values({
       anOrgId: ORG_NU, name: "Elektriker DTC", category: "PERSONNEL",
       dtcClass: DTC.WORKER, capacityUnit: "PERSONS",
     }).returning();
     rtOtherId = rtOther.id;
 
     // Two resources of the primary type — total capacity 6
-    await db.insert(resourcesTable).values([
+    await anDb.insert(resourcesTable).values([
       { anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Worker A", resourceTypeId: rtId, capacity: 3 },
       { anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Worker B", resourceTypeId: rtId, capacity: 3 },
     ]).onConflictDoNothing();
 
     // One resource of the secondary type — capacity 5
-    await db.insert(resourcesTable).values({
+    await anDb.insert(resourcesTable).values({
       anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Electrician", resourceTypeId: rtOtherId, capacity: 5,
     }).onConflictDoNothing();
   });
 
   afterAll(async () => {
-    await db.execute(sql`DELETE FROM resources WHERE resource_type_id IN (${rtId}, ${rtOtherId})`).catch(() => {});
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rtId)).catch(() => {});
-    await db.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rtOtherId)).catch(() => {});
+    await anDb.execute(sql`DELETE FROM resources WHERE resource_type_id IN (${rtId}, ${rtOtherId})`).catch(() => {});
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rtId)).catch(() => {});
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, rtOtherId)).catch(() => {});
   });
 
   // Test 5: Existing bookings reduce available capacity
@@ -263,7 +263,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     }).onConflictDoNothing();
 
     // Existing booking consuming 3 units (type-level)
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 3,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"), endAt: new Date("2027-03-14T00:00:00Z"),
@@ -275,7 +275,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).not.toBe("FEASIBLE");
     expect(check.internalResultPayload?.conflicts.length).toBeGreaterThan(0);
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
@@ -292,7 +292,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     }).onConflictDoNothing();
 
     // Book 2 units away, leaving only 4 available
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 2,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"), endAt: new Date("2027-03-14T00:00:00Z"),
@@ -303,7 +303,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).not.toBe("FEASIBLE");
     expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
@@ -340,7 +340,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     }).onConflictDoNothing();
 
     // Book 5 units of the OTHER resource type — must NOT reduce primary type capacity
-    const [otherBooking] = await db.insert(resourceBookingsTable).values({
+    const [otherBooking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtOtherId, resourceId: null, quantity: 5,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"), endAt: new Date("2027-03-14T00:00:00Z"),
@@ -351,7 +351,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     // Primary type has 6 available and 6 required — should be FEASIBLE
     expect(check.result).toBe("FEASIBLE");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, otherBooking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, otherBooking.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
@@ -369,7 +369,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
 
     // This consumes all capacity in the overall request window, but not in
     // this requirement's narrower period.
-    const [booking] = await db.insert(resourceBookingsTable).values({
+    const [booking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 6,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"),
@@ -382,7 +382,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).toBe("FEASIBLE");
     expect(check.internalResultPayload?.conflicts).toHaveLength(0);
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, booking.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
@@ -392,7 +392,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     await seedTakt(taktId);
     await seedRequest(reqId, taktId);
 
-    const [qualifiedResource] = await db.insert(resourcesTable).values({
+    const [qualifiedResource] = await anDb.insert(resourcesTable).values({
       anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Qualified Worker",
       resourceTypeId: rtId, capacity: 6, qualifications: ["  SCC  "],
     }).returning();
@@ -407,7 +407,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).toBe("FEASIBLE");
     expect(check.internalResultPayload?.missingQualifications).toHaveLength(0);
 
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, qualifiedResource.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, qualifiedResource.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 
@@ -422,11 +422,11 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
       requiredCapacity: "9", utilizationPercent: 100,
     });
 
-    const [concreteResource] = await db.insert(resourcesTable).values({
+    const [concreteResource] = await anDb.insert(resourcesTable).values({
       anOrgId: ORG_NU, type: "EMPLOYEE", name: "DTC Concrete Booking Worker",
       resourceTypeId: rtId, capacity: 3,
     }).returning();
-    const [concreteBooking] = await db.insert(resourceBookingsTable).values({
+    const [concreteBooking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: concreteResource.id,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"),
@@ -434,7 +434,7 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
       utilizationPercent: 100,
       status: "CONFIRMED",
     }).returning();
-    const [typeBooking] = await db.insert(resourceBookingsTable).values({
+    const [typeBooking] = await anDb.insert(resourceBookingsTable).values({
       nuOrgId: ORG_NU, resourceTypeId: rtId, resourceId: null, quantity: 6,
       sourceType: "MANUAL_BLOCK",
       startAt: new Date("2027-03-01T00:00:00Z"),
@@ -449,9 +449,9 @@ describe("DTC tests 5–9 — availability check with ResourceType requirements"
     expect(check.result).not.toBe("FEASIBLE");
     expect(check.publicResultPayload?.reasonCode).toBe("RESOURCE_CONFLICT");
 
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
-    await db.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
-    await db.delete(resourcesTable).where(eq(resourcesTable.id, concreteResource.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, concreteBooking.id));
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.id, typeBooking.id));
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, concreteResource.id));
     await db.execute(sql`DELETE FROM leistungsanfrage_resource_requirements WHERE leistungsanfrage_id = ${reqId}`).catch(() => {});
   });
 

@@ -23,7 +23,7 @@
  * Fixture prefix: "t73-"
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -91,9 +91,9 @@ afterAll(async () => {
     "remind-soon", "remind-today", "remind-overdue", "remind-answered", "remind-dup",
     "race"].map(t => reqId(t));
 
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.correlationId, reqIds));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.correlationId, reqIds));
   await db.delete(taktRequestRemindersTable)
     .where(inArray(taktRequestRemindersTable.taktRequestId, reqIds));
@@ -257,7 +257,7 @@ describe("Task 7.4 — expiry handling", () => {
   });
 
   it("t73-E7: expiry generates TAKT_REQUEST_EXPIRED outbox rows for GU and NU", async () => {
-    const rows = await db.select({ recipientOrgId: messageOutboxTable.recipientOrgId })
+    const rows = await hubDb.select({ recipientOrgId: messageOutboxTable.recipientOrgId })
       .from(messageOutboxTable)
       .where(
         and(
@@ -428,7 +428,7 @@ describe("Task 7.5 — reminder dispatch", () => {
 
   it("t73-R6: reminder payload contains no forbidden fields", async () => {
     // Check outbox payload for the RESPONSE_DUE_SOON reminder
-    const [outboxRow] = await db.select({ payload: messageOutboxTable.payload })
+    const [outboxRow] = await hubDb.select({ payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(
         and(
@@ -460,7 +460,7 @@ describe("Task 7.5 — reminder dispatch", () => {
   });
 
   it("t73-R8: NU reminder goes only to NU org, not GU", async () => {
-    const rows = await db.select({ recipientOrgId: messageOutboxTable.recipientOrgId })
+    const rows = await hubDb.select({ recipientOrgId: messageOutboxTable.recipientOrgId })
       .from(messageOutboxTable)
       .where(
         and(

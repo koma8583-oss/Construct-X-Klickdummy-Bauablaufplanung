@@ -89,6 +89,16 @@ No global code rename is performed in this step. Both term sets may appear in th
 - All timestamps use ISO 8601 format; internally UTC.
 - Typecheck and build must pass after every change.
 
+### Git and release workflow
+
+- Finish PR #3 cleanly as the final one-off feature branch. Merge it into protected `main` only when the complete **Quality and release gate** is green.
+- After PR #3 is merged, Replit works continuously on a long-lived `develop` branch.
+- Collect and test related small changes on `develop`; do not create a separate branch or pull request for every minor change.
+- Create pull requests from `develop` to `main` only for larger, coherent development blocks with a clear release value.
+- Keep `main` stable and protected. Never push normal development changes directly to `main`.
+- Before merging any pull request into `main`, require the complete release validation suite to pass, including typechecks, API/AG/AN tests, build, and desktop/mobile Playwright gates.
+- A failed, skipped, flaky, incomplete, or infrastructure-blocked required check is not a green release gate and must block the merge.
+
 ---
 
 ## Where things live

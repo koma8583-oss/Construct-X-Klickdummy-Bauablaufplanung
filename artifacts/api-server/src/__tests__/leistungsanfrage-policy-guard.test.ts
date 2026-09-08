@@ -5,6 +5,7 @@ import {
   policyAccessDecision,
 } from "../services/leistungsanfrage-policy-guard";
 import { externalProjectInvitationResponseSchema } from "../services/dataspace/external-contracts";
+import { policyAccessConflictBody } from "../routes/an/policy-access-response";
 
 describe("Leistungsanfrage domain policy guard", () => {
   it("allows all work actions within the accepted baseline without second consent", () => {
@@ -32,6 +33,25 @@ describe("Leistungsanfrage domain policy guard", () => {
       policyDeltaClass: "NOT_PERMITTED",
       policyConsentStatus: "NOT_REQUIRED",
     }, "ANSWER")).toThrow(/NOT_PERMITTED/);
+  });
+
+  it("keeps both protected-action 409 contracts stable", () => {
+    expect(policyAccessConflictBody({
+      code: "POLICY_CONSENT_REQUIRED",
+      action: "AVAILABILITY",
+    })).toEqual({
+      error: "POLICY_CONSENT_REQUIRED",
+      code: "POLICY_CONSENT_REQUIRED",
+      action: "AVAILABILITY",
+    });
+    expect(policyAccessConflictBody({
+      code: "NOT_PERMITTED",
+      action: "RESOURCE",
+    })).toEqual({
+      error: "NOT_PERMITTED",
+      code: "NOT_PERMITTED",
+      action: "RESOURCE",
+    });
   });
 
   it("blocks protected work outside effective validity or retention windows", () => {

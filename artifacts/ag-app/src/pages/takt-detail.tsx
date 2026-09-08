@@ -9,8 +9,7 @@ import {
   useCreateDataPublication, usePublishDataPublication,
   useCreateTaktRequestBatchWithSnapshot, useSendTaktRequest,
   useListTaktRequests, useDeleteTakt,
-  getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
-  useGetPolicyTemplateRegistry,
+   getListTaktRequestsQueryKey, getGetAgProjectsOverviewQueryKey,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,11 +68,6 @@ export default function TaktDetail() {
       }>>;
     },
   });
-  const {
-    data: policyRegistry,
-    isLoading: policiesLoading,
-    isError: policiesError,
-  } = useGetPolicyTemplateRegistry();
   const updateTakt = useUpdateTakt();
   const createDataPublication = useCreateDataPublication(projectId);
   const publishDataPublication = usePublishDataPublication();
@@ -183,17 +177,19 @@ export default function TaktDetail() {
       const created = await createRequestBatch.mutateAsync({
         data: {
           taktId: takt.id,
-          nuOrgIds: values.nuOrgIds,
+          recipients: values.recipients,
           message: values.message,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
+          purpose: values.purpose,
+          selectedFields: values.selectedFields,
         },
       });
       await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));
       refreshTaktData();
       setAssignOpen(false);
-      toast({ title: values.nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
+      toast({ title: values.recipients.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
     } catch (error) {
       toast({ title: 'Fehler bei der Vergabe', description: (error as Error).message, variant: 'destructive' });
     } finally {
@@ -394,9 +390,7 @@ export default function TaktDetail() {
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        policies={policyRegistry}
-        policiesLoading={policiesLoading}
-        policiesError={policiesError}
+        taktId={takt.id}
         isSubmitting={savingAssignment}
         onSubmit={handleAssign}
       />

@@ -188,6 +188,12 @@ export class LocalHubTransport implements MessageTransport {
         const conflictingFields = findConflictingFields(envelope, row);
         throw new IdempotencyConflictError(envelope.messageId, conflictingFields);
       }
+      // Domain transactions may pre-create an outbox row atomically before
+      // the transport is invoked. Claim those rows through the normal retry
+      // path so the first delivery is not silently left at PENDING.
+      if (row.status === "PENDING" || row.status === "FAILED") {
+        return this.retry(row.messageId);
+      }
       // Same content — return existing result without re-sending
       return rowToTransportResult(row);
     }

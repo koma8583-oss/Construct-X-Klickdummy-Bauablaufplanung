@@ -6,9 +6,10 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { TaktRequestBatchInputPurpose } from './taktRequestBatchInputPurpose';
+import type { TaktRequestBatchInputRecipientsItem } from './taktRequestBatchInputRecipientsItem';
 
 /**
- * Body for atomically creating one request per selected NU.
+ * Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
  */
 export interface TaktRequestBatchInput {
   /** @minLength 1 */
@@ -16,29 +17,18 @@ export interface TaktRequestBatchInput {
   /**
      * @minItems 1
      * @maxItems 50
-     * @items.minLength 1
      */
-  nuOrgIds: string[];
+  recipients: TaktRequestBatchInputRecipientsItem[];
   responseRequiredBy?: Date;
   /** @maxLength 255 */
   subject?: string;
   /** @maxLength 2000 */
   message?: string;
   /** Business purpose of the Leistungsfreigabe. */
-  purpose?: TaktRequestBatchInputPurpose;
+  purpose: TaktRequestBatchInputPurpose;
   /**
      * Explicit child-owned fields; the server enforces the purpose whitelist.
      * @items.minLength 1
      */
-  selectedFields?: string[];
-  /**
-     * Exact accepted parent policy selected from the effective-policy response.
-     * @minLength 1
-     */
-  parentPolicyId?: string;
-  /**
-     * Exact version of the selected parent policy.
-     * @minimum 1
-     */
-  parentPolicyVersion?: number;
+  selectedFields: string[];
 }

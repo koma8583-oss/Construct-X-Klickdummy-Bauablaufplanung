@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   hubDb as db,
+  hubDb,
   dataspaceExchangesTable,
   organizationsTable,
 } from "@workspace/db";
@@ -67,7 +68,7 @@ function responsePayload(messageId: string, senderOrgId: string, receiverOrgId: 
 
 afterEach(async () => {
   for (const messageId of createdMessageIds) {
-    await db.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, messageId));
+    await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, messageId));
   }
   for (const id of createdIds) {
     await db.delete(organizationsTable).where(eq(organizationsTable.id, id));
@@ -90,7 +91,7 @@ describe("dataspace inbound idempotency", () => {
       sideEffects += 1;
     });
 
-    const [exchange] = await db.select().from(dataspaceExchangesTable)
+    const [exchange] = await hubDb.select().from(dataspaceExchangesTable)
       .where(eq(dataspaceExchangesTable.messageId, messageId));
     expect(sideEffects).toBe(1);
     expect(exchange.status).toBe("PROCESSED");
@@ -126,7 +127,7 @@ describe("dataspace inbound idempotency", () => {
       throw new Error("downstream unavailable");
     })).rejects.toThrow("downstream unavailable");
 
-    const [failed] = await db.select().from(dataspaceExchangesTable)
+    const [failed] = await hubDb.select().from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.messageId, messageId),
         eq(dataspaceExchangesTable.status, "FAILED"),
@@ -141,7 +142,7 @@ describe("dataspace inbound idempotency", () => {
       sideEffects += 1;
     });
 
-    const [processed] = await db.select().from(dataspaceExchangesTable)
+    const [processed] = await hubDb.select().from(dataspaceExchangesTable)
       .where(eq(dataspaceExchangesTable.messageId, messageId));
     expect(sideEffects).toBe(1);
     expect(processed.status).toBe("PROCESSED");

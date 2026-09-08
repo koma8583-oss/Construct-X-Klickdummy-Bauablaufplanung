@@ -406,7 +406,7 @@ describe("bilateral change proposals", () => {
       end: new Date("2026-09-07T17:00:00Z"),
     });
 
-    const beforeBookings = await db.execute(
+    const beforeBookings = await anDb.execute(
       sql`SELECT count(*)::int AS count FROM resource_bookings WHERE source_reference_id = ${requestId}`,
     );
     const result = await runWithDatabaseRole("ag", () => resolveChangeProposal({
@@ -420,7 +420,7 @@ describe("bilateral change proposals", () => {
     expect(result.status).toBe("ACCEPTED");
     expect(result).toMatchObject({ transportStatus: "DELIVERED" });
     expect(new Date(result.start).toISOString()).toContain("2026-09-03");
-    const afterBookings = await db.execute(
+    const afterBookings = await anDb.execute(
       sql`SELECT count(*)::int AS count FROM resource_bookings WHERE source_reference_id = ${requestId}`,
     );
     expect(afterBookings.rows[0]?.count).toBe(beforeBookings.rows[0]?.count);

@@ -12,6 +12,7 @@ import { anDb } from "@workspace/db";
 import {
   anLeistungsanfrageResourceRequirementsTable,
   anLeistungsanfragenTable,
+  anLeistungsantwortenTable,
   availabilityChecksTable,
   organizationsTable,
   resourceBookingsTable,
@@ -21,6 +22,10 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { runAnAvailabilityCheck } from "../services/an-leistungsanfrage-service";
 import { evaluateResourceRequirements } from "../services/resource-availability-service";
+import {
+  AcceptedScheduleCapacityConflictError,
+  applyAcceptedAnScheduleChange,
+} from "../services/an-schedule-change-booking-service";
 
 const AG_ORG = "t362-ag-org";
 const AN_ORG = "t362-an-org";
@@ -95,9 +100,67 @@ async function seedRequest(requestId: string, requiredCapacity: number) {
   });
 }
 
+async function seedShiftedScheduleRequest(requestId: string) {
+  const targetStart = "2027-06-08";
+  const targetEnd = "2027-06-13";
+  await anDb.insert(anLeistungsanfragenTable).values({
+    id: `${requestId}-projection`,
+    externalLeistungsanfrageId: requestId,
+    externalRequestVersion: 1,
+    sourceMessageId: `${requestId}-message`,
+    payloadHash: `${requestId}-hash`,
+    correlationId: requestId,
+    senderAgOrgId: AG_ORG,
+    receiverAnOrgId: AN_ORG,
+    projectReference: `${requestId}-project`,
+    leistungReference: `${requestId}-leistung`,
+    plannedStart: targetStart,
+    plannedEnd: targetEnd,
+    policySnapshot: { recipientOrganizationId: AN_ORG },
+    payloadSnapshot: {
+      requestId,
+      requestKind: "SCHEDULE_CHANGE",
+      sourceRequestId: requestId,
+      baseTimeWindow: {
+        start: WINDOW_START,
+        end: "2027-06-06",
+      },
+    },
+    status: "DETAILS_RETRIEVED",
+  });
+  await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values([
+    {
+      id: `${requestId}-requirement-a`,
+      anLeistungsanfrageId: `${requestId}-projection`,
+      externalResourceTypeCode: "CREW",
+      externalResourceTypeName: "Crew",
+      localResourceTypeId: RESOURCE_TYPE,
+      requiredCapacity: "4",
+      capacityUnit: "PERSONS",
+      utilizationPercent: 100,
+      periodStart: "2027-06-09",
+      periodEnd: "2027-06-11",
+    },
+    {
+      id: `${requestId}-requirement-b`,
+      anLeistungsanfrageId: `${requestId}-projection`,
+      externalResourceTypeCode: "CREW",
+      externalResourceTypeName: "Crew",
+      localResourceTypeId: RESOURCE_TYPE,
+      requiredCapacity: "4",
+      capacityUnit: "PERSONS",
+      utilizationPercent: 100,
+      periodStart: "2027-06-10",
+      periodEnd: "2027-06-12",
+    },
+  ]);
+}
+
 async function addBooking(input: {
   id: string;
   resourceId: string | null;
+  sourceReferenceId?: string;
+  sourceType?: "MANUAL_BLOCK" | "TAKT_REQUEST";
   quantity?: number;
   utilizationPercent?: number;
   status: "CONFIRMED" | "TENTATIVE" | "CANCELLED";
@@ -109,8 +172,8 @@ async function addBooking(input: {
     nuOrgId: AN_ORG,
     resourceId: input.resourceId,
     resourceTypeId: RESOURCE_TYPE,
-    sourceType: "MANUAL_BLOCK",
-    sourceReferenceId: input.id,
+    sourceType: input.sourceType ?? "MANUAL_BLOCK",
+    sourceReferenceId: input.sourceReferenceId ?? input.id,
     startAt: new Date(input.startAt ?? `${WINDOW_START}T00:00:00Z`),
     endAt: new Date(input.endAt ?? "2027-06-03T00:00:00Z"),
     utilizationPercent: input.utilizationPercent ?? 100,
@@ -158,6 +221,14 @@ async function runCheck(requestId: string): Promise<{
 async function cleanupRequestRows() {
   await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
   await anDb.delete(availabilityChecksTable).where(eq(availabilityChecksTable.nuOrgId, AN_ORG));
+  await anDb.delete(anLeistungsantwortenTable).where(
+    inArray(
+      anLeistungsantwortenTable.anLeistungsanfrageId,
+      anDb.select({ id: anLeistungsanfragenTable.id })
+        .from(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN_ORG)),
+    ),
+  );
   await anDb.delete(anLeistungsanfrageResourceRequirementsTable).where(
     inArray(
       anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId,
@@ -220,6 +291,168 @@ afterAll(async () => {
 });
 
 describe("runAnAvailabilityCheck — booking capacity semantics", () => {
+  it("rejects a stale feasible alternative before creating an over-capacity booking", async () => {
+    const requestId = "t362-stale-alternative";
+    await seedRequest(requestId, 8);
+    expect((await runCheck(requestId)).result).toBe("FEASIBLE");
+    const [beforeAcceptance] = await anDb.select({ status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.id, `${requestId}-projection`));
+
+    await addBooking({
+      id: "t362-capacity-consumed-after-check",
+      resourceId: null,
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      targetEnd: new Date("2027-06-03T00:00:00Z"),
+      note: "accept stale alternative",
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.id).toBe("t362-capacity-consumed-after-check");
+    const [projection] = await anDb.select({ status: anLeistungsanfragenTable.status })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.id, `${requestId}-projection`));
+    expect(projection?.status).toBe(beforeAcceptance?.status);
+  });
+
+  it("allows only one concurrent acceptance to consume the shared pool", async () => {
+    const firstRequestId = "t362-concurrent-first";
+    const secondRequestId = "t362-concurrent-second";
+    await seedRequest(firstRequestId, 6);
+    await seedRequest(secondRequestId, 6);
+
+    const accept = (requestId: string) => anDb.transaction((tx) =>
+      applyAcceptedAnScheduleChange(tx, {
+        projectionId: `${requestId}-projection`,
+        targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+        targetEnd: new Date("2027-06-03T00:00:00Z"),
+        note: "concurrent acceptance",
+      }),
+    );
+    const results = await Promise.allSettled([
+      accept(firstRequestId),
+      accept(secondRequestId),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      status: "rejected",
+      reason: expect.any(AcceptedScheduleCapacityConflictError),
+    });
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.quantity).toBe("6.00");
+  });
+
+  it("preserves and counts a manual booking whose source reference matches the projection", async () => {
+    const requestId = "t362-manual-reference-collision";
+    await seedRequest(requestId, 8);
+    await addBooking({
+      id: "t362-manual-reference-collision-booking",
+      resourceId: null,
+      sourceReferenceId: `${requestId}-projection`,
+      sourceType: "MANUAL_BLOCK",
+      quantity: 4,
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      targetEnd: new Date("2027-06-03T00:00:00Z"),
+      note: "accept with colliding manual source reference",
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]).toMatchObject({
+      id: "t362-manual-reference-collision-booking",
+      sourceType: "MANUAL_BLOCK",
+      sourceReferenceId: `${requestId}-projection`,
+      status: "CONFIRMED",
+    });
+  });
+
+  it("rejects an infeasible shifted overlap before replacing any bookings", async () => {
+    const requestId = "t362-shifted-overlap-conflict";
+    await seedShiftedScheduleRequest(requestId);
+    await addBooking({
+      id: "t362-shifted-overlap-block",
+      resourceId: RESOURCE_A,
+      sourceType: "MANUAL_BLOCK",
+      startAt: "2027-06-10T00:00:00Z",
+      endAt: "2027-06-11T00:00:00Z",
+      status: "CONFIRMED",
+    });
+
+    await expect(anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date("2027-06-08T00:00:00Z"),
+      targetEnd: new Date("2027-06-13T00:00:00Z"),
+      note: "reject shifted overlap",
+      useRequirementPeriods: true,
+    }))).rejects.toBeInstanceOf(AcceptedScheduleCapacityConflictError);
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.id).toBe("t362-shifted-overlap-block");
+  });
+
+  it("recreates concrete bookings on the shifted requirement sub-periods", async () => {
+    const requestId = "t362-shifted-overlap-recreation";
+    await seedShiftedScheduleRequest(requestId);
+    await addBooking({
+      id: "t362-shifted-concrete-a",
+      resourceId: RESOURCE_A,
+      sourceType: "TAKT_REQUEST",
+      sourceReferenceId: `${requestId}-projection`,
+      startAt: "2027-06-02T00:00:00Z",
+      endAt: "2027-06-05T00:00:00Z",
+      status: "CONFIRMED",
+    });
+    await addBooking({
+      id: "t362-shifted-concrete-b",
+      resourceId: RESOURCE_B,
+      sourceType: "TAKT_REQUEST",
+      sourceReferenceId: `${requestId}-projection`,
+      startAt: "2027-06-03T00:00:00Z",
+      endAt: "2027-06-06T00:00:00Z",
+      status: "CONFIRMED",
+    });
+
+    await anDb.transaction((tx) => applyAcceptedAnScheduleChange(tx, {
+      projectionId: `${requestId}-projection`,
+      targetStart: new Date("2027-06-08T00:00:00Z"),
+      targetEnd: new Date("2027-06-13T00:00:00Z"),
+      note: "recreate shifted requirements",
+      useRequirementPeriods: true,
+    }));
+
+    const bookings = await anDb.select().from(resourceBookingsTable)
+      .where(eq(resourceBookingsTable.nuOrgId, AN_ORG));
+    expect(bookings).toHaveLength(2);
+    expect(bookings.map((booking) => [
+      booking.resourceId,
+      booking.startAt.toISOString(),
+      booking.endAt.toISOString(),
+    ]).sort()).toEqual([
+      [RESOURCE_A, "2027-06-09T00:00:00.000Z", "2027-06-12T00:00:00.000Z"],
+      [RESOURCE_B, "2027-06-10T00:00:00.000Z", "2027-06-13T00:00:00.000Z"],
+    ]);
+  });
+
   it("does not reuse one shared resource across competing qualifications", () => {
     const result = evaluateResourceRequirements({
       requirements: [
@@ -296,6 +529,120 @@ describe("runAnAvailabilityCheck — booking capacity semantics", () => {
     expect(feasible.conflicts).toEqual([]);
     expect(infeasible.conflicts).toEqual([
       expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+  });
+
+  it.each([
+    ["null qualification metadata", null],
+    ["missing qualification metadata", undefined],
+    ["empty qualification metadata", []],
+    ["different qualification metadata", ["OTHER"]],
+  ])("fails closed for %s when a qualification is required", (_label, qualifications) => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "qualification-required",
+        resourceTypeId: "qualification-required-type",
+        requiredCapacity: 1,
+        utilizationPercent: 100,
+        requiredQualification: "SCC",
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [{
+        id: "qualification-unproven-resource",
+        resourceTypeId: "qualification-required-type",
+        type: "CREW",
+        name: "Unproven crew",
+        capacity: 4,
+        qualifications,
+      }],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({
+        conflictType: "MISSING_QUALIFICATION",
+        missingQualification: "SCC",
+      }),
+    ]);
+    expect(result.missingQualifications).toEqual(["SCC"]);
+  });
+
+  it("does not let unproven resources make a qualified mixed pool feasible", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "mixed-qualified-demand",
+        resourceTypeId: "mixed-qualification-type",
+        requiredCapacity: 7,
+        utilizationPercent: 100,
+        requiredQualification: "SCC",
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [
+        {
+          id: "mixed-unproven-resource",
+          resourceTypeId: "mixed-qualification-type",
+          type: "CREW",
+          name: "Unproven crew",
+          capacity: 4,
+          qualifications: null,
+        },
+        {
+          id: "mixed-other-qualified-resource",
+          resourceTypeId: "mixed-qualification-type",
+          type: "CREW",
+          name: "Other qualified crew",
+          capacity: 4,
+          qualifications: ["OTHER"],
+        },
+      ],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({
+        conflictType: "MISSING_QUALIFICATION",
+        missingQualification: "SCC",
+      }),
+    ]);
+    expect(result.bookingRequirements).toHaveLength(0);
+  });
+
+  it("keeps resources without qualification requirements usable", () => {
+    const result = evaluateResourceRequirements({
+      requirements: [{
+        id: "qualification-optional",
+        resourceTypeId: "qualification-optional-type",
+        requiredCapacity: 4,
+        utilizationPercent: 100,
+        requiredQualification: null,
+        periodStart: WINDOW_START,
+        periodEnd: WINDOW_END,
+      }],
+      resources: [{
+        id: "qualification-optional-resource",
+        resourceTypeId: "qualification-optional-type",
+        type: "CREW",
+        name: "Unqualified but usable crew",
+        capacity: 4,
+        qualifications: null,
+      }],
+      bookings: [],
+      windowStart: new Date(`${WINDOW_START}T00:00:00Z`),
+      windowEnd: new Date("2027-06-03T00:00:00Z"),
+    });
+
+    expect(result.conflicts).toEqual([]);
+    expect(result.bookingRequirements).toEqual([
+      expect.objectContaining({
+        resourceTypeId: "qualification-optional-type",
+        requiredQualification: null,
+      }),
     ]);
   });
 

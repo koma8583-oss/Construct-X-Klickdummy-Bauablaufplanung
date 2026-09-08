@@ -14,3 +14,9 @@ Child consent is bilateral state: the AN records its local decision and sends it
 **Why:** An AN-local consent flag alone leaves the provider unable to enforce the same lifecycle, while direct cross-domain database updates violate data ownership.
 
 **How to apply:** Correlate consent by child policy ID and participant identities, process it through inbound transport, and update only that policy lifecycle.
+
+For Project Agreement children, `LEISTUNGSKOORDINATION` is the consent-free baseline purpose. Another purpose may be allowed by the parent's `allowedPurposes`, but selecting it is still a per-request delta that requires explicit AN consent.
+
+**Why:** Treating every allowed purpose as baseline made the real `REQUIRES_CONSENT` workflow unreachable; tests could only manufacture consent state directly.
+
+**How to apply:** Resolve an allowed non-baseline purpose to `REQUIRES_CONSENT`, while purposes outside `allowedPurposes` remain `NOT_PERMITTED`. Legacy parents without an explicit purpose vocabulary retain their prior baseline behavior.

@@ -6736,7 +6736,7 @@ export const getGetLatestAvailabilityCheckQueryKey = (requestId: string,) => {
     }
 
 
-export const getGetLatestAvailabilityCheckQueryOptions = <TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetLatestAvailabilityCheckQueryOptions = <TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse | void>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -6755,14 +6755,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetLatestAvailabilityCheckQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>>
-export type GetLatestAvailabilityCheckQueryError = ErrorType<ErrorResponse>
+export type GetLatestAvailabilityCheckQueryError = ErrorType<ErrorResponse | void>
 
 
 /**
  * @summary NU retrieves the latest feasibility check result
  */
 
-export function useGetLatestAvailabilityCheck<TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse>>(
+export function useGetLatestAvailabilityCheck<TData = Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError = ErrorType<ErrorResponse | void>>(
  requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestAvailabilityCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

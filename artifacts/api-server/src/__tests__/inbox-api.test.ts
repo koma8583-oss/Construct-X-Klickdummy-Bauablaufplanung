@@ -90,7 +90,6 @@ async function cleanupFixtures() {
   await agDb.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
   await agDb.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
   await agDb.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
-  await hubDb.execute(sql`DELETE FROM organizations WHERE id = ANY(ARRAY[${sql.raw(orgSql)}])`);
 }
 
 beforeAll(async () => {
@@ -100,12 +99,6 @@ beforeAll(async () => {
     { id: NU_ORG,   name: "T37 NU Org",  type: "AN" },
     { id: NU_ORG_2, name: "T37 NU Org2", type: "AN" },
   ]).onConflictDoNothing();
-  await hubDb.insert(organizationsTable).values([
-    { id: GU_ORG,   name: "T37 GU Org",  type: "AG" },
-    { id: NU_ORG,   name: "T37 NU Org",  type: "AN" },
-    { id: NU_ORG_2, name: "T37 NU Org2", type: "AN" },
-  ]).onConflictDoNothing();
-
   await agDb.insert(usersTable).values([
     { id: GU_USER,   name: "GU",   email: "t37-gu@example.com",   passwordHash: "x" },
     { id: NU_USER,   name: "NU",   email: "t37-nu@example.com",   passwordHash: "x" },
@@ -203,6 +196,10 @@ beforeAll(async () => {
       responseRequiredBy: "2026-11-07T10:00:00Z",
       subject: "T37 Anfrage",
       message: "Bitte prüfen.",
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: agreementId,
+      parentPolicyVersion: 1,
     });
   expect(createRes.status).toBe(201);
   requestId = createRes.body.id;

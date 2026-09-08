@@ -4,7 +4,7 @@ import {
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import type { ExternalDataOfferResponse } from "./dataspace/external-contracts";
-import { enqueueHubMessage } from "./hub-transport-service";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 export class AnDataOfferError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -74,7 +74,7 @@ export async function decideAnDataOffer(input: {
     respondedAt: now.toISOString(),
   };
 
-  const [updated] = await anDb.transaction(async (tx) => {
+  const saved = await anDb.transaction(async (tx) => {
     const [row] = await tx.update(anProjectInvitationsTable).set({
       status: decision,
       policyAcceptedAt: input.action === "accept" ? now : null,
@@ -91,18 +91,18 @@ export async function decideAnDataOffer(input: {
         "Die Leistungsfreigabe wurde bereits beantwortet.",
       );
     }
-    return [row];
-  });
-  await enqueueHubMessage({
-    messageId: payload.metadata.messageId,
-    schemaVersion: "1.0",
-    messageType: "DATA_OFFER_RESPONSE",
-    senderOrgId: input.anOrgId,
-    recipientOrgId: offer.senderAgOrgId,
-    correlationId: offer.correlationId,
-    payload: payload as unknown as Record<string, unknown>,
-    status: "PENDING",
+    await enqueueHubMessageInTransaction(tx, {
+      messageId: payload.metadata.messageId,
+      schemaVersion: "1.0",
+      messageType: "DATA_OFFER_RESPONSE",
+      senderOrgId: input.anOrgId,
+      recipientOrgId: offer.senderAgOrgId,
+      correlationId: offer.correlationId,
+      payload: payload as unknown as Record<string, unknown>,
+      status: "PENDING",
+    });
+    return row;
   });
 
-  return { offer: updated, payload };
+  return { offer: saved, payload };
 }

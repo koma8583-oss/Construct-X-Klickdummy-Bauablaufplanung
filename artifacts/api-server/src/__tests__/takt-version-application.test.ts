@@ -80,11 +80,9 @@ beforeAll(async () => {
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER)).catch(() => {});
   // Flush outbox/inbox before org deletes (FK: message_outbox.sender_org_id → organizations)
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await hubDb.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
-  await db.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});
 
@@ -218,8 +216,8 @@ afterAll(async () => {
   await db.delete(usersTable).where(eq(usersTable.id, GU_USER));
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER));
   // Flush outbox/inbox before org deletes (FK: message_outbox.sender_org_id → organizations)
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await hubDb.execute(sql`DELETE FROM dataspace_exchanges WHERE sender_org_id IN ('t64-gu-org','t64-nu-org') OR receiver_org_id IN ('t64-gu-org','t64-nu-org')`).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});

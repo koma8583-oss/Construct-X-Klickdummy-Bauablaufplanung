@@ -130,7 +130,7 @@ router.get(
       .where(eq(anLeistungsanfragenTable.receiverAnOrgId, nuOrgId));
 
     // Active resources
-    const [resourceAgg] = await db
+    const [resourceAgg] = await anDb
       .select({ total: count() })
       .from(resourcesTable)
       .where(
@@ -141,7 +141,7 @@ router.get(
       );
 
     // Active resource bookings (non-cancelled)
-    const [bookingAgg] = await db
+    const [bookingAgg] = await anDb
       .select({ total: count() })
       .from(resourceBookingsTable)
       .where(

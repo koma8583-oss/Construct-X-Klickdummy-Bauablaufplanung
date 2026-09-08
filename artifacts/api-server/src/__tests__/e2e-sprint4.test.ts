@@ -26,7 +26,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -165,7 +165,8 @@ async function seedAnProjection(
       anLeistungsanfrageId: projection.id,
       externalResourceTypeCode: "CREW",
       externalResourceTypeName: "Crew",
-      requiredCapacity: "1",
+      localResourceTypeId: "t49-crew-type",
+      requiredCapacity: "8",
       capacityUnit: "PERSONS",
       utilizationPercent: 100,
       periodStart: plannedStart,
@@ -323,7 +324,7 @@ afterAll(async () => {
   const testOrgIds = [GU_ORG, NU_ORG] as [string, ...string[]];
 
   // 1. dataspace_exchanges — FK to organizations (sender_org_id / receiver_org_id)
-  await db.delete(dataspaceExchangesTable)
+  await hubDb.delete(dataspaceExchangesTable)
     .where(or(
       inArray(dataspaceExchangesTable.senderOrgId, testOrgIds),
       inArray(dataspaceExchangesTable.receiverOrgId, testOrgIds),
@@ -369,9 +370,9 @@ afterAll(async () => {
     .where(eq(resourceBookingsTable.nuOrgId, NU_ORG));
 
   // 5. messages
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.senderOrgId, testOrgIds));
 
   // 6. snapshots + requests
@@ -392,9 +393,9 @@ afterAll(async () => {
     .where(eq(dataPublicationsTable.agOrgId, GU_ORG));
 
   // 8. resources
-  await db.delete(resourcesTable)
+  await anDb.delete(resourcesTable)
     .where(eq(resourcesTable.anOrgId, NU_ORG));
-  await db.delete(resourceTypesTable)
+  await anDb.delete(resourceTypesTable)
     .where(and(
       eq(resourceTypesTable.anOrgId, NU_ORG),
       inArray(resourceTypesTable.id, [...MIXED_RESOURCE_TYPE_IDS]),
@@ -653,7 +654,7 @@ describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () =
 
     expect(delivery.status).toBe("DELIVERED");
 
-    const [inboxMessage] = await db.select().from(messageInboxTable).where(and(
+    const [inboxMessage] = await hubDb.select().from(messageInboxTable).where(and(
       eq(messageInboxTable.messageId, "t49-mixed-response"),
       eq(messageInboxTable.recipientOrgId, GU_ORG),
       eq(messageInboxTable.messageType, "TAKT_RESPONSE_SUBMITTED"),
@@ -758,6 +759,11 @@ describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () =
 
 describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
   it("Step 1: GU creates TaktRequest with snapshot (DRAFT)", async () => {
+    await db.update(takteTable).set({
+      plannedStart: "2026-09-15",
+      plannedEnd: "2026-09-20",
+      lifecycleStatus: "PLANNED",
+    }).where(eq(takteTable.id, TAKT));
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
@@ -768,6 +774,10 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
         message:           "Bitte prüfen Sie den Zeitraum.",
         responseRequiredBy: "2026-09-10T23:59:59Z",
         dataPublicationId: testPublicationId,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
+        parentPolicyId: PROJECT_AGREEMENT,
+        parentPolicyVersion: 1,
       });
 
     expect(res.status).toBe(201);
@@ -776,15 +786,6 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
     expect(res.body.status).toBe("DRAFT");
     expect(res.body.snapshotId).toBeTruthy();
     await db.insert(taktRequestResourceRequirementsTable).values({
-      taktRequestId: requestId,
-      anOrgId: NU_ORG,
-      resourceTypeId: "t49-crew-type",
-      requiredCapacity: REQUIRED_CREW_CAPACITY.toString(),
-      utilizationPercent: 100,
-      periodStart: "2026-09-15",
-      periodEnd: "2026-09-20",
-    });
-    await anDb.insert(taktRequestResourceRequirementsTable).values({
       taktRequestId: requestId,
       anOrgId: NU_ORG,
       resourceTypeId: "t49-crew-type",
@@ -1006,7 +1007,7 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
   });
 
   it("Step 9: GU message contains only public data — no internal NU fields", async () => {
-    const [msg] = await db.select()
+    const [msg] = await hubDb.select()
       .from(messageInboxTable)
       .where(and(
         eq(messageInboxTable.recipientOrgId, GU_ORG),
@@ -1085,7 +1086,7 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
     expect(taktJson).not.toContain(CREW_2);
 
     // Resource bookings belong to NU org only
-    const bookings = await db.select()
+    const bookings = await anDb.select()
       .from(resourceBookingsTable)
       .where(eq(resourceBookingsTable.nuOrgId, NU_ORG));
     for (const b of bookings) {

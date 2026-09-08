@@ -19,7 +19,7 @@
  *   - On technical failure: TaktRequest status is NOT automatically set to REJECTED.
  */
 import pino from "pino";
-import { anDb as db } from "@workspace/db";
+import { agDb, anDb } from "@workspace/db";
 import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
@@ -35,7 +35,7 @@ async function assertAvailabilityPolicyAccess(
   request: { performancePolicyId: string | null },
 ): Promise<void> {
   if (!request.performancePolicyId) return;
-  const [policy] = await db.select({
+  const [policy] = await agDb.select({
     deltaClass: coordinationPoliciesTable.deltaClass,
     lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
   }).from(coordinationPoliciesTable)
@@ -85,11 +85,11 @@ export async function getLatestAvailabilityCheck(
   taktRequestId: string,
   nuOrgId: string,
 ): Promise<AvailabilityCheck | null> {
-  const [request] = await db.select().from(taktRequestsTable)
+  const [request] = await agDb.select().from(taktRequestsTable)
     .where(and(eq(taktRequestsTable.id, taktRequestId), eq(taktRequestsTable.nuOrgId, nuOrgId))).limit(1);
   if (request) await assertAvailabilityPolicyAccess(request);
   // Try COMPLETED first (preferred)
-  const [completed] = await db
+  const [completed] = await anDb
     .select()
     .from(availabilityChecksTable)
     .where(
@@ -105,7 +105,7 @@ export async function getLatestAvailabilityCheck(
   if (completed) return completed;
 
   // Fall back to the most recent row of any status
-  const [latest] = await db
+  const [latest] = await anDb
     .select()
     .from(availabilityChecksTable)
     .where(
@@ -137,9 +137,9 @@ export async function evaluateAvailabilityWindow(
     periodEnd: string | null;
     notes: string | null;
   }>,
-  executor: typeof db = db,
+  planningExecutor: typeof agDb = agDb,
 ): Promise<InternalResultPayload> {
-  const [snapshotRow] = await executor
+  const [snapshotRow] = await planningExecutor
     .select()
     .from(taktRequestSnapshotsTable)
     .where(eq(taktRequestSnapshotsTable.taktRequestId, taktRequestId))
@@ -154,7 +154,8 @@ export async function evaluateAvailabilityWindow(
     taktRequestId,
     excludeSourceReferenceId,
     requirementsOverride,
-    executor,
+    anDb,
+    planningExecutor,
   );
   return result.internalPayload;
 }
@@ -212,7 +213,7 @@ export async function runAvailabilityCheck(
   userId: string,
 ): Promise<AvailabilityCheck> {
   // ── Rule 1: TaktRequest exists ───────────────────────────────────────────────
-  const [request] = await db
+  const [request] = await agDb
     .select()
     .from(taktRequestsTable)
     .where(eq(taktRequestsTable.id, taktRequestId))
@@ -244,7 +245,7 @@ export async function runAvailabilityCheck(
   }
 
   // ── Rule 3: Snapshot exists ──────────────────────────────────────────────────
-  const [snapshotRow] = await db
+  const [snapshotRow] = await agDb
     .select()
     .from(taktRequestSnapshotsTable)
     .where(eq(taktRequestSnapshotsTable.taktRequestId, taktRequestId))
@@ -281,7 +282,7 @@ export async function runAvailabilityCheck(
   // ── Status transition: DETAILS_RETRIEVED → UNDER_REVIEW ─────────────────────
   // UNDER_REVIEW → UNDER_REVIEW is a no-op (re-run allowed per task spec)
   if (request.status === "DETAILS_RETRIEVED") {
-    await db
+    await agDb
       .update(taktRequestsTable)
       .set({ status: "UNDER_REVIEW", updatedAt: new Date() })
       .where(eq(taktRequestsTable.id, taktRequestId));
@@ -290,7 +291,7 @@ export async function runAvailabilityCheck(
   }
 
   // ── Determine runNumber ──────────────────────────────────────────────────────
-  const [maxRunRow] = await db
+  const [maxRunRow] = await anDb
     .select({ maxRun: max(availabilityChecksTable.runNumber) })
     .from(availabilityChecksTable)
     .where(
@@ -303,7 +304,7 @@ export async function runAvailabilityCheck(
   const runNumber = (maxRunRow?.maxRun ?? 0) + 1;
 
   // Find the previous check (for supersedesCheckId)
-  const [prevCheck] = await db
+  const [prevCheck] = await anDb
     .select({ id: availabilityChecksTable.id })
     .from(availabilityChecksTable)
     .where(
@@ -316,7 +317,7 @@ export async function runAvailabilityCheck(
     .limit(1);
 
   // ── Create the check row (PENDING → RUNNING) ─────────────────────────────────
-  const [checkRow] = await db
+  const [checkRow] = await anDb
     .insert(availabilityChecksTable)
     .values({
       nuOrgId,
@@ -341,6 +342,10 @@ export async function runAvailabilityCheck(
       windowEnd,
       nuOrgId,
       taktRequestId,
+      undefined,
+      undefined,
+      anDb,
+      agDb,
     );
 
     const result = publicPayload.recommendedDecision === "ACCEPTED"
@@ -349,7 +354,7 @@ export async function runAvailabilityCheck(
         ? "FEASIBLE_WITH_ALTERNATIVES"
         : "NOT_FEASIBLE";
 
-    const [completed] = await db
+    const [completed] = await anDb
       .update(availabilityChecksTable)
       .set({
         status: "COMPLETED",
@@ -392,7 +397,7 @@ export async function runAvailabilityCheck(
       alternatives: [],
     };
 
-    const [failed] = await db
+    const [failed] = await anDb
       .update(availabilityChecksTable)
       .set({
         status: "FAILED",
@@ -432,10 +437,11 @@ async function executeCheckRules(
     periodEnd: string | null;
     notes: string | null;
   }>,
-  executor: typeof db = db,
+  resourceExecutor: typeof anDb = anDb,
+  planningExecutor: typeof agDb = agDb,
 ): Promise<CheckRulesResult> {
   // Load NU's active resources (used by both DTC and legacy paths)
-  const nuResources = await executor
+  const nuResources = await resourceExecutor
     .select({
       id: resourcesTable.id,
       type: resourcesTable.type,
@@ -452,7 +458,7 @@ async function executeCheckRules(
 
   // Load requirements before bookings so requirement-specific periods and the
   // complete alternative search horizon are included in the query.
-  const dtcRequirements = requirementsOverride ?? await executor
+  const dtcRequirements = requirementsOverride ?? await planningExecutor
     .select()
     .from(taktRequestResourceRequirementsTable)
     .where(eq(taktRequestResourceRequirementsTable.taktRequestId, taktRequestId));
@@ -481,7 +487,7 @@ async function executeCheckRules(
 
   // Overlap: booking.startAt < bookingWindowEnd AND
   // booking.endAt > bookingWindowStart. Exclude CANCELLED bookings.
-  const overlappingBookings = await executor
+  const overlappingBookings = await resourceExecutor
     .select({
       id: resourceBookingsTable.id,
       resourceId: resourceBookingsTable.resourceId,
@@ -724,7 +730,10 @@ async function executeLegacyCheck(
 
   // ── Rule 8: Required qualifications ─────────────────────────────────────────
   const allQuals = nuResources.flatMap(r =>
-    Array.isArray(r.qualifications) ? (r.qualifications as string[]) : [],
+    Array.isArray(r.qualifications)
+      ? r.qualifications.filter((qualification): qualification is string =>
+        typeof qualification === "string")
+      : [],
   );
 
   for (const req of snapshot.resourceRequirements) {

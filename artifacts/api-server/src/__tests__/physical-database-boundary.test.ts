@@ -5,7 +5,7 @@
  * role switching, schema search paths and table ACLs provide the isolation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   agDb,
   anDb,
@@ -25,6 +25,7 @@ import {
   projectMembershipsTable,
   projectsTable,
   resourceBookingsTable,
+  resourcesTable,
   resourceTypesTable,
   taktRequestsTable,
   taktResponsesTable,
@@ -65,6 +66,8 @@ const TAKT = `${PREFIX}-takt`;
 const SERVICE_REQUEST = `${PREFIX}-service-request`;
 const SCHEDULE_REQUEST = `${PREFIX}-schedule-request`;
 const RESOURCE_TYPE = `${PREFIX}-resource-type`;
+const ATOMIC_PROJECT = `${PREFIX}-atomic-project`;
+const ATOMIC_MESSAGE = `${PREFIX}-atomic-message`;
 
 const iso = (value: string) => `${value}T00:00:00.000Z`;
 
@@ -229,6 +232,16 @@ async function seedFixtures() {
     code: "CREW",
     capacityUnit: "PERSONS",
   });
+  await anDb.insert(resourcesTable).values({
+    id: `${PREFIX}-resource`,
+    anOrgId: AN,
+    type: "CREW",
+    resourceTypeId: RESOURCE_TYPE,
+    name: "Montageteam",
+    capacity: 2,
+    capacityUnit: "PERSONS",
+    active: true,
+  });
   await agDb.insert(projectMembershipsTable).values({
     id: `${PREFIX}-membership`,
     projectId: PROJECT,
@@ -325,6 +338,58 @@ sharedBoundary("shared database with isolated AG, AN and Hub schemas", () => {
     await expect(anPool.query("SELECT 1 FROM hub.message_outbox LIMIT 1")).rejects.toMatchObject({
       code: expect.stringMatching(/42501|42P01/),
     });
+  });
+
+  it("exposes only the atomic Hub enqueue function and rolls domain plus outbox back together", async () => {
+    await expect(agDb.transaction(async (tx) => {
+      await tx.insert(projectsTable).values({
+        id: ATOMIC_PROJECT,
+        agOrgId: AG,
+        name: "Atomic rollback project",
+        startDate: "2026-08-01",
+        endDate: "2026-12-31",
+      });
+      await tx.execute(sql`
+        SELECT hub.enqueue_outbox_message(
+          ${ATOMIC_MESSAGE},
+          ${"1.0"},
+          ${"PROJECT_INVITATION"},
+          ${AG},
+          ${AN},
+          ${ATOMIC_PROJECT},
+          ${null},
+          ${JSON.stringify({ projectReference: ATOMIC_PROJECT })}::jsonb,
+          ${"PENDING"}
+        )
+      `);
+      throw new Error("simulated crash before commit");
+    })).rejects.toThrow("simulated crash before commit");
+
+    expect(await agDb.select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, ATOMIC_PROJECT))).toHaveLength(0);
+    expect(await hubDb.select({ id: messageOutboxTable.messageId })
+      .from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, ATOMIC_MESSAGE))).toHaveLength(0);
+
+    // The role may call the narrow bridge, but still cannot read Hub tables.
+    await agPool.query(
+      `SELECT hub.enqueue_outbox_message($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
+      [
+        ATOMIC_MESSAGE,
+        "1.0",
+        "PROJECT_INVITATION",
+        AG,
+        AN,
+        ATOMIC_PROJECT,
+        null,
+        JSON.stringify({ projectReference: ATOMIC_PROJECT }),
+        "PENDING",
+      ],
+    );
+    await expect(agPool.query("SELECT 1 FROM hub.message_outbox WHERE message_id = $1", [ATOMIC_MESSAGE]))
+      .rejects.toMatchObject({ code: expect.stringMatching(/42501|42P01/) });
+    await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, ATOMIC_MESSAGE));
   });
 
   it("delivers a project invitation locally while keeping invitation data on AN and transport data on Hub", async () => {

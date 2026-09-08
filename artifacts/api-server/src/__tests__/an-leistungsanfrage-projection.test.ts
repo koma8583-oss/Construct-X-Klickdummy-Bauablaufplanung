@@ -3,6 +3,7 @@ import httpRequest from "supertest";
 import jwt from "jsonwebtoken";
 import { and, eq } from "drizzle-orm";
 import {
+  agDb,
   anDb,
   anLeistungsanfragenTable,
   anLeistungsanfrageResourceRequirementsTable,
@@ -108,13 +109,15 @@ afterEach(async () => {
       .where(eq(anLeistungsanfragenTable.sourceMessageId, messageId));
   }
   messageIds.length = 0;
-  await anDb.delete(organizationsTable).where(eq(organizationsTable.id, AG));
-  await anDb.delete(organizationsTable).where(eq(organizationsTable.id, AN));
+  await anDb.delete(resourcesTable).where(eq(resourcesTable.id, RESOURCE));
+  await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, RESOURCE_TYPE));
+  await agDb.delete(organizationsTable).where(eq(organizationsTable.id, AG));
+  await agDb.delete(organizationsTable).where(eq(organizationsTable.id, AN));
 });
 
 describe("AN-lokale Leistungsanfrage-Projektion", () => {
   beforeEach(async () => {
-    await anDb.insert(organizationsTable).values([
+    await agDb.insert(organizationsTable).values([
       { id: AG, name: "Projection source AG", type: "AG" },
       { id: AN, name: "Projection receiver AN", type: "AN" },
     ]);
@@ -134,6 +137,7 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
       name: "Projektteam",
       capacity: 20,
       capacityUnit: "PERSONS",
+      qualifications: ["Qualifikation A", "Qualifikation B"],
     });
   });
 

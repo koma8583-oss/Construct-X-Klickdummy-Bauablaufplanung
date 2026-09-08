@@ -229,6 +229,10 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
       nuOrgId: NU_ORG,
       requestNumber: `TKR-T177-${crypto.randomUUID().slice(0, 8)}`,
       createdByUserId: USER_ID,
+      purpose: "LEISTUNGSKOORDINATION" as const,
+      selectedFields: ["plannedTimeWindow"],
+      parentPolicyId: "t177-agreement",
+      parentPolicyVersion: 1,
       ...overrides,
     };
   }
@@ -320,6 +324,10 @@ describe("createTaktRequestWithSnapshot() — projectLocation and projectDescrip
         nuOrgId: NU_ORG,
         requestNumber: `TKR-T177-BARE-${crypto.randomUUID().slice(0, 8)}`,
         createdByUserId: USER_ID,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: "t177-bare-agreement",
+        parentPolicyVersion: 1,
       });
 
       expect(snapshot.snapshotPayload.projectLocation).toBeUndefined();

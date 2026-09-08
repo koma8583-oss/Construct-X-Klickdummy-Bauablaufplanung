@@ -197,7 +197,11 @@ async function seedDraftRequest(tag: string, roleToken: string): Promise<string>
   await request(app)
     .post(`/api/takt-requests`)
     .set("Authorization", `Bearer ${roleToken}`)
-    .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+    .send({
+      taktId: TAKT_ID, nuOrgId: NU_ORG,
+      purpose: "LEISTUNGSKOORDINATION", selectedFields: ["plannedTimeWindow"],
+      parentPolicyId: "t83-agreement", parentPolicyVersion: 1,
+    });
 
   return id;
 }
@@ -205,7 +209,11 @@ async function seedDraftRequest(tag: string, roleToken: string): Promise<string>
 // ── [1-4] POST /takt-requests — role check ────────────────────────────────────
 
 describe("POST /takt-requests (AG_ADMIN / GENERAL_PLANNER)", () => {
-  const body = { taktId: TAKT_ID, nuOrgId: NU_ORG };
+  const body = {
+    taktId: TAKT_ID, nuOrgId: NU_ORG,
+    purpose: "LEISTUNGSKOORDINATION" as const, selectedFields: ["plannedTimeWindow"],
+    parentPolicyId: "t83-agreement", parentPolicyVersion: 1,
+  };
 
   it("[1] AG_ADMIN → 201", async () => {
     const res = await request(app)

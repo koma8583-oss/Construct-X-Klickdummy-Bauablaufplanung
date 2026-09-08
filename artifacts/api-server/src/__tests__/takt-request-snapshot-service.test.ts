@@ -297,6 +297,10 @@ describe("createTaktRequestWithSnapshot() — DB integration", () => {
       nuOrgId: NU_ORG,
       requestNumber: `TKR-T35-${crypto.randomUUID().slice(0, 8)}`,
       createdByUserId: USER_ID,
+      purpose: "LEISTUNGSKOORDINATION" as const,
+      selectedFields: ["plannedTimeWindow"],
+      parentPolicyId: "t35-agreement",
+      parentPolicyVersion: 1,
       ...overrides,
     };
   }
@@ -339,9 +343,12 @@ describe("createTaktRequestWithSnapshot() — DB integration", () => {
       .from(taktRequestSnapshotsTable)
       .where(eq(taktRequestSnapshotsTable.id, before.id));
 
-    const payload = dbSnapshot.snapshotPayload as { workPackage: string; taktVersion: number };
-    expect(payload.workPackage).toBe("T1 – Trockenbau Nord"); // original value preserved
-    expect(payload.taktVersion).toBe(1);                       // original version preserved
+    const payload = dbSnapshot.snapshotPayload as {
+      plannedTimeWindow: { start: string; end: string };
+      taktVersion: number;
+    };
+    expect(payload.plannedTimeWindow).toEqual(before.snapshotPayload.plannedTimeWindow);
+    expect(payload.taktVersion).toBe(1); // original version preserved
 
     // Restore Takt for subsequent tests
     await db.update(takteTable)

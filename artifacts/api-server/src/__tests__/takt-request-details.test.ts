@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, anDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -194,6 +194,10 @@ beforeAll(async () => {
       subject: "T38 Anfrage",
       message: "Bitte Details prüfen.",
       dataPublicationId: "t38-publication-001",
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["plannedTimeWindow"],
+      parentPolicyId: PROJECT_AGREEMENT_ID,
+      parentPolicyVersion: 1,
     });
   expect(createRes.status).toBe(201);
   requestId = createRes.body.id;
@@ -209,8 +213,8 @@ afterAll(async () => {
   const orgIds = [GU_ORG, NU_ORG, NU_ORG_2, GU_ORG_2];
   const orgSql = orgIds.map(id => `'${id}'`).join(",");
 
-  await db.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
-  await db.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM message_inbox WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
+  await hubDb.execute(sql`DELETE FROM message_outbox WHERE sender_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungsanfrage_snapshots WHERE leistungsanfrage_id IN (
     SELECT id FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])
   )`).catch(() => {});
@@ -419,7 +423,11 @@ describe("AN details review — explicit status transition", () => {
     const createRes = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+      .send({
+        taktId: TAKT_ID, nuOrgId: NU_ORG,
+        purpose: "LEISTUNGSKOORDINATION", selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: PROJECT_AGREEMENT_ID, parentPolicyVersion: 1,
+      });
     expect(createRes.status).toBe(201);
     const draftId = createRes.body.id;
 

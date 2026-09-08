@@ -31,7 +31,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -81,7 +81,7 @@ beforeAll(async () => {
     { id: USER_ID, name: "T85 User", email: "t85@test.local", passwordHash: "x" },
   ]).onConflictDoNothing();
 
-  await db.insert(resourcesTable).values([
+  await anDb.insert(resourcesTable).values([
     {
       id: RESOURCE_ID,
       anOrgId: NU_ORG_A,
@@ -94,11 +94,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Delete in FK-safe order
-  await db.delete(resourceBookingsTable)
+  await anDb.delete(resourceBookingsTable)
     .where(eq(resourceBookingsTable.nuOrgId, NU_ORG_A));
-  await db.delete(nuLocalProjectsTable)
+  await anDb.delete(nuLocalProjectsTable)
     .where(inArray(nuLocalProjectsTable.nuOrgId, [NU_ORG_A, NU_ORG_B]));
-  await db.delete(resourcesTable)
+  await anDb.delete(resourcesTable)
     .where(eq(resourcesTable.id, RESOURCE_ID));
   await db.delete(usersTable)
     .where(eq(usersTable.id, USER_ID));

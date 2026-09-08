@@ -2413,7 +2413,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Request is not in a state that allows a check
+          description: >
+            Policy conflict or request state conflict. For policy conflicts,
+            error and code are either POLICY_CONSENT_REQUIRED or NOT_PERMITTED;
+            action is AVAILABILITY.
           content:
             application/json:
               schema:
@@ -2460,6 +2463,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            Policy conflict. error and code are either POLICY_CONSENT_REQUIRED
+            or NOT_PERMITTED; action is AVAILABILITY.
 
   /takt-requests/{requestId}/responses:
     post:
@@ -2996,7 +3003,9 @@ paths:
         "404":
           description: Leistungsanfrage nicht gefunden
         "409":
-          description: Status lässt keine Prüfung zu
+          description: >
+            Policy- oder Statuskonflikt. Bei Policy-Konflikten sind error und
+            code POLICY_CONSENT_REQUIRED oder NOT_PERMITTED; action ist AVAILABILITY.
 
   /leistungsanfragen/{leistungsanfrageId}/availability-checks/latest:
     get:
@@ -3022,6 +3031,10 @@ paths:
           description: Nur AN-Organisationen dürfen Verfügbarkeitsprüfungen abrufen
         "404":
           description: Leistungsanfrage nicht gefunden oder keine Prüfung vorhanden
+        "409":
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist AVAILABILITY.
 
   /leistungsanfragen/{leistungsanfrageId}/responses:
     post:
@@ -3062,7 +3075,10 @@ paths:
         "404":
           description: Leistungsanfrage nicht gefunden
         "409":
-          description: Abweichende Antwort bereits eingereicht
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist RESOURCE. Dieser Status wird ebenfalls
+            verwendet, wenn bereits eine abweichende Antwort eingereicht wurde.
 
   /leistungsanfragen/{leistungsanfrageId}/gu-decisions:
     post:
@@ -3260,6 +3276,10 @@ paths:
           description: Zugriff verweigert
         "404":
           description: Ressourceanforderung nicht gefunden
+        "409":
+          description: >
+            Policy-Konflikt. error und code sind POLICY_CONSENT_REQUIRED oder
+            NOT_PERMITTED; action ist RESOURCE.
 
   # ── NU-internal: local projects ─────────────────────────────────────────────
 
@@ -6061,24 +6081,60 @@ components:
           type: string
           maxLength: 2000
           description: Optional free-text message from GU to NU
+        purpose:
+          type: string
+          enum: [RAHMENTERMINE, LEISTUNGSKOORDINATION, AUSFUEHRUNGSINFORMATIONEN, INDIVIDUELLE_FREIGABE]
+          description: Business purpose of the Leistungsfreigabe.
+        selectedFields:
+          type: array
+          minItems: 1
+          description: Explicit child-owned fields; the server enforces the purpose whitelist and Parent-Policy scope.
+          items:
+            type: string
+            minLength: 1
+        parentPolicyId:
+          type: string
+          minLength: 1
+          description: Exact accepted parent policy selected from the effective-policy response.
+        parentPolicyVersion:
+          type: integer
+          minimum: 1
+          description: Exact version of the selected parent policy.
       required:
         - taktId
         - nuOrgId
+        - purpose
+        - selectedFields
+        - parentPolicyId
+        - parentPolicyVersion
 
     TaktRequestBatchInput:
       type: object
-      description: Body for atomically creating one request per selected NU.
+      description: Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
+      required: [taktId, recipients, purpose, selectedFields]
       properties:
         taktId:
           type: string
           minLength: 1
-        nuOrgIds:
+        recipients:
           type: array
           minItems: 1
           maxItems: 50
           items:
-            type: string
-            minLength: 1
+            type: object
+            required: [nuOrgId, parentPolicyId, parentPolicyVersion]
+            properties:
+              nuOrgId:
+                type: string
+                minLength: 1
+              parentPolicyId:
+                type: string
+                minLength: 1
+                description: Exact accepted Parent Policy for this recipient.
+              parentPolicyVersion:
+                type: integer
+                minimum: 1
+                description: Exact version of this recipient's Parent Policy.
         responseRequiredBy:
           type: string
           format: date-time
@@ -6098,15 +6154,6 @@ components:
           items:
             type: string
             minLength: 1
-        parentPolicyId:
-          type: string
-          minLength: 1
-          description: Exact accepted parent policy selected from the effective-policy response.
-        parentPolicyVersion:
-          type: integer
-          minimum: 1
-          description: Exact version of the selected parent policy.
-      required: [taktId, nuOrgIds]
 
     TaktRequestDraftResponse:
       type: object

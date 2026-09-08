@@ -1312,19 +1312,21 @@ export default function ProjectDetail() {
       const created = await createTaktRequestBatch.mutateAsync({
         data: {
           taktId: selectedTakt.id,
-          nuOrgIds: values.nuOrgIds,
+          recipients: values.recipients,
           message: values.message,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
+          purpose: values.purpose,
+          selectedFields: values.selectedFields,
         },
       });
       await Promise.all(created.requests.map(requestItem =>
         sendTaktRequest.mutateAsync({ requestId: requestItem.id }),
       ));
       toast({
-        title: values.nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet',
-        description: values.nuOrgIds.length === 1 ? undefined : `${values.nuOrgIds.length} Nachunternehmer wurden parallel angefragt.`,
+        title: values.recipients.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet',
+        description: values.recipients.length === 1 ? undefined : `${values.recipients.length} Nachunternehmer wurden parallel angefragt.`,
       });
       invalidateTakte();
       setIsVergabeOpen(false);
@@ -2943,9 +2945,7 @@ export default function ProjectDetail() {
         partners={assignablePartners}
         partnersLoading={assignmentsLoading || membershipsLoading || participantsLoading}
         partnersError={assignmentsError || membershipsError || participantsError}
-        policies={policyRegistry}
-        policiesLoading={policiesLoading}
-        policiesError={policiesError}
+        taktId={selectedTakt?.id ?? ''}
         isSubmitting={isDelegating}
         onSubmit={handleDelegateTakt}
       />

@@ -14,7 +14,7 @@
  * Fixture prefix: "t82-"
  */
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
-import { agDb as db, agPool } from "@workspace/db";
+import { agDb as db, agPool, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -94,9 +94,9 @@ beforeAll(async () => {
 afterAll(async () => {
   const reqIds = ["lock-a", "lock-b", "dedup"].map(t => reqId(t));
 
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.correlationId, reqIds));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(inArray(messageOutboxTable.correlationId, reqIds));
   await db.delete(taktRequestRemindersTable)
     .where(inArray(taktRequestRemindersTable.taktRequestId, reqIds));

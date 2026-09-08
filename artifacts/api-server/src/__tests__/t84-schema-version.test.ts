@@ -32,7 +32,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import { messageOutboxTable, messageInboxTable, organizationsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -61,9 +61,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Drain all outbox/inbox rows for our test orgs before deleting the orgs
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(eq(messageInboxTable.recipientOrgId, T84_NU_ORG));
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.senderOrgId, T84_GU_ORG));
   await db.delete(organizationsTable)
     .where(inArray(organizationsTable.id, [T84_GU_ORG, T84_NU_ORG]));
@@ -98,9 +98,9 @@ function makeEnvelope(overrides: Partial<MessageEnvelope> = {}): MessageEnvelope
 
 afterEach(async () => {
   if (collectedMessageIds.length > 0) {
-    await db.delete(messageInboxTable)
+    await hubDb.delete(messageInboxTable)
       .where(inArray(messageInboxTable.messageId, [...collectedMessageIds]));
-    await db.delete(messageOutboxTable)
+    await hubDb.delete(messageOutboxTable)
       .where(inArray(messageOutboxTable.messageId, [...collectedMessageIds]));
     collectedMessageIds.length = 0;
   }
@@ -213,7 +213,7 @@ describe("LocalHubTransport — envelope idempotency", () => {
     expect(second.status).toBe(first.status);
 
     // Only one inbox row should exist
-    const inboxRows = await db.select().from(messageInboxTable)
+    const inboxRows = await hubDb.select().from(messageInboxTable)
       .where(eq(messageInboxTable.messageId, env.messageId));
     expect(inboxRows).toHaveLength(1);
   });
@@ -274,7 +274,7 @@ describe("LocalHubTransport — envelope idempotency", () => {
     await transport.send(env1);
     await transport.send(env2);
 
-    const rows = await db.select().from(messageOutboxTable)
+    const rows = await hubDb.select().from(messageOutboxTable)
       .where(inArray(messageOutboxTable.messageId, [env1.messageId, env2.messageId]));
     expect(rows).toHaveLength(2);
   });

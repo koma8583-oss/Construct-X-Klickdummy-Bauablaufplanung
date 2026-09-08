@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../app";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -68,6 +68,12 @@ function sign(p: {
 
 const guToken = sign({ userId: GU_USER_ID, orgId: GU_ORG_ID, orgType: "AG" });
 const nuToken = sign({ userId: NU_USER_ID, orgId: NU_ORG_ID, orgType: "AN" });
+const requestPolicy = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: `${T}-agreement`,
+  parentPolicyVersion: 1,
+} as const;
 
 // ── Teardown helper ───────────────────────────────────────────────────────────
 
@@ -154,11 +160,11 @@ async function flushAll() {
     .where(eq(projectContractorsTable.projectId, PROJECT_ID))
     .catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT_ID)).catch(() => {});
-  await db
+  await hubDb
     .delete(messageOutboxTable)
     .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID))
     .catch(() => {});
-  await db
+  await hubDb
     .delete(messageInboxTable)
     .where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID))
     .catch(() => {});
@@ -334,8 +340,8 @@ async function insertTakt(suffix: string): Promise<string> {
   }
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.taktId, taktId)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, taktId)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
-  await db
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID)).catch(() => {});
+  await hubDb
     .delete(messageInboxTable)
     .where(eq(messageInboxTable.recipientOrgId, NU_ORG_ID))
     .catch(() => {});
@@ -382,6 +388,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
         subject: "Bitte Takt bestätigen",
         message: "Bitte prüfen und zurückmelden.",
         dataPublicationId: publicationId,
+        ...requestPolicy,
       });
 
     expect(res.status).toBe(201);
@@ -495,7 +502,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
   });
 
   it("t68-A5d: TAKT_RESPONSE_ACCEPTED outbox message was sent to NU", async () => {
-    const msgs = await db
+    const msgs = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.senderOrgId, GU_ORG_ID));
@@ -523,7 +530,13 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-05-01T00:00:00Z", dataPublicationId: publicationId });
+      .send({
+        taktId,
+        nuOrgId: NU_ORG_ID,
+        responseRequiredBy: "2028-05-01T00:00:00Z",
+        dataPublicationId: publicationId,
+        ...requestPolicy,
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
@@ -610,13 +623,13 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
       .set("Authorization", `Bearer ${guToken}`)
       .send({
         decisionType: "ACCEPT_ALTERNATIVE",
-        acceptedAlternativeId: altRowId,
+        acceptedAlternativeId: "ALT-t68-B1",
         idempotencyKey: "t68-b-idk",
       });
 
     expect(res.status).toBe(201);
     expect(res.body.decisionType).toBe("ACCEPT_ALTERNATIVE");
-    expect(res.body.acceptedAlternativeId).toBe(altRowId);
+    expect(res.body.acceptedAlternativeId).toBe("ALT-t68-B1");
     expect(res.body.updatedRequestStatus).toBe("ACCEPTED");
   });
 
@@ -676,7 +689,12 @@ describe("t68-suiteC: access-control guards on GET /takt-requests/:id/details", 
     const create = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-06-01T00:00:00Z" });
+      .send({
+        taktId,
+        nuOrgId: NU_ORG_ID,
+        responseRequiredBy: "2028-06-01T00:00:00Z",
+        ...requestPolicy,
+      });
     requestId = create.body.id;
 
     await request(app)

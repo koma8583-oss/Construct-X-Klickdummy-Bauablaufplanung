@@ -57,7 +57,10 @@ import {
   UnauthorizedSnapshotError,
   NuNotContractorError,
   InvalidTaktForSnapshotError,
+  InvalidLeistungsfreigabeFieldsError,
+  PolicyNotPermittedError,
 } from "../lib/takt-request-snapshot-service";
+import { ProjectMembershipError } from "../services/project-membership-service";
 import {
   getTaktRequestById,
   getTaktRequestWithSnapshot,
@@ -1110,6 +1113,10 @@ router.post(
       requestNumber:      z.string().min(1).optional(),
       responseRequiredBy: z.string().datetime({ offset: true }).optional(),
       dataPublicationId:  z.string().min(1).optional(),
+      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+      selectedFields: z.array(z.string().min(1)).min(1),
+      parentPolicyId: z.string().min(1),
+      parentPolicyVersion: z.number().int().positive(),
     });
 
     const parsed = schema.safeParse(normalisedBody);
@@ -1143,8 +1150,16 @@ router.post(
         responseRequiredBy: responseRequiredBy ? new Date(responseRequiredBy) : undefined,
         createdByUserId: userId,
         dataPublicationId: parsed.data.dataPublicationId,
+        purpose: parsed.data.purpose,
+        selectedFields: parsed.data.selectedFields,
+        parentPolicyId: parsed.data.parentPolicyId,
+        parentPolicyVersion: parsed.data.parentPolicyVersion,
       });
     } catch (err) {
+      if (err instanceof ProjectMembershipError) {
+        res.status(403).json({ error: err.message, code: err.code });
+        return;
+      }
       if (err instanceof TaktNotFoundError) {
         res.status(404).json({ error: (err as Error).message });
         return;
@@ -1159,6 +1174,14 @@ router.post(
       }
       if (err instanceof InvalidTaktForSnapshotError) {
         res.status(422).json({ error: (err as Error).message });
+        return;
+      }
+      if (err instanceof InvalidLeistungsfreigabeFieldsError) {
+        res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+        return;
+      }
+      if (err instanceof PolicyNotPermittedError) {
+        res.status(409).json({ error: "POLICY_NOT_PERMITTED", message: err.message });
         return;
       }
       throw err;
@@ -1224,6 +1247,10 @@ router.post(
       subject:            z.string().max(255).optional(),
       message:            z.string().max(2000).optional(),
       dataPublicationId:  z.string().min(1).optional(),
+      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+      selectedFields: z.array(z.string().min(1)).min(1),
+      parentPolicyId: z.string().min(1),
+      parentPolicyVersion: z.number().int().positive(),
     });
 
     const parsed = bodySchema.safeParse(normalisedBody);
@@ -1259,8 +1286,16 @@ router.post(
         subject,
         message,
         dataPublicationId: parsed.data.dataPublicationId,
+        purpose: parsed.data.purpose,
+        selectedFields: parsed.data.selectedFields,
+        parentPolicyId: parsed.data.parentPolicyId,
+        parentPolicyVersion: parsed.data.parentPolicyVersion,
       });
     } catch (err) {
+      if (err instanceof ProjectMembershipError) {
+        res.status(403).json({ error: err.message, code: err.code });
+        return;
+      }
       if (err instanceof TaktNotFoundError) {
         res.status(404).json({ error: (err as Error).message });
         return;
@@ -1275,6 +1310,14 @@ router.post(
       }
       if (err instanceof InvalidTaktForSnapshotError) {
         res.status(422).json({ error: (err as Error).message });
+        return;
+      }
+      if (err instanceof InvalidLeistungsfreigabeFieldsError) {
+        res.status(422).json({ error: err.message, code: "LEISTUNGSFREIGABE_FIELDS_NOT_PERMITTED" });
+        return;
+      }
+      if (err instanceof PolicyNotPermittedError) {
+        res.status(409).json({ error: "POLICY_NOT_PERMITTED", message: err.message });
         return;
       }
       throw err;

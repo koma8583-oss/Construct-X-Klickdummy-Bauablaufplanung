@@ -24,7 +24,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../app";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   anDb,
   anLeistungsanfragenTable,
@@ -157,6 +157,15 @@ async function createDraftRequest(
   token: string,
   dataPublicationId?: string,
 ): Promise<string> {
+  const [membership] = await db.select({
+    projectAgreementPolicyId: projectMembershipsTable.projectAgreementPolicyId,
+  }).from(projectMembershipsTable).where(and(
+    eq(projectMembershipsTable.projectId, projectId),
+    eq(projectMembershipsTable.anOrgId, nuOrgId),
+  )).limit(1);
+  if (!membership?.projectAgreementPolicyId) {
+    throw new Error("Expected an active membership with a linked Project Agreement");
+  }
   const res = await request(app)
     .post("/api/takt-requests")
     .set("Authorization", `Bearer ${token}`)
@@ -165,6 +174,10 @@ async function createDraftRequest(
       nuOrgId,
       requestNumber: `T116-${Date.now()}`,
       dataPublicationId,
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: membership.projectAgreementPolicyId,
+      parentPolicyVersion: 1,
     });
 
   if (res.status !== 201) {
@@ -341,10 +354,10 @@ afterAll(async () => {
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId)).catch(() => {});
   // Clear outbox/inbox rows before deleting users/orgs (FK constraints)
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, agOrgId)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, anOrgId)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, anOrgId)).catch(() => {});
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, agOrgId)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, agOrgId)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, anOrgId)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, anOrgId)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, agOrgId)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, agUserId)).catch(() => {});
   await db.delete(usersTable).where(eq(usersTable.id, anUserId)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, agOrgId)).catch(() => {});

@@ -65,3 +65,9 @@
 - [Schedule-response retry identity](schedule-response-retry-identity.md) — root-addressed AN response retries must remain bound to the same schedule child after its terminal status transition.
 - [Legacy policy gates](legacy-policy-gates.md) — historical projections may omit child metadata, but synchronized parent state must still enforce revoke and validity gates.
 - [Shared post-merge schema order](post-merge-schema-order.md) — push empty role schemas before raw migrations; use public only for legacy enum lookup, then reapply ACLs.
+- [Atomic cross-schema outbox](atomic-cross-schema-outbox.md) — pre-create Hub envelopes through a SECURITY DEFINER bridge inside the AG/AN transaction; deliver only after commit.
+- [First-delivery outbox claims](first-delivery-outbox-claims.md) — pre-created PENDING/FAILED envelopes must enter the same atomic claim path as retries before transport delivery.
+- [CI gate conclusions](ci-gate-conclusions.md) — required browser gates must reject skipped/flaky work and prove each project executed; discovery or retry-success is not release evidence.
+- [GitHub workflow API scope](github-workflow-api-scope.md) — workflow-file contents operations may need a scope the connected GitHub API does not expose.
+- [Shared policy contracts](shared-policy-contracts.md) — enforce security-sensitive policy input in the lowest shared service and every mounted alias; route-only checks are bypassable.
+- [Multi-recipient Parent Policies](multi-recipient-parent-policy-binding.md) — every AN in an atomic batch carries its own accepted Parent-Policy ID and version.

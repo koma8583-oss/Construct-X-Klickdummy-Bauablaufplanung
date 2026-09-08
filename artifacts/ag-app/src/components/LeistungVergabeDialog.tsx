@@ -1,11 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Info, Send, Users } from 'lucide-react';
-import {
-  FIELD_GROUPS,
-  FIELD_LABELS,
-  FIELD_WHITELISTS,
-  type PolicyTemplateRegistryEntry,
-} from '@workspace/api-client-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Info, Loader2, Send, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/date-picker';
@@ -16,11 +10,50 @@ import { Textarea } from '@/components/ui/textarea';
 import type { VergabePartner } from '@/lib/vergabe';
 
 export type LeistungVergabeSubmitValues = {
-  nuOrgIds: string[];
-  policyTemplateId: string;
+  recipients: Array<{
+    nuOrgId: string;
+    parentPolicyId: string;
+    parentPolicyVersion: number;
+  }>;
+  purpose: LeistungsfreigabePurpose;
   selectedFields: string[];
   message?: string;
   responseRequiredBy?: string;
+};
+
+type LeistungsfreigabePurpose =
+  | 'RAHMENTERMINE'
+  | 'LEISTUNGSKOORDINATION'
+  | 'AUSFUEHRUNGSINFORMATIONEN'
+  | 'INDIVIDUELLE_FREIGABE';
+
+const PURPOSES: Array<{ value: LeistungsfreigabePurpose; label: string }> = [
+  { value: 'RAHMENTERMINE', label: 'Rahmentermine abstimmen' },
+  { value: 'LEISTUNGSKOORDINATION', label: 'Leistung koordinieren' },
+  { value: 'AUSFUEHRUNGSINFORMATIONEN', label: 'Ausführungsinformationen teilen' },
+  { value: 'INDIVIDUELLE_FREIGABE', label: 'Individuelle Freigabe' },
+];
+
+const PURPOSE_FIELDS: Record<LeistungsfreigabePurpose, string[]> = {
+  RAHMENTERMINE: ['trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'predecessors', 'successors'],
+  LEISTUNGSKOORDINATION: ['taktReference', 'taktVersion', 'trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'requiredOutput', 'resourceRequirements', 'constraints', 'predecessors', 'successors', 'documentReferences'],
+  AUSFUEHRUNGSINFORMATIONEN: ['taktReference', 'taktVersion', 'trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'requiredOutput', 'constraints', 'predecessors', 'successors', 'documentReferences'],
+  INDIVIDUELLE_FREIGABE: ['taktReference', 'taktVersion', 'trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'requiredOutput', 'resourceRequirements', 'constraints', 'predecessors', 'successors', 'documentReferences'],
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  taktReference: 'Leistungsreferenz', taktVersion: 'Leistungsversion', trade: 'Gewerk',
+  workPackage: 'Leistungsbezeichnung', kurzbezeichnung: 'Kurzbezeichnung', location: 'Ausführungsort',
+  plannedTimeWindow: 'Geplanter Zeitraum', bufferTimeWindow: 'Terminspielraum',
+  requiredOutput: 'Leistungsbeschreibung', resourceRequirements: 'Ressourcenbedarf',
+  constraints: 'Randbedingungen', predecessors: 'Vorgänger', successors: 'Nachfolger',
+  documentReferences: 'Dokumentreferenzen',
+};
+
+type PreviewItem = {
+  deltaClass: 'WITHIN_BASELINE' | 'REQUIRES_CONSENT' | 'NOT_PERMITTED';
+  error?: string;
+  diff?: { summary?: string[] };
 };
 
 type Props = {
@@ -29,9 +62,7 @@ type Props = {
   partners: VergabePartner[];
   partnersLoading?: boolean;
   partnersError?: boolean;
-  policies?: PolicyTemplateRegistryEntry[];
-  policiesLoading?: boolean;
-  policiesError?: boolean;
+  taktId: string;
   isSubmitting?: boolean;
   onSubmit: (values: LeistungVergabeSubmitValues) => Promise<void> | void;
 };
@@ -42,74 +73,101 @@ export function LeistungVergabeDialog({
   partners,
   partnersLoading = false,
   partnersError = false,
-  policies = [],
-  policiesLoading = false,
-  policiesError = false,
+  taktId,
   isSubmitting = false,
   onSubmit,
 }: Props) {
   const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
-  const [selectedPolicyKey, setSelectedPolicyKey] = useState('');
+  const [purpose, setPurpose] = useState<LeistungsfreigabePurpose | ''>('');
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [responseRequiredByError, setResponseRequiredByError] = useState('');
-  const previousPolicyKey = useRef('');
-
-  const performancePolicies = useMemo(
-    () => policies
-      .filter((policy) => policy.code === 'PERFORMANCE_COORDINATION')
-      .sort((a, b) => b.version - a.version),
-    [policies],
-  );
-  const selectedPolicy = performancePolicies.find(
-    (policy) => `${policy.code}:${policy.version}` === selectedPolicyKey,
-  );
-  const allowedFields = selectedPolicy?.allowedPublicationFields
-    ?? FIELD_WHITELISTS.TAKT_INFORMATION_PACKAGE;
-  const allowedFieldSet = useMemo(() => new Set(allowedFields), [allowedFields]);
-  const visibleFieldGroups = useMemo(
-    () => (FIELD_GROUPS.TAKT_INFORMATION_PACKAGE ?? [])
-      .map((group) => ({
-        ...group,
-        fields: group.fields.filter((field) => allowedFieldSet.has(field)),
-      }))
-      .filter((group) => group.fields.length > 0),
-    [allowedFieldSet],
-  );
+  const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const selectedPartners = partners.filter((partner) => selectedNuIds.includes(partner.anOrgId));
+  const availablePurposes = PURPOSES.filter((item) => selectedPartners.every((partner) => {
+    const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
+    return !Array.isArray(effectivePolicy.allowedPurposes) || effectivePolicy.allowedPurposes.includes(item.value);
+  }));
+  const allowedFields = useMemo(() => purpose
+    ? PURPOSE_FIELDS[purpose].filter((field) => selectedPartners.every((partner) => {
+      const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
+      return !Array.isArray(effectivePolicy.allowedFieldScope) || effectivePolicy.allowedFieldScope.includes(field);
+    }))
+    : [], [purpose, selectedPartners]);
 
   useEffect(() => {
     if (!open) {
       setSelectedNuIds([]);
-      setSelectedPolicyKey('');
+      setPurpose('');
       setSelectedFields([]);
-      previousPolicyKey.current = '';
+      setPreview(null);
+      setPreviewError('');
       setMessage('');
       setResponseRequiredBy('');
       setResponseRequiredByError('');
       return;
     }
-    if (performancePolicies[0] && (!selectedPolicyKey || !selectedPolicy)) {
-      setSelectedPolicyKey(`${performancePolicies[0].code}:${performancePolicies[0].version}`);
-    }
-    if (selectedPolicy && previousPolicyKey.current !== selectedPolicyKey) {
-      setSelectedFields([...allowedFields]);
-      previousPolicyKey.current = selectedPolicyKey;
-    }
-  }, [open, performancePolicies, selectedPolicy, selectedPolicyKey, allowedFields, allowedFieldSet]);
+  }, [open]);
 
-  const toggleNu = (anOrgId: string) => {
-    setSelectedNuIds((current) => {
-      const next = current.includes(anOrgId)
-        ? current.filter((id) => id !== anOrgId)
-        : [...current, anOrgId];
-      return next;
-    });
+  useEffect(() => {
+    setPurpose('');
+    setSelectedFields([]);
+    setPreview(null);
+    setPreviewError('');
+  }, [selectedNuIds]);
+
+  useEffect(() => {
+    setSelectedFields([...allowedFields]);
+    setPreview(null);
+    setPreviewError('');
+  }, [purpose]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setPreview(null);
+    setPreviewError('');
+  }, [selectedFields, selectedNuIds]);
+
+  const createPreview = async (): Promise<boolean> => {
+    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return false;
+    setPreviewing(true);
+    setPreviewError('');
+    try {
+      const items = await Promise.all(selectedPartners.map(async (partner) => {
+        const parentPolicy = partner.parentAgreement!;
+        const response = await fetch('/api/leistungsanfragen/policy-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            taktIds: [taktId],
+            nuOrgId: partner.anOrgId,
+            purpose,
+            selectedFields,
+            parentPolicyId: parentPolicy.id,
+            parentPolicyVersion: parentPolicy.version,
+          }),
+        });
+        const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
+        const item = body.items?.[0];
+        if (!response.ok || !item) throw new Error(`${partner.label}: ${body.error || 'Policy-Vorschau konnte nicht erstellt werden.'}`);
+        return item;
+      }));
+      setPreview(items);
+      return items.every((item) => item.deltaClass !== 'NOT_PERMITTED');
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'Policy-Vorschau konnte nicht erstellt werden.');
+      return false;
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (selectedNuIds.length === 0 || !selectedPolicy || selectedFields.length === 0) return;
+    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return;
     if (responseRequiredBy) {
       const deadline = new Date(responseRequiredBy);
       const minimum = new Date(Date.now() + 60 * 60 * 1000);
@@ -118,9 +176,15 @@ export function LeistungVergabeDialog({
         return;
       }
     }
+    if (!preview && !(await createPreview())) return;
+    if (preview?.some((item) => item.deltaClass === 'NOT_PERMITTED')) return;
     await onSubmit({
-      nuOrgIds: selectedNuIds,
-      policyTemplateId: selectedPolicy.templateId,
+      recipients: selectedPartners.map((partner) => ({
+        nuOrgId: partner.anOrgId,
+        parentPolicyId: partner.parentAgreement!.id,
+        parentPolicyVersion: partner.parentAgreement!.version,
+      })),
+      purpose,
       selectedFields,
       message: message.trim() || undefined,
       responseRequiredBy: responseRequiredBy || undefined,
@@ -170,51 +234,53 @@ export function LeistungVergabeDialog({
                   <label key={partner.anOrgId} className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
                     <Checkbox
                       checked={selectedNuIds.includes(partner.anOrgId)}
-                      onCheckedChange={() => toggleNu(partner.anOrgId)}
+                      disabled={!partner.parentAgreement}
+                      onCheckedChange={(checked) => setSelectedNuIds((current) => checked
+                        ? [...new Set([...current, partner.anOrgId])]
+                        : current.filter((id) => id !== partner.anOrgId))}
                     />
-                    <span>{partner.label}</span>
+                    <span className={!partner.parentAgreement ? 'text-muted-foreground' : ''}>
+                      {partner.label}{!partner.parentAgreement ? ' · keine akzeptierte Projektvereinbarung' : ''}
+                    </span>
                   </label>
                 ))}
               </div>
             )}
             {selectedNuIds.length > 0 && (
-              <p className="text-xs text-muted-foreground">{selectedNuIds.length} Nachunternehmen ausgewählt</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedNuIds.length} ausgewählt · jede Freigabe wird gegen die konkrete Projektvereinbarung ihres Nachunternehmens geprüft.
+              </p>
             )}
           </div>
 
           <div className="space-y-2">
-             <Label>Leistungsfreigabe-Policy *</Label>
-            {policiesLoading ? (
-              <p className="text-sm text-muted-foreground">Policies werden geladen…</p>
-            ) : policiesError ? (
-              <p className="flex items-start gap-2 text-sm text-destructive">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                 Die Leistungsfreigabe-Policies konnten nicht geladen werden.
-              </p>
-            ) : performancePolicies.length === 0 ? (
-             <p className="text-sm text-destructive">Keine gültige Leistungsfreigabe-Policy ist verfügbar.</p>
+             <Label>Fachlicher Zweck *</Label>
+            {selectedNuIds.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Bitte zuerst mindestens ein Nachunternehmen auswählen.</p>
+            ) : availablePurposes.length === 0 ? (
+             <p className="text-sm text-destructive">Die akzeptierte Projektvereinbarung erlaubt keinen unterstützten Leistungszweck.</p>
             ) : (
               <>
                 <Select
-                  value={selectedPolicyKey}
-                  onValueChange={(value) => {
-                    setSelectedPolicyKey(value);
-                  }}
+                  value={purpose}
+                  onValueChange={(value) => setPurpose(value as LeistungsfreigabePurpose)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Policy auswählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                     {performancePolicies.map((policy) => (
-                      <SelectItem key={`${policy.code}-${policy.version}`} value={`${policy.code}:${policy.version}`}>
-                        {policy.name} · v{policy.version}
+                     {availablePurposes.map((item) => (
+                       <SelectItem key={item.value} value={item.value}>
+                         {item.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                   Diese Policy ergänzt die akzeptierte Projektmitgliedschafts-Policy und gilt nur für die konkret vergebene Leistung.
+                    {selectedPartners.length === 1
+                      ? `Parent-Policy: ${selectedPartners[0].parentAgreement?.id} · Version ${selectedPartners[0].parentAgreement?.version}`
+                      : `${selectedPartners.length} empfängerbezogene Parent-Policies`}
                 </p>
               </>
             )}
@@ -236,17 +302,13 @@ export function LeistungVergabeDialog({
              <p className="text-xs text-muted-foreground">
                Die Auswahl betrifft nur die Leistungsfreigabe. Interne Angaben wie Kosten, Risiko, Priorität und Notizen bleiben immer ausgeschlossen.
              </p>
-             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-               {visibleFieldGroups.map((group) => (
-                 <div key={group.label} className="rounded-md border overflow-hidden">
-                   <div className="flex items-center justify-between bg-muted/30 px-3 py-2">
-                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</span>
-                     <span className="text-[10px] text-primary">
-                       {group.fields.filter((field) => selectedFields.includes(field)).length}/{group.fields.length}
-                     </span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
-                     {group.fields.map((field) => (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {purpose && allowedFields.length === 0 ? (
+                  <p className="text-sm text-destructive">Für diesen Zweck erlaubt die Parent-Policy keine freigebbaren Leistungsfelder.</p>
+                ) : (
+                  <div className="rounded-md border overflow-hidden">
+                    <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
+                      {allowedFields.map((field) => (
                        <label key={field} className="flex items-center gap-2 py-1 text-sm">
                          <Checkbox
                            checked={selectedFields.includes(field)}
@@ -259,9 +321,9 @@ export function LeistungVergabeDialog({
                          <span>{FIELD_LABELS[field] ?? field}</span>
                        </label>
                      ))}
-                   </div>
-                 </div>
-               ))}
+                    </div>
+                  </div>
+                )}
              </div>
              {selectedFields.length === 0 && (
                <p className="flex items-center gap-1 text-xs text-destructive">
@@ -269,6 +331,26 @@ export function LeistungVergabeDialog({
                </p>
              )}
           </div>
+          {purpose && selectedFields.length > 0 && (
+            <div className="space-y-2 rounded-md border p-3 text-sm" data-testid="policy-preview">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Konkrete Child-Policy</span>
+                <Button type="button" size="sm" variant="outline" onClick={createPreview} disabled={previewing}>
+                  {previewing && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Vorschau prüfen
+                </Button>
+              </div>
+               {preview && (
+                 <p className={preview.some((item) => item.deltaClass === 'NOT_PERMITTED') ? 'text-destructive' : 'text-emerald-700'}>
+                   {preview.every((item) => item.deltaClass === 'WITHIN_BASELINE')
+                     ? 'WITHIN_BASELINE'
+                     : `${preview.length} Parent-Policies geprüft`}
+                 </p>
+               )}
+               {preview?.flatMap((item) => item.diff?.summary ?? []).map((summary, index) => <p key={`${summary}-${index}`} className="text-xs text-muted-foreground">{summary}</p>)}
+               {(preview?.find((item) => item.error)?.error || previewError) && <p className="text-xs text-destructive">{preview?.find((item) => item.error)?.error || previewError}</p>}
+            </div>
+          )}
 
           <Textarea
             name="message"
@@ -298,7 +380,7 @@ export function LeistungVergabeDialog({
           <Button
             type="submit"
             form="leistung-vergabe-form"
-             disabled={isSubmitting || selectedNuIds.length === 0 || !selectedPolicy || selectedFields.length === 0 || !!responseRequiredByError}
+              disabled={isSubmitting || previewing || selectedNuIds.length === 0 || !purpose || selectedFields.length === 0 || preview?.some((item) => item.deltaClass === 'NOT_PERMITTED') || !!responseRequiredByError}
           >
             <Send className="mr-2 h-4 w-4" />
             {isSubmitting ? 'Vergabe läuft…' : 'Vergeben'}

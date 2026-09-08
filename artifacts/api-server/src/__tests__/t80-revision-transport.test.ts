@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, runWithDatabaseRole } from "@workspace/db";
+import { agDb as db, hubDb, runWithDatabaseRole } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -57,6 +57,12 @@ const PROJECT = "t80-project";
 const TAKT    = "t80-takt";
 
 const guToken = sign({ userId: GU_USER, orgId: GU_ORG, orgType: "AG" });
+const performanceRequestContract = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: "t80-agreement",
+  parentPolicyVersion: 1,
+};
 
 // ── Mock transports for injection ─────────────────────────────────────────────
 
@@ -198,8 +204,8 @@ async function attachPerformancePolicy(
 // ── Global beforeAll / afterAll ────────────────────────────────────────────────
 beforeAll(async () => {
   // Pre-cleanup
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG)).catch(() => {});
 
@@ -274,8 +280,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
   await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.guOrgId, GU_ORG)).catch(() => {});
 
@@ -311,6 +317,7 @@ describe("A — POST /takt-requests: responseRequiredBy round-trip", () => {
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: deadline,
+        ...performanceRequestContract,
       });
 
     expect(res.status).toBe(201);
@@ -335,6 +342,7 @@ describe("A — POST /takt-requests: responseRequiredBy round-trip", () => {
       .send({
         taktId: TAKT,
         nuOrgId: NU_ORG,
+        ...performanceRequestContract,
       });
 
     expect(res.status).toBe(201);
@@ -511,9 +519,9 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
     ]).onConflictDoNothing();
 
     // Insert a FAILED outbox row manually
-    await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
-    await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
-    await db.insert(messageOutboxTable).values({
+    await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+    await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+    await hubDb.insert(messageOutboxTable).values({
       messageId: msgId,
       schemaVersion: "1.0",
       messageType: "TAKT_REQUEST_REVISED",
@@ -532,7 +540,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
     expect(result.messageId).toBe(msgId);
 
     // Verify: still only ONE outbox row for this messageId
-    const outboxRows = await db
+    const outboxRows = await hubDb
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, msgId));
@@ -540,9 +548,9 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
     expect(outboxRows[0].status).toBe("DELIVERED");
 
     // Cleanup
-    await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
-    await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
-    await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
+    await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+    await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
     await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG2)).catch(() => {});
     await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG2)).catch(() => {});
   });
@@ -561,11 +569,11 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
     ]).onConflictDoNothing();
 
     try {
-      await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
-      await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
-      await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
 
-      await db.insert(messageOutboxTable).values({
+      await hubDb.insert(messageOutboxTable).values({
         messageId: msgId,
         schemaVersion: "1.0",
         messageType: "TAKT_REQUEST_REVISED",
@@ -577,7 +585,7 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
         failureReason,
         attemptCount: 1,
       });
-      await db.insert(messageDeliveryAttemptsTable).values({
+      await hubDb.insert(messageDeliveryAttemptsTable).values({
         messageId: msgId,
         attemptNumber: 1,
         status: "FAILED",
@@ -608,16 +616,16 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
         messageId: msgId,
       });
 
-      const [outbox] = await db
+      const [outbox] = await hubDb
         .select()
         .from(messageOutboxTable)
         .where(eq(messageOutboxTable.messageId, msgId));
-      const history = (await db
+      const history = (await hubDb
         .select()
         .from(messageDeliveryAttemptsTable)
         .where(eq(messageDeliveryAttemptsTable.messageId, msgId)))
         .sort((left, right) => left.attemptNumber - right.attemptNumber);
-      const inboxRows = await db
+      const inboxRows = await hubDb
         .select()
         .from(messageInboxTable)
         .where(eq(messageInboxTable.messageId, msgId));
@@ -633,9 +641,9 @@ describe("D — Retry idempotency: retry uses same messageId, no second revision
       expect(outbox.lastAttemptAt).toEqual(history[1].attemptedAt);
       expect(inboxRows).toHaveLength(1);
     } finally {
-      await db.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
-      await db.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
-      await db.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, msgId)).catch(() => {});
+      await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, msgId)).catch(() => {});
       await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG3)).catch(() => {});
       await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG3)).catch(() => {});
     }

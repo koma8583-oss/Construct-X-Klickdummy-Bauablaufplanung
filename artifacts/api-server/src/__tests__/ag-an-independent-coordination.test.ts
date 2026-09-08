@@ -11,6 +11,8 @@ import { sql, and, eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 import {
   agDb as db,
+  anDb,
+  hubDb,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -40,6 +42,14 @@ const AG_USER = `${PREFIX}-ag-user`;
 const AN_USER = `${PREFIX}-an-user`;
 const PROJECT = `${PREFIX}-project`;
 const TAKT = `${PREFIX}-takt`;
+const PROJECT_AGREEMENT_ID = `${PREFIX}-agreement`;
+const PARENT_POLICY_VERSION = 1;
+const performanceRequestPolicy = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: PROJECT_AGREEMENT_ID,
+  parentPolicyVersion: PARENT_POLICY_VERSION,
+};
 
 const secret = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const token = (userId: string, orgId: string, orgType: "AG" | "AN") =>
@@ -55,24 +65,24 @@ const agToken = token(AG_USER, AG, "AG");
 const anToken = token(AN_USER, AN, "AN");
 
 async function cleanup() {
-  const localRequests = await db.select({ id: anLeistungsanfragenTable.id })
+  const localRequests = await anDb.select({ id: anLeistungsanfragenTable.id })
     .from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN));
   const localRequestIds = localRequests.map(({ id }) => id);
   if (localRequestIds.length) {
-    await db.delete(anAvailabilityChecksTable)
+    await anDb.delete(anAvailabilityChecksTable)
       .where(inArray(anAvailabilityChecksTable.anLeistungsanfrageId, localRequestIds));
-    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
     const localResponseIds = localResponses.map(({ id }) => id);
     if (localResponseIds.length) {
-      await db.delete(anLeistungsantwortAlternativenTable)
+      await anDb.delete(anLeistungsantwortAlternativenTable)
         .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
-      await db.delete(anLeistungsantwortenTable)
+      await anDb.delete(anLeistungsantwortenTable)
         .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
     }
-    await db.delete(anLeistungsanfragenTable)
+    await anDb.delete(anLeistungsanfragenTable)
       .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
   }
   const requests = await db.select({ id: taktRequestsTable.id })
@@ -91,11 +101,11 @@ async function cleanup() {
     await db.delete(taktRequestSnapshotsTable).where(inArray(taktRequestSnapshotsTable.taktRequestId, requestIds));
     await db.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
   }
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
-  await db.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
-  await db.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
-  await db.delete(dataspaceExchangesTable).where(or(
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
+  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
+  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
+  await hubDb.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, AG),
     eq(dataspaceExchangesTable.receiverOrgId, AG),
     eq(dataspaceExchangesTable.senderOrgId, AN),
@@ -132,18 +142,17 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: AN, assignmentStatus: "ACTIVE",
   });
-  const agreementId = `${PREFIX}-agreement`;
   await db.insert(coordinationPoliciesTable).values({
-    id: agreementId,
-    policyKey: agreementId,
-    version: 1,
+    id: PROJECT_AGREEMENT_ID,
+    policyKey: PROJECT_AGREEMENT_ID,
+    version: PARENT_POLICY_VERSION,
     kind: "PROJECT_AGREEMENT",
     projectId: PROJECT,
     providerOrgId: AG,
     recipientOrgId: AN,
     lifecycleStatus: "ACCEPTED",
     policySnapshot: {
-      policyId: agreementId,
+      policyId: PROJECT_AGREEMENT_ID,
       templateId: "PROJECT_MEMBERSHIP",
       templateVersion: 1,
       code: "PROJECT_MEMBERSHIP",
@@ -161,7 +170,7 @@ beforeAll(async () => {
       createdAt: "2026-09-01T00:00:00.000Z",
     },
     effectivePolicy: {
-      policyId: agreementId,
+      policyId: PROJECT_AGREEMENT_ID,
       templateId: "PROJECT_MEMBERSHIP",
       templateVersion: 1,
       code: "PROJECT_MEMBERSHIP",
@@ -186,7 +195,7 @@ beforeAll(async () => {
     INSERT INTO project_memberships
       (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status, project_agreement_policy_id)
     VALUES (${`${PREFIX}-membership`}, ${PROJECT}, ${AG}, ${AN},
-      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${agreementId})
+      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${PROJECT_AGREEMENT_ID})
     ON CONFLICT DO NOTHING
   `);
 });
@@ -200,11 +209,16 @@ describe("independent AG–AN coordination flow", () => {
     const created = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT, nuOrgId: AN, responseRequiredBy: "2026-11-01T12:00:00.000Z" });
+      .send({
+        taktId: TAKT,
+        nuOrgId: AN,
+        responseRequiredBy: "2026-11-01T12:00:00.000Z",
+        ...performanceRequestPolicy,
+      });
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
     requestId = created.body.id;
-    const beforeInbound = await db.select({ id: anLeistungsanfragenTable.id })
+    const beforeInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(beforeInbound).toHaveLength(0);
@@ -214,18 +228,18 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect([200, 201]).toContain(sent.status);
     expect(sent.body.status).toMatch(/SENT|DELIVERED/);
-    const afterInbound = await db.select({ id: anLeistungsanfragenTable.id })
+    const afterInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(afterInbound).toHaveLength(1);
-    const [outboundEnvelope] = await db.select({ payload: messageOutboxTable.payload })
+    const [outboundEnvelope] = await hubDb.select({ payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, requestId));
     const outboundPayload = outboundEnvelope.payload as {
       policySnapshot?: { policyId: string; templateId: string; templateVersion: number; code: string };
     };
     expect(outboundPayload.policySnapshot).toBeDefined();
-    const inbound = await db.select({ status: dataspaceExchangesTable.status })
+    const inbound = await hubDb.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -234,7 +248,7 @@ describe("independent AG–AN coordination flow", () => {
       ));
     expect(inbound).toHaveLength(1);
     expect(inbound[0].status).toBe("PROCESSED");
-    const [anProjection] = await db.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
+    const [anProjection] = await anDb.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(anProjection.policySnapshot).toEqual(outboundPayload.policySnapshot);
@@ -271,7 +285,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(reviewed.status).toBe(200);
     expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     const agStatusBeforeAvailability = agRequestBefore.status;
-    const [localProjection] = await db.select({ id: anLeistungsanfragenTable.id })
+    const [localProjection] = await anDb.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(localProjection).toBeDefined();
@@ -287,7 +301,7 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(latestAvailability.status).toBe(200);
     expect(latestAvailability.body.checkId).toBe(availability.body.checkId);
-    const localChecks = await db.select({ id: anAvailabilityChecksTable.id })
+    const localChecks = await anDb.select({ id: anAvailabilityChecksTable.id })
       .from(anAvailabilityChecksTable)
       .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, localProjection.id));
     expect(localChecks).toHaveLength(1);
@@ -304,7 +318,7 @@ describe("independent AG–AN coordination flow", () => {
         comment: "Kapazität bestätigt",
       });
     expect(response.status).toBe(201);
-    const localResponses = await db.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, localProjection.id));
     expect(localResponses).toHaveLength(1);
@@ -315,7 +329,7 @@ describe("independent AG–AN coordination flow", () => {
     const [agResponse] = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
     expect(agResponse).toBeDefined();
-    const responseInbound = await db.select({ status: dataspaceExchangesTable.status })
+    const responseInbound = await hubDb.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -331,7 +345,7 @@ describe("independent AG–AN coordination flow", () => {
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: agResponse.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
-    const [confirmedProjection] = await db.select({ status: anLeistungsanfragenTable.status })
+    const [confirmedProjection] = await anDb.select({ status: anLeistungsanfragenTable.status })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(confirmedProjection.status).toBe("CONFIRMED");
@@ -342,7 +356,7 @@ describe("independent AG–AN coordination flow", () => {
     const created = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT, nuOrgId: AN });
+      .send({ taktId: TAKT, nuOrgId: AN, ...performanceRequestPolicy });
     expect(created.status).toBe(201);
     const firstRoundId = created.body.id as string;
 

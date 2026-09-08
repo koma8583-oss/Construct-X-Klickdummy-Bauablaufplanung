@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -72,7 +72,7 @@ let altRowId      = "";   // takt_response_alternatives PK for reqAlt
 
 /** Delete all resource_bookings rows for a given taktRequestId. */
 async function deleteBookingsForRequest(taktRequestId: string) {
-  await db
+  await anDb
     .delete(resourceBookingsTable)
     .where(
       and(
@@ -87,9 +87,9 @@ async function deleteBookingsForRequest(taktRequestId: string) {
 
 beforeAll(async () => {
   // ── Pre-cleanup (crash-safe) ───────────────────────────────────────────────
-  await db.delete(resourceBookingsTable)
+  await anDb.delete(resourceBookingsTable)
     .where(eq(resourceBookingsTable.nuOrgId, NU_ORG)).catch(() => {});
-  await db.delete(availabilityChecksTable)
+  await anDb.delete(availabilityChecksTable)
     .where(eq(availabilityChecksTable.nuOrgId, NU_ORG)).catch(() => {});
   await db.delete(taktVersionsTable)
     .where(eq(taktVersionsTable.taktId, TAKT)).catch(() => {});
@@ -118,7 +118,7 @@ beforeAll(async () => {
   }
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, TAKT)).catch(() => {});
-  await db.delete(resourcesTable).where(eq(resourcesTable.anOrgId, NU_ORG)).catch(() => {});
+  await anDb.delete(resourcesTable).where(eq(resourcesTable.anOrgId, NU_ORG)).catch(() => {});
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   for (const email of ["t185-gu@test.com", "t185-nu@test.com"]) {
@@ -168,7 +168,7 @@ beforeAll(async () => {
   }).onConflictDoNothing();
 
   // ── Resources ──────────────────────────────────────────────────────────────
-  await db.insert(resourcesTable).values([
+  await anDb.insert(resourcesTable).values([
     { id: RES_A, anOrgId: NU_ORG, type: "EMPLOYEE" as const, name: "t185 Worker A" },
     { id: RES_B, anOrgId: NU_ORG, type: "EMPLOYEE" as const, name: "t185 Worker B" },
   ]).onConflictDoNothing();
@@ -192,7 +192,7 @@ beforeAll(async () => {
   });
 
   // Completed availability check for reqConfirm — resources RES_A and RES_B available
-  await db.insert(availabilityChecksTable).values({
+  await anDb.insert(availabilityChecksTable).values({
     nuOrgId: NU_ORG,
     taktRequestId: reqConfirmId,
     status: "COMPLETED" as const,
@@ -243,7 +243,7 @@ beforeAll(async () => {
   altRowId = altRow.id;
 
   // Completed availability check for reqAlt — only RES_A available
-  await db.insert(availabilityChecksTable).values({
+  await anDb.insert(availabilityChecksTable).values({
     nuOrgId: NU_ORG,
     taktRequestId: reqAltId,
     status: "COMPLETED" as const,
@@ -298,10 +298,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Bookings first (reference resources + takt_requests)
-  await db.delete(resourceBookingsTable)
+  await anDb.delete(resourceBookingsTable)
     .where(eq(resourceBookingsTable.nuOrgId, NU_ORG)).catch(() => {});
   // Availability checks
-  await db.delete(availabilityChecksTable)
+  await anDb.delete(availabilityChecksTable)
     .where(eq(availabilityChecksTable.nuOrgId, NU_ORG)).catch(() => {});
   // Versions (reference takt)
   await db.delete(taktVersionsTable)
@@ -327,16 +327,16 @@ afterAll(async () => {
     await db.delete(taktRequestsTable)
       .where(eq(taktRequestsTable.id, reqId)).catch(() => {});
   }
-  await db.delete(resourcesTable)
+  await anDb.delete(resourcesTable)
     .where(eq(resourcesTable.anOrgId, NU_ORG)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.id, TAKT)).catch(() => {});
   await db.delete(projectContractorsTable)
     .where(eq(projectContractorsTable.projectId, PROJECT)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT)).catch(() => {});
   // Outbox/inbox (FK on sender_org_id / recipient_org_id)
-  await db.delete(messageInboxTable)
+  await hubDb.delete(messageInboxTable)
     .where(eq(messageInboxTable.senderOrgId, GU_ORG)).catch(() => {});
-  await db.delete(messageOutboxTable)
+  await hubDb.delete(messageOutboxTable)
     .where(eq(messageOutboxTable.senderOrgId, GU_ORG)).catch(() => {});
   for (const email of ["t185-gu@test.com", "t185-nu@test.com"]) {
     await db.delete(usersTable).where(eq(usersTable.email, email)).catch(() => {});
@@ -362,7 +362,7 @@ describe("CONFIRM_ACCEPTED — AN booking boundary", () => {
     expect(res.body.decisionType).toBe("CONFIRM_ACCEPTED");
 
     // A private check must not become a cross-domain booking source.
-    const bookings = await db
+    const bookings = await anDb
       .select()
       .from(resourceBookingsTable)
       .where(
@@ -391,9 +391,9 @@ describe("ACCEPT_ALTERNATIVE — AN booking boundary", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.decisionType).toBe("ACCEPT_ALTERNATIVE");
-    expect(res.body.acceptedAlternativeId).toBe(altRowId);
+    expect(res.body.acceptedAlternativeId).toBe("ALT-185-001");
 
-    const bookings = await db
+    const bookings = await anDb
       .select()
       .from(resourceBookingsTable)
       .where(
@@ -425,7 +425,7 @@ describe("CONFIRM_ACCEPTED with no availability check — graceful no-op", () =>
     expect(res.body.updatedRequestStatus).toBe("ACCEPTED");
 
     // No resource_bookings should have been created
-    const bookings = await db
+    const bookings = await anDb
       .select()
       .from(resourceBookingsTable)
       .where(

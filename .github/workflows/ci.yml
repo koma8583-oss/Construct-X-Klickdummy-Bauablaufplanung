@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-release-gate:
+    name: Quality and release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: taktkoord
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d taktkoord"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/taktkoord
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/taktkoord
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
+      SESSION_SECRET: ci-only-session-secret-not-for-production
+      NODE_ENV: test
+      DEADLINE_WORKER_ENABLED: "false"
+      CI: "true"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Initialize the shared test database
+        run: |
+          set -o pipefail
+          DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" DATABASE_URL="$DATABASE_URL" \
+            bash scripts/setup-shared-database.sh 2>&1 | tee /tmp/ci-db.log
+
+      - name: Typecheck API, GU, and NU
+        run: |
+          set -o pipefail
+          pnpm run validate:types 2>&1 | tee /tmp/ci-typecheck.log
+
+      - name: Run API tests
+        run: |
+          set -o pipefail
+          pnpm run test:api 2>&1 | tee /tmp/ci-api-tests.log
+
+      - name: Run GU tests
+        run: |
+          set -o pipefail
+          pnpm run test:ag 2>&1 | tee /tmp/ci-ag-tests.log
+
+      - name: Run NU tests
+        run: |
+          set -o pipefail
+          pnpm run test:an 2>&1 | tee /tmp/ci-an-tests.log
+
+      - name: Build every workspace package
+        run: |
+          set -o pipefail
+          pnpm run build 2>&1 | tee /tmp/ci-build.log
+
+      - name: Start built services and execute desktop/mobile Playwright
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            for pid in "${PROXY_PID:-}" "${HUB_PID:-}" "${AN_PID:-}" "${AG_PID:-}" "${API_PID:-}"; do
+              if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi
+            done
+          }
+          trap cleanup EXIT
+
+          PORT=8080 NODE_ENV=test pnpm --filter @workspace/api-server run start > /tmp/ci-api.log 2>&1 &
+          API_PID=$!
+          PORT=5173 BASE_PATH=/ pnpm --filter @workspace/ag-app run serve > /tmp/ci-ag.log 2>&1 &
+          AG_PID=$!
+          PORT=5174 BASE_PATH=/an/ pnpm --filter @workspace/an-app run serve > /tmp/ci-an.log 2>&1 &
+          AN_PID=$!
+          PORT=5175 BASE_PATH=/hub/ pnpm --filter @workspace/hub-app run serve > /tmp/ci-hub.log 2>&1 &
+          HUB_PID=$!
+          node scripts/ci-proxy.mjs > /tmp/ci-proxy.log 2>&1 &
+          PROXY_PID=$!
+
+          wait_for_http() {
+            local url="$1"
+            local expected_status="$2"
+            for attempt in {1..60}; do
+              local status
+              status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$url" || true)"
+              if [[ "$status" = "$expected_status" ]]; then return 0; fi
+              sleep 1
+            done
+            echo "Timed out waiting for $url to return $expected_status" >&2
+            return 1
+          }
+
+          wait_for_http http://127.0.0.1:8080/auth-service/login 404
+          wait_for_http http://127.0.0.1:5173/ 200
+          wait_for_http http://127.0.0.1:5174/an/ 200
+          wait_for_http http://127.0.0.1:5175/hub/ 200
+          wait_for_http http://127.0.0.1:4173/ 200
+          wait_for_http http://127.0.0.1:4173/an/ 200
+          wait_for_http http://127.0.0.1:4173/hub/ 200
+          E2E_BASE_URL=http://127.0.0.1:4173 pnpm run e2e:ci 2>&1 | tee /tmp/ci-e2e.log
+
+      - name: Collect CI diagnostics
+        if: always()
+        run: |
+          mkdir -p ci-diagnostics
+          cp /tmp/ci-*.log ci-diagnostics/ 2>/dev/null || true
+
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ci-diagnostics
+            e2e/e2e/test-results
+            e2e/e2e/playwright-report

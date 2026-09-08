@@ -36,6 +36,7 @@ import { writeAuditEvent } from "../lib/takt-request-audit-service";
 import { applyIncomingScheduleChangeResponseOnAg } from "./service-change-proposal-service";
 import { applyAcceptedAnScheduleChange } from "./an-schedule-change-booking-service";
 import { assertLeistungsanfragePolicyAccess, type LeistungsanfragePolicyState } from "./leistungsanfrage-policy-guard";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -290,11 +291,38 @@ export async function createAnServiceResponse(
       respondedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(anLeistungsanfragenTable.id, request.id));
-    return { response, alternatives };
+    const payload = buildExternalResponse(request, response, alternatives);
+    await enqueueHubMessageInTransaction(tx, {
+      messageId: payload.metadata.messageId,
+      schemaVersion: payload.metadata.schemaVersion,
+      messageType: "TAKT_RESPONSE_SUBMITTED",
+      senderOrgId: payload.metadata.senderOrgId,
+      recipientOrgId: payload.metadata.receiverOrgId,
+      correlationId: payload.metadata.correlationId,
+      payload: responseTransportPayload(payload),
+      status: "PENDING",
+    });
+    return { response, alternatives, payload };
   });
 
-  const payload = buildExternalResponse(request, saved.response, saved.alternatives);
-  return { ...saved, payload, payloadHash, idempotent: false };
+  return { ...saved, payload: saved.payload, payloadHash, idempotent: false };
+}
+
+function responseTransportPayload(payload: ExternalServiceResponse): Record<string, unknown> {
+  return {
+    taktRequestId: payload.requestId,
+    leistungsanfrageId: payload.requestId,
+    taktVersion: payload.requestVersion,
+    ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+    ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+    ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
+    decision: payload.decision,
+    ...(payload.acceptedTimeWindow ? { acceptedTimeWindow: payload.acceptedTimeWindow } : {}),
+    ...(payload.reasonCode ? { reasonCode: payload.reasonCode } : {}),
+    ...(payload.comment ? { comment: payload.comment } : {}),
+    alternatives: payload.alternatives ?? null,
+    ...(payload.nextAvailableDate ? { nextAvailableDate: payload.nextAvailableDate } : {}),
+  };
 }
 
 function buildExternalResponse(

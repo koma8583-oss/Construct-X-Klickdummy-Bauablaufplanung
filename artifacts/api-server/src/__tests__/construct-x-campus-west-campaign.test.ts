@@ -262,7 +262,8 @@ describe("Construct-X Campus West campaign", () => {
 
     const dependencies = await db.select().from(taktDependenciesTable)
       .where(eq(taktDependenciesTable.projectId, PROJECT));
-    expect(dependencies.map(({ predecessorId, successorId, lagDays }) => [predecessorId, successorId, lagDays]))
+    expect(dependencies.map(({ predecessorId, successorId, lagDays }) => [predecessorId, successorId, lagDays])
+      .sort(([left], [right]) => String(left).localeCompare(String(right))))
       .toEqual([["L-101", "L-201", 0], ["L-201", "L-301", 2], ["L-301", "L-401", 0]]);
 
     const an1Resources = await request(app).get("/api/an/resources").set("Authorization", `Bearer ${anTokens[0]}`);
@@ -339,6 +340,56 @@ describe("Construct-X Campus West campaign", () => {
     expect((await db.select().from(projectMembershipsTable).where(eq(projectMembershipsTable.id, MEMBERSHIP)))[0]?.status).toBe("ACTIVE");
   });
 
+  it("keeps policy preview and batch creation bound to the selected parent policy", async () => {
+    const preview = await request(app)
+      .post("/api/leistungsanfragen/policy-preview")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktIds: ["L-101"],
+        nuOrgId: anId("AN1"),
+        purpose: "RAHMENTERMINE",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: AGREEMENT,
+        parentPolicyVersion: 1,
+      });
+    expect(preview.status).toBe(200);
+    expect(preview.body.items).toEqual([
+      expect.objectContaining({ taktId: "L-101", deltaClass: "NOT_PERMITTED" }),
+    ]);
+
+    const wrongParent = await request(app)
+      .post("/api/leistungsanfragen/policy-preview")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktIds: ["L-101"],
+        nuOrgId: anId("AN1"),
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["plannedTimeWindow"],
+        parentPolicyId: `${PREFIX}-agreement-an2`,
+        parentPolicyVersion: 1,
+      });
+    expect(wrongParent.status).toBe(200);
+    expect(wrongParent.body.items).toEqual([
+      expect.objectContaining({ taktId: "L-101", deltaClass: "NOT_PERMITTED" }),
+    ]);
+
+    const forbiddenPurpose = await request(app)
+      .post("/api/takt-requests/batch")
+      .set("Authorization", `Bearer ${agToken}`)
+      .send({
+        taktId: "L-101",
+        recipients: [{
+          nuOrgId: anId("AN1"),
+          parentPolicyId: AGREEMENT,
+          parentPolicyVersion: 1,
+        }],
+        purpose: "RAHMENTERMINE",
+        selectedFields: ["plannedTimeWindow"],
+      });
+    expect(forbiddenPurpose.status, JSON.stringify(forbiddenPurpose.body)).toBe(409);
+    expect(forbiddenPurpose.body.error).toBe("POLICY_NOT_PERMITTED");
+  });
+
   it("rejects a forbidden child before request creation or Dataspace delivery side effects", async () => {
     const requestNumber = "CW27-L101-NOT-PERMITTED";
     const [parent] = await db.select().from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, AGREEMENT));
@@ -357,6 +408,7 @@ describe("Construct-X Campus West campaign", () => {
       await expect(createTaktRequestWithSnapshot({
         taktId: "L-101", guOrgId: AG, nuOrgId: anId("AN1"), requestNumber, createdByUserId: AG_USER,
         purpose: "LEISTUNGSKOORDINATION", selectedFields: ["resourceRequirements"],
+        parentPolicyId: AGREEMENT, parentPolicyVersion: 1,
       })).rejects.toBeInstanceOf(PolicyNotPermittedError);
       const [outboxAfter, projectionAfter, historyAfter, membership] = await Promise.all([
         hubDb.select().from(messageOutboxTable),
@@ -404,7 +456,8 @@ describe("Construct-X Campus West campaign", () => {
     requestNumbers.push(requestNumber);
     const created = await createTaktRequestWithSnapshot({
       taktId: "L-101", guOrgId: AG, nuOrgId: anId("AN1"), requestNumber, createdByUserId: AG_USER,
-      purpose: "LEISTUNGSKOORDINATION",
+      purpose: "LEISTUNGSKOORDINATION", selectedFields: [...baseline.allowedFieldScope],
+      parentPolicyId: AGREEMENT, parentPolicyVersion: 1,
     });
     expect(created.request).not.toHaveProperty("dataPublicationId"); // DataOffer is never coupled to a Leistung request.
     expect(created.snapshot.snapshotPayload).toMatchObject({ taktReference: "L-101", projectReference: PROJECT });

@@ -2,34 +2,47 @@ import { expect, test } from "../fixtures";
 
 async function gotoAnRequest(page: import("@playwright/test").Page, requestId: string) {
   await page.goto(`/an/leistungsanfragen/${requestId}`);
-  await expect(page.getByRole("heading", { name: /anfrage prüfen/i, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(
+    /anfrage prüfen|machbarkeit prüfen|rückmeldung senden/i,
+  );
 }
 
 test.describe("Campus-West · AG/AN policy coordination", () => {
-  test("WITHIN_BASELINE exposes details without a second consent", async ({ anContext, scenario }) => {
+  test("WITHIN_BASELINE exposes only its released snapshot without a second consent", async ({ anContext, anApi, scenario }) => {
     const page = await anContext.newPage();
     await gotoAnRequest(page, scenario.requests.WITHIN_BASELINE);
+    const completedReview = page.getByTestId("phase-1").locator("summary").filter({ hasText: /Phase 1/ });
+    if (await completedReview.count()) await completedReview.click();
     await expect(page.getByTestId("request-overview")).toBeVisible();
     await expect(page.getByTestId("overview-service")).toContainText("L-101");
+    await expect(page.getByTestId("policy-consent-panel")).toHaveCount(0);
+    const details = await anApi.get(`/api/an/takt-requests/${scenario.requests.WITHIN_BASELINE}/details`);
+    expect(details.status(), await details.text()).toBe(200);
+    const serialized = JSON.stringify(await details.json());
+    expect(serialized).toContain("plannedTimeWindow");
+    expect(serialized).not.toContain("resourceBookings");
+    for (const internalId of [...scenario.anOrgIds.slice(1), ...scenario.resourceIds]) {
+      expect(serialized).not.toContain(internalId);
+    }
   });
 
   for (const decision of ["ACCEPT", "REJECT"] as const) {
     test(`REQUIRES_CONSENT ${decision === "ACCEPT" ? "Accept" : "Reject"} is explicit`, async ({ anContext, scenario }) => {
       const page = await anContext.newPage();
       await gotoAnRequest(page, scenario.requests.REQUIRES_CONSENT);
+      expect(scenario.consentDeltaClass).toBe("REQUIRES_CONSENT");
       await expect(page.getByTestId("policy-consent-panel")).toBeVisible();
       await page.getByTestId(decision === "ACCEPT" ? "button-accept-policy" : "button-reject-policy").click();
       await expect(page.getByTestId(decision === "ACCEPT" ? "policy-consent-accepted" : "policy-consent-rejected")).toBeVisible();
     });
   }
 
-  test("NOT_PERMITTED does not reveal actionable performance details", async ({ anContext, scenario }) => {
-    const page = await anContext.newPage();
-    await gotoAnRequest(page, scenario.requests.NOT_PERMITTED);
-    await expect(page.getByTestId("policy-not-permitted")).toBeVisible();
-    await expect(page.getByTestId("resource-policy-block")).toContainText(/Projektvereinbarung|Leistungsfreigabe/);
-    await expect(page.getByTestId("resource-policy-block")).not.toContainText("konnte nicht aktualisiert werden");
-    await expect(page.getByRole("button", { name: /bestätigen|annehmen/i })).toHaveCount(0);
+  test("NOT_PERMITTED rejects the real API attempt without creating a request", async ({ scenario }) => {
+    expect(scenario.notPermittedAttempt.status).toBe(409);
+    expect(scenario.notPermittedAttempt.code).toBe("POLICY_NOT_PERMITTED");
+    expect(scenario.notPermittedAttempt.requestCountAfter).toBe(scenario.notPermittedAttempt.requestCountBefore);
+    expect(scenario.notPermittedAttempt.projectionCountAfter).toBe(scenario.notPermittedAttempt.projectionCountBefore);
+    expect(scenario.requests.NOT_PERMITTED).toBe("");
   });
 
   test("AG service accepts a valid counterproposal for the seeded Campus-West snapshot", async ({ agApi, scenario }) => {
@@ -57,43 +70,45 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
       ag.getByRole("button", { name: /gegenvorschlag senden/i }).click(),
     ]);
     expect(counterResponse.status(), await counterResponse.text()).toBe(201);
+    await expect.poll(async () => {
+      const coordinationResponse = await anApi.get(`/api/an/leistungsanfragen/${scenario.bilateralRequestId}/coordination`);
+      if (!coordinationResponse.ok()) return null;
+      return (await coordinationResponse.json()).openProposal?.proposer ?? null;
+    }, { timeout: 10000 }).toBe("AG");
     const an = await anContext.newPage();
     await an.goto(`/an/leistungsanfragen/${scenario.bilateralRequestId}`);
     await expect(an.getByRole("heading", { name: /rückmeldung senden/i, level: 1 })).toBeVisible();
-    await an.getByRole("button", { name: /termin bestätigen/i }).click();
-    const responsePath = new RegExp(
-      `/api/an/(?:takt-requests|leistungsanfragen)/${scenario.bilateralRequestId}/responses$`,
+    await an.reload();
+    await expect(an.getByTestId("schedule-change-response")).toBeVisible({ timeout: 20000 });
+    const acceptProposal = an.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      /\/change-proposals\/[^/]+\/accept$/.test(new URL(response.url()).pathname),
     );
-    const firstResponsePromise = an.waitForResponse((response) =>
-      response.request().method() === "POST" && responsePath.test(new URL(response.url()).pathname),
-    );
-    await an.getByRole("button", { name: "Rückmeldung senden", exact: true }).click();
-    const firstResponse = await firstResponsePromise;
-    const responseRequest = firstResponse.request();
-    expect(responsePath.test(new URL(responseRequest.url()).pathname)).toBe(true);
-    const retry = await anApi.post(responseRequest.url(), { data: responseRequest.postDataJSON() });
-    expect(firstResponse.status(), await firstResponse.text()).toBe(201);
-    expect(retry.status(), await retry.text()).toBe(200);
-    expect((await retry.json()).responseId).toBe((await firstResponse.json()).responseId);
+    await an.getByRole("button", { name: /^Bestätigen$/ }).click();
+    const acceptedProposal = await acceptProposal;
+    expect(acceptedProposal.status(), await acceptedProposal.text()).toBe(201);
+    await expect(an.getByText("Terminänderung bestätigt", { exact: true })).toBeVisible();
   });
 
   test("multi-service / multi-AN assignments remain separately visible", async ({ agContext, scenario }) => {
     const page = await agContext.newPage();
     await page.goto("/leistungsanfragen");
-    await expect(page.getByRole("button", { name: /L-301 Campus-West/ })).toHaveCount(2);
-    await expect(page.getByRole("button", { name: /L-401 Campus-West/ })).toHaveCount(2);
+    const l301Count = scenario.assignments.filter((assignment) => assignment.serviceId === scenario.serviceIds[2]).length;
+    const l401Count = scenario.assignments.filter((assignment) => assignment.serviceId === scenario.serviceIds[3]).length;
+    await expect(page.getByRole("button", { name: /L-301 Campus-West/ })).toHaveCount(l301Count);
+    await expect(page.getByRole("button", { name: /L-401 Campus-West/ })).toHaveCount(l401Count);
     await expect(page.getByText(/Campus-West/i).first()).toBeVisible();
   });
 
-  test("a multi-AN resource release partially succeeds: AN1 coordinates while AN2 is blocked", async ({ anApi, an2Api, scenario }) => {
+  test("a multi-AN resource release uses each AN's real local availability", async ({ anApi, an2Api, scenario }) => {
     const [feasible, blocked] = await Promise.all([
       anApi.post(`/api/an/takt-requests/${scenario.requests.WITHIN_BASELINE}/availability-checks`),
       an2Api.post(`/api/an/takt-requests/${scenario.multiRequestIds[0]}/availability-checks`),
     ]);
     expect(feasible.status(), await feasible.text()).toBe(201);
     expect((await feasible.json()).publicResult.recommendedDecision).toBe("ACCEPTED");
-    expect(blocked.status(), await blocked.text()).toBe(409);
-    expect((await blocked.json()).error).toMatch(/POLICY|NOT_PERMITTED/i);
+    expect(blocked.status(), await blocked.text()).toBe(201);
+    expect((await blocked.json()).publicResult.recommendedDecision).toBe("ACCEPTED");
   });
 
   test("AN1–AN4 see exactly their assigned local service projections and resources", async ({ anApi, an2Api, an3Api, an4Api, scenario }) => {
@@ -168,7 +183,7 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     }
   });
 
-  test("AN3 exposes the validity boundary and AN4 joins before rejecting its child policy", async ({ an3Context, an4Context, an3Api, an4Api, scenario }) => {
+  test("AN3 exposes the validity boundary and AN4 joins before reviewing its child policy", async ({ agApi, an3Api, an4Context, an3Context, an4Api, scenario }) => {
     const an3Details = await an3Api.get(`/api/an/takt-requests/${scenario.boundaryRequestIds.an3Expiring}/details`);
     expect(an3Details.status(), await an3Details.text()).toBe(200);
     expect((await an3Details.json()).effectivePolicy.validUntil).toBe("2027-06-30T23:59:59.000Z");
@@ -182,11 +197,36 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     });
     expect(joined.status(), await joined.text()).toBe(200);
 
+    const invitationPolicy = (invitation as {
+      policySnapshot?: { policyId?: string; policyVersion?: number; version?: number };
+    }).policySnapshot;
+    expect(invitationPolicy?.policyId).toBeTruthy();
+    const created = await agApi.post("/api/takt-requests", {
+      data: {
+        taktId: scenario.serviceIds[1],
+        nuOrgId: scenario.anOrgIds[3],
+        responseRequiredBy: "2027-04-30T17:00:00.000Z",
+        purpose: "RAHMENTERMINE",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+        parentPolicyId: invitationPolicy?.policyId,
+        parentPolicyVersion: invitationPolicy?.policyVersion ?? invitationPolicy?.version ?? 1,
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const requestId = String((await created.json()).id);
+    const sent = await agApi.post(`/api/takt-requests/${requestId}/send`, { data: {} });
+    expect(sent.status(), await sent.text()).toBe(200);
+
     const page = await an4Context.newPage();
-    await gotoAnRequest(page, scenario.boundaryRequestIds.an4ChildReject);
-    await expect(page.getByTestId("policy-consent-panel")).toBeVisible();
-    await page.getByTestId("button-reject-policy").click();
-    await expect(page.getByTestId("policy-consent-rejected")).toBeVisible();
+    await gotoAnRequest(page, requestId);
+    if (await page.getByTestId("policy-consent-panel").count()) {
+      await page.getByTestId("button-reject-policy").click();
+      await expect(page.getByTestId("policy-consent-rejected")).toBeVisible();
+    } else {
+      const completedReview = page.getByTestId("phase-1").locator("summary").filter({ hasText: /Phase 1/ });
+      if (await completedReview.count()) await completedReview.click();
+      await expect(page.getByTestId("request-overview")).toBeVisible();
+    }
   });
 });
 

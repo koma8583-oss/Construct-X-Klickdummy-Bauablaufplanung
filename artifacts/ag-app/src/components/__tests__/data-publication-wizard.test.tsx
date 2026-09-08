@@ -138,13 +138,17 @@ vi.mock("@/components/date-picker", () => ({
 
 type Contractors = React.ComponentProps<typeof DataPublicationWizard>["contractors"];
 
-const policy = (id: string, allowedFieldScope = ["kurzbezeichnung", "workPackage", "trade"]) => ({
+const policy = (
+  id: string,
+  allowedFieldScope = ["kurzbezeichnung", "workPackage", "trade"],
+  allowedPurposes = ["RAHMENTERMINE"],
+) => ({
   id,
   version: 7,
   lifecycleStatus: "ACCEPTED",
   effectivePolicy: {
     projectReference: "campus-west",
-    allowedPurposes: ["RAHMENTERMINE"],
+    allowedPurposes,
     allowedFieldScope,
     validFrom: "2026-09-01",
     validUntil: "2026-12-31",
@@ -261,8 +265,11 @@ describe("DataPublicationWizard", () => {
     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       purpose: "RAHMENTERMINE",
       selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
-      parentPolicyId: "agreement-1",
-      parentPolicyVersion: 7,
+      recipients: [{
+        nuOrgId: "an-1",
+        parentPolicyId: "agreement-1",
+        parentPolicyVersion: 7,
+      }],
     }) }));
     expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
   });
@@ -317,7 +324,13 @@ describe("DataPublicationWizard", () => {
 
   it("keeps inherited parent-policy fields read-only and resets to the Rahmentermine whitelist after a purpose change", async () => {
     const user = userEvent.setup();
-    render(<DataPublicationWizard open onOpenChange={vi.fn()} projectId="campus-west" projectName="Campus West" contractors={[activeContractor()]} takte={campusTakte} />);
+    render(<DataPublicationWizard open onOpenChange={vi.fn()} projectId="campus-west" projectName="Campus West" contractors={[activeContractor({
+      parentAgreement: policy("agreement-1", [
+        "kurzbezeichnung", "workPackage", "trade", "plannedTimeWindow", "bufferTimeWindow",
+        "location", "requiredOutput", "resourceRequirements", "constraints", "predecessors",
+        "successors", "documentReferences",
+      ], ["RAHMENTERMINE", "LEISTUNGSKOORDINATION"]),
+    })]} takte={campusTakte} />);
 
     await user.click(screen.getByRole("button", { name: /Baupartner/ }));
     await user.click(screen.getByRole("button", { name: /Weiter/ }));
@@ -393,5 +406,33 @@ describe("DataPublicationWizard", () => {
     await waitFor(() => expect(mocks.createBatch).toHaveBeenCalledTimes(4));
     expect(mocks.createBatch.mock.calls[3][0]).toEqual(expect.objectContaining({ data: expect.objectContaining({ taktId: "L-102" }) }));
     expect(mocks.toast).toHaveBeenLastCalledWith({ title: "Leistungen für AN freigegeben" });
+  });
+
+  it("renders only purposes and fields granted by the selected parent policy", async () => {
+    const user = userEvent.setup();
+    render(<DataPublicationWizard
+      open
+      onOpenChange={vi.fn()}
+      projectId="campus-west"
+      projectName="Campus West"
+      contractors={[activeContractor({
+        parentAgreement: policy("restricted-agreement", ["location"], ["RAHMENTERMINE"]),
+      })]}
+      takte={campusTakte}
+    />);
+
+    await user.click(screen.getByRole("button", { name: /Baupartner/ }));
+    await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    const purposeSelect = screen.getByRole("combobox");
+    expect(purposeSelect.querySelectorAll("option")).toHaveLength(1);
+    expect(purposeSelect).toHaveValue("RAHMENTERMINE");
+    expect(() => user.selectOptions(purposeSelect, "LEISTUNGSKOORDINATION")).rejects.toThrow();
+    await user.selectOptions(purposeSelect, "RAHMENTERMINE");
+    await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getByRole("button", { name: /Weiter/ }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getByRole("checkbox", { name: /Ausführungsbereich/ })).toBeInTheDocument();
+    expect(screen.queryByText("Geplanter Zeitraum")).not.toBeInTheDocument();
   });
 });

@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db } from "@workspace/db";
+import { agDb as db, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -57,6 +57,12 @@ const TAKT_ID     = "t36-takt-001";
 const GU_USER     = "t36-user-gu";
 const NU_USER     = "t36-user-nu";
 const OTHER_USER  = "t36-user-other";
+const validPolicySelection = {
+  purpose: "LEISTUNGSKOORDINATION" as const,
+  selectedFields: ["plannedTimeWindow"],
+  parentPolicyId: "t36-agreement",
+  parentPolicyVersion: 1,
+};
 
 let guToken: string;
 let nuToken: string;
@@ -158,6 +164,7 @@ describe("POST /takt-requests", () => {
         responseRequiredBy: "2026-10-08T10:00:00Z",
         subject: "Bitte Zeitraum prüfen",
         message: "Wir schlagen den 01.10.–15.10. vor.",
+        ...validPolicySelection,
       });
 
     expect(res.status).toBe(201);
@@ -174,7 +181,7 @@ describe("POST /takt-requests", () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG, ...validPolicySelection });
 
     expect(res.status).toBe(201);
     const snapshotId = res.body.snapshotId;
@@ -195,7 +202,7 @@ describe("POST /takt-requests", () => {
   it("returns 401 when no bearer token is provided", async () => {
     const res = await request(app)
       .post("/api/takt-requests")
-      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG, ...validPolicySelection });
     expect(res.status).toBe(401);
   });
 
@@ -203,7 +210,7 @@ describe("POST /takt-requests", () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${otherGuToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG });
+      .send({ taktId: TAKT_ID, nuOrgId: NU_ORG, ...validPolicySelection });
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/not the AG owner/i);
   });
@@ -212,7 +219,7 @@ describe("POST /takt-requests", () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: OTHER_GU }); // OTHER_GU not in project_contractors
+      .send({ taktId: TAKT_ID, nuOrgId: OTHER_GU, ...validPolicySelection }); // OTHER_GU not in project_contractors
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("PROJECT_MEMBERSHIP_NOT_ACTIVE");
   });
@@ -221,7 +228,7 @@ describe("POST /takt-requests", () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: "non-existent-takt", nuOrgId: NU_ORG });
+      .send({ taktId: "non-existent-takt", nuOrgId: NU_ORG, ...validPolicySelection });
     expect(res.status).toBe(404);
   });
 
@@ -248,6 +255,7 @@ describe("POST /takt-requests/:id/send", () => {
         responseRequiredBy: "2026-10-10T12:00:00Z",
         subject: "T36 Notification",
         message: "Bitte prüfen.",
+        ...validPolicySelection,
       });
     expect(res.status).toBe(201);
     return { requestId: res.body.id, snapshotId: res.body.snapshotId };
@@ -276,7 +284,7 @@ describe("POST /takt-requests/:id/send", () => {
 
     // The message_outbox payload should be the minimal notification, not the snapshot.
     // We verify by checking the outbox row directly.
-    const rows = await db.execute(
+    const rows = await hubDb.execute(
       sql`SELECT payload FROM message_outbox WHERE message_id = ${"taktrequest-notification-" + requestId} LIMIT 1`,
     ) as unknown as Array<{ payload: Record<string, unknown> }>;
 
@@ -342,7 +350,7 @@ describe("POST /takt-requests/:id/send", () => {
     expect(res2.body.messageId).toBe(res1.body.messageId);
 
     // Verify only one outbox row
-    const countRows = await db.execute(
+    const countRows = await hubDb.execute(
       sql`SELECT COUNT(*) as cnt FROM message_outbox WHERE correlation_id = ${requestId}`,
     ) as unknown as Array<{ cnt: string }>;
     if (countRows.length > 0) {

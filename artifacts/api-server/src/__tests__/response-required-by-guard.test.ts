@@ -48,6 +48,12 @@ const GU_USER = "t135-gu-user";
 const PROJECT = "t135-project";
 const TAKT    = "t135-takt";
 const PROJECT_AGREEMENT = "t135-project-agreement";
+const VALID_POLICY_SELECTION = {
+  purpose: "LEISTUNGSKOORDINATION" as const,
+  selectedFields: ["plannedTimeWindow"],
+  parentPolicyId: PROJECT_AGREEMENT,
+  parentPolicyVersion: 1,
+};
 
 const guToken = sign({ userId: GU_USER, orgId: GU_ORG, orgType: "AG", roles: ["AG_ADMIN"] });
 
@@ -177,6 +183,7 @@ describe("POST /api/takt-requests — responseRequiredBy guard", () => {
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: PAST_DATE,
@@ -194,6 +201,7 @@ describe("POST /api/takt-requests — responseRequiredBy guard", () => {
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: almostAnHour,
@@ -208,6 +216,7 @@ describe("POST /api/takt-requests — responseRequiredBy guard", () => {
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: VALID_DATE,
@@ -223,6 +232,7 @@ describe("POST /api/takt-requests — responseRequiredBy guard", () => {
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
       });
@@ -240,6 +250,7 @@ describe("POST /api/projects/:id/takt-requests — responseRequiredBy guard", ()
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: PAST_DATE,
@@ -257,6 +268,7 @@ describe("POST /api/projects/:id/takt-requests — responseRequiredBy guard", ()
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: almostAnHour,
@@ -271,6 +283,7 @@ describe("POST /api/projects/:id/takt-requests — responseRequiredBy guard", ()
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: VALID_DATE,
@@ -286,6 +299,7 @@ describe("POST /api/projects/:id/takt-requests — responseRequiredBy guard", ()
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
       .send({
+        ...VALID_POLICY_SELECTION,
         taktId: TAKT,
         nuOrgId: NU_ORG,
       });

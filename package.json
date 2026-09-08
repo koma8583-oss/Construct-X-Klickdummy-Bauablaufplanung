@@ -11,8 +11,9 @@
     "test:api": "pnpm --filter @workspace/api-server run test",
     "test:ag": "pnpm --filter @workspace/ag-app run test",
     "test:an": "pnpm --filter @workspace/an-app run test",
-    "validate:ci": "pnpm run validate:types && pnpm run test:api && pnpm run test:ag && pnpm run test:an && pnpm run e2e:list",
+    "validate:ci": "pnpm run validate:types && pnpm run test:api && pnpm run test:ag && pnpm run test:an && pnpm run build && pnpm run e2e:ci",
     "e2e": "playwright test --config=e2e/playwright.config.ts",
+    "e2e:ci": "sh -c 'mkdir -p ci-diagnostics; rm -f ci-diagnostics/playwright-results.json; PLAYWRIGHT_JSON_OUTPUT_FILE=ci-diagnostics/playwright-results.json playwright test --config=e2e/playwright.config.ts --project=desktop --project=mobile --workers=1 --reporter=list,json && node scripts/assert-playwright-ci.mjs ci-diagnostics/playwright-results.json'",
     "e2e:list": "playwright test --config=e2e/playwright.config.ts --list"
   },
   "private": true,

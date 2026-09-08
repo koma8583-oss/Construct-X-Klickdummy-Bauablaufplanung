@@ -14,6 +14,7 @@ import { z } from "zod";
 import {
   InvalidRequirementPeriodError,
   ResourceRequirementNotFoundError,
+  requirementCreateSchema,
   requirementUpdateSchema,
 } from "./resource-requirements-service";
 import { toExternalResourceRequirementsFromSnapshot, toExternalServiceRequest } from "./dataspace/external-mappers";
@@ -38,11 +39,37 @@ import {
   type LeistungsanfragePolicyState,
 } from "./leistungsanfrage-policy-guard";
 import { evaluateResourceRequirements } from "./resource-availability-service";
+import { enqueueHubMessageInTransaction } from "./hub-transport-service";
 
 const actionableStatuses = ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"] as const;
 
 type Projection = typeof anLeistungsanfragenTable.$inferSelect;
 type PayloadSnapshot = Record<string, unknown>;
+
+function serviceRequestTransportPayload(payload: ExternalServiceRequest): Record<string, unknown> {
+  return {
+    taktRequestId: payload.requestId,
+    leistungsanfrageId: payload.requestId,
+    ...(payload.senderOrganizationName ? { senderOrganizationName: payload.senderOrganizationName } : {}),
+    ...(payload.senderUserId ? { senderUserId: payload.senderUserId } : {}),
+    ...(payload.comment ? { comment: payload.comment } : {}),
+    projectReference: payload.projectReference,
+    ...(payload.projectName ? { projectName: payload.projectName } : {}),
+    ...(payload.leistungReference ? { leistungReference: payload.leistungReference } : {}),
+    taktVersion: payload.requestVersion,
+    ...(payload.requestKind ? { requestKind: payload.requestKind } : {}),
+    ...(payload.sourceRequestId ? { sourceRequestId: payload.sourceRequestId } : {}),
+    ...(payload.changeProposalId ? { changeProposalId: payload.changeProposalId } : {}),
+    ...(payload.baseTimeWindow ? { baseTimeWindow: payload.baseTimeWindow } : {}),
+    responseRequiredBy: null,
+    plannedStart: payload.plannedStart,
+    plannedEnd: payload.plannedEnd,
+    resourceRequirements: payload.resourceRequirements,
+    ...(payload.publicSnapshot ? { publicSnapshot: payload.publicSnapshot } : {}),
+    policy: payload.policy ?? null,
+    ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
+  };
+}
 type WorkflowAction = "RESPOND_TO_REQUEST" | "DECIDE_RESPONSE" | "RESPOND_TO_CHANGE_PROPOSAL" | "NO_ACTION";
 type WorkflowOwner = "AG" | "AN";
 type WorkflowView = {
@@ -669,6 +696,101 @@ export async function updateAnResourceRequirement(
   });
 }
 
+export async function listAnResourceRequirements(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+) {
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  assertProjectionPolicyAccess(projection, "RESOURCE");
+  const rows = await anDb.select().from(anLeistungsanfrageResourceRequirementsTable)
+    .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id));
+  return rows.map((row) => ({
+    id: row.id,
+    leistungsanfrageId: externalLeistungsanfrageId,
+    taktRequestId: externalLeistungsanfrageId,
+    anOrgId,
+    resourceTypeId: row.localResourceTypeId,
+    resourceTypeCode: row.externalResourceTypeCode,
+    resourceTypeName: row.externalResourceTypeName,
+    requiredCapacity: row.requiredCapacity,
+    utilizationPercent: row.utilizationPercent,
+    requiredQualification: row.requiredQualification,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+    notes: row.notes,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }));
+}
+
+export async function createAnResourceRequirement(
+  externalLeistungsanfrageId: string,
+  anOrgId: string,
+  input: z.infer<typeof requirementCreateSchema>,
+) {
+  if (!input.periodStart || !input.periodEnd || input.periodStart > input.periodEnd) {
+    throw new InvalidRequirementPeriodError();
+  }
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  assertProjectionPolicyAccess(projection, "RESOURCE");
+  const [resourceType] = input.resourceTypeId
+    ? await anDb.select().from(resourceTypesTable).where(and(
+        eq(resourceTypesTable.id, input.resourceTypeId),
+        eq(resourceTypesTable.anOrgId, anOrgId),
+      )).limit(1)
+    : [];
+  const [created] = await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values({
+    anLeistungsanfrageId: projection.id,
+    externalResourceTypeCode: resourceType?.code ?? "UNSPECIFIED",
+    externalResourceTypeName: resourceType?.name ?? "Nicht spezifiziert",
+    localResourceTypeId: resourceType?.id ?? null,
+    requiredCapacity: input.requiredCapacity.toString(),
+    capacityUnit: resourceType?.capacityUnit ?? "UNITS",
+    utilizationPercent: input.utilizationPercent,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    requiredQualification: input.requiredQualification,
+    notes: input.notes,
+  }).returning();
+  return {
+    ...created!,
+    leistungsanfrageId: externalLeistungsanfrageId,
+    taktRequestId: externalLeistungsanfrageId,
+    anOrgId,
+    resourceTypeId: created!.localResourceTypeId,
+  };
+}
+
+export async function deleteAnResourceRequirement(
+  externalLeistungsanfrageId: string,
+  requirementId: string,
+  anOrgId: string,
+) {
+  const [projection] = await anDb.select().from(anLeistungsanfragenTable).where(and(
+    eq(anLeistungsanfragenTable.externalLeistungsanfrageId, externalLeistungsanfrageId),
+    eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId),
+  )).orderBy(desc(anLeistungsanfragenTable.externalRequestVersion)).limit(1);
+  if (!projection) return null;
+  assertProjectionPolicyAccess(projection, "RESOURCE");
+
+  const [deleted] = await anDb.delete(anLeistungsanfrageResourceRequirementsTable)
+    .where(and(
+      eq(anLeistungsanfrageResourceRequirementsTable.id, requirementId),
+      eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, projection.id),
+    ))
+    .returning({ id: anLeistungsanfrageResourceRequirementsTable.id });
+  if (!deleted) throw new ResourceRequirementNotFoundError();
+  return deleted;
+}
+
 export async function getAnDashboard(anOrgId: string) {
   const requests = await anDb.select().from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, anOrgId))
@@ -858,6 +980,9 @@ export async function runAnAvailabilityCheck(
   missingQualifications.length = 0;
   tentativeWarnings.length = 0;
   missingQualifications.push(...sharedEvaluation.missingQualifications);
+  const normalizedMissingQualifications = new Set(
+    sharedEvaluation.missingQualifications.map((qualification) => qualification.trim().toLocaleLowerCase()),
+  );
   for (const requirement of requirements) {
     const requiredCapacity = Number(requirement.requiredCapacity ?? 1);
     if (!requirement.localResourceTypeId) {
@@ -878,7 +1003,7 @@ export async function runAnAvailabilityCheck(
         conflict.conflictType === "CAPACITY_EXCEEDED");
       conflicts.push({
         conflictType: requirement.requiredQualification &&
-          sharedEvaluation.missingQualifications.includes(requirement.requiredQualification)
+          normalizedMissingQualifications.has(requirement.requiredQualification.trim().toLocaleLowerCase())
           ? "MISSING_QUALIFICATION"
           : "CAPACITY_EXCEEDED",
         resourceId: null,
@@ -1291,6 +1416,19 @@ export async function createAnScheduleChangeProposal(input: {
           })),
         );
       }
+      await enqueueHubMessageInTransaction(tx, {
+        messageId: payload.metadata.messageId,
+        schemaVersion: payload.metadata.schemaVersion,
+         // deliverLocalServiceRequest publishes the stable service-request
+         // notification for schedule changes as well. Pre-create the exact
+         // same envelope type so the atomic outbox row is idempotent.
+         messageType: "TAKT_REQUEST_NOTIFICATION",
+        senderOrgId: payload.metadata.senderOrgId,
+        recipientOrgId: payload.metadata.receiverOrgId,
+        correlationId: payload.metadata.correlationId,
+        payload: serviceRequestTransportPayload(payload),
+        status: "PENDING",
+      });
     });
     await runAnAvailabilityCheck(input.requestId, input.anOrgId, input.userId, {
       projectionId: localProjectionId,

@@ -162,4 +162,22 @@ describe("Construct-X coordination policy resolver", () => {
     );
     expect(result.deltaClass).toBe("NOT_PERMITTED");
   });
+
+  it("requires explicit consent for an allowed non-baseline child purpose", () => {
+    const parent = {
+      ...base,
+      policyType: "PROJECT_AGREEMENT" as const,
+      purpose: "PROJECT_MEMBERSHIP",
+      allowedPurposes: ["LEISTUNGSKOORDINATION", "RAHMENTERMINE"],
+    };
+
+    expect(resolvePolicyDelta(parent, {
+      ...candidate,
+      purpose: "LEISTUNGSKOORDINATION",
+    }).deltaClass).toBe("WITHIN_BASELINE");
+    expect(resolvePolicyDelta(parent, {
+      ...candidate,
+      purpose: "RAHMENTERMINE",
+    }).deltaClass).toBe("REQUIRES_CONSENT");
+  });
 });
