@@ -136,7 +136,7 @@ jobs:
           wait_for_http http://127.0.0.1:4173/ 200
           wait_for_http http://127.0.0.1:4173/an/ 200
           wait_for_http http://127.0.0.1:4173/hub/ 200
-          pnpm run e2e:ci 2>&1 | tee /tmp/ci-e2e.log
+          E2E_BASE_URL=http://127.0.0.1:4173 pnpm run e2e:ci 2>&1 | tee /tmp/ci-e2e.log
 
       - name: Collect CI diagnostics
         if: always()
