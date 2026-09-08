@@ -80,6 +80,12 @@ const GU_USER  = "t81-gu-user";
 const NU_USER  = "t81-nu-user";
 const PROJECT  = "t81-project";
 const TAKT_BASE = "t81-takt";
+const performanceRequestContract = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: "t81-agreement",
+  parentPolicyVersion: 1,
+};
 
 let guToken:  string;
 let nuToken:  string;
@@ -340,6 +346,7 @@ describe("POST /projects/:id/takt-requests — legacy create via createTaktReque
         taktId:        TAKT_BASE,
         nuOrgId:       NU_ORG,
         requestNumber: "TKR-T81-LEGACY-001",
+        ...performanceRequestContract,
       });
 
     expect(res.status).toBe(201);
@@ -364,7 +371,7 @@ describe("POST /projects/:id/takt-requests — legacy create via createTaktReque
     const res = await request(app)
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_BASE, nuOrgId: NU_ORG });
+      .send({ taktId: TAKT_BASE, nuOrgId: NU_ORG, ...performanceRequestContract });
 
     expect(res.status).toBe(201);
     expect(typeof res.body.requestNumber).toBe("string");
@@ -377,7 +384,7 @@ describe("POST /projects/:id/takt-requests — legacy create via createTaktReque
     const res = await request(app)
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: TAKT_BASE, nuOrgId: NU_ORG_B });
+      .send({ taktId: TAKT_BASE, nuOrgId: NU_ORG_B, ...performanceRequestContract });
 
     // NU_ORG_B has no project_contractors entry
     expect(res.status).toBe(403);
@@ -388,7 +395,7 @@ describe("POST /projects/:id/takt-requests — legacy create via createTaktReque
     const res = await request(app)
       .post(`/api/projects/${PROJECT}/takt-requests`)
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: "nonexistent-takt-t81", nuOrgId: NU_ORG });
+      .send({ taktId: "nonexistent-takt-t81", nuOrgId: NU_ORG, ...performanceRequestContract });
 
     expect(res.status).toBe(404);
   });

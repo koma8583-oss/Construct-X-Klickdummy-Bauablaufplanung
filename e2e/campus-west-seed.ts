@@ -11,6 +11,7 @@ import {
   dataspaceExchangesTable,
   leistungsabhaengigkeitenTable,
   leistungsanfragenTable,
+  leistungsantwortEntscheidungenTable,
   leistungsVersionenTable,
   leistungenTable,
   messageDeliveryAttemptsTable,
@@ -239,6 +240,27 @@ export async function seedCampusWest(): Promise<Seed> {
   };
 }
 
+export async function restrictProjectAgreementPurposes(
+  policyId: string,
+  allowedPurposes: string[],
+): Promise<void> {
+  const [policy] = await agDb.select().from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, policyId));
+  if (!policy) throw new Error(`Project agreement ${policyId} not found`);
+  await agDb.update(coordinationPoliciesTable)
+    .set({
+      policySnapshot: {
+        ...(policy.policySnapshot as Record<string, unknown>),
+        allowedPurposes,
+      },
+      effectivePolicy: {
+        ...(policy.effectivePolicy as Record<string, unknown>),
+        allowedPurposes,
+      },
+    })
+    .where(eq(coordinationPoliciesTable.id, policyId));
+}
+
 export async function cleanupCampusWest(seed: Seed): Promise<void> {
   const requestIds = [
     ...Object.values(seed.requests),
@@ -258,6 +280,8 @@ export async function cleanupCampusWest(seed: Seed): Promise<void> {
       .where(inArray(anLeistungsanfragenTable.externalLeistungsanfrageId, requestIds));
     await agDb.delete(serviceChangeProposalsTable)
       .where(inArray(serviceChangeProposalsTable.leistungsanfrageId, requestIds));
+    await agDb.delete(leistungsantwortEntscheidungenTable)
+      .where(inArray(leistungsantwortEntscheidungenTable.leistungsanfrageId, requestIds));
     await agDb.delete(leistungsanfragenTable).where(inArray(leistungsanfragenTable.id, requestIds));
   }
   await agDb.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, seed.projectId));

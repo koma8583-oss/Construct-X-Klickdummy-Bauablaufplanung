@@ -938,7 +938,14 @@ describe("membership gates and legacy compatibility", () => {
 
     const noMembership = await request(app).post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: BACKFILL_AN_ID });
+      .send({
+        taktId: TAKT_ID,
+        nuOrgId: BACKFILL_AN_ID,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+        parentPolicyId: `${PREFIX}-not-yet-linked`,
+        parentPolicyVersion: 1,
+      });
     expect(noMembership.status).toBe(403);
     expect(noMembership.body.code).toBe("PROJECT_MEMBERSHIP_NOT_ACTIVE");
   });
@@ -964,7 +971,14 @@ describe("membership gates and legacy compatibility", () => {
     }
     const deniedWithoutAgreement = await request(app).post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: BACKFILL_AN_ID });
+      .send({
+        taktId: TAKT_ID,
+        nuOrgId: BACKFILL_AN_ID,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+        parentPolicyId: `${PREFIX}-not-yet-linked`,
+        parentPolicyVersion: 1,
+      });
     expect(deniedWithoutAgreement.status).toBe(403);
 
     const agreementId = `${PREFIX}-backfill-agreement`;
@@ -982,7 +996,14 @@ describe("membership gates and legacy compatibility", () => {
       .where(and(eq(projectMembershipsTable.projectId, PROJECT_ID), eq(projectMembershipsTable.anOrgId, BACKFILL_AN_ID)));
     const allowed = await request(app).post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT_ID, nuOrgId: BACKFILL_AN_ID });
+      .send({
+        taktId: TAKT_ID,
+        nuOrgId: BACKFILL_AN_ID,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+        parentPolicyId: agreementId,
+        parentPolicyVersion: 1,
+      });
     expect(allowed.status).toBe(201);
   });
 

@@ -456,7 +456,14 @@ describe("Audit trail — new event types", () => {
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agAdminToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_A });
+      .send({
+        taktId,
+        nuOrgId: NU_ORG_A,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+        parentPolicyId: agreementId,
+        parentPolicyVersion: 1,
+      });
 
     expect(res.status).toBe(201);
     const requestId = res.body.id;

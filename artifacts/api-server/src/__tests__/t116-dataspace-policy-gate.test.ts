@@ -157,6 +157,15 @@ async function createDraftRequest(
   token: string,
   dataPublicationId?: string,
 ): Promise<string> {
+  const [membership] = await db.select({
+    projectAgreementPolicyId: projectMembershipsTable.projectAgreementPolicyId,
+  }).from(projectMembershipsTable).where(and(
+    eq(projectMembershipsTable.projectId, projectId),
+    eq(projectMembershipsTable.anOrgId, nuOrgId),
+  )).limit(1);
+  if (!membership?.projectAgreementPolicyId) {
+    throw new Error("Expected an active membership with a linked Project Agreement");
+  }
   const res = await request(app)
     .post("/api/takt-requests")
     .set("Authorization", `Bearer ${token}`)
@@ -165,6 +174,10 @@ async function createDraftRequest(
       nuOrgId,
       requestNumber: `T116-${Date.now()}`,
       dataPublicationId,
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: membership.projectAgreementPolicyId,
+      parentPolicyVersion: 1,
     });
 
   if (res.status !== 201) {

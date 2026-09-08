@@ -68,6 +68,12 @@ function sign(p: {
 
 const guToken = sign({ userId: GU_USER_ID, orgId: GU_ORG_ID, orgType: "AG" });
 const nuToken = sign({ userId: NU_USER_ID, orgId: NU_ORG_ID, orgType: "AN" });
+const requestPolicy = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: `${T}-agreement`,
+  parentPolicyVersion: 1,
+} as const;
 
 // ── Teardown helper ───────────────────────────────────────────────────────────
 
@@ -382,6 +388,7 @@ describe("t68-suiteA: full ACCEPTED coordination path (API-driven)", () => {
         subject: "Bitte Takt bestätigen",
         message: "Bitte prüfen und zurückmelden.",
         dataPublicationId: publicationId,
+        ...requestPolicy,
       });
 
     expect(res.status).toBe(201);
@@ -523,7 +530,13 @@ describe("t68-suiteB: ALTERNATIVES_PROPOSED path (NU proposes → GU ACCEPT_ALTE
     const res = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-05-01T00:00:00Z", dataPublicationId: publicationId });
+      .send({
+        taktId,
+        nuOrgId: NU_ORG_ID,
+        responseRequiredBy: "2028-05-01T00:00:00Z",
+        dataPublicationId: publicationId,
+        ...requestPolicy,
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("DRAFT");
@@ -676,7 +689,12 @@ describe("t68-suiteC: access-control guards on GET /takt-requests/:id/details", 
     const create = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId, nuOrgId: NU_ORG_ID, responseRequiredBy: "2028-06-01T00:00:00Z" });
+      .send({
+        taktId,
+        nuOrgId: NU_ORG_ID,
+        responseRequiredBy: "2028-06-01T00:00:00Z",
+        ...requestPolicy,
+      });
     requestId = create.body.id;
 
     await request(app)

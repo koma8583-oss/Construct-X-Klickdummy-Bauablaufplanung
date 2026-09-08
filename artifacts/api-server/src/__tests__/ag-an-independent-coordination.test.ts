@@ -42,6 +42,14 @@ const AG_USER = `${PREFIX}-ag-user`;
 const AN_USER = `${PREFIX}-an-user`;
 const PROJECT = `${PREFIX}-project`;
 const TAKT = `${PREFIX}-takt`;
+const PROJECT_AGREEMENT_ID = `${PREFIX}-agreement`;
+const PARENT_POLICY_VERSION = 1;
+const performanceRequestPolicy = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: PROJECT_AGREEMENT_ID,
+  parentPolicyVersion: PARENT_POLICY_VERSION,
+};
 
 const secret = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const token = (userId: string, orgId: string, orgType: "AG" | "AN") =>
@@ -134,18 +142,17 @@ beforeAll(async () => {
   await db.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: AN, assignmentStatus: "ACTIVE",
   });
-  const agreementId = `${PREFIX}-agreement`;
   await db.insert(coordinationPoliciesTable).values({
-    id: agreementId,
-    policyKey: agreementId,
-    version: 1,
+    id: PROJECT_AGREEMENT_ID,
+    policyKey: PROJECT_AGREEMENT_ID,
+    version: PARENT_POLICY_VERSION,
     kind: "PROJECT_AGREEMENT",
     projectId: PROJECT,
     providerOrgId: AG,
     recipientOrgId: AN,
     lifecycleStatus: "ACCEPTED",
     policySnapshot: {
-      policyId: agreementId,
+      policyId: PROJECT_AGREEMENT_ID,
       templateId: "PROJECT_MEMBERSHIP",
       templateVersion: 1,
       code: "PROJECT_MEMBERSHIP",
@@ -163,7 +170,7 @@ beforeAll(async () => {
       createdAt: "2026-09-01T00:00:00.000Z",
     },
     effectivePolicy: {
-      policyId: agreementId,
+      policyId: PROJECT_AGREEMENT_ID,
       templateId: "PROJECT_MEMBERSHIP",
       templateVersion: 1,
       code: "PROJECT_MEMBERSHIP",
@@ -188,7 +195,7 @@ beforeAll(async () => {
     INSERT INTO project_memberships
       (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status, project_agreement_policy_id)
     VALUES (${`${PREFIX}-membership`}, ${PROJECT}, ${AG}, ${AN},
-      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${agreementId})
+      ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${PROJECT_AGREEMENT_ID})
     ON CONFLICT DO NOTHING
   `);
 });
@@ -202,7 +209,12 @@ describe("independent AG–AN coordination flow", () => {
     const created = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT, nuOrgId: AN, responseRequiredBy: "2026-11-01T12:00:00.000Z" });
+      .send({
+        taktId: TAKT,
+        nuOrgId: AN,
+        responseRequiredBy: "2026-11-01T12:00:00.000Z",
+        ...performanceRequestPolicy,
+      });
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
     requestId = created.body.id;
@@ -344,7 +356,7 @@ describe("independent AG–AN coordination flow", () => {
     const created = await request(app)
       .post("/api/takt-requests")
       .set("Authorization", `Bearer ${agToken}`)
-      .send({ taktId: TAKT, nuOrgId: AN });
+      .send({ taktId: TAKT, nuOrgId: AN, ...performanceRequestPolicy });
     expect(created.status).toBe(201);
     const firstRoundId = created.body.id as string;
 

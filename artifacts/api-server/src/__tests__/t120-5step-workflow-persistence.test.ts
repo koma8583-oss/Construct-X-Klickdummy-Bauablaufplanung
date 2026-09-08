@@ -226,7 +226,15 @@ beforeAll(async () => {
   const createRes = await request(app)
     .post("/api/takt-requests")
     .set("Authorization", `Bearer ${agToken}`)
-    .send({ taktId: TAKT, nuOrgId: AN_ORG, dataPublicationId: pubId });
+    .send({
+      taktId: TAKT,
+      nuOrgId: AN_ORG,
+      dataPublicationId: pubId,
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: PROJECT_AGREEMENT,
+      parentPolicyVersion: 1,
+    });
 
   if (createRes.status !== 201) {
     throw new Error(

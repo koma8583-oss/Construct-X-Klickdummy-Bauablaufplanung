@@ -196,6 +196,10 @@ beforeAll(async () => {
       responseRequiredBy: "2026-11-07T10:00:00Z",
       subject: "T37 Anfrage",
       message: "Bitte prüfen.",
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: agreementId,
+      parentPolicyVersion: 1,
     });
   expect(createRes.status).toBe(201);
   requestId = createRes.body.id;

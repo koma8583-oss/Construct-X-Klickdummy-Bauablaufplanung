@@ -15,7 +15,7 @@ const token = jwt.sign({
 describe('Leistungsfreigabe request contract', () => {
   it.each([
     ['/api/takt-requests', { taktId: 'takt-1', nuOrgId: 'an-1' }],
-    ['/api/takt-requests/batch', { taktId: 'takt-1', nuOrgIds: ['an-1'] }],
+    ['/api/takt-requests/batch', { taktId: 'takt-1', recipients: [{ nuOrgId: 'an-1' }] }],
     ['/api/projects/project-1/takt-requests', { taktId: 'takt-1', nuOrgId: 'an-1' }],
     ['/api/leistungsanfragen', { taktId: 'takt-1', nuOrgId: 'an-1' }],
     ['/api/projects/project-1/leistungsanfragen', { taktId: 'takt-1', nuOrgId: 'an-1' }],
@@ -34,11 +34,13 @@ describe('Leistungsfreigabe request contract', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         taktId: 'takt-1',
-        nuOrgIds: ['an-1'],
+        recipients: [{
+          nuOrgId: 'an-1',
+          parentPolicyId: 'parent-1',
+          parentPolicyVersion: 1,
+        }],
         purpose: 'PROJEKTDATEN_EXPORT',
         selectedFields: ['plannedTimeWindow'],
-        parentPolicyId: 'parent-1',
-        parentPolicyVersion: 1,
       });
 
     expect(response.status).toBe(400);

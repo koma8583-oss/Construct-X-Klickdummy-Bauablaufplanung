@@ -98,11 +98,13 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
     await user.click(screen.getByRole('button', { name: 'Vergeben' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      nuOrgIds: ['an-1'],
+      recipients: [{
+        nuOrgId: 'an-1',
+        parentPolicyId: 'parent-policy-7',
+        parentPolicyVersion: 7,
+      }],
       purpose: 'RAHMENTERMINE',
       selectedFields: ['plannedTimeWindow'],
-      parentPolicyId: 'parent-policy-7',
-      parentPolicyVersion: 7,
     })));
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       purpose: 'RAHMENTERMINE',
@@ -145,8 +147,50 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       purpose: 'LEISTUNGSKOORDINATION',
       selectedFields: ['plannedTimeWindow'],
-      parentPolicyId: 'parent-policy-7',
-      parentPolicyVersion: 7,
+      recipients: [{
+        nuOrgId: 'an-2',
+        parentPolicyId: 'parent-policy-7',
+        parentPolicyVersion: 7,
+      }],
+    })));
+  });
+
+  it('binds each selected Nachunternehmen to its own Parent-Policy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      items: [{ taktId: 'takt-3', deltaClass: 'WITHIN_BASELINE', inheritedEffectivePolicy: {}, diff: { summary: [] } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <LeistungVergabeDialog
+        open
+        onOpenChange={vi.fn()}
+        taktId="takt-3"
+        partners={[
+          {
+            anOrgId: 'an-a',
+            label: 'Partner A',
+            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-a', version: 2 },
+          },
+          {
+            anOrgId: 'an-b',
+            label: 'Partner B',
+            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-b', version: 4 },
+          },
+        ]}
+        onSubmit={onSubmit}
+      />,
+    );
+    await user.click(screen.getByRole('checkbox', { name: /Partner A/i }));
+     await user.click(screen.getByRole('checkbox', { name: /Partner B/i }));
+    fireEvent.change(screen.getByLabelText('Fachlicher Zweck'), { target: { value: 'RAHMENTERMINE' } });
+    await user.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
+    await user.click(screen.getByRole('button', { name: 'Vergeben' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [
+        { nuOrgId: 'an-a', parentPolicyId: 'policy-a', parentPolicyVersion: 2 },
+        { nuOrgId: 'an-b', parentPolicyId: 'policy-b', parentPolicyVersion: 4 },
+      ],
     })));
   });
 });

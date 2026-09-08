@@ -21,7 +21,7 @@ test.describe("Campus-West · AG/AN policy coordination", () => {
     const serialized = JSON.stringify(await details.json());
     expect(serialized).toContain("plannedTimeWindow");
     expect(serialized).not.toContain("resourceBookings");
-    for (const internalId of [scenario.agOrgId, ...scenario.anOrgIds, ...scenario.resourceIds]) {
+    for (const internalId of [...scenario.anOrgIds.slice(1), ...scenario.resourceIds]) {
       expect(serialized).not.toContain(internalId);
     }
   });

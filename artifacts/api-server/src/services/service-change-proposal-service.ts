@@ -101,7 +101,7 @@ async function createScheduleChangePolicy(tx: any, input: {
     providerContext: { organizationId: input.request.guOrgId, userId: input.createdByUserId ?? undefined, organizationType: "AG" },
     overrides: {
       recipientOrganizationId: input.request.nuOrgId,
-      purpose: "scheduleCoordination",
+      purpose: "RAHMENTERMINE",
       projectReference: (parent.effectivePolicy?.projectReference as string | undefined) ?? null,
       // Preserve valid inherited capability dates. Do not pass absent policy
       // dates through a Date constructor, which would create Invalid Dates.

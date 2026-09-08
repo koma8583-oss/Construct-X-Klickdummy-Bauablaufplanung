@@ -2019,6 +2019,21 @@ export interface CreateTaktRequestBody {
   parentPolicyVersion: number;
 }
 
+export type TaktRequestBatchInputRecipientsItem = {
+  /** @minLength 1 */
+  nuOrgId: string;
+  /**
+     * Exact accepted Parent Policy for this recipient.
+     * @minLength 1
+     */
+  parentPolicyId: string;
+  /**
+     * Exact version of this recipient's Parent Policy.
+     * @minimum 1
+     */
+  parentPolicyVersion: number;
+};
+
 /**
  * Business purpose of the Leistungsfreigabe.
  */
@@ -2033,7 +2048,7 @@ export const TaktRequestBatchInputPurpose = {
 } as const;
 
 /**
- * Body for atomically creating one request per selected NU.
+ * Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
  */
 export interface TaktRequestBatchInput {
   /** @minLength 1 */
@@ -2041,9 +2056,8 @@ export interface TaktRequestBatchInput {
   /**
      * @minItems 1
      * @maxItems 50
-     * @items.minLength 1
      */
-  nuOrgIds: string[];
+  recipients: TaktRequestBatchInputRecipientsItem[];
   responseRequiredBy?: string;
   /** @maxLength 255 */
   subject?: string;
@@ -2056,16 +2070,6 @@ export interface TaktRequestBatchInput {
      * @items.minLength 1
      */
   selectedFields: string[];
-  /**
-     * Exact accepted parent policy selected from the effective-policy response.
-     * @minLength 1
-     */
-  parentPolicyId: string;
-  /**
-     * Exact version of the selected parent policy.
-     * @minimum 1
-     */
-  parentPolicyVersion: number;
 }
 
 /**

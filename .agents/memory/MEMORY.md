@@ -70,3 +70,4 @@
 - [CI gate conclusions](ci-gate-conclusions.md) — required browser gates must reject skipped/flaky work and prove each project executed; discovery or retry-success is not release evidence.
 - [GitHub workflow API scope](github-workflow-api-scope.md) — workflow-file contents operations may need a scope the connected GitHub API does not expose.
 - [Shared policy contracts](shared-policy-contracts.md) — enforce security-sensitive policy input in the lowest shared service and every mounted alias; route-only checks are bypassable.
+- [Multi-recipient Parent Policies](multi-recipient-parent-policy-binding.md) — every AN in an atomic batch carries its own accepted Parent-Policy ID and version.

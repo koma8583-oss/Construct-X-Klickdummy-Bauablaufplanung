@@ -177,21 +177,19 @@ export default function TaktDetail() {
       const created = await createRequestBatch.mutateAsync({
         data: {
           taktId: takt.id,
-          nuOrgIds: values.nuOrgIds,
+          recipients: values.recipients,
           message: values.message,
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
           purpose: values.purpose,
           selectedFields: values.selectedFields,
-          parentPolicyId: values.parentPolicyId,
-          parentPolicyVersion: values.parentPolicyVersion,
         },
       });
       await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));
       refreshTaktData();
       setAssignOpen(false);
-      toast({ title: values.nuOrgIds.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
+      toast({ title: values.recipients.length === 1 ? 'Anfrage gesendet' : 'Anfragen gesendet' });
     } catch (error) {
       toast({ title: 'Fehler bei der Vergabe', description: (error as Error).message, variant: 'destructive' });
     } finally {

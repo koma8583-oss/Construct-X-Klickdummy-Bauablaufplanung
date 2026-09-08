@@ -204,7 +204,16 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
     try {
       const outcomes = await Promise.all(taktIds.map(async (taktId): Promise<SendResult> => {
         try {
-          const batch = await createBatch.mutateAsync({ data: { taktId, nuOrgIds: [chosen.orgId], purpose, selectedFields: [...fields], parentPolicyId: selectedParentPolicy.id, parentPolicyVersion: selectedParentPolicy.version! } });
+          const batch = await createBatch.mutateAsync({ data: {
+            taktId,
+            recipients: [{
+              nuOrgId: chosen.orgId,
+              parentPolicyId: selectedParentPolicy.id,
+              parentPolicyVersion: selectedParentPolicy.version!,
+            }],
+            purpose,
+            selectedFields: [...fields],
+          } });
           const requests = batch.requests ?? [];
           if (requests.length !== 1) throw new Error("Die Erstellung lieferte kein eindeutiges Ergebnis.");
           await send.mutateAsync({ requestId: requests[0].id });

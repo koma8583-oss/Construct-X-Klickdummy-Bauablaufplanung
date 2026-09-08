@@ -57,6 +57,12 @@ const PROJECT = "t80-project";
 const TAKT    = "t80-takt";
 
 const guToken = sign({ userId: GU_USER, orgId: GU_ORG, orgType: "AG" });
+const performanceRequestContract = {
+  purpose: "LEISTUNGSKOORDINATION",
+  selectedFields: ["workPackage", "plannedTimeWindow"],
+  parentPolicyId: "t80-agreement",
+  parentPolicyVersion: 1,
+};
 
 // ── Mock transports for injection ─────────────────────────────────────────────
 
@@ -311,6 +317,7 @@ describe("A — POST /takt-requests: responseRequiredBy round-trip", () => {
         taktId: TAKT,
         nuOrgId: NU_ORG,
         responseRequiredBy: deadline,
+        ...performanceRequestContract,
       });
 
     expect(res.status).toBe(201);
@@ -335,6 +342,7 @@ describe("A — POST /takt-requests: responseRequiredBy round-trip", () => {
       .send({
         taktId: TAKT,
         nuOrgId: NU_ORG,
+        ...performanceRequestContract,
       });
 
     expect(res.status).toBe(201);

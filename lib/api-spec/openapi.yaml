@@ -6110,19 +6110,31 @@ components:
 
     TaktRequestBatchInput:
       type: object
-      description: Body for atomically creating one request per selected NU.
-      required: [taktId, nuOrgIds, purpose, selectedFields, parentPolicyId, parentPolicyVersion]
+      description: Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
+      required: [taktId, recipients, purpose, selectedFields]
       properties:
         taktId:
           type: string
           minLength: 1
-        nuOrgIds:
+        recipients:
           type: array
           minItems: 1
           maxItems: 50
           items:
-            type: string
-            minLength: 1
+            type: object
+            required: [nuOrgId, parentPolicyId, parentPolicyVersion]
+            properties:
+              nuOrgId:
+                type: string
+                minLength: 1
+              parentPolicyId:
+                type: string
+                minLength: 1
+                description: Exact accepted Parent Policy for this recipient.
+              parentPolicyVersion:
+                type: integer
+                minimum: 1
+                description: Exact version of this recipient's Parent Policy.
         responseRequiredBy:
           type: string
           format: date-time
@@ -6142,14 +6154,6 @@ components:
           items:
             type: string
             minLength: 1
-        parentPolicyId:
-          type: string
-          minLength: 1
-          description: Exact accepted parent policy selected from the effective-policy response.
-        parentPolicyVersion:
-          type: integer
-          minimum: 1
-          description: Exact version of the selected parent policy.
 
     TaktRequestDraftResponse:
       type: object

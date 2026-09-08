@@ -49,6 +49,7 @@ const NU_USER_ID   = "t69-nu-user";
 const PROJECT_ID   = "t69-project";
 const TAKT_ID      = "t69-takt";
 const PROJECT_AGREEMENT_ID = "t69-project-agreement";
+const PARENT_POLICY_VERSION = 1;
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 function sign(p: { userId: string; orgId: string | null; orgType: "AG" | "AN" | null; hubAdmin?: boolean; roles?: string[] }): string {
@@ -144,7 +145,7 @@ beforeAll(async () => {
   await db.insert(coordinationPoliciesTable).values({
     id: PROJECT_AGREEMENT_ID,
     policyKey: PROJECT_AGREEMENT_ID,
-    version: 1,
+    version: PARENT_POLICY_VERSION,
     kind: "PROJECT_AGREEMENT",
     projectId: PROJECT_ID,
     providerOrgId: GU_ORG_ID,
@@ -242,6 +243,10 @@ async function createAndSendRequest(taktIdSuffix = ""): Promise<{
       taktId,
       nuOrgId: NU_ORG_ID,
       responseRequiredBy: "2027-04-01T00:00:00.000Z",
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+      parentPolicyId: PROJECT_AGREEMENT_ID,
+      parentPolicyVersion: PARENT_POLICY_VERSION,
     });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const requestId = created.body.id as string;

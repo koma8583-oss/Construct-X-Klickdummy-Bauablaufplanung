@@ -25,6 +25,7 @@ import {
   projectMembershipsTable,
   projectsTable,
   resourceBookingsTable,
+  resourcesTable,
   resourceTypesTable,
   taktRequestsTable,
   taktResponsesTable,
@@ -230,6 +231,16 @@ async function seedFixtures() {
     category: "CREW",
     code: "CREW",
     capacityUnit: "PERSONS",
+  });
+  await anDb.insert(resourcesTable).values({
+    id: `${PREFIX}-resource`,
+    anOrgId: AN,
+    type: "CREW",
+    resourceTypeId: RESOURCE_TYPE,
+    name: "Montageteam",
+    capacity: 2,
+    capacityUnit: "PERSONS",
+    active: true,
   });
   await agDb.insert(projectMembershipsTable).values({
     id: `${PREFIX}-membership`,

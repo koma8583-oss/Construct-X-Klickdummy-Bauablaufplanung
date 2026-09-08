@@ -834,21 +834,23 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
   const userId = req.user!.userId!;
   const parsed = z.object({
     taktId: z.string().min(1),
-    nuOrgIds: z.array(z.string().min(1)).min(1).max(50),
+    recipients: z.array(z.object({
+      nuOrgId: z.string().min(1),
+      parentPolicyId: z.string().min(1),
+      parentPolicyVersion: z.number().int().positive(),
+    })).min(1).max(50),
     responseRequiredBy: z.string().datetime({ offset: true }).optional(),
     subject: z.string().max(255).optional(),
     message: z.string().max(2000).optional(),
     purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
     selectedFields: z.array(z.string().min(1)).min(1),
-    parentPolicyId: z.string().min(1),
-    parentPolicyVersion: z.number().int().positive(),
   }).safeParse(req.body);
 
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (new Set(parsed.data.nuOrgIds).size !== parsed.data.nuOrgIds.length) {
+  if (new Set(parsed.data.recipients.map((recipient) => recipient.nuOrgId)).size !== parsed.data.recipients.length) {
     res.status(400).json({ error: "Each NU organisation may appear only once in a batch." });
     return;
   }
@@ -863,8 +865,6 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
       guOrgId,
       createdByUserId: userId,
       responseRequiredBy: parsed.data.responseRequiredBy ? new Date(parsed.data.responseRequiredBy) : undefined,
-      parentPolicyId: parsed.data.parentPolicyId,
-      parentPolicyVersion: parsed.data.parentPolicyVersion,
     });
 
     await Promise.all(result.requests.flatMap((request) => [

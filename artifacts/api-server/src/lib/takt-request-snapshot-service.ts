@@ -459,10 +459,28 @@ export async function createTaktRequestWithSnapshot(
       ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
     },
   });
+  const agreementPolicy = agreement?.effectivePolicy as Record<string, unknown> | undefined;
+  const agreementChildTypes = Array.isArray(agreementPolicy?.childPolicyTypes)
+    ? agreementPolicy.childPolicyTypes.filter((value): value is string => typeof value === "string")
+    : [];
+  const agreementChildPermissions = Array.isArray(agreementPolicy?.childPermissions)
+    ? agreementPolicy.childPermissions.filter((value): value is string => typeof value === "string")
+    : [];
+  const scheduleChangeGranted =
+    purpose === "RAHMENTERMINE" &&
+    agreementChildTypes.includes("SCHEDULE_CHANGE") &&
+    agreementChildPermissions.includes("READ") &&
+    agreementChildPermissions.includes("USE_FOR_SCHEDULE_COORDINATION");
   const candidateSnapshot = {
     ...basePolicySnapshot,
     policyType: "PERFORMANCE_REQUEST" as const,
     ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
+    ...(scheduleChangeGranted
+      ? {
+          childPolicyTypes: ["SCHEDULE_CHANGE"],
+          childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+        }
+      : {}),
     selectedFields: input.selectedFields,
   };
   const resolution = resolvePolicyDelta(
@@ -582,15 +600,17 @@ export async function createTaktRequestWithSnapshot(
 export interface CreateTaktRequestBatchInput {
   taktId: string;
   guOrgId: string;
-  nuOrgIds: string[];
+  recipients: Array<{
+    nuOrgId: string;
+    parentPolicyId: string;
+    parentPolicyVersion: number;
+  }>;
   responseRequiredBy?: Date;
   createdByUserId: string;
   subject?: string;
   message?: string;
   purpose: LeistungsfreigabePurpose;
   selectedFields: string[];
-  parentPolicyId: string;
-  parentPolicyVersion: number;
 }
 
 export interface CreateTaktRequestBatchResult {
@@ -606,8 +626,7 @@ export interface CreateTaktRequestBatchResult {
 export async function createTaktRequestBatchWithSnapshot(
   input: CreateTaktRequestBatchInput,
 ): Promise<CreateTaktRequestBatchResult> {
-  const nuOrgIds = [...new Set(input.nuOrgIds)];
-  if (nuOrgIds.length === 0) {
+  if (input.recipients.length === 0) {
     throw new Error("At least one NU organisation is required.");
   }
 
@@ -619,11 +638,11 @@ export async function createTaktRequestBatchWithSnapshot(
 
   return db.transaction(async (tx) => {
     const requests: CreateTaktRequestWithSnapshotResult[] = [];
-    for (const [index, nuOrgId] of nuOrgIds.entries()) {
+    for (const [index, recipient] of input.recipients.entries()) {
       const request = await createTaktRequestWithSnapshot({
         taktId: input.taktId,
         guOrgId: input.guOrgId,
-        nuOrgId,
+        nuOrgId: recipient.nuOrgId,
         requestNumber: `${requestNumberStem}-${String(index + 1).padStart(2, "0")}`,
         responseRequiredBy: input.responseRequiredBy,
         createdByUserId: input.createdByUserId,
@@ -631,8 +650,8 @@ export async function createTaktRequestBatchWithSnapshot(
         message: input.message,
         purpose: input.purpose,
         selectedFields: input.selectedFields,
-        parentPolicyId: input.parentPolicyId,
-        parentPolicyVersion: input.parentPolicyVersion,
+        parentPolicyId: recipient.parentPolicyId,
+        parentPolicyVersion: recipient.parentPolicyVersion,
         selectionGroupId,
         tx,
       });

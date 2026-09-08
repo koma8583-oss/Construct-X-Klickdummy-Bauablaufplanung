@@ -10,11 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import type { VergabePartner } from '@/lib/vergabe';
 
 export type LeistungVergabeSubmitValues = {
-  nuOrgIds: string[];
+  recipients: Array<{
+    nuOrgId: string;
+    parentPolicyId: string;
+    parentPolicyVersion: number;
+  }>;
   purpose: LeistungsfreigabePurpose;
   selectedFields: string[];
-  parentPolicyId: string;
-  parentPolicyVersion: number;
   message?: string;
   responseRequiredBy?: string;
 };
@@ -75,32 +77,30 @@ export function LeistungVergabeDialog({
   isSubmitting = false,
   onSubmit,
 }: Props) {
-  const [selectedNuId, setSelectedNuId] = useState('');
+  const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
   const [purpose, setPurpose] = useState<LeistungsfreigabePurpose | ''>('');
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [responseRequiredByError, setResponseRequiredByError] = useState('');
-  const [preview, setPreview] = useState<PreviewItem | null>(null);
+  const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  const selectedPartner = partners.find((partner) => partner.anOrgId === selectedNuId);
-  const parentPolicy = selectedPartner?.parentAgreement;
-  const effectivePolicy = (parentPolicy?.effectivePolicy ?? {}) as Record<string, unknown>;
-  const parentPurposes = Array.isArray(effectivePolicy.allowedPurposes)
-    ? effectivePolicy.allowedPurposes.filter((value): value is string => typeof value === 'string')
-    : PURPOSES.map((item) => item.value);
-  const availablePurposes = PURPOSES.filter((item) => parentPurposes.includes(item.value));
-  const parentFieldScope = Array.isArray(effectivePolicy.allowedFieldScope)
-    ? effectivePolicy.allowedFieldScope.filter((value): value is string => typeof value === 'string')
-    : null;
+  const selectedPartners = partners.filter((partner) => selectedNuIds.includes(partner.anOrgId));
+  const availablePurposes = PURPOSES.filter((item) => selectedPartners.every((partner) => {
+    const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
+    return !Array.isArray(effectivePolicy.allowedPurposes) || effectivePolicy.allowedPurposes.includes(item.value);
+  }));
   const allowedFields = useMemo(() => purpose
-    ? PURPOSE_FIELDS[purpose].filter((field) => !parentFieldScope || parentFieldScope.includes(field))
-    : [], [purpose, parentFieldScope]);
+    ? PURPOSE_FIELDS[purpose].filter((field) => selectedPartners.every((partner) => {
+      const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
+      return !Array.isArray(effectivePolicy.allowedFieldScope) || effectivePolicy.allowedFieldScope.includes(field);
+    }))
+    : [], [purpose, selectedPartners]);
 
   useEffect(() => {
     if (!open) {
-      setSelectedNuId('');
+      setSelectedNuIds([]);
       setPurpose('');
       setSelectedFields([]);
       setPreview(null);
@@ -117,7 +117,7 @@ export function LeistungVergabeDialog({
     setSelectedFields([]);
     setPreview(null);
     setPreviewError('');
-  }, [selectedNuId]);
+  }, [selectedNuIds]);
 
   useEffect(() => {
     setSelectedFields([...allowedFields]);
@@ -128,31 +128,35 @@ export function LeistungVergabeDialog({
   useEffect(() => {
     setPreview(null);
     setPreviewError('');
-  }, [selectedFields, parentPolicy?.id, parentPolicy?.version]);
+  }, [selectedFields, selectedNuIds]);
 
   const createPreview = async (): Promise<boolean> => {
-    if (!selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0) return false;
+    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return false;
     setPreviewing(true);
     setPreviewError('');
     try {
-      const response = await fetch('/api/leistungsanfragen/policy-preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          taktIds: [taktId],
-          nuOrgId: selectedNuId,
-          purpose,
-          selectedFields,
-          parentPolicyId: parentPolicy.id,
-          parentPolicyVersion: parentPolicy.version,
-        }),
-      });
-      const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
-      const item = body.items?.[0];
-      if (!response.ok || !item) throw new Error(body.error || 'Policy-Vorschau konnte nicht erstellt werden.');
-      setPreview(item);
-      return item.deltaClass !== 'NOT_PERMITTED';
+      const items = await Promise.all(selectedPartners.map(async (partner) => {
+        const parentPolicy = partner.parentAgreement!;
+        const response = await fetch('/api/leistungsanfragen/policy-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            taktIds: [taktId],
+            nuOrgId: partner.anOrgId,
+            purpose,
+            selectedFields,
+            parentPolicyId: parentPolicy.id,
+            parentPolicyVersion: parentPolicy.version,
+          }),
+        });
+        const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
+        const item = body.items?.[0];
+        if (!response.ok || !item) throw new Error(`${partner.label}: ${body.error || 'Policy-Vorschau konnte nicht erstellt werden.'}`);
+        return item;
+      }));
+      setPreview(items);
+      return items.every((item) => item.deltaClass !== 'NOT_PERMITTED');
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : 'Policy-Vorschau konnte nicht erstellt werden.');
       return false;
@@ -163,7 +167,7 @@ export function LeistungVergabeDialog({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0) return;
+    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return;
     if (responseRequiredBy) {
       const deadline = new Date(responseRequiredBy);
       const minimum = new Date(Date.now() + 60 * 60 * 1000);
@@ -173,13 +177,15 @@ export function LeistungVergabeDialog({
       }
     }
     if (!preview && !(await createPreview())) return;
-    if (preview?.deltaClass === 'NOT_PERMITTED') return;
+    if (preview?.some((item) => item.deltaClass === 'NOT_PERMITTED')) return;
     await onSubmit({
-      nuOrgIds: [selectedNuId],
+      recipients: selectedPartners.map((partner) => ({
+        nuOrgId: partner.anOrgId,
+        parentPolicyId: partner.parentAgreement!.id,
+        parentPolicyVersion: partner.parentAgreement!.version,
+      })),
       purpose,
       selectedFields,
-      parentPolicyId: parentPolicy.id,
-      parentPolicyVersion: parentPolicy.version,
       message: message.trim() || undefined,
       responseRequiredBy: responseRequiredBy || undefined,
     });
@@ -227,9 +233,11 @@ export function LeistungVergabeDialog({
                 {partners.map((partner) => (
                   <label key={partner.anOrgId} className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
                     <Checkbox
-                      checked={selectedNuId === partner.anOrgId}
+                      checked={selectedNuIds.includes(partner.anOrgId)}
                       disabled={!partner.parentAgreement}
-                      onCheckedChange={() => setSelectedNuId(selectedNuId === partner.anOrgId ? '' : partner.anOrgId)}
+                      onCheckedChange={(checked) => setSelectedNuIds((current) => checked
+                        ? [...new Set([...current, partner.anOrgId])]
+                        : current.filter((id) => id !== partner.anOrgId))}
                     />
                     <span className={!partner.parentAgreement ? 'text-muted-foreground' : ''}>
                       {partner.label}{!partner.parentAgreement ? ' · keine akzeptierte Projektvereinbarung' : ''}
@@ -238,15 +246,17 @@ export function LeistungVergabeDialog({
                 ))}
               </div>
             )}
-            {selectedNuId && (
-              <p className="text-xs text-muted-foreground">Die Freigabe wird gegen die konkrete Projektvereinbarung dieses Nachunternehmens geprüft.</p>
+            {selectedNuIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {selectedNuIds.length} ausgewählt · jede Freigabe wird gegen die konkrete Projektvereinbarung ihres Nachunternehmens geprüft.
+              </p>
             )}
           </div>
 
           <div className="space-y-2">
              <Label>Fachlicher Zweck *</Label>
-            {!selectedNuId ? (
-              <p className="text-sm text-muted-foreground">Bitte zuerst ein Nachunternehmen auswählen.</p>
+            {selectedNuIds.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Bitte zuerst mindestens ein Nachunternehmen auswählen.</p>
             ) : availablePurposes.length === 0 ? (
              <p className="text-sm text-destructive">Die akzeptierte Projektvereinbarung erlaubt keinen unterstützten Leistungszweck.</p>
             ) : (
@@ -268,7 +278,9 @@ export function LeistungVergabeDialog({
                 </Select>
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                    Parent-Policy: {parentPolicy?.id} · Version {parentPolicy?.version}
+                    {selectedPartners.length === 1
+                      ? `Parent-Policy: ${selectedPartners[0].parentAgreement?.id} · Version ${selectedPartners[0].parentAgreement?.version}`
+                      : `${selectedPartners.length} empfängerbezogene Parent-Policies`}
                 </p>
               </>
             )}
@@ -328,9 +340,15 @@ export function LeistungVergabeDialog({
                   Vorschau prüfen
                 </Button>
               </div>
-              {preview && <p className={preview.deltaClass === 'NOT_PERMITTED' ? 'text-destructive' : 'text-emerald-700'}>{preview.deltaClass}</p>}
-              {preview?.diff?.summary?.map((summary) => <p key={summary} className="text-xs text-muted-foreground">{summary}</p>)}
-              {(preview?.error || previewError) && <p className="text-xs text-destructive">{preview?.error || previewError}</p>}
+               {preview && (
+                 <p className={preview.some((item) => item.deltaClass === 'NOT_PERMITTED') ? 'text-destructive' : 'text-emerald-700'}>
+                   {preview.every((item) => item.deltaClass === 'WITHIN_BASELINE')
+                     ? 'WITHIN_BASELINE'
+                     : `${preview.length} Parent-Policies geprüft`}
+                 </p>
+               )}
+               {preview?.flatMap((item) => item.diff?.summary ?? []).map((summary, index) => <p key={`${summary}-${index}`} className="text-xs text-muted-foreground">{summary}</p>)}
+               {(preview?.find((item) => item.error)?.error || previewError) && <p className="text-xs text-destructive">{preview?.find((item) => item.error)?.error || previewError}</p>}
             </div>
           )}
 
@@ -362,7 +380,7 @@ export function LeistungVergabeDialog({
           <Button
             type="submit"
             form="leistung-vergabe-form"
-             disabled={isSubmitting || previewing || !selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0 || preview?.deltaClass === 'NOT_PERMITTED' || !!responseRequiredByError}
+              disabled={isSubmitting || previewing || selectedNuIds.length === 0 || !purpose || selectedFields.length === 0 || preview?.some((item) => item.deltaClass === 'NOT_PERMITTED') || !!responseRequiredByError}
           >
             <Send className="mr-2 h-4 w-4" />
             {isSubmitting ? 'Vergabe läuft…' : 'Vergeben'}

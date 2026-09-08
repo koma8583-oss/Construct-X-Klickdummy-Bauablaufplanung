@@ -774,6 +774,10 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
         message:           "Bitte prüfen Sie den Zeitraum.",
         responseRequiredBy: "2026-09-10T23:59:59Z",
         dataPublicationId: testPublicationId,
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
+        parentPolicyId: PROJECT_AGREEMENT,
+        parentPolicyVersion: 1,
       });
 
     expect(res.status).toBe(201);

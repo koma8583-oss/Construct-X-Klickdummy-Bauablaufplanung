@@ -378,11 +378,13 @@ describe("Construct-X Campus West campaign", () => {
       .set("Authorization", `Bearer ${agToken}`)
       .send({
         taktId: "L-101",
-        nuOrgIds: [anId("AN1")],
+        recipients: [{
+          nuOrgId: anId("AN1"),
+          parentPolicyId: AGREEMENT,
+          parentPolicyVersion: 1,
+        }],
         purpose: "RAHMENTERMINE",
         selectedFields: ["plannedTimeWindow"],
-        parentPolicyId: AGREEMENT,
-        parentPolicyVersion: 1,
       });
     expect(forbiddenPurpose.status, JSON.stringify(forbiddenPurpose.body)).toBe(409);
     expect(forbiddenPurpose.body.error).toBe("POLICY_NOT_PERMITTED");

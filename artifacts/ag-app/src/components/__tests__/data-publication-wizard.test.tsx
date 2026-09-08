@@ -265,8 +265,11 @@ describe("DataPublicationWizard", () => {
     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       purpose: "RAHMENTERMINE",
       selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
-      parentPolicyId: "agreement-1",
-      parentPolicyVersion: 7,
+      recipients: [{
+        nuOrgId: "an-1",
+        parentPolicyId: "agreement-1",
+        parentPolicyVersion: 7,
+      }],
     }) }));
     expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
   });

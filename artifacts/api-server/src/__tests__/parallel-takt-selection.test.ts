@@ -77,7 +77,16 @@ async function createBatch(taktId: string, nuOrgIds: string[]): Promise<{
   const response = await request(app)
     .post("/api/takt-requests/batch")
     .set("Authorization", `Bearer ${guToken}`)
-    .send({ taktId, nuOrgIds });
+    .send({
+      taktId,
+      recipients: nuOrgIds.map((nuOrgId) => ({
+        nuOrgId,
+        parentPolicyId: `${PREFIX}-agreement-${NU_ORGS.indexOf(nuOrgId)}`,
+        parentPolicyVersion: 1,
+      })),
+      purpose: "LEISTUNGSKOORDINATION",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+    });
 
   expect(response.status).toBe(201);
   return response.body as {
@@ -353,11 +362,23 @@ describe("parallel TaktRequest selection", () => {
         id: taktRequestsTable.id,
         selectionGroupId: taktRequestsTable.selectionGroupId,
         status: taktRequestsTable.status,
+        performancePolicyId: taktRequestsTable.performancePolicyId,
       })
       .from(taktRequestsTable)
       .where(inArray(taktRequestsTable.id, result.requests.map((row) => row.id)));
     expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.status === "DRAFT")).toBe(true);
+    const childPolicies = await db.select({
+      recipientOrgId: coordinationPoliciesTable.recipientOrgId,
+      parentPolicyId: coordinationPoliciesTable.parentPolicyId,
+    }).from(coordinationPoliciesTable).where(inArray(
+      coordinationPoliciesTable.id,
+      rows.map((row) => row.performancePolicyId!),
+    ));
+    expect(childPolicies).toEqual(expect.arrayContaining([
+      { recipientOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0` },
+      { recipientOrgId: NU_B, parentPolicyId: `${PREFIX}-agreement-1` },
+    ]));
 
     const snapshots = await db
       .select({ requestId: taktRequestSnapshotsTable.taktRequestId })
@@ -375,12 +396,43 @@ describe("parallel TaktRequest selection", () => {
     const response = await request(app)
       .post("/api/takt-requests/batch")
       .set("Authorization", `Bearer ${guToken}`)
-      .send({ taktId: BATCH_TAKT_ID, nuOrgIds: [NU_A, INVALID_NU_ORG] });
+      .send({
+        taktId: BATCH_TAKT_ID,
+        recipients: [
+          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
+          { nuOrgId: INVALID_NU_ORG, parentPolicyId: `${PREFIX}-invalid-agreement`, parentPolicyVersion: 1 },
+        ],
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+      });
 
     expect(response.status).toBe(403);
 
     const after = await db
       .select({ id: taktRequestsTable.id })
+      .from(taktRequestsTable)
+      .where(eq(taktRequestsTable.taktId, BATCH_TAKT_ID));
+    expect(after).toEqual(before);
+  });
+
+  it("rejects cross-recipient Parent-Policy reuse without creating a partial batch", async () => {
+    const before = await db.select({ id: taktRequestsTable.id })
+      .from(taktRequestsTable)
+      .where(eq(taktRequestsTable.taktId, BATCH_TAKT_ID));
+    const response = await request(app)
+      .post("/api/takt-requests/batch")
+      .set("Authorization", `Bearer ${guToken}`)
+      .send({
+        taktId: BATCH_TAKT_ID,
+        recipients: [
+          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
+          { nuOrgId: NU_B, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
+        ],
+        purpose: "LEISTUNGSKOORDINATION",
+        selectedFields: ["workPackage", "plannedTimeWindow"],
+      });
+    expect(response.status).toBe(403);
+    const after = await db.select({ id: taktRequestsTable.id })
       .from(taktRequestsTable)
       .where(eq(taktRequestsTable.taktId, BATCH_TAKT_ID));
     expect(after).toEqual(before);

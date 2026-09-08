@@ -3625,7 +3625,9 @@ export const CreateTaktRequestWithSnapshotResponse = zod.object({
  */
 
 
-export const createTaktRequestBatchWithSnapshotBodyNuOrgIdsMax = 50;
+
+
+export const createTaktRequestBatchWithSnapshotBodyRecipientsMax = 50;
 
 export const createTaktRequestBatchWithSnapshotBodySubjectMax = 255;
 
@@ -3634,19 +3636,19 @@ export const createTaktRequestBatchWithSnapshotBodyMessageMax = 2000;
 
 
 
-
-
 export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
   "taktId": zod.string().min(1),
-  "nuOrgIds": zod.array(zod.string().min(1)).min(1).max(createTaktRequestBatchWithSnapshotBodyNuOrgIdsMax),
+  "recipients": zod.array(zod.object({
+  "nuOrgId": zod.string().min(1),
+  "parentPolicyId": zod.string().min(1).describe('Exact accepted Parent Policy for this recipient.'),
+  "parentPolicyVersion": zod.number().min(1).describe('Exact version of this recipient\'s Parent Policy.')
+})).min(1).max(createTaktRequestBatchWithSnapshotBodyRecipientsMax),
   "responseRequiredBy": zod.coerce.date().optional(),
   "subject": zod.string().max(createTaktRequestBatchWithSnapshotBodySubjectMax).optional(),
   "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional(),
   "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']).describe('Business purpose of the Leistungsfreigabe.'),
-  "selectedFields": zod.array(zod.string().min(1)).describe('Explicit child-owned fields; the server enforces the purpose whitelist.'),
-  "parentPolicyId": zod.string().min(1).describe('Exact accepted parent policy selected from the effective-policy response.'),
-  "parentPolicyVersion": zod.number().min(1).describe('Exact version of the selected parent policy.')
-}).describe('Body for atomically creating one request per selected NU.')
+  "selectedFields": zod.array(zod.string().min(1)).describe('Explicit child-owned fields; the server enforces the purpose whitelist.')
+}).describe('Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.')
 
 
 

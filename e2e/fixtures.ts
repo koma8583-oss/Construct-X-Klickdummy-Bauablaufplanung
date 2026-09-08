@@ -1,5 +1,10 @@
 import { expect, request as apiRequest, test as base, type APIRequestContext, type BrowserContext } from "@playwright/test";
-import { cleanupCampusWest, seedCampusWest, type Seed } from "./campus-west-seed";
+import {
+  cleanupCampusWest,
+  restrictProjectAgreementPurposes,
+  seedCampusWest,
+  type Seed,
+} from "./campus-west-seed";
 
 export type PolicyClass = "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED";
 export type Scenario = {
@@ -200,6 +205,9 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
     }
 
     if (mode === "denied") {
+      const parent = agreementDetails.get(seed.anOrgIds[0]);
+      if (!parent) throw new Error("No active project agreement for AN1");
+      await restrictProjectAgreementPurposes(parent.id, ["LEISTUNGSKOORDINATION"]);
       const requestsBeforeDenied = await requireOk(
         await agApi.get("/api/takt-requests"),
         "list requests before forbidden attempt",
@@ -214,9 +222,9 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
           nuOrgId: seed.anOrgIds[0],
           responseRequiredBy: "2027-04-30T17:00:00.000Z",
           purpose: "RAHMENTERMINE",
-          selectedFields: ["resourceRequirements"],
-          parentPolicyId: agreementDetails.get(seed.anOrgIds[0])?.id,
-          parentPolicyVersion: agreementDetails.get(seed.anOrgIds[0])?.version,
+          selectedFields: ["workPackage", "plannedTimeWindow"],
+          parentPolicyId: parent.id,
+          parentPolicyVersion: parent.version,
         },
       });
       const deniedBody = await denied.json() as { error?: string; code?: string };
@@ -245,14 +253,29 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
         projectionCountBefore: projectionsBeforeDenied.length,
         projectionCountAfter: projectionsAfterDenied.length,
       };
+      seed.requests.NOT_PERMITTED = "";
       return;
     }
 
     const within = await createAndSendRequest(agApi, seed, agreementDetails, {
       key: "WITHIN_BASELINE", serviceIndex: 0, anIndex: 0,
     });
+    const consent = await createAndSendRequest(agApi, seed, agreementDetails, {
+      key: "REQUIRES_CONSENT", serviceIndex: 1, anIndex: 0, purpose: "RAHMENTERMINE",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
+    });
+    const consentDetails = await requireOk(
+      await anApis[0].get(`/api/an/takt-requests/${consent}/details`),
+      "read full-scenario consent policy classification",
+    );
+    const consentDeltaClass =
+      consentDetails.effectivePolicy?.deltaClass ?? consentDetails.policyDeltaClass;
+    if (consentDeltaClass !== "REQUIRES_CONSENT") {
+      throw new Error(`Expected REQUIRES_CONSENT, received ${String(consentDeltaClass)}`);
+    }
     const bilateral = await createAndSendRequest(agApi, seed, agreementDetails, {
-      key: "BILATERAL", serviceIndex: 3, anIndex: 0,
+      key: "BILATERAL", serviceIndex: 3, anIndex: 0, purpose: "RAHMENTERMINE",
+      selectedFields: ["workPackage", "plannedTimeWindow"],
     });
     const multiOne = await createAndSendRequest(agApi, seed, agreementDetails, {
       key: "MULTI_1", serviceIndex: 2, anIndex: 1,
@@ -265,6 +288,8 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
     });
 
     seed.requests.WITHIN_BASELINE = within;
+    seed.requests.REQUIRES_CONSENT = consent;
+    seed.consentDeltaClass = consentDeltaClass;
     seed.bilateralRequestId = bilateral;
     seed.multiRequestIds = [multiOne, multiTwo];
     seed.boundaryRequestIds.an3Expiring = expiring;
@@ -279,6 +304,9 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
 
     // Complete the first bilateral request through the response API, then
     // create an open AN schedule proposal that the AG browser resolves later.
+    await requireOk(await anApis[0].post(`/api/an/takt-requests/${bilateral}/policy-consent`, {
+      data: { decision: "ACCEPT" },
+    }), "accept bilateral schedule policy");
     const bilateralResponse = await requireOk(await anApis[0].post(`/api/an/takt-requests/${bilateral}/responses`, {
       data: { decision: "ACCEPTED", acceptedTimeWindow: { start: "2027-05-10T00:00:00.000Z", end: "2027-05-14T23:59:59.000Z" } },
     }), "accept bilateral service request");

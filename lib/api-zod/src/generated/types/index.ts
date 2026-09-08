@@ -241,6 +241,7 @@ export * from './taktRequestAuditTrailResponseEventsItem';
 export * from './taktRequestAuditTrailResponseEventsItemMetadata';
 export * from './taktRequestBatchInput';
 export * from './taktRequestBatchInputPurpose';
+export * from './taktRequestBatchInputRecipientsItem';
 export * from './taktRequestBatchResponse';
 export * from './taktRequestCancelledPayload';
 export * from './taktRequestDetail';
