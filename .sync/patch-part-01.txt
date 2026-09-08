@@ -1,0 +1,365 @@
+diff --git a/.agents/memory/MEMORY.md b/.agents/memory/MEMORY.md
+index 36c5300e801a3a6cfaee4c6013a2f456b96ff0c1..59212c259fd42942aaa1c4ecaf44be540c7d2ba6 100644
+--- a/.agents/memory/MEMORY.md
++++ b/.agents/memory/MEMORY.md
+@@ -70,3 +70,4 @@
+ - [CI gate conclusions](ci-gate-conclusions.md) — required browser gates must reject skipped/flaky work and prove each project executed; discovery or retry-success is not release evidence.
+ - [GitHub workflow API scope](github-workflow-api-scope.md) — workflow-file contents operations may need a scope the connected GitHub API does not expose.
+ - [Shared policy contracts](shared-policy-contracts.md) — enforce security-sensitive policy input in the lowest shared service and every mounted alias; route-only checks are bypassable.
++- [Multi-recipient Parent Policies](multi-recipient-parent-policy-binding.md) — every AN in an atomic batch carries its own accepted Parent-Policy ID and version.
+diff --git a/.agents/memory/multi-recipient-parent-policy-binding.md b/.agents/memory/multi-recipient-parent-policy-binding.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..19a4eee33d29b3905627a01ed11ec6cc14788d9d
+--- /dev/null
++++ b/.agents/memory/multi-recipient-parent-policy-binding.md
+@@ -0,0 +1,10 @@
++---
++name: Multi-recipient Parent-Policy binding
++description: Policy identity rules for atomic Leistungsanfrage batches sent to several AN organizations.
++---
++
++Every recipient in a multi-AN request batch must carry its own accepted Parent-Policy ID and version. A single shared Parent Policy must never authorize several recipient organizations.
++
++**Why:** Parent policies bind both the project capability and the recipient identity. Reusing one recipient's agreement for another recipient can bypass tenant boundaries even when the batch-level purpose and selected fields are identical.
++
++**How to apply:** Keep common request fields at batch level, but place `nuOrgId`, `parentPolicyId`, and `parentPolicyVersion` together per recipient. Validate every binding through the same single-request policy service and roll back the whole batch if any recipient fails.
+\ No newline at end of file
+diff --git a/artifacts/ag-app/src/components/DataPublicationWizard.tsx b/artifacts/ag-app/src/components/DataPublicationWizard.tsx
+index 74c3ece4b19e82d030bd8a24ecec5c053d11a020..74bfa2e9a11bb1d0be2bde7b09d09a9197635ec0 100644
+--- a/artifacts/ag-app/src/components/DataPublicationWizard.tsx
++++ b/artifacts/ag-app/src/components/DataPublicationWizard.tsx
+@@ -204,7 +204,16 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
+     try {
+       const outcomes = await Promise.all(taktIds.map(async (taktId): Promise<SendResult> => {
+         try {
+-          const batch = await createBatch.mutateAsync({ data: { taktId, nuOrgIds: [chosen.orgId], purpose, selectedFields: [...fields], parentPolicyId: selectedParentPolicy.id, parentPolicyVersion: selectedParentPolicy.version! } });
++          const batch = await createBatch.mutateAsync({ data: {
++            taktId,
++            recipients: [{
++              nuOrgId: chosen.orgId,
++              parentPolicyId: selectedParentPolicy.id,
++              parentPolicyVersion: selectedParentPolicy.version!,
++            }],
++            purpose,
++            selectedFields: [...fields],
++          } });
+           const requests = batch.requests ?? [];
+           if (requests.length !== 1) throw new Error("Die Erstellung lieferte kein eindeutiges Ergebnis.");
+           await send.mutateAsync({ requestId: requests[0].id });
+diff --git a/artifacts/ag-app/src/components/LeistungVergabeDialog.tsx b/artifacts/ag-app/src/components/LeistungVergabeDialog.tsx
+index 7159764a9a38954f1cf1bfa8900147146c10f810..94d04f6159b2bd5a1c2e282263c374ff7f418d61 100644
+--- a/artifacts/ag-app/src/components/LeistungVergabeDialog.tsx
++++ b/artifacts/ag-app/src/components/LeistungVergabeDialog.tsx
+@@ -10,11 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
+ import type { VergabePartner } from '@/lib/vergabe';
+ 
+ export type LeistungVergabeSubmitValues = {
+-  nuOrgIds: string[];
++  recipients: Array<{
++    nuOrgId: string;
++    parentPolicyId: string;
++    parentPolicyVersion: number;
++  }>;
+   purpose: LeistungsfreigabePurpose;
+   selectedFields: string[];
+-  parentPolicyId: string;
+-  parentPolicyVersion: number;
+   message?: string;
+   responseRequiredBy?: string;
+ };
+@@ -75,32 +77,30 @@ export function LeistungVergabeDialog({
+   isSubmitting = false,
+   onSubmit,
+ }: Props) {
+-  const [selectedNuId, setSelectedNuId] = useState('');
++  const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
+   const [purpose, setPurpose] = useState<LeistungsfreigabePurpose | ''>('');
+   const [selectedFields, setSelectedFields] = useState<string[]>([]);
+   const [message, setMessage] = useState('');
+   const [responseRequiredBy, setResponseRequiredBy] = useState('');
+   const [responseRequiredByError, setResponseRequiredByError] = useState('');
+-  const [preview, setPreview] = useState<PreviewItem | null>(null);
++  const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+   const [previewing, setPreviewing] = useState(false);
+   const [previewError, setPreviewError] = useState('');
+-  const selectedPartner = partners.find((partner) => partner.anOrgId === selectedNuId);
+-  const parentPolicy = selectedPartner?.parentAgreement;
+-  const effectivePolicy = (parentPolicy?.effectivePolicy ?? {}) as Record<string, unknown>;
+-  const parentPurposes = Array.isArray(effectivePolicy.allowedPurposes)
+-    ? effectivePolicy.allowedPurposes.filter((value): value is string => typeof value === 'string')
+-    : PURPOSES.map((item) => item.value);
+-  const availablePurposes = PURPOSES.filter((item) => parentPurposes.includes(item.value));
+-  const parentFieldScope = Array.isArray(effectivePolicy.allowedFieldScope)
+-    ? effectivePolicy.allowedFieldScope.filter((value): value is string => typeof value === 'string')
+-    : null;
++  const selectedPartners = partners.filter((partner) => selectedNuIds.includes(partner.anOrgId));
++  const availablePurposes = PURPOSES.filter((item) => selectedPartners.every((partner) => {
++    const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
++    return !Array.isArray(effectivePolicy.allowedPurposes) || effectivePolicy.allowedPurposes.includes(item.value);
++  }));
+   const allowedFields = useMemo(() => purpose
+-    ? PURPOSE_FIELDS[purpose].filter((field) => !parentFieldScope || parentFieldScope.includes(field))
+-    : [], [purpose, parentFieldScope]);
++    ? PURPOSE_FIELDS[purpose].filter((field) => selectedPartners.every((partner) => {
++      const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
++      return !Array.isArray(effectivePolicy.allowedFieldScope) || effectivePolicy.allowedFieldScope.includes(field);
++    }))
++    : [], [purpose, selectedPartners]);
+ 
+   useEffect(() => {
+     if (!open) {
+-      setSelectedNuId('');
++      setSelectedNuIds([]);
+       setPurpose('');
+       setSelectedFields([]);
+       setPreview(null);
+@@ -117,7 +117,7 @@ export function LeistungVergabeDialog({
+     setSelectedFields([]);
+     setPreview(null);
+     setPreviewError('');
+-  }, [selectedNuId]);
++  }, [selectedNuIds]);
+ 
+   useEffect(() => {
+     setSelectedFields([...allowedFields]);
+@@ -128,31 +128,35 @@ export function LeistungVergabeDialog({
+   useEffect(() => {
+     setPreview(null);
+     setPreviewError('');
+-  }, [selectedFields, parentPolicy?.id, parentPolicy?.version]);
++  }, [selectedFields, selectedNuIds]);
+ 
+   const createPreview = async (): Promise<boolean> => {
+-    if (!selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0) return false;
++    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return false;
+     setPreviewing(true);
+     setPreviewError('');
+     try {
+-      const response = await fetch('/api/leistungsanfragen/policy-preview', {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/json' },
+-        credentials: 'include',
+-        body: JSON.stringify({
+-          taktIds: [taktId],
+-          nuOrgId: selectedNuId,
+-          purpose,
+-          selectedFields,
+-          parentPolicyId: parentPolicy.id,
+-          parentPolicyVersion: parentPolicy.version,
+-        }),
+-      });
+-      const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
+-      const item = body.items?.[0];
+-      if (!response.ok || !item) throw new Error(body.error || 'Policy-Vorschau konnte nicht erstellt werden.');
+-      setPreview(item);
+-      return item.deltaClass !== 'NOT_PERMITTED';
++      const items = await Promise.all(selectedPartners.map(async (partner) => {
++        const parentPolicy = partner.parentAgreement!;
++        const response = await fetch('/api/leistungsanfragen/policy-preview', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          credentials: 'include',
++          body: JSON.stringify({
++            taktIds: [taktId],
++            nuOrgId: partner.anOrgId,
++            purpose,
++            selectedFields,
++            parentPolicyId: parentPolicy.id,
++            parentPolicyVersion: parentPolicy.version,
++          }),
++        });
++        const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
++        const item = body.items?.[0];
++        if (!response.ok || !item) throw new Error(`${partner.label}: ${body.error || 'Policy-Vorschau konnte nicht erstellt werden.'}`);
++        return item;
++      }));
++      setPreview(items);
++      return items.every((item) => item.deltaClass !== 'NOT_PERMITTED');
+     } catch (error) {
+       setPreviewError(error instanceof Error ? error.message : 'Policy-Vorschau konnte nicht erstellt werden.');
+       return false;
+@@ -163,7 +167,7 @@ export function LeistungVergabeDialog({
+ 
+   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+     event.preventDefault();
+-    if (!selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0) return;
++    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return;
+     if (responseRequiredBy) {
+       const deadline = new Date(responseRequiredBy);
+       const minimum = new Date(Date.now() + 60 * 60 * 1000);
+@@ -173,13 +177,15 @@ export function LeistungVergabeDialog({
+       }
+     }
+     if (!preview && !(await createPreview())) return;
+-    if (preview?.deltaClass === 'NOT_PERMITTED') return;
++    if (preview?.some((item) => item.deltaClass === 'NOT_PERMITTED')) return;
+     await onSubmit({
+-      nuOrgIds: [selectedNuId],
++      recipients: selectedPartners.map((partner) => ({
++        nuOrgId: partner.anOrgId,
++        parentPolicyId: partner.parentAgreement!.id,
++        parentPolicyVersion: partner.parentAgreement!.version,
++      })),
+       purpose,
+       selectedFields,
+-      parentPolicyId: parentPolicy.id,
+-      parentPolicyVersion: parentPolicy.version,
+       message: message.trim() || undefined,
+       responseRequiredBy: responseRequiredBy || undefined,
+     });
+@@ -227,9 +233,11 @@ export function LeistungVergabeDialog({
+                 {partners.map((partner) => (
+                   <label key={partner.anOrgId} className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
+                     <Checkbox
+-                      checked={selectedNuId === partner.anOrgId}
++                      checked={selectedNuIds.includes(partner.anOrgId)}
+                       disabled={!partner.parentAgreement}
+-                      onCheckedChange={() => setSelectedNuId(selectedNuId === partner.anOrgId ? '' : partner.anOrgId)}
++                      onCheckedChange={(checked) => setSelectedNuIds((current) => checked
++                        ? [...new Set([...current, partner.anOrgId])]
++                        : current.filter((id) => id !== partner.anOrgId))}
+                     />
+                     <span className={!partner.parentAgreement ? 'text-muted-foreground' : ''}>
+                       {partner.label}{!partner.parentAgreement ? ' · keine akzeptierte Projektvereinbarung' : ''}
+@@ -238,15 +246,17 @@ export function LeistungVergabeDialog({
+                 ))}
+               </div>
+             )}
+-            {selectedNuId && (
+-              <p className="text-xs text-muted-foreground">Die Freigabe wird gegen die konkrete Projektvereinbarung dieses Nachunternehmens geprüft.</p>
++            {selectedNuIds.length > 0 && (
++              <p className="text-xs text-muted-foreground">
++                {selectedNuIds.length} ausgewählt · jede Freigabe wird gegen die konkrete Projektvereinbarung ihres Nachunternehmens geprüft.
++              </p>
+             )}
+           </div>
+ 
+           <div className="space-y-2">
+              <Label>Fachlicher Zweck *</Label>
+-            {!selectedNuId ? (
+-              <p className="text-sm text-muted-foreground">Bitte zuerst ein Nachunternehmen auswählen.</p>
++            {selectedNuIds.length === 0 ? (
++              <p className="text-sm text-muted-foreground">Bitte zuerst mindestens ein Nachunternehmen auswählen.</p>
+             ) : availablePurposes.length === 0 ? (
+              <p className="text-sm text-destructive">Die akzeptierte Projektvereinbarung erlaubt keinen unterstützten Leistungszweck.</p>
+             ) : (
+@@ -268,7 +278,9 @@ export function LeistungVergabeDialog({
+                 </Select>
+                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                   <Info className="mt-0.5 h-3 w-3 shrink-0" />
+-                    Parent-Policy: {parentPolicy?.id} · Version {parentPolicy?.version}
++                    {selectedPartners.length === 1
++                      ? `Parent-Policy: ${selectedPartners[0].parentAgreement?.id} · Version ${selectedPartners[0].parentAgreement?.version}`
++                      : `${selectedPartners.length} empfängerbezogene Parent-Policies`}
+                 </p>
+               </>
+             )}
+@@ -328,9 +340,15 @@ export function LeistungVergabeDialog({
+                   Vorschau prüfen
+                 </Button>
+               </div>
+-              {preview && <p className={preview.deltaClass === 'NOT_PERMITTED' ? 'text-destructive' : 'text-emerald-700'}>{preview.deltaClass}</p>}
+-              {preview?.diff?.summary?.map((summary) => <p key={summary} className="text-xs text-muted-foreground">{summary}</p>)}
+-              {(preview?.error || previewError) && <p className="text-xs text-destructive">{preview?.error || previewError}</p>}
++               {preview && (
++                 <p className={preview.some((item) => item.deltaClass === 'NOT_PERMITTED') ? 'text-destructive' : 'text-emerald-700'}>
++                   {preview.every((item) => item.deltaClass === 'WITHIN_BASELINE')
++                     ? 'WITHIN_BASELINE'
++                     : `${preview.length} Parent-Policies geprüft`}
++                 </p>
++               )}
++               {preview?.flatMap((item) => item.diff?.summary ?? []).map((summary, index) => <p key={`${summary}-${index}`} className="text-xs text-muted-foreground">{summary}</p>)}
++               {(preview?.find((item) => item.error)?.error || previewError) && <p className="text-xs text-destructive">{preview?.find((item) => item.error)?.error || previewError}</p>}
+             </div>
+           )}
+ 
+@@ -362,7 +380,7 @@ export function LeistungVergabeDialog({
+           <Button
+             type="submit"
+             form="leistung-vergabe-form"
+-             disabled={isSubmitting || previewing || !selectedNuId || !purpose || !parentPolicy || selectedFields.length === 0 || preview?.deltaClass === 'NOT_PERMITTED' || !!responseRequiredByError}
++              disabled={isSubmitting || previewing || selectedNuIds.length === 0 || !purpose || selectedFields.length === 0 || preview?.some((item) => item.deltaClass === 'NOT_PERMITTED') || !!responseRequiredByError}
+           >
+             <Send className="mr-2 h-4 w-4" />
+             {isSubmitting ? 'Vergabe läuft…' : 'Vergeben'}
+diff --git a/artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx b/artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx
+index 02784c86d565dcd36771ac5290fe988a5a33f514..2e1b64267f69bf0a821234b05523792c900d896a 100644
+--- a/artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx
++++ b/artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx
+@@ -265,8 +265,11 @@ describe("DataPublicationWizard", () => {
+     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+       purpose: "RAHMENTERMINE",
+       selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
+-      parentPolicyId: "agreement-1",
+-      parentPolicyVersion: 7,
++      recipients: [{
++        nuOrgId: "an-1",
++        parentPolicyId: "agreement-1",
++        parentPolicyVersion: 7,
++      }],
+     }) }));
+     expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
+   });
+diff --git a/artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx b/artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx
+index 915d93353eb400e83df5ef610497cb18e47ec296..58d8c9b61a194fb01a0002186b3aba2672a3b352 100644
+--- a/artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx
++++ b/artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx
+@@ -98,11 +98,13 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
+     await user.click(screen.getByRole('button', { name: 'Vergeben' }));
+ 
+     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+-      nuOrgIds: ['an-1'],
++      recipients: [{
++        nuOrgId: 'an-1',
++        parentPolicyId: 'parent-policy-7',
++        parentPolicyVersion: 7,
++      }],
+       purpose: 'RAHMENTERMINE',
+       selectedFields: ['plannedTimeWindow'],
+-      parentPolicyId: 'parent-policy-7',
+-      parentPolicyVersion: 7,
+     })));
+     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+       purpose: 'RAHMENTERMINE',
+@@ -145,8 +147,50 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
+     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+       purpose: 'LEISTUNGSKOORDINATION',
+       selectedFields: ['plannedTimeWindow'],
+-      parentPolicyId: 'parent-policy-7',
+-      parentPolicyVersion: 7,
++      recipients: [{
++        nuOrgId: 'an-2',
++        parentPolicyId: 'parent-policy-7',
++        parentPolicyVersion: 7,
++      }],
++    })));
++  });
++
++  it('binds each selected Nachunternehmen to its own Parent-Policy', async () => {
++    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
++      items: [{ taktId: 'takt-3', deltaClass: 'WITHIN_BASELINE', inheritedEffectivePolicy: {}, diff: { summary: [] } }],
++    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
++    const onSubmit = vi.fn();
++    const user = userEvent.setup();
++    render(
++      <LeistungVergabeDialog
++        open
++        onOpenChange={vi.fn()}
++        taktId="takt-3"
++        partners={[
++          {
++            anOrgId: 'an-a',
++            label: 'Partner A',
++            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-a', version: 2 },
++          },
++          {
++            anOrgId: 'an-b',
++            label: 'Partner B',
++            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-b', version: 4 },
++          },
++        ]}
++        onSubmit={onSubmit}
++      />,
++    );
++    await user.click(screen.getByRole('checkbox', { name: /Partner A/i }));
++   
