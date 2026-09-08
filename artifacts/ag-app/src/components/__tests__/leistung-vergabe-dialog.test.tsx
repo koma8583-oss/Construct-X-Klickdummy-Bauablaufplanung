@@ -182,7 +182,7 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
       />,
     );
     await user.click(screen.getByRole('checkbox', { name: /Partner A/i }));
-     await user.click(screen.getByRole('checkbox', { name: /Partner B/i }));
+    await user.click(screen.getByRole('checkbox', { name: /Partner B/i }));
     fireEvent.change(screen.getByLabelText('Fachlicher Zweck'), { target: { value: 'RAHMENTERMINE' } });
     await user.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
     await user.click(screen.getByRole('button', { name: 'Vergeben' }));
