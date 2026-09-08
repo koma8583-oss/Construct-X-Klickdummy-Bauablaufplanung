@@ -262,13 +262,20 @@ export async function restrictProjectAgreementPurposes(
 }
 
 export async function cleanupCampusWest(seed: Seed): Promise<void> {
-  const requestIds = [
+  const seededRequestIds = [
     ...Object.values(seed.requests),
     seed.bilateralRequestId,
     ...seed.multiRequestIds,
     seed.boundaryRequestIds.an3Expiring,
     seed.boundaryRequestIds.an4ChildReject,
   ].filter(Boolean);
+  const projectRequests = await agDb.select({ id: leistungsanfragenTable.id })
+    .from(leistungsanfragenTable)
+    .where(inArray(leistungsanfragenTable.leistungId, seed.serviceIds));
+  const requestIds = Array.from(new Set([
+    ...seededRequestIds,
+    ...projectRequests.map(({ id: requestId }) => requestId),
+  ]));
 
   await anDb.delete(anAvailabilityChecksTable).where(inArray(anAvailabilityChecksTable.anOrgId, seed.anOrgIds));
   await anDb.delete(resourceBookingsTable).where(inArray(resourceBookingsTable.nuOrgId, seed.anOrgIds));
