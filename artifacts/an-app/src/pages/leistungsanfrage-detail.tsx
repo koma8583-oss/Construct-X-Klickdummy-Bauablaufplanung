@@ -694,15 +694,12 @@ export default function LeistungsanfrageDetailPage() {
    // Ressourcenbedarf is AN-local working data. Never fall back to a request
    // snapshot here, because that may contain data published by another party.
    const requirements = (requirementQuery.data ?? []) as unknown as AnLeistungsanfrageResourceRequirement[];
-  const hasAgreement = details.status === "CONFIRMED";
-  const terminal = ["RESPONDED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status) && !hasAgreement;
   const policyDetailsAvailable = (details as AnLeistungsanfrageDetails & { policyDetailsAvailable?: boolean }).policyDetailsAvailable !== false;
   const policyConsentPending = (details as AnLeistungsanfrageDetails & {
     policyDeltaClass?: string | null;
     policyConsentStatus?: string | null;
   }).policyDeltaClass === "REQUIRES_CONSENT"
     && (details as AnLeistungsanfrageDetails & { policyConsentStatus?: string | null }).policyConsentStatus === "PENDING";
-  const canRespond = policyDetailsAvailable && !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
   const openProposal = coordinationQuery.data?.openProposal;
   const openProposalRole = openProposal?.proposerRole ?? openProposal?.proposer;
   const scheduleProposal = openProposalRole === "AG"
@@ -711,12 +708,23 @@ export default function LeistungsanfrageDetailPage() {
   const ownScheduleProposal = openProposalRole === "AN"
     ? openProposal
     : null;
+  const hasAgreement = details.status === "CONFIRMED" || Boolean(coordinationQuery.data?.currentAgreement);
+  const terminal = ["RESPONDED", "CANCELLED", "SUPERSEDED", "EXPIRED"].includes(details.status)
+    && !hasAgreement
+    && !scheduleProposal;
+  const canRespond = policyDetailsAvailable && !terminal && ["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"].includes(details.status);
   const effectiveResponsePreset = responsePreset ?? (
     phaseOverride === 3 && availabilityQuery.data?.result === "FEASIBLE"
       ? { decision: "ACCEPTED" as const }
       : null
   );
-  const derivedPhase = terminal ? 3 : !details.detailsRetrievedAt ? 1 : availabilityQuery.data?.status === "COMPLETED" ? 3 : 2;
+  const derivedPhase = terminal || Boolean(openProposal)
+    ? 3
+    : !details.detailsRetrievedAt
+      ? 1
+      : availabilityQuery.data?.status === "COMPLETED"
+        ? 3
+        : 2;
   const phase = phaseOverride ?? derivedPhase;
   const reviewDetails = async () => {
     try {
