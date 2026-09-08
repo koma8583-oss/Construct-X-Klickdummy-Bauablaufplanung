@@ -1,0 +1,35 @@
+name: One-shot sync 84fc019
+
+on:
+  push:
+    branches:
+      - sync-84fc019
+    paths:
+      - .github/workflows/sync-84fc019.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-local-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sync branch
+        uses: actions/checkout@v4
+        with:
+          ref: sync-84fc019
+          fetch-depth: 0
+
+      - name: Verify and apply local commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .sync/patch-part-01.txt .sync/patch-part-02.txt .sync/patch-part-03.txt .sync/patch-part-04.txt > /tmp/sync-84fc019.patch
+          echo '4ec767fe1bd146078642a39008ce07777d372f4c26a543e2107aa4a77ab7534c  /tmp/sync-84fc019.patch' | sha256sum --check --strict
+          git apply --check /tmp/sync-84fc019.patch
+          git apply --index /tmp/sync-84fc019.patch
+          git rm -r .sync
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Refactor data publication and leistung vergabe components and update related tests'
+          git push origin HEAD:sync-84fc019
