@@ -20,15 +20,20 @@ jobs:
           ref: sync-84fc019
           fetch-depth: 0
 
-      - name: Verify and apply local commit patch
+      - name: Apply and verify Replit commit tree
         shell: bash
         run: |
           set -euo pipefail
           cat .sync/patch-part-01.txt .sync/patch-part-02.txt .sync/patch-part-03.txt .sync/patch-part-04.txt > /tmp/sync-84fc019.patch
-          echo '4ec767fe1bd146078642a39008ce07777d372f4c26a543e2107aa4a77ab7534c  /tmp/sync-84fc019.patch' | sha256sum --check --strict
           git apply --check /tmp/sync-84fc019.patch
           git apply --index /tmp/sync-84fc019.patch
           git rm -r .sync
+          git rm .github/workflows/sync-84fc019.yml
+          actual_tree="$(git write-tree)"
+          expected_tree='2160ca04499a7964fdc58a9443ef19bc10353bee'
+          echo "Expected tree: $expected_tree"
+          echo "Actual tree:   $actual_tree"
+          test "$actual_tree" = "$expected_tree"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Refactor data publication and leistung vergabe components and update related tests'
