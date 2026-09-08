@@ -22,54 +22,54 @@ jobs:
         run: |
           set -euo pipefail
           mismatches=0
-          while read -r expected path; do
+          expected='59212c259fd42942aaa1c4ecaf44be540c7d2ba6 .agents/memory/MEMORY.md
+          19a4eee33d29b3905627a01ed11ec6cc14788d9d .agents/memory/multi-recipient-parent-policy-binding.md
+          74bfa2e9a11bb1d0be2bde7b09d09a9197635ec0 artifacts/ag-app/src/components/DataPublicationWizard.tsx
+          94d04f6159b2bd5a1c2e282263c374ff7f418d61 artifacts/ag-app/src/components/LeistungVergabeDialog.tsx
+          2e1b64267f69bf0a821234b05523792c900d896a artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx
+          58d8c9b61a194fb01a0002186b3aba2672a3b352 artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx
+          bd3df76a2ff9b7edd6aefdaf8658de2d2aacc1c4 artifacts/ag-app/src/pages/project-detail.tsx
+          367c5a11900d53a2efd47fa175459b61a3dfa9d1 artifacts/ag-app/src/pages/takt-detail.tsx
+          233286864f89fe9e7b28e35961e84f9cc14a807e artifacts/api-server/src/__tests__/ag-an-independent-coordination.test.ts
+          a631f4c817abf71734db95389cb3f7abcfafb26d artifacts/api-server/src/__tests__/construct-x-campus-west-campaign.test.ts
+          d66a172b4ced77422a7f4504a183e80993cedf8e artifacts/api-server/src/__tests__/e2e-coordination-scenarios.test.ts
+          fd8efdcf3e151cc1035c7409b76c0b2d97dc1632 artifacts/api-server/src/__tests__/e2e-sprint4.test.ts
+          636352af8fd8e47e1a2cdaaddf8e44f5ae16049f artifacts/api-server/src/__tests__/inbox-api.test.ts
+          dcfca8fd87c33d9f025fcf218b0519a96635c7e3 artifacts/api-server/src/__tests__/leistungsfreigabe-request-contract.test.ts
+          6306a2beb769956eb4b8ce679c4d055f53293579 artifacts/api-server/src/__tests__/parallel-takt-selection.test.ts
+          ef929616800db904c275922a2a1efba8ca730583 artifacts/api-server/src/__tests__/physical-database-boundary.test.ts
+          51bf971e3eae0d1812b21a9dff7c54a8131c986c artifacts/api-server/src/__tests__/t105-reports-and-audit.test.ts
+          4cdd57da4d17beacc14c002bcb26073f04699548 artifacts/api-server/src/__tests__/t116-dataspace-policy-gate.test.ts
+          17af7153698c44b558e11eb29324da7b5f9dcf8f artifacts/api-server/src/__tests__/t120-5step-workflow-persistence.test.ts
+          8590e0747d5c711ec87c7e69f4a3e85542647cde artifacts/api-server/src/__tests__/t239-project-memberships.test.ts
+          9dc7b3ce724089b2fae7c73705be64bae5a9618a artifacts/api-server/src/__tests__/t68-e2e-taktrequest-flow.test.ts
+          38fc80562b2376b021bf86e8ebbfcaf9b8d786ca artifacts/api-server/src/__tests__/t80-revision-transport.test.ts
+          573100a7d637a75e3079962e6e9ba242346554bc artifacts/api-server/src/__tests__/t81-response-unification.test.ts
+          e38257c97970f015b176ec4164c4bd11dc32528a artifacts/api-server/src/lib/takt-request-snapshot-service.ts
+          f2a180e6971bffa0ae3dadcf70a6fca684503850 artifacts/api-server/src/routes/takt-requests.ts
+          ff1a46215932b3ecaf22daa8bbcc9fbf7a847c08 artifacts/api-server/src/services/service-change-proposal-service.ts
+          a903e22ed032c8e16434557da5a75789cce1970d e2e/campus-west-seed.ts
+          a865f0448b7fad6a121c7ebeefaf0eeba6ca2791 e2e/fixtures.ts
+          5602ce2960215baa6769147ddf6d807b5e5b68ca e2e/tests/campus-west-ag-an.spec.ts
+          ab0339cfad7dcccc5e4c364521c452038a7e4d03 lib/api-client-react/src/generated/api.schemas.ts
+          dbb82edd3d65fd7e7f96ca49aab5b427bc564f95 lib/api-spec/openapi.yaml
+          9f20d40c5a2cc88d0861ae9f3fd73f68e0959d04 lib/api-zod/src/generated/api.ts
+          941c5d970d83570cd0b1bc35065eb10490053576 lib/api-zod/src/generated/types/index.ts
+          7214b27f3d318af7716aeba0a909a99f4020aa9b lib/api-zod/src/generated/types/taktRequestBatchInput.ts
+          4a1dd7e8ee1155e942f8716feecb41c2554f5240 lib/api-zod/src/generated/types/taktRequestBatchInputRecipientsItem.ts
+          24214f570b6fa3c0474815c32e338ad41dc13569 replit.md'
+          while read -r expected_sha path; do
+            [[ -z "$expected_sha" ]] && continue
             if [[ ! -f "$path" ]]; then
-              echo "MISMATCH missing $path expected=$expected"
+              echo "MISMATCH missing $path expected=$expected_sha"
               mismatches=$((mismatches+1))
               continue
             fi
             actual="$(git hash-object "$path")"
-            if [[ "$actual" != "$expected" ]]; then
-              echo "MISMATCH $path expected=$expected actual=$actual"
+            if [[ "$actual" != "$expected_sha" ]]; then
+              echo "MISMATCH $path expected=$expected_sha actual=$actual"
               mismatches=$((mismatches+1))
             fi
-          done <<'EOF'
-59212c259fd42942aaa1c4ecaf44be540c7d2ba6 .agents/memory/MEMORY.md
-19a4eee33d29b3905627a01ed11ec6cc14788d9d .agents/memory/multi-recipient-parent-policy-binding.md
-74bfa2e9a11bb1d0be2bde7b09d09a9197635ec0 artifacts/ag-app/src/components/DataPublicationWizard.tsx
-94d04f6159b2bd5a1c2e282263c374ff7f418d61 artifacts/ag-app/src/components/LeistungVergabeDialog.tsx
-2e1b64267f69bf0a821234b05523792c900d896a artifacts/ag-app/src/components/__tests__/data-publication-wizard.test.tsx
-58d8c9b61a194fb01a0002186b3aba2672a3b352 artifacts/ag-app/src/components/__tests__/leistung-vergabe-dialog.test.tsx
-bd3df76a2ff9b7edd6aefdaf8658de2d2aacc1c4 artifacts/ag-app/src/pages/project-detail.tsx
-367c5a11900d53a2efd47fa175459b61a3dfa9d1 artifacts/ag-app/src/pages/takt-detail.tsx
-233286864f89fe9e7b28e35961e84f9cc14a807e artifacts/api-server/src/__tests__/ag-an-independent-coordination.test.ts
-a631f4c817abf71734db95389cb3f7abcfafb26d artifacts/api-server/src/__tests__/construct-x-campus-west-campaign.test.ts
-d66a172b4ced77422a7f4504a183e80993cedf8e artifacts/api-server/src/__tests__/e2e-coordination-scenarios.test.ts
-fd8efdcf3e151cc1035c7409b76c0b2d97dc1632 artifacts/api-server/src/__tests__/e2e-sprint4.test.ts
-636352af8fd8e47e1a2cdaaddf8e44f5ae16049f artifacts/api-server/src/__tests__/inbox-api.test.ts
-dcfca8fd87c33d9f025fcf218b0519a96635c7e3 artifacts/api-server/src/__tests__/leistungsfreigabe-request-contract.test.ts
-6306a2beb769956eb4b8ce679c4d055f53293579 artifacts/api-server/src/__tests__/parallel-takt-selection.test.ts
-ef929616800db904c275922a2a1efba8ca730583 artifacts/api-server/src/__tests__/physical-database-boundary.test.ts
-51bf971e3eae0d1812b21a9dff7c54a8131c986c artifacts/api-server/src/__tests__/t105-reports-and-audit.test.ts
-4cdd57da4d17beacc14c002bcb26073f04699548 artifacts/api-server/src/__tests__/t116-dataspace-policy-gate.test.ts
-17af7153698c44b558e11eb29324da7b5f9dcf8f artifacts/api-server/src/__tests__/t120-5step-workflow-persistence.test.ts
-8590e0747d5c711ec87c7e69f4a3e85542647cde artifacts/api-server/src/__tests__/t239-project-memberships.test.ts
-9dc7b3ce724089b2fae7c73705be64bae5a9618a artifacts/api-server/src/__tests__/t68-e2e-taktrequest-flow.test.ts
-38fc80562b2376b021bf86e8ebbfcaf9b8d786ca artifacts/api-server/src/__tests__/t80-revision-transport.test.ts
-573100a7d637a75e3079962e6e9ba242346554bc artifacts/api-server/src/__tests__/t81-response-unification.test.ts
-e38257c97970f015b176ec4164c4bd11dc32528a artifacts/api-server/src/lib/takt-request-snapshot-service.ts
-f2a180e6971bffa0ae3dadcf70a6fca684503850 artifacts/api-server/src/routes/takt-requests.ts
-ff1a46215932b3ecaf22daa8bbcc9fbf7a847c08 artifacts/api-server/src/services/service-change-proposal-service.ts
-a903e22ed032c8e16434557da5a75789cce1970d e2e/campus-west-seed.ts
-a865f0448b7fad6a121c7ebeefaf0eeba6ca2791 e2e/fixtures.ts
-5602ce2960215baa6769147ddf6d807b5e5b68ca e2e/tests/campus-west-ag-an.spec.ts
-ab0339cfad7dcccc5e4c364521c452038a7e4d03 lib/api-client-react/src/generated/api.schemas.ts
-dbb82edd3d65fd7e7f96ca49aab5b427bc564f95 lib/api-spec/openapi.yaml
-9f20d40c5a2cc88d0861ae9f3fd73f68e0959d04 lib/api-zod/src/generated/api.ts
-941c5d970d83570cd0b1bc35065eb10490053576 lib/api-zod/src/generated/types/index.ts
-7214b27f3d318af7716aeba0a909a99f4020aa9b lib/api-zod/src/generated/types/taktRequestBatchInput.ts
-4a1dd7e8ee1155e942f8716feecb41c2554f5240 lib/api-zod/src/generated/types/taktRequestBatchInputRecipientsItem.ts
-24214f570b6fa3c0474815c32e338ad41dc13569 replit.md
-EOF
+          done <<< "$expected"
           echo "Mismatch count: $mismatches"
           test "$mismatches" -eq 0
