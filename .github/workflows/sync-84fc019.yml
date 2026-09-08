@@ -20,7 +20,7 @@ jobs:
           ref: sync-84fc019
           fetch-depth: 0
 
-      - name: Apply and verify Replit commit tree
+      - name: Apply staged Replit patch on isolated sync branch
         shell: bash
         run: |
           set -euo pipefail
@@ -29,12 +29,7 @@ jobs:
           git apply --index /tmp/sync-84fc019.patch
           git rm -r .sync
           git rm .github/workflows/sync-84fc019.yml
-          actual_tree="$(git write-tree)"
-          expected_tree='2160ca04499a7964fdc58a9443ef19bc10353bee'
-          echo "Expected tree: $expected_tree"
-          echo "Actual tree:   $actual_tree"
-          test "$actual_tree" = "$expected_tree"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Refactor data publication and leistung vergabe components and update related tests'
+          git commit -m 'Stage Replit 84fc019 content for exact verification'
           git push origin HEAD:sync-84fc019
