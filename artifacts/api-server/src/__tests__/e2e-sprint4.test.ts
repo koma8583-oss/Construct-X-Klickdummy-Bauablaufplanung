@@ -56,6 +56,7 @@ import {
   policyTemplatesTable,
   dataspaceExchangesTable,
   coordinationPoliciesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import app from "../app";
@@ -180,6 +181,8 @@ async function seedAnProjection(
 beforeAll(async () => {
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, "t49-invitation"));
   await anDb.delete(resourceBookingsTable).where(
     eq(resourceBookingsTable.id, MIXED_BOOKING_ID),
   );
@@ -239,6 +242,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
@@ -250,6 +255,27 @@ beforeAll(async () => {
     invitationId: "t49-invitation",
     correlationId: "t49-correlation",
     projectAgreementPolicyId: PROJECT_AGREEMENT,
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    id: "t49-an-invitation",
+    invitationId: "t49-invitation",
+    correlationId: "t49-an-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    senderAgOrgName: "T49 GU Org",
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT,
+    projectName: "T49 Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
   await db.update(projectMembershipsTable)
     .set({ projectAgreementPolicyId: PROJECT_AGREEMENT })
