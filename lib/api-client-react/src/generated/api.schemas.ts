@@ -2020,21 +2020,6 @@ export interface CreateTaktRequestBody {
   parentPolicyVersion: number;
 }
 
-export type TaktRequestBatchInputRecipientsItem = {
-  /** @minLength 1 */
-  nuOrgId: string;
-  /**
-     * Exact accepted Parent Policy for this recipient.
-     * @minLength 1
-     */
-  parentPolicyId: string;
-  /**
-     * Exact version of this recipient's Parent Policy.
-     * @minimum 1
-     */
-  parentPolicyVersion: number;
-};
-
 /**
  * Business purpose bound to this recipient.
  */
