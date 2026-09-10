@@ -4,6 +4,7 @@ import type {
   CoordinationPolicyLifecycle,
 } from "@workspace/db";
 import type { PolicySnapshot } from "./policy-snapshot-service";
+import { hasExplicitLeistungsfreigabeScope } from "../lib/leistungsfreigabe-policy";
 
 export type PolicyDiff = {
   changed: string[];
@@ -29,9 +30,18 @@ export type PolicyResolution = {
   effectivePolicy: Record<string, unknown>;
 };
 
+type BaselinePurposeConsistencyInput = {
+  policyId: string;
+  databaseBaselinePurpose: string | null | undefined;
+  policySnapshot: Record<string, unknown> | null | undefined;
+  effectivePolicy: Record<string, unknown> | null | undefined;
+};
+
 type PolicyComparable = {
   policyType?: CoordinationPolicyKind | string | null;
   templateId?: string | null;
+  templateVersion?: number | null;
+  policyVersion?: number | null;
   recipientOrganizationId?: string | null;
   projectReference?: string | null;
   permissions?: readonly string[];
@@ -40,6 +50,7 @@ type PolicyComparable = {
   prohibitions?: readonly string[];
   retentionUntil?: string | null;
   allowedPurposes?: readonly string[];
+  baselinePurpose?: string | null;
   allowedFieldScope?: readonly string[];
   validFrom?: string | null;
   validUntil?: string | null;
@@ -52,6 +63,42 @@ type PolicyComparable = {
 
 function asComparable(value: unknown): PolicyComparable {
   return value && typeof value === "object" ? value as PolicyComparable : {};
+}
+
+function readBaselinePurpose(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+export class PolicyBaselinePurposeMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PolicyBaselinePurposeMismatchError";
+  }
+}
+
+/**
+ * Keep the normalized database value and both immutable policy presentations
+ * aligned. All-null is valid for historical policies that predate the
+ * explicit baseline-purpose field; a partial or conflicting representation is
+ * never safe to evaluate or publish.
+ */
+export function assertBaselinePurposeConsistency(
+  input: BaselinePurposeConsistencyInput,
+): void {
+  const values = {
+    databaseColumn: readBaselinePurpose(input.databaseBaselinePurpose),
+    policySnapshot: readBaselinePurpose(input.policySnapshot?.baselinePurpose),
+    effectivePolicy: readBaselinePurpose(input.effectivePolicy?.baselinePurpose),
+  };
+  const distinctValues = new Set(Object.values(values));
+  if (distinctValues.size <= 1) return;
+
+  throw new PolicyBaselinePurposeMismatchError(
+    `Baseline purpose mismatch for policy ${input.policyId}: ` +
+    `databaseColumn=${JSON.stringify(values.databaseColumn)}, ` +
+    `policySnapshot=${JSON.stringify(values.policySnapshot)}, ` +
+    `effectivePolicy=${JSON.stringify(values.effectivePolicy)}`,
+  );
 }
 
 function toTime(value: string | null | undefined): number | null {
@@ -166,6 +213,30 @@ export function resolvePolicyDelta(
     (base.projectReference != null && candidate.projectReference !== base.projectReference) ||
     (base.recipientOrganizationId != null && candidate.recipientOrganizationId !== base.recipientOrganizationId);
   const permissionNotGranted = candidatePermissions.some((permission) => !basePermissions.includes(permission));
+  const isProjectAgreement =
+    base?.policyType === "PROJECT_AGREEMENT" ||
+    base?.templateId === "PROJECT_MEMBERSHIP" ||
+    base?.templateId === "tk-policy-project-membership";
+  const explicitBaselinePurpose =
+    typeof base?.baselinePurpose === "string" && base.baselinePurpose.trim().length > 0
+      ? base.baselinePurpose
+      : null;
+  /**
+   * Compatibility rule for accepted Project Agreements created before the
+   * registry version that introduced baselinePurpose. Those immutable
+   * policies historically treated Leistungskoordination as the no-consent
+   * baseline. New policies must carry their own explicit purpose.
+   */
+  const historicalBaselinePurpose =
+    isProjectAgreement &&
+    explicitBaselinePurpose === null &&
+    (() => {
+      const policyVersion = base?.templateVersion ?? base?.policyVersion;
+      return policyVersion == null || policyVersion < 2;
+    })()
+      ? "LEISTUNGSKOORDINATION"
+      : null;
+  const baselinePurpose = explicitBaselinePurpose ?? historicalBaselinePurpose;
   const baseProhibitions = unique(base?.prohibitions);
   const candidateProhibitions = unique(candidate.prohibitions);
   const prohibitionConvertedToPermission = candidatePermissions.some((permission) =>
@@ -199,6 +270,11 @@ export function resolvePolicyDelta(
   const allowedPurposes = Array.isArray(base?.allowedPurposes)
     ? unique(base.allowedPurposes)
     : undefined;
+  const missingExplicitScope =
+    isProjectAgreement && (
+      !hasExplicitLeistungsfreigabeScope(base) ||
+      baselinePurpose === null
+    );
   const purposeNotAllowed = allowedPurposes !== undefined &&
     (!candidate.purpose || !allowedPurposes.includes(candidate.purpose));
   const allowedFieldScope = Array.isArray(base?.allowedFieldScope)
@@ -212,15 +288,17 @@ export function resolvePolicyDelta(
     identityMismatch || typeNotGranted || permissionNotGranted || prohibitionConvertedToPermission ||
     removedProhibitions.length > 0 ||
     outsideValidity || broadenedRetention ||
-    purposeNotAllowed || fieldScopeNotAllowed
+    purposeNotAllowed || fieldScopeNotAllowed || missingExplicitScope
   ) {
     deltaClass = "NOT_PERMITTED";
-    diff.summary.unshift("Die Anfrage verlässt den vereinbarten Projekt-, Zweck- oder Berechtigungsrahmen.");
+    diff.summary.unshift(
+      missingExplicitScope
+        ? "Die Projektvereinbarung enthält keinen expliziten Zweck- und Datenfeldumfang."
+        : "Die Anfrage verlässt den vereinbarten Projekt-, Zweck- oder Berechtigungsrahmen.",
+    );
   } else {
     const projectAgreementAllowsChildRefinement =
-      base?.policyType === "PROJECT_AGREEMENT" ||
-      base?.templateId === "PROJECT_MEMBERSHIP" ||
-      base?.templateId === "tk-policy-project-membership" ||
+      isProjectAgreement ||
       // An accepted performance policy that explicitly grants schedule
       // children may refine the concrete schedule purpose/window.  It remains
       // unable to broaden identity, permissions, validity or prohibitions.
@@ -228,21 +306,26 @@ export function resolvePolicyDelta(
         unique(base?.childPolicyTypes).includes("SCHEDULE_CHANGE"));
     const meaningfulChanges = projectAgreementAllowsChildRefinement
       // The concrete Leistung, field subset and narrower validity interval are
-      // refinements, not new grants. Leistungskoordination is the baseline
-      // child purpose; another allowed purpose is a deliberate per-request
-      // delta and therefore needs the AN's explicit consent.
-      ? diff.changed.filter((field) => ![
-        ...(
-          allowedPurposes === undefined ||
-          candidate.purpose === "LEISTUNGSKOORDINATION"
-            ? ["purpose"]
-            : []
-        ),
-        "workPackageReference", "selectedFields", "permissions", "prohibitions",
-        // A child may narrow its capability window. Escaping the parent
-        // interval is rejected above for every child type.
-        "validFrom", "validUntil",
-      ].includes(field))
+      // refinements, not new grants. The parent policy's baselinePurpose is
+      // the only child purpose that is covered without another consent step.
+      ? [
+        ...diff.changed.filter((field) => ![
+          ...(candidate.purpose === baselinePurpose ? ["purpose"] : []),
+          "workPackageReference", "selectedFields", "permissions", "prohibitions",
+          // A child may narrow its capability window. Escaping the parent
+          // interval is rejected above for every child type.
+          "validFrom", "validUntil",
+        ].includes(field)),
+        // Do not infer the baseline from the parent's descriptive purpose.
+        // A malformed or historical snapshot may happen to repeat the child
+        // purpose there; the explicit baselinePurpose remains authoritative.
+        ...(isProjectAgreement &&
+          explicitBaselinePurpose !== null &&
+          candidate.purpose !== baselinePurpose &&
+          !diff.changed.includes("purpose")
+          ? ["purpose"]
+          : []),
+      ]
       : diff.changed;
     if (removedProhibitions.length > 0 || meaningfulChanges.length > 0) {
       deltaClass = "REQUIRES_CONSENT";
@@ -273,12 +356,18 @@ export function createConstructXPolicy(input: {
   // self-contained, rather than requiring receivers to recover restrictions
   // by following parentPolicyId in a different Dataspace.
   const effectivePolicy = input.effectivePolicy ?? { ...input.baseSnapshot };
+  assertBaselinePurposeConsistency({
+    policyId: input.baseSnapshot.policyId,
+    databaseBaselinePurpose: input.baseSnapshot.baselinePurpose,
+    policySnapshot: input.baseSnapshot as unknown as Record<string, unknown>,
+    effectivePolicy,
+  });
   const inheritedSnapshot = {
     ...input.baseSnapshot,
     ...Object.fromEntries(
       [
         "permissions", "childPermissions", "childPolicyTypes", "allowedPurposes", "allowedFieldScope",
-        "prohibitions", "duties", "constraints", "validFrom", "validUntil", "retentionUntil",
+        "baselinePurpose", "prohibitions", "duties", "constraints", "validFrom", "validUntil", "retentionUntil",
       ]
         .filter((key) => key in effectivePolicy)
         .map((key) => [key, effectivePolicy[key]]),
