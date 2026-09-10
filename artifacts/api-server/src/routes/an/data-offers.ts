@@ -27,6 +27,9 @@ import {
   AnDataOfferError,
   decideAnDataOffer,
 } from "../../services/an-data-offer-service";
+import {
+  getDataOfferPublicationStatus,
+} from "../../services/an-project-invitation-service";
 import { createDataspaceExchange } from "../../services/dataspace/dataspace-exchange-factory";
 import { deliverLocalDataOfferResponse } from "../../services/dataspace/local-dataspace-delivery";
 import { buildOdrl } from "../../lib/odrl-builder";
@@ -84,6 +87,7 @@ function toOffer(invitation: typeof anProjectInvitationsTable.$inferSelect) {
     invitation.dataPublicationId ?? invitation.id,
   )!;
   const validUntil = asIsoDate(dataOffer.validUntil, invitation.invitationExpiresAt);
+  const publicationStatus = getDataOfferPublicationStatus(invitation);
   return {
     publicationId,
     title: asString(dataOffer.title, invitation.dataPublicationTitle ?? invitation.projectName),
@@ -92,12 +96,8 @@ function toOffer(invitation: typeof anProjectInvitationsTable.$inferSelect) {
     projectReference: invitation.projectReference,
     dataProductType: asString(dataOffer.dataProductType, "PROJECT_OVERVIEW"),
     version: asPositiveInteger(dataOffer.publicationVersion ?? dataOffer.version, 1),
-    publicationStatus: dataOffer.status === "SUSPENDED" || dataOffer.status === "WITHDRAWN"
-      ? dataOffer.status
-      : validUntil && new Date(validUntil) < new Date()
-        ? "EXPIRED"
-        : "PUBLISHED",
-     recipientStatus: recipientStatus(invitation.status, validUntil, dataOffer.status),
+    publicationStatus,
+    recipientStatus: recipientStatus(invitation.status, validUntil, publicationStatus),
     policyCode: asString(policy.code, "PROJECT_INVITATION"),
     policyName: asString(policy.name, "Nutzungsrichtlinie"),
     validFrom: asIsoDate(dataOffer.validFrom, invitation.createdAt),
@@ -300,7 +300,9 @@ router.get(
     const offer = toOffer(invitation);
     if (offer.publicationStatus !== "PUBLISHED") {
       res.status(403).json({
-        error: `Publication is ${offer.publicationStatus.toLowerCase()}`,
+        error: offer.publicationStatus === "UNKNOWN"
+          ? "Publication status is unavailable"
+          : `Publication is ${offer.publicationStatus.toLowerCase()}`,
         publicationStatus: offer.publicationStatus,
       });
       return;
