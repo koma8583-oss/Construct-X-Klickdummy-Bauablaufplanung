@@ -719,6 +719,11 @@ export default function LeistungsanfrageDetailPage() {
     // coordination projection. Do not let the first render briefly show a
     // terminal state before that projection has been read.
     refetchOnMount: "always",
+    // Dataspace delivery may finish between the detail request and the
+    // coordination request. Keep the projection fresh until an open proposal
+    // is visible so the AN does not remain on the stale "Antwort gesendet"
+    // state after an AG counterproposal has already arrived.
+    refetchInterval: 1000,
   });
   const requirementQuery = useListLeistungsanfrageResourceRequirements(id, { query: { enabled: !!id, queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(id) } });
   const availabilityQuery = useQuery({
