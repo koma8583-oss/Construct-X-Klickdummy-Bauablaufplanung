@@ -990,6 +990,8 @@ describe("membership gates and legacy compatibility", () => {
         projectReference: PROJECT_ID, validFrom: null, validUntil: null,
         childPolicyTypes: ["PERFORMANCE_REQUEST"],
         childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
       },
     }).onConflictDoNothing();
     await db.update(projectMembershipsTable).set({ projectAgreementPolicyId: agreementId })
