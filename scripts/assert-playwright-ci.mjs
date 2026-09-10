@@ -38,8 +38,27 @@ function visitSuite(suite) {
           result.status === "failed" || result.status === "timedOut",
         )
       ) {
+        const errorMessages = results
+          .flatMap((result) => [
+            ...(result.errors ?? []),
+            ...(result.error ? [result.error] : []),
+          ])
+          .map((error) =>
+            typeof error === "string"
+              ? error
+              : error?.message ?? error?.value ?? JSON.stringify(error),
+          )
+          .filter(Boolean)
+          .join(" | ")
+          .replace(/\s+/g, " ")
+          .slice(0, 800);
         failedTests.push(
-          [...(suite.title ? [suite.title] : []), spec.title, test.projectName]
+          [
+            [...(suite.title ? [suite.title] : []), spec.title, test.projectName]
+              .filter(Boolean)
+              .join(" › "),
+            errorMessages,
+          ]
             .filter(Boolean)
             .join(" › "),
         );
