@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../app";
-import { agDb as db, hubDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -40,6 +40,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import jwt from "jsonwebtoken";
@@ -223,6 +224,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   await db
@@ -238,10 +241,29 @@ beforeAll(async () => {
       projectAgreementPolicyId: `${T}-agreement`,
     })
     .onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: `${T}-local-invitation`,
+    correlationId: `${T}-local-invitation-correlation`,
+    senderAgOrgId: GU_ORG_ID,
+    receiverAnOrgId: NU_ORG_ID,
+    projectReference: PROJECT_ID,
+    projectName: `${T}-Project`,
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
+  }).onConflictDoNothing();
 });
 
 afterAll(async () => {
   await flushAll();
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.receiverAnOrgId, NU_ORG_ID))
+    .catch(() => {});
 });
 
 // ── Helper: create a minimal test publication so NU can access /details ───────
