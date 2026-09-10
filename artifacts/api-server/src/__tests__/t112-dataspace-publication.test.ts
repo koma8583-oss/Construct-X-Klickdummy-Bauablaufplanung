@@ -701,6 +701,143 @@ describe("Suspended publication", () => {
   });
 });
 
+describe("Data-offer lifecycle propagation and retry", () => {
+  it("keeps the snapshot immutable, blocks content, and retries SUSPENDED and WITHDRAWN envelopes", async () => {
+    const draft = await createDraftPublication();
+    const publicationId = (draft.body as { id: string }).id;
+    const published = await request(app)
+      .post(`/api/data-publications/${publicationId}/publish`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(published.status).toBe(200);
+    const accepted = await request(app)
+      .post(`/api/an/data-offers/${publicationId}/accept`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(accepted.status).toBe(200);
+
+    const [before] = await anDb.select({
+      snapshot: anProjectInvitationsTable.dataOfferSnapshot,
+      status: anProjectInvitationsTable.status,
+    }).from(anProjectInvitationsTable).where(eq(
+      anProjectInvitationsTable.dataPublicationId,
+      publicationId,
+    ));
+    expect(before?.status).toBe("ACCEPTED");
+
+    const suspended = await request(app)
+      .post(`/api/data-publications/${publicationId}/suspend`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(suspended.status).toBe(200);
+
+    const suspendedMessageId = `dataspace-offer-${publicationId}-${anOrgId}-suspended`;
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, suspendedMessageId));
+    await hubDb.update(messageOutboxTable).set({
+      status: "FAILED",
+      failureReason: "Lifecycle projection temporarily unavailable",
+      attemptCount: 1,
+      lastAttemptAt: new Date(),
+    }).where(eq(messageOutboxTable.messageId, suspendedMessageId));
+
+    const suspendedRetry = await request(app)
+      .post(`/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(suspendedRetry.status).toBe(200);
+    expect(suspendedRetry.body.status).toBe("DELIVERED");
+
+    const suspendedContent = await request(app)
+      .get(`/api/an/data-offers/${publicationId}/content`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(suspendedContent.status).toBe(403);
+    expect(suspendedContent.body.publicationStatus).toBe("SUSPENDED");
+
+    const withdrawn = await request(app)
+      .post(`/api/data-publications/${publicationId}/withdraw`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(withdrawn.status).toBe(200);
+
+    const withdrawnMessageId = `dataspace-offer-${publicationId}-${anOrgId}-withdrawn`;
+    await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, withdrawnMessageId));
+    await hubDb.update(messageOutboxTable).set({
+      status: "FAILED",
+      failureReason: "Lifecycle projection temporarily unavailable",
+      attemptCount: 1,
+      lastAttemptAt: new Date(),
+    }).where(eq(messageOutboxTable.messageId, withdrawnMessageId));
+
+    const withdrawnRetry = await request(app)
+      .post(`/api/data-publications/${publicationId}/recipients/${anOrgId}/retry`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(withdrawnRetry.status).toBe(200);
+    expect(withdrawnRetry.body.status).toBe("DELIVERED");
+
+    const withdrawnContent = await request(app)
+      .get(`/api/an/data-offers/${publicationId}/content`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(withdrawnContent.status).toBe(403);
+    expect(withdrawnContent.body.publicationStatus).toBe("WITHDRAWN");
+
+    const [after] = await anDb.select({
+      snapshot: anProjectInvitationsTable.dataOfferSnapshot,
+      status: anProjectInvitationsTable.status,
+    }).from(anProjectInvitationsTable).where(eq(
+      anProjectInvitationsTable.dataPublicationId,
+      publicationId,
+    ));
+    expect(after?.status).toBe("ACCEPTED");
+    expect(after?.snapshot).toEqual(before?.snapshot);
+  });
+
+  it("fails closed for expired and malformed local offer state", async () => {
+    const expiredDraft = await createDraftPublication({
+      validUntil: "2020-01-01T00:00:00.000Z",
+    });
+    const expiredPublicationId = (expiredDraft.body as { id: string }).id;
+    const expiredPublished = await request(app)
+      .post(`/api/data-publications/${expiredPublicationId}/publish`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(expiredPublished.status).toBe(200);
+
+    const expiredContent = await request(app)
+      .get(`/api/an/data-offers/${expiredPublicationId}/content`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(expiredContent.status).toBe(403);
+    expect(expiredContent.body.publicationStatus).toBe("EXPIRED");
+
+    const malformedDraft = await createDraftPublication();
+    const malformedPublicationId = (malformedDraft.body as { id: string }).id;
+    const malformedPublished = await request(app)
+      .post(`/api/data-publications/${malformedPublicationId}/publish`)
+      .set("Authorization", `Bearer ${agToken}`);
+    expect(malformedPublished.status).toBe(200);
+
+    const [malformedOffer] = await anDb.select().from(anProjectInvitationsTable).where(eq(
+      anProjectInvitationsTable.dataPublicationId,
+      malformedPublicationId,
+    ));
+    expect(malformedOffer?.status).toBe("PENDING");
+    await anDb.update(anProjectInvitationsTable).set({
+      dataOfferLifecycleStatus: null,
+      dataOfferSnapshot: {
+        ...(malformedOffer?.dataOfferSnapshot ?? {}),
+        status: "NOT_A_REAL_STATUS",
+      },
+    }).where(eq(anProjectInvitationsTable.dataPublicationId, malformedPublicationId));
+
+    const malformedContent = await request(app)
+      .get(`/api/an/data-offers/${malformedPublicationId}/content`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(malformedContent.status).toBe(403);
+    expect(malformedContent.body.publicationStatus).toBe("UNKNOWN");
+
+    const [afterMalformed] = await anDb.select({
+      status: anProjectInvitationsTable.status,
+    }).from(anProjectInvitationsTable).where(eq(
+      anProjectInvitationsTable.dataPublicationId,
+      malformedPublicationId,
+    ));
+    expect(afterMalformed?.status).toBe("PENDING");
+  });
+});
+
 // ── 9. Version incrementing ────────────────────────────────────────────────────
 
 describe("Version incrementing", () => {
