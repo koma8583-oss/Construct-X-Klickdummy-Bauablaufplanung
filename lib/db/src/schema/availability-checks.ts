@@ -131,6 +131,12 @@ export interface PublicResultPayload {
     timeWindow: { start: string; end: string };
     crewSize: number | null;
     conditions: string | null;
+    resourceMix?: Array<{
+      resourceClass: "CREW" | "EQUIPMENT";
+      quantity: number;
+      unit: string;
+      utilizationPercent: number;
+    }>;
   }>;
   nextAvailableDate?: string | null;
 }
