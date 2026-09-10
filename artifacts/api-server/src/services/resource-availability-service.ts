@@ -90,7 +90,10 @@ export function restoreConcreteResourceAssignments<
   const output: Array<T & { resourceId: string | null; quantity: number }> = [];
 
   for (const requirement of requirements) {
-    if (!requirement.resourceTypeId || Number(requirement.requiredCapacity ?? 0) <= 0) continue;
+    const requiredCapacity = Number(requirement.requiredCapacity ?? 0);
+    const utilization = requirement.utilizationPercent / 100;
+    const requiredDemand = requiredCapacity * utilization;
+    if (!requirement.resourceTypeId || requiredCapacity <= 0 || requiredDemand <= 0) continue;
     const oldStart = requirement.periodStart ? date(requirement.periodStart) : oldWindowStart;
     const oldEnd = requirement.periodEnd ? inclusiveEnd(requirement.periodEnd) : oldWindowEnd;
     const shiftedRequirementStart = shift(oldStart);
@@ -100,7 +103,9 @@ export function restoreConcreteResourceAssignments<
       periodStart: shiftDateOnly(requirement.periodStart),
       periodEnd: shiftDateOnly(requirement.periodEnd),
     };
-    let remaining = Number(requirement.requiredCapacity);
+    // Capacity checks use effective demand (quantity × utilization), while
+    // persisted type-level bookings still store the unscaled quantity.
+    let remainingDemand = requiredDemand;
     const usedForRequirement = new Set<string>();
     const candidates = oldBookings.filter((booking) => {
       if (usedForRequirement.has(booking.id) || booking.resourceTypeId !== requirement.resourceTypeId) return false;
@@ -116,9 +121,9 @@ export function restoreConcreteResourceAssignments<
     });
 
     for (const candidate of candidates) {
-      if (remaining <= 0) break;
+      if (remainingDemand <= 1e-9) break;
       const resource = resources.find((item) => item.id === candidate.resourceId)!;
-      const covered = (resource.capacity ?? 1) * (candidate.utilizationPercent / 100);
+      const covered = (resource.capacity ?? 1) * utilization;
       if (covered <= 0) continue;
       usedForRequirement.add(candidate.id);
       assignedIntervals.push({
@@ -126,19 +131,23 @@ export function restoreConcreteResourceAssignments<
         startAt: shiftedRequirementStart,
         endAt: shiftedRequirementEnd,
       });
-      const residual = Math.max(0, remaining - covered);
+      const residual = Math.max(0, remainingDemand - covered);
       output.push({ ...targetRequirement, resourceId: candidate.resourceId, quantity: 0 });
-      remaining = residual;
+      remainingDemand = residual;
     }
 
-    if (remaining > 0) {
+    if (remainingDemand > 1e-9) {
       if (options.requireConcreteAssignments) {
         throw Object.assign(
           new Error("CHANGE_PROPOSAL_NOT_FEASIBLE"),
           { code: "CHANGE_PROPOSAL_NOT_FEASIBLE", statusCode: 409 },
         );
       }
-      output.push({ ...targetRequirement, resourceId: null, quantity: remaining });
+      output.push({
+        ...targetRequirement,
+        resourceId: null,
+        quantity: remainingDemand / utilization,
+      });
     }
   }
   return output;
