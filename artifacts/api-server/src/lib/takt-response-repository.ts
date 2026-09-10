@@ -19,6 +19,7 @@ import {
   type InsertTaktResponseAlternative,
   type TaktDecision,
 } from "@workspace/db";
+import type { PublicResourceMixEntry } from "../services/dataspace/external-contracts";
 import { eq } from "drizzle-orm";
 import { withCanonicalResponse } from "./legacy-takt-mappers";
 
@@ -31,6 +32,7 @@ export interface CreateAlternativeInput {
   proposedEnd: Date;
   crewSize?: number;
   conditions?: string[];
+  resourceMix?: PublicResourceMixEntry[];
 }
 
 export interface CreateTaktResponseInput {
@@ -175,6 +177,7 @@ export async function createTaktResponse(
             proposedEnd: alt.proposedEnd,
             crewSize: alt.crewSize ?? null,
             conditions: alt.conditions ?? null,
+            resourceMix: alt.resourceMix ?? null,
           })),
         )
         .returning();
