@@ -314,7 +314,7 @@ export async function cleanupCampusWest(seed: Seed): Promise<void> {
   const remainingPolicies = new Map(policies.map((policy) => [policy.id, policy.parentPolicyId]));
   while (remainingPolicies.size) {
     const deletablePolicyIds = [...remainingPolicies.entries()]
-      .filter(([, parentPolicyId]) => !parentPolicyId || !remainingPolicies.has(parentPolicyId))
+      .filter(([policyId]) => ![...remainingPolicies.values()].some((parentPolicyId) => parentPolicyId === policyId))
       .map(([policyId]) => policyId);
     if (!deletablePolicyIds.length) {
       throw new Error(`Cannot determine a safe coordination policy cleanup order for project ${seed.projectId}`);
