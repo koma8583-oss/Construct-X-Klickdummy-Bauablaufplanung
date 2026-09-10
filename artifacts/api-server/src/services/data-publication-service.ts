@@ -207,10 +207,10 @@ export async function retryDataPublicationDelivery(
   if (!publication) {
     throw new PublicationNotFoundError(publicationId);
   }
-  if (publication.status !== "PUBLISHED") {
+  if (!["PUBLISHED", "SUSPENDED", "WITHDRAWN"].includes(publication.status)) {
     throw new PublicationDeliveryError(
       "PUBLICATION_DELIVERY_NOT_ACTIVE",
-      `Die Datenbereitstellung ist nicht aktiv (Status: ${publication.status}).`,
+      `Die Datenbereitstellung kann nicht zugestellt werden (Status: ${publication.status}).`,
     );
   }
 
@@ -232,12 +232,26 @@ export async function retryDataPublicationDelivery(
     );
   }
 
-  const messageId = `dataspace-offer-${publicationId}-${anOrgId}`;
-  const outbox = await getHubOutboxMessage(messageId, {
+  const lifecycleMessageId = publication.status === "PUBLISHED"
+    ? `dataspace-offer-${publicationId}-${anOrgId}`
+    : `dataspace-offer-${publicationId}-${anOrgId}-${publication.status.toLowerCase()}`;
+  const messageIds = publication.status === "PUBLISHED"
+    ? [lifecycleMessageId]
+    : [lifecycleMessageId, `dataspace-offer-${publicationId}-${anOrgId}`];
+  let messageId = messageIds[0];
+  let outbox = await getHubOutboxMessage(messageId, {
     senderOrgId: agOrgId,
     recipientOrgId: anOrgId,
     messageType: "DATA_OFFER_PUBLISHED",
   });
+  if (!outbox && messageIds.length > 1) {
+    messageId = messageIds[1];
+    outbox = await getHubOutboxMessage(messageId, {
+      senderOrgId: agOrgId,
+      recipientOrgId: anOrgId,
+      messageType: "DATA_OFFER_PUBLISHED",
+    });
+  }
   if (!outbox) {
     throw new PublicationDeliveryError(
       "PUBLICATION_DELIVERY_NOT_FOUND",
@@ -318,6 +332,19 @@ export async function retryDataPublicationDelivery(
   }
 
   if (result.status === "DELIVERED") {
+    if (isLocalDataspaceTransport()) {
+      const persisted = await getHubOutboxMessage(messageId, {
+        senderOrgId: agOrgId,
+        recipientOrgId: anOrgId,
+        messageType: "DATA_OFFER_PUBLISHED",
+      });
+      if (persisted?.payload) {
+        await deliverLocalDataOffer(
+          persisted.payload as unknown as ExternalDataOffer,
+          exchange,
+        );
+      }
+    }
     await db
       .update(dataPublicationRecipientsTable)
       .set({ notifiedAt: new Date() })
@@ -891,7 +918,10 @@ export async function syncDataPublicationProjection(
       recipientOrgId: recipient.anOrgId,
       projectName: project.name,
       senderOrgId: agOrgId,
-      createdAt: now,
+      // Lifecycle envelopes must reproduce the original immutable offer
+      // content. The transport timestamp may change, but policy snapshot
+      // timestamps must remain those of the published offer.
+      createdAt: pub.publishedAt ?? pub.createdAt,
       status,
       contentHash: pub.contentHash ?? undefined,
       contentSnapshot: pub.contentSnapshot ?? undefined,
@@ -905,9 +935,17 @@ export async function syncDataPublicationProjection(
           await deliverLocalDataOffer(payload, exchange);
         }
       }
-    } catch {
-      // The publication state is already committed; a later delivery retry can
-      // reconcile the AN projection without rolling back the AG transition.
+    } catch (error) {
+      // The publication state is already committed. Do not hide a failed
+      // lifecycle projection: the local delivery marks its outbox row FAILED,
+      // and the recipient retry endpoint can replay the persisted envelope.
+      console.warn("[dataspace] publication lifecycle delivery failed", {
+        publicationId,
+        recipientOrgId: recipient.anOrgId,
+        status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 }
