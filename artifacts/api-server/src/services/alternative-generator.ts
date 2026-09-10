@@ -65,6 +65,8 @@ export interface GeneratedAlternative {
   crewSize: number | null;
   /** Human-readable condition explanation (GU-safe, no internal details) */
   conditions: string | null;
+  /** Public aggregate only; never includes resource IDs or local references. */
+  resourceMix: PublicResourceMixEntry[];
   // --- Internal fields (must be stripped before sending to GU) ---
   /** Internal: resource IDs that are free in this window — NOT in public payload */
   _internalResourceIds: string[];
@@ -79,6 +81,14 @@ export interface PublicAlternative {
   timeWindow: { start: string; end: string };
   crewSize: number | null;
   conditions: string | null;
+  resourceMix: PublicResourceMixEntry[];
+}
+
+export interface PublicResourceMixEntry {
+  resourceClass: "CREW" | "EQUIPMENT";
+  quantity: number;
+  unit: string;
+  utilizationPercent: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -204,6 +214,58 @@ function makeAlternativeId(type: "A" | "B" | "C", start: string): string {
   return `alt-${type}-${start}`;
 }
 
+function publicResourceClass(resourceType: string): "CREW" | "EQUIPMENT" | null {
+  if (resourceType === "CREW" || resourceType === "EMPLOYEE") return "CREW";
+  if (resourceType === "EQUIPMENT" || resourceType === "MACHINE") return "EQUIPMENT";
+  return null;
+}
+
+function publicResourceMix(
+  resources: AlternativeResource[],
+  selectedResourceIds: string[],
+  requirements: AlternativeRequirement[],
+): PublicResourceMixEntry[] {
+  const selected = new Set(selectedResourceIds);
+  const grouped = new Map<string, PublicResourceMixEntry>();
+  const resourceTypeIdsByGroup = new Map<string, Set<string>>();
+
+  for (const resource of resources) {
+    if (!selected.has(resource.resourceId)) continue;
+    const resourceClass = publicResourceClass(resource.resourceType);
+    if (!resourceClass) continue;
+    const unit = resource.capacityUnit ?? (resourceClass === "CREW" ? "PERSONS" : "UNITS");
+    const key = `${resourceClass}|${unit}`;
+    const current = grouped.get(key) ?? {
+      resourceClass,
+      quantity: 0,
+      unit,
+      utilizationPercent: 100,
+    };
+    current.quantity += resource.capacity ?? 1;
+    grouped.set(key, current);
+    if (resource.resourceTypeId) {
+      const typeIds = resourceTypeIdsByGroup.get(key) ?? new Set<string>();
+      typeIds.add(resource.resourceTypeId);
+      resourceTypeIdsByGroup.set(key, typeIds);
+    }
+  }
+
+  for (const entry of grouped.values()) {
+    const matching = requirements
+      .filter((requirement) =>
+        requirement.resourceTypeId &&
+        resourceTypeIdsByGroup.get(`${entry.resourceClass}|${entry.unit}`)?.has(requirement.resourceTypeId),
+      )
+      .map((requirement) => requirement.utilizationPercent)
+      .filter((utilization) => Number.isFinite(utilization));
+    if (matching.length > 0) {
+      entry.utilizationPercent = Math.max(...matching);
+    }
+    entry.quantity = Math.round(entry.quantity * 100) / 100;
+  }
+  return [...grouped.values()];
+}
+
 // ── Main generator function ───────────────────────────────────────────────────
 
 /**
@@ -279,6 +341,7 @@ export function generateAlternatives(
             conditions: outsideBuffer
               ? "Outside original buffer window — requires GU acceptance"
               : null,
+            resourceMix: publicResourceMix(resources, allIds, requirements),
             _internalResourceIds: allIds,
             _outsideBuffer: outsideBuffer,
           });
@@ -320,6 +383,7 @@ export function generateAlternatives(
             timeWindow: { start: formatDate(cursor), end: formatDate(windowEnd) },
             crewSize: Math.round(reducedCapacity),
             conditions: `Reduced crew (${Math.round(reducedCapacity)} vs ${Math.round(originalCapacity)}); extended duration to ${extendedDuration} days`,
+            resourceMix: publicResourceMix(resources, idsToCheck, requirements),
             _internalResourceIds: idsToCheck,
             _outsideBuffer: cursor > bufferLatest || windowEnd < bufferEarliest,
           });
@@ -367,6 +431,7 @@ export function generateAlternatives(
           conditions: outsideBuffer
             ? "Next fully available window — outside original buffer; requires GU acceptance"
             : "Next fully available window within buffer",
+          resourceMix: publicResourceMix(resources, allIds, requirements),
           _internalResourceIds: allIds,
           _outsideBuffer: outsideBuffer,
         });
@@ -382,7 +447,8 @@ export function generateAlternatives(
 
 /**
  * Strip internal fields to produce a GU-safe public alternative.
- * Only alternativeId, rank, timeWindow, crewSize, conditions are allowed.
+ * Only public aggregate fields are allowed; concrete resource identifiers are
+ * intentionally stripped before a Dataspace response is built.
  */
 export function toPublicAlternative(alt: GeneratedAlternative): PublicAlternative {
   return {
@@ -391,5 +457,6 @@ export function toPublicAlternative(alt: GeneratedAlternative): PublicAlternativ
     timeWindow: alt.timeWindow,
     crewSize: alt.crewSize,
     conditions: alt.conditions,
+    resourceMix: alt.resourceMix,
   };
 }
