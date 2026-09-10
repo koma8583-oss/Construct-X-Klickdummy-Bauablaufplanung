@@ -64,9 +64,15 @@ const responseSchema = z.object({
     timeWindow: z.object({ start: z.string().min(1), end: z.string().min(1) }),
     crewSize: z.number().int().min(1).optional(),
     conditions: z.array(z.string()).optional(),
-  })).max(3).optional(),
+    resourceMix: z.array(z.object({
+      resourceClass: z.enum(["CREW", "EQUIPMENT"]),
+      quantity: z.number().finite().positive(),
+      unit: z.string().trim().min(1).max(40),
+      utilizationPercent: z.number().finite().min(0).max(100),
+    }).strict()).max(10).optional(),
+  }).strict()).max(3).optional(),
   nextAvailableDate: z.string().optional(),
-});
+}).strict();
 
 const proposalSchema = z.object({
   start: z.string().min(1),
