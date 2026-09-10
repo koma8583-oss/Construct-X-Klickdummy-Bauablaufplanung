@@ -456,17 +456,25 @@ export async function createTaktRequestWithSnapshot(
   const policyTemplateId = purpose === "RAHMENTERMINE"
     ? "SCHEDULE_COORDINATION"
     : "PERFORMANCE_COORDINATION";
-  const basePolicySnapshot = createPolicySnapshot({
-    templateId: policyTemplateId,
-    providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
-    overrides: {
-      recipientOrganizationId: input.nuOrgId,
-      purpose,
-      projectReference: project.id,
-      ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
-    },
-  });
   const agreementPolicy = agreement?.effectivePolicy as Record<string, unknown> | undefined;
+  const agreementBaselinePurpose =
+    typeof agreementPolicy?.baselinePurpose === "string" &&
+    agreementPolicy.baselinePurpose.trim().length > 0
+      ? agreementPolicy.baselinePurpose
+      : null;
+  const basePolicySnapshot = {
+    ...createPolicySnapshot({
+      templateId: policyTemplateId,
+      providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
+      overrides: {
+        recipientOrganizationId: input.nuOrgId,
+        purpose,
+        projectReference: project.id,
+        ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
+      },
+    }),
+    ...(agreementBaselinePurpose ? { baselinePurpose: agreementBaselinePurpose } : {}),
+  };
   const agreementChildTypes = Array.isArray(agreementPolicy?.childPolicyTypes)
     ? agreementPolicy.childPolicyTypes.filter((value): value is string => typeof value === "string")
     : [];
