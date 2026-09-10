@@ -210,9 +210,9 @@ export function DataPublicationWizard({ open, onOpenChange, projectId, contracto
               nuOrgId: chosen.orgId,
               parentPolicyId: selectedParentPolicy.id,
               parentPolicyVersion: selectedParentPolicy.version!,
+              purpose,
+              selectedFields: [...fields],
             }],
-            purpose,
-            selectedFields: [...fields],
           } });
           const requests = batch.requests ?? [];
           if (requests.length !== 1) throw new Error("Die Erstellung lieferte kein eindeutiges Ergebnis.");
