@@ -1,4 +1,6 @@
 import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
+import { hubDb, messageOutboxTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
 import {
   processIncomingCoordinationDecision,
@@ -21,6 +23,7 @@ import {
   processIncomingDataOffer,
   processIncomingDataOfferResponse,
 } from "./inbound-domain-service";
+import { getHubOutboxMessage } from "../hub-transport-service";
 
 /**
  * `rest` (and the unset value) is the local in-process PoC transport in
@@ -38,6 +41,13 @@ export function isLocalDataspaceTransport(): boolean {
 
 function wasTechnicallyDelivered(reference: ExchangeReference): boolean {
   return reference.status === "DELIVERED";
+}
+
+async function markLocalDeliveryFailed(messageId: string, error: unknown): Promise<void> {
+  await hubDb.update(messageOutboxTable).set({
+    status: "FAILED",
+    failureReason: error instanceof Error ? error.message : String(error),
+  }).where(eq(messageOutboxTable.messageId, messageId));
 }
 
 export async function deliverLocalServiceRequest(
@@ -80,6 +90,68 @@ export async function deliverLocalCoordinationDecision(
   return delivery;
 }
 
+/**
+ * Retry a coordination decision without creating another domain decision.
+ *
+ * Local transports also re-enter the AN processor after a successful retry so
+ * a failed first delivery has the same behavior as the original delivery.
+ * The caller must supply the original public envelope; the exchange itself
+ * uses the persisted outbox payload when it claims the retry.
+ */
+export async function retryLocalCoordinationDecision(
+  payload: ExternalCoordinationDecision,
+  exchange: DataspaceExchange = createDataspaceExchange(),
+): Promise<ExchangeReference> {
+  const delivery = await exchange.retryCoordinationDecision(payload.metadata.messageId);
+  if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
+    // The exchange claims the persisted outbox row. Use that same public
+    // envelope for the local inbound handoff instead of rebuilding a possibly
+    // changed time window from current AG/AN rows.
+    const persisted = await getHubOutboxMessage(payload.metadata.messageId);
+    const persistedPayload = persisted?.payload;
+    const inboundPayload = persistedPayload
+      ? mergePersistedCoordinationPayload(payload, persistedPayload)
+      : payload;
+    await exchange.receiveCoordinationDecision(inboundPayload, processIncomingCoordinationDecision);
+  }
+  return delivery;
+}
+
+function mergePersistedCoordinationPayload(
+  fallback: ExternalCoordinationDecision,
+  persisted: Record<string, unknown>,
+): ExternalCoordinationDecision {
+  const payload = { ...fallback };
+  if (typeof persisted.taktRequestId === "string") {
+    payload.requestId = persisted.taktRequestId;
+  }
+  if (typeof persisted.decisionType === "string") {
+    payload.decisionType = persisted.decisionType as ExternalCoordinationDecision["decisionType"];
+  }
+  if (Object.prototype.hasOwnProperty.call(persisted, "acceptedAlternativeId")) {
+    payload.acceptedAlternativeId =
+      typeof persisted.acceptedAlternativeId === "string"
+        ? persisted.acceptedAlternativeId
+        : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(persisted, "confirmedTimeWindow")) {
+    payload.confirmedTimeWindow =
+      persisted.confirmedTimeWindow && typeof persisted.confirmedTimeWindow === "object"
+        ? persisted.confirmedTimeWindow as { start: string; end: string }
+        : null;
+  }
+  if (typeof persisted.taktVersion === "number") {
+    payload.taktVersion = persisted.taktVersion;
+  }
+  if (Object.prototype.hasOwnProperty.call(persisted, "comment")) {
+    payload.comment = typeof persisted.comment === "string" ? persisted.comment : null;
+  }
+  if (typeof persisted.closedAt === "string") {
+    payload.closedAt = persisted.closedAt;
+  }
+  return payload;
+}
+
 export async function deliverLocalProjectInvitation(
   payload: ExternalProjectInvitation,
   exchange: DataspaceExchange = createDataspaceExchange(),
@@ -115,7 +187,14 @@ export async function deliverLocalDataOffer(
     const localPayload = localContentSnapshot
       ? { ...payload, contentSnapshot: localContentSnapshot }
       : payload;
-    await exchange.receiveDataOffer(localPayload, processIncomingDataOffer);
+    try {
+      await exchange.receiveDataOffer(localPayload, processIncomingDataOffer);
+    } catch (error) {
+      // Technical transport delivery and domain projection are separate
+      // concerns. A rejected projection must leave the outbox retryable.
+      await markLocalDeliveryFailed(payload.metadata.messageId, error);
+      throw error;
+    }
   }
   return delivery;
 }
