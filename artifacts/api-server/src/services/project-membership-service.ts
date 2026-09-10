@@ -15,7 +15,7 @@ import {
   LEISTUNGSFREIGABE_PARENT_FIELD_SCOPE,
   LEISTUNGSFREIGABE_PURPOSES,
 } from "../lib/leistungsfreigabe-policy";
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   listDataspaceParticipants,
   resolveDataspaceParticipant,
@@ -29,7 +29,10 @@ import type { ExternalProjectInvitation, ExternalProjectInvitationResponse } fro
 import { createPolicySnapshot } from "./policy-snapshot-service";
 import { toInvitationPolicy } from "./policy-contract-adapters";
 import { getPolicyTemplateRegistryEntry } from "../lib/policy-template-registry";
-import { createConstructXPolicy } from "./construct-x-policy-service";
+import {
+  assertBaselinePurposeConsistency,
+  createConstructXPolicy,
+} from "./construct-x-policy-service";
 import {
   enqueueHubMessageInTransaction,
   getHubOutboxMessage,
@@ -42,6 +45,127 @@ export class ProjectMembershipError extends Error {
     super(message);
     this.name = "ProjectMembershipError";
   }
+}
+
+const HISTORICAL_BASELINE_PURPOSE = "LEISTUNGSKOORDINATION";
+
+function readBaselinePurpose(policy: Record<string, unknown> | null | undefined): string | null {
+  const value = policy?.baselinePurpose;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+export type ProjectAgreementBaselineDiagnostic = {
+  id: string;
+  policyKey: string;
+  version: number;
+  missingFrom: {
+    databaseColumn: boolean;
+    effectivePolicy: boolean;
+    policySnapshot: boolean;
+  };
+};
+
+/**
+ * Report accepted Project Agreements that still have no database baseline.
+ *
+ * This deliberately reads both persisted policy representations as well as
+ * the normalized column. A row can be missing only from the column (a
+ * recoverable representation drift) or from every representation (an
+ * incomplete newer agreement). The diagnostic never repairs either state.
+ */
+export async function listAcceptedProjectAgreementsMissingBaseline(input?: {
+  projectId?: string;
+}): Promise<
+  ProjectAgreementBaselineDiagnostic[]
+> {
+  const agreements = await db.select({
+    id: coordinationPoliciesTable.id,
+    policyKey: coordinationPoliciesTable.policyKey,
+    version: coordinationPoliciesTable.version,
+    baselinePurpose: coordinationPoliciesTable.baselinePurpose,
+    effectivePolicy: coordinationPoliciesTable.effectivePolicy,
+    policySnapshot: coordinationPoliciesTable.policySnapshot,
+  }).from(coordinationPoliciesTable).where(and(
+    eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
+    eq(coordinationPoliciesTable.lifecycleStatus, "ACCEPTED"),
+    ...(input?.projectId ? [eq(coordinationPoliciesTable.projectId, input.projectId)] : []),
+  )).orderBy(asc(coordinationPoliciesTable.version), asc(coordinationPoliciesTable.id));
+
+  return agreements.filter((agreement) => {
+    assertBaselinePurposeConsistency({
+      policyId: agreement.id,
+      databaseBaselinePurpose: agreement.baselinePurpose,
+      policySnapshot: agreement.policySnapshot,
+      effectivePolicy: agreement.effectivePolicy,
+    });
+    return agreement.baselinePurpose === null;
+  }).map((agreement) => ({
+    id: agreement.id,
+    policyKey: agreement.policyKey,
+    version: agreement.version,
+    missingFrom: {
+      databaseColumn: agreement.baselinePurpose === null,
+      effectivePolicy: readBaselinePurpose(agreement.effectivePolicy) === null,
+      policySnapshot: readBaselinePurpose(agreement.policySnapshot) === null,
+    },
+  }));
+}
+
+/**
+ * Make the historical Project Agreement compatibility rule explicit.
+ *
+ * The database migration adds the nullable column and performs the privileged
+ * bootstrap backfill. This service-level operation is intentionally
+ * idempotent as well, so deployments and repair jobs can safely run it under
+ * the normal AG database role.
+ */
+export async function backfillHistoricalProjectAgreementBaselines(input?: {
+  projectId?: string;
+}): Promise<number> {
+  const candidates = await db.select().from(coordinationPoliciesTable).where(and(
+    eq(coordinationPoliciesTable.kind, "PROJECT_AGREEMENT"),
+    eq(coordinationPoliciesTable.lifecycleStatus, "ACCEPTED"),
+    isNull(coordinationPoliciesTable.baselinePurpose),
+    ...(input?.projectId ? [eq(coordinationPoliciesTable.projectId, input.projectId)] : []),
+  ));
+  let updatedCount = 0;
+
+  await db.transaction(async (tx) => {
+    for (const candidate of candidates) {
+      assertBaselinePurposeConsistency({
+        policyId: candidate.id,
+        databaseBaselinePurpose: candidate.baselinePurpose,
+        policySnapshot: candidate.policySnapshot,
+        effectivePolicy: candidate.effectivePolicy,
+      });
+      const baselinePurpose =
+        readBaselinePurpose(candidate.effectivePolicy) ??
+        readBaselinePurpose(candidate.policySnapshot) ??
+        (candidate.version < 2 ? HISTORICAL_BASELINE_PURPOSE : null);
+      if (!baselinePurpose) continue;
+
+      const effectivePolicy = {
+        ...(candidate.effectivePolicy ?? {}),
+        baselinePurpose,
+      };
+      const policySnapshot = {
+        ...candidate.policySnapshot,
+        baselinePurpose,
+      };
+      const [updated] = await tx.update(coordinationPoliciesTable).set({
+        baselinePurpose,
+        effectivePolicy,
+        policySnapshot,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(coordinationPoliciesTable.id, candidate.id),
+        isNull(coordinationPoliciesTable.baselinePurpose),
+      )).returning({ id: coordinationPoliciesTable.id });
+      if (updated) updatedCount++;
+    }
+  });
+
+  return updatedCount;
 }
 
 function toProjectInvitationDelivery(
@@ -101,13 +225,28 @@ export async function listProjectMemberships(projectId: string, agOrgId: string)
       id: coordinationPoliciesTable.id,
       version: coordinationPoliciesTable.version,
       lifecycleStatus: coordinationPoliciesTable.lifecycleStatus,
+      baselinePurpose: coordinationPoliciesTable.baselinePurpose,
+      policySnapshot: coordinationPoliciesTable.policySnapshot,
       effectivePolicy: coordinationPoliciesTable.effectivePolicy,
     }).from(coordinationPoliciesTable).where(inArray(coordinationPoliciesTable.id, agreementIds))
     : [];
   const agreementById = new Map(
     agreements
       .filter((agreement) => agreement.lifecycleStatus === "ACCEPTED")
-      .map((agreement) => [agreement.id, agreement]),
+      .map((agreement) => {
+        assertBaselinePurposeConsistency({
+          policyId: agreement.id,
+          databaseBaselinePurpose: agreement.baselinePurpose,
+          policySnapshot: agreement.policySnapshot,
+          effectivePolicy: agreement.effectivePolicy,
+        });
+        return [agreement.id, {
+          id: agreement.id,
+          version: agreement.version,
+          lifecycleStatus: agreement.lifecycleStatus,
+          effectivePolicy: agreement.effectivePolicy,
+        }];
+      }),
   );
   const messageIds = memberships.flatMap((m) => [
     `project-invitation-${m.invitationId}`,
@@ -344,6 +483,12 @@ export async function inviteParticipant(input: {
     policyVersion: policySnapshot.templateVersion,
     lifecycleStatus: "PUBLISHED",
   });
+  assertBaselinePurposeConsistency({
+    policyId: projectAgreement.policyId,
+    databaseBaselinePurpose: policySnapshot.baselinePurpose,
+    policySnapshot: projectAgreement as unknown as Record<string, unknown>,
+    effectivePolicy: projectAgreement.effectivePolicy,
+  });
   const invitationPayload: ExternalProjectInvitation = {
     metadata: {
       messageId,
@@ -483,10 +628,17 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
   }
 
   const idempotencyKey = input.idempotencyKey?.trim() || crypto.randomUUID();
-  const requestedPolicyVersion = getPolicyTemplateRegistryEntry(
+  const policyRegistryEntry = getPolicyTemplateRegistryEntry(
     policy.code,
     input.policyTemplateVersion,
-  )?.version;
+  );
+  if (!policyRegistryEntry) {
+    throw new ProjectMembershipError(
+      "PROJECT_POLICY_VERSION_NOT_FOUND",
+      "Die ausgewählte Version der Projekt-Policy ist nicht verfügbar.",
+    );
+  }
+  const requestedPolicyVersion = policyRegistryEntry.version;
   const invitationIds = anOrgIds.map((anOrgId) => `${idempotencyKey}:${anOrgId}`);
   const existingByInvitationId = await db.select().from(projectMembershipsTable).where(
     inArray(projectMembershipsTable.invitationId, invitationIds as [string, ...string[]]),
@@ -591,7 +743,16 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
           ],
           allowedPurposes: LEISTUNGSFREIGABE_PURPOSES,
           allowedFieldScope: LEISTUNGSFREIGABE_PARENT_FIELD_SCOPE,
+          ...(policyRegistryEntry.baselinePurpose
+            ? { baselinePurpose: policyRegistryEntry.baselinePurpose }
+            : {}),
         },
+      });
+      assertBaselinePurposeConsistency({
+        policyId: projectAgreement.policyId,
+        databaseBaselinePurpose: policyRegistryEntry.baselinePurpose ?? null,
+        policySnapshot: projectAgreement as unknown as Record<string, unknown>,
+        effectivePolicy: projectAgreement.effectivePolicy,
       });
       await tx.insert(coordinationPoliciesTable).values({
         id: projectAgreement.policyId,
@@ -603,6 +764,7 @@ export async function createProjectInvitationPackage(input: CreateProjectInvitat
         recipientOrgId: anOrgId,
         lifecycleStatus: projectAgreement.lifecycleStatus,
         deltaClass: projectAgreement.deltaClass,
+        baselinePurpose: policyRegistryEntry.baselinePurpose ?? null,
         policySnapshot: projectAgreement as unknown as Record<string, unknown>,
         diff: projectAgreement.diff as unknown as Record<string, unknown> | null,
         effectivePolicy: projectAgreement.effectivePolicy,
@@ -856,6 +1018,12 @@ async function resolveInvitation(
           "Die verknüpfte Project Agreement Policy ist für diese Einladung ungültig.",
         );
       }
+      assertBaselinePurposeConsistency({
+        policyId: agreement.id,
+        databaseBaselinePurpose: agreement.baselinePurpose,
+        policySnapshot: agreement.policySnapshot,
+        effectivePolicy: agreement.effectivePolicy,
+      });
       const validity = (agreement.effectivePolicy ?? agreement.policySnapshot) as {
         validFrom?: unknown;
         validUntil?: unknown;
@@ -1011,6 +1179,12 @@ export async function publishProjectMembershipStatus(
       "Der Dataspace-Teilnehmer der Projektmitgliedschaft fehlt.",
     );
   }
+  assertBaselinePurposeConsistency({
+    policyId: agreement.id,
+    databaseBaselinePurpose: agreement.baselinePurpose,
+    policySnapshot: agreement.policySnapshot,
+    effectivePolicy: agreement.effectivePolicy,
+  });
   const messageId = `project-membership-status:${membership.invitationId}:${membershipStatus}:${agreement.lifecycleStatus}`;
   const payload: ExternalProjectInvitation = {
     metadata: {
