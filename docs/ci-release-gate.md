@@ -43,3 +43,34 @@ into a failure. This workflow therefore has no path filters or job-level
 conditions that can skip the required job; cancelled runs do not produce the
 successful required check needed for the current commit. Keep this file
 synchronized if the job name changes.
+
+## Protection drift audit
+
+The repository also contains an authenticated audit at
+`scripts/audit-release-gate.mjs`. It reads the repository's current default
+branch and fails with an actionable message if any of the settings above are
+missing, renamed, no longer strict, or bypassable by administrators:
+
+```sh
+GH_TOKEN="$RELEASE_GATE_AUDIT_TOKEN" \
+  GITHUB_REPOSITORY=OWNER/REPOSITORY \
+  node scripts/audit-release-gate.mjs
+```
+
+The token is read only from the environment. It must belong to a maintainer
+with repository metadata and **Administration: read** access. Never put it in
+this repository, a workflow file, or command output.
+
+`Release gate protection audit` runs this check for pull requests through
+`pull_request_target`, manually through `workflow_dispatch`, and on weekday
+mornings from `.github/workflows/release-gate-protection.yml`. Configure the
+repository Actions secret `RELEASE_GATE_AUDIT_TOKEN` before enabling the
+scheduled check.
+The workflow checks out the committed script and never checks out pull-request
+code, so the maintainer credential is not exposed to untrusted changes.
+
+The script targets classic branch protection, whose API exposes all five
+settings directly. Repositories using rulesets must configure the equivalent
+ruleset protections and review them with the same checklist; the audit fails
+closed when classic protection is absent rather than treating an unverified
+ruleset as compliant.
