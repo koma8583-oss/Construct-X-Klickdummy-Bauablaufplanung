@@ -239,6 +239,10 @@ describe("dataspace exchange boundary", () => {
         timeWindow: { start: "2026-09-08T08:00:00.000Z", end: "2026-09-10T17:00:00.000Z" },
         crewSize: 4,
         conditions: "Crew und Gerät gemeinsam verfügbar",
+        resourceMix: [
+          { resourceClass: "CREW" as const, quantity: 4, unit: "PERSONS", utilizationPercent: 100 },
+          { resourceClass: "EQUIPMENT" as const, quantity: 1, unit: "UNITS", utilizationPercent: 50 },
+        ],
       },
       {
         alternativeId: "alternative-mixed-1",
@@ -246,6 +250,10 @@ describe("dataspace exchange boundary", () => {
         timeWindow: { start: "2026-09-15T08:00:00.000Z", end: "2026-09-17T17:00:00.000Z" },
         crewSize: 5,
         conditions: "Vollständiger Ressourcenmix bestätigt",
+        resourceMix: [
+          { resourceClass: "CREW" as const, quantity: 5, unit: "PERSONS", utilizationPercent: 100 },
+          { resourceClass: "EQUIPMENT" as const, quantity: 1, unit: "UNITS", utilizationPercent: 100 },
+        ],
       },
     ];
     const concreteNuResourceIds = ["nu-crew-42", "nu-crane-09"];
@@ -330,6 +338,17 @@ describe("dataspace exchange boundary", () => {
         decision: payload.decision,
         alternatives: publicAlternatives,
       });
+      expect(externalServiceResponseSchema.safeParse({
+        metadata: payload.metadata,
+        ...responseContent,
+        alternatives: [{
+          ...publicAlternatives[0],
+          resourceMix: [{
+            ...publicAlternatives[0].resourceMix?.[0],
+            resourceId: "nu-crew-42",
+          }],
+        }],
+      }).success).toBe(false);
 
       const serialized = JSON.stringify(serializedEnvelope);
       for (const forbiddenField of [
@@ -337,6 +356,8 @@ describe("dataspace exchange boundary", () => {
         "resourceName",
         "localProjectId",
         "employeeId",
+        "localBookingId",
+        "internalProjectReference",
       ]) {
         expect(serialized, `serialized payload should not contain "${forbiddenField}"`)
           .not.toContain(forbiddenField);

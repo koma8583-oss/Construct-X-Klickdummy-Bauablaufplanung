@@ -3390,7 +3390,7 @@ export const GetAnDashboardResponse = zod.object({
   "title": zod.string(),
   "projectName": zod.string(),
   "agName": zod.string(),
-  "publicationStatus": zod.enum(['PUBLISHED', 'SUSPENDED', 'WITHDRAWN', 'EXPIRED']),
+  "publicationStatus": zod.enum(['PUBLISHED', 'SUSPENDED', 'WITHDRAWN', 'EXPIRED', 'UNKNOWN']),
   "recipientStatus": zod.enum(['OFFERED', 'ACCEPTED', 'REJECTED', 'REVOKED', 'EXPIRED']),
   "policyAcceptedAt": zod.coerce.date().nullable(),
   "targetUrl": zod.string()
@@ -3627,6 +3627,8 @@ export const CreateTaktRequestWithSnapshotResponse = zod.object({
 
 
 
+
+
 export const createTaktRequestBatchWithSnapshotBodyRecipientsMax = 50;
 
 export const createTaktRequestBatchWithSnapshotBodySubjectMax = 255;
@@ -3635,20 +3637,19 @@ export const createTaktRequestBatchWithSnapshotBodyMessageMax = 2000;
 
 
 
-
 export const CreateTaktRequestBatchWithSnapshotBody = zod.object({
   "taktId": zod.string().min(1),
   "recipients": zod.array(zod.object({
   "nuOrgId": zod.string().min(1),
   "parentPolicyId": zod.string().min(1).describe('Exact accepted Parent Policy for this recipient.'),
-  "parentPolicyVersion": zod.number().min(1).describe('Exact version of this recipient\'s Parent Policy.')
+  "parentPolicyVersion": zod.number().min(1).describe('Exact version of this recipient\'s Parent Policy.'),
+  "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']).describe('Business purpose bound to this recipient.'),
+  "selectedFields": zod.array(zod.string().min(1)).min(1).describe('Explicit child-owned fields bound to this recipient.')
 })).min(1).max(createTaktRequestBatchWithSnapshotBodyRecipientsMax),
   "responseRequiredBy": zod.coerce.date().optional(),
   "subject": zod.string().max(createTaktRequestBatchWithSnapshotBodySubjectMax).optional(),
-  "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional(),
-  "purpose": zod.enum(['RAHMENTERMINE', 'LEISTUNGSKOORDINATION', 'AUSFUEHRUNGSINFORMATIONEN', 'INDIVIDUELLE_FREIGABE']).describe('Business purpose of the Leistungsfreigabe.'),
-  "selectedFields": zod.array(zod.string().min(1)).describe('Explicit child-owned fields; the server enforces the purpose whitelist.')
-}).describe('Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.')
+  "message": zod.string().max(createTaktRequestBatchWithSnapshotBodyMessageMax).optional()
+}).describe('Body for atomically creating one request per selected NU. Every recipient row carries its own accepted Parent Policy binding, business purpose and selected fields.')
 
 
 
@@ -3710,6 +3711,15 @@ export const GetTaktRequestDetailParams = zod.object({
   "requestId": zod.coerce.string()
 })
 
+export const getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemQuantityExclusiveMin = 0;
+
+export const getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMin = 0;
+export const getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMax = 100;
+
+export const getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixMax = 10;
+
+
+
 export const GetTaktRequestDetailResponse = zod.object({
   "id": zod.string(),
   "requestNumber": zod.string(),
@@ -3759,7 +3769,13 @@ export const GetTaktRequestDetailResponse = zod.object({
   "proposedStart": zod.coerce.date(),
   "proposedEnd": zod.coerce.date(),
   "crewSize": zod.number().nullish(),
-  "conditions": zod.array(zod.string()).nullish()
+  "conditions": zod.array(zod.string()).nullish(),
+  "resourceMix": zod.array(zod.object({
+  "resourceClass": zod.enum(['CREW', 'EQUIPMENT']),
+  "quantity": zod.number().gt(getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemQuantityExclusiveMin),
+  "unit": zod.string(),
+  "utilizationPercent": zod.number().min(getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMin).max(getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMax)
+})).max(getTaktRequestDetailResponseResponseOneAlternativesItemResourceMixMax).optional().describe('Public capacity aggregates only; contains no concrete resource, booking, or project identifiers.')
 }))
 }).nullish(),
   "timeline": zod.object({
@@ -3788,7 +3804,14 @@ export const GetTaktRequestDetailResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
   "requestNumber": zod.string()
-})).describe('Parallel AN requests cancelled because another AN was confirmed.')
+})).describe('Parallel AN requests cancelled because another AN was confirmed.'),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
 }).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
 }).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
 
@@ -3848,8 +3871,36 @@ export const CreateGuDecisionResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
   "requestNumber": zod.string()
-})).describe('Parallel AN requests cancelled because another AN was confirmed.')
+})).describe('Parallel AN requests cancelled because another AN was confirmed.'),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
 }).describe('Created or existing GU decision with updated TaktRequest status.')
+
+
+/**
+ * Retries the persisted public Dataspace envelope for the existing GU decision. This never creates another decision or changes the selected time window. The response contains delivery metadata only; AN resource identifiers are not exposed.
+ * @summary Retry delivery of an existing GU decision
+ */
+export const RetryGuDecisionDeliveryParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const RetryGuDecisionDeliveryResponse = zod.object({
+  "decisionId": zod.string(),
+  "taktRequestId": zod.string(),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
+})
 
 
 /**
@@ -4805,6 +4856,15 @@ export const GetLeistungsanfrageDetailParams = zod.object({
   "leistungsanfrageId": zod.coerce.string()
 })
 
+export const getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemQuantityExclusiveMin = 0;
+
+export const getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMin = 0;
+export const getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMax = 100;
+
+export const getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixMax = 10;
+
+
+
 export const GetLeistungsanfrageDetailResponse = zod.object({
   "id": zod.string(),
   "requestNumber": zod.string(),
@@ -4854,7 +4914,13 @@ export const GetLeistungsanfrageDetailResponse = zod.object({
   "proposedStart": zod.coerce.date(),
   "proposedEnd": zod.coerce.date(),
   "crewSize": zod.number().nullish(),
-  "conditions": zod.array(zod.string()).nullish()
+  "conditions": zod.array(zod.string()).nullish(),
+  "resourceMix": zod.array(zod.object({
+  "resourceClass": zod.enum(['CREW', 'EQUIPMENT']),
+  "quantity": zod.number().gt(getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemQuantityExclusiveMin),
+  "unit": zod.string(),
+  "utilizationPercent": zod.number().min(getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMin).max(getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixItemUtilizationPercentMax)
+})).max(getLeistungsanfrageDetailResponseResponseOneAlternativesItemResourceMixMax).optional().describe('Public capacity aggregates only; contains no concrete resource, booking, or project identifiers.')
 }))
 }).nullish(),
   "timeline": zod.object({
@@ -4883,7 +4949,14 @@ export const GetLeistungsanfrageDetailResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
   "requestNumber": zod.string()
-})).describe('Parallel AN requests cancelled because another AN was confirmed.')
+})).describe('Parallel AN requests cancelled because another AN was confirmed.'),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
 }).describe('Created or existing GU decision with updated TaktRequest status.').nullish().describe('Existing GU decision on the NU response for this request, if one has been recorded.')
 }).describe('Full detail record for a single TaktRequest, GU-scoped. Includes enriched metadata, timeline, transport, snapshot, and response.\n')
 
@@ -5121,8 +5194,36 @@ export const CreateLeistungsanfrageGuDecisionResponse = zod.object({
   "id": zod.string(),
   "nuOrgId": zod.string(),
   "requestNumber": zod.string()
-})).describe('Parallel AN requests cancelled because another AN was confirmed.')
+})).describe('Parallel AN requests cancelled because another AN was confirmed.'),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
 }).describe('Created or existing GU decision with updated TaktRequest status.')
+
+
+/**
+ * Wiederholt die Zustellung des gespeicherten öffentlichen Dataspace- Umschlags für die bestehende GU-Entscheidung. Es wird keine zweite Entscheidung erstellt und kein Zeitfenster erneut angewendet. AN-Ressourcen-IDs werden nicht zurückgegeben.
+ * @summary Zustellung einer bestehenden GU-Entscheidung erneut versuchen
+ */
+export const RetryLeistungsanfrageGuDecisionDeliveryParams = zod.object({
+  "leistungsanfrageId": zod.coerce.string()
+})
+
+export const RetryLeistungsanfrageGuDecisionDeliveryResponse = zod.object({
+  "decisionId": zod.string(),
+  "taktRequestId": zod.string(),
+  "delivery": zod.object({
+  "status": zod.enum(['PENDING', 'DELIVERED', 'FAILED']),
+  "attemptCount": zod.number().nullable(),
+  "lastAttemptAt": zod.coerce.date().nullable(),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "failureReason": zod.string().nullable()
+}).describe('Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.')
+})
 
 
 /**

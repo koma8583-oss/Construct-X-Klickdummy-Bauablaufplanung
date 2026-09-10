@@ -65,6 +65,13 @@ export const anLeistungsantwortAlternativenTable = pgTable(
     proposedEnd: timestamp("proposed_end", { withTimezone: true }).notNull(),
     crewSize: integer("crew_size"),
     conditions: jsonb("conditions").$type<string[] | null>(),
+    /** Public CREW/EQUIPMENT aggregates; never contains concrete resource IDs. */
+    resourceMix: jsonb("resource_mix").$type<Array<{
+      resourceClass: "CREW" | "EQUIPMENT";
+      quantity: number;
+      unit: string;
+      utilizationPercent: number;
+    }> | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

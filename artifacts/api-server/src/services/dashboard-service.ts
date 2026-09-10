@@ -11,7 +11,10 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getCoordinationTasks, type CoordinationTask } from "./coordination-task-service";
-import { listAnProjectInvitations } from "./an-project-invitation-service";
+import {
+  getDataOfferPublicationStatus,
+  listAnProjectInvitations,
+} from "./an-project-invitation-service";
 import { listHubFailedMessages } from "./hub-transport-service";
 
 type DashboardActionKind =
@@ -405,9 +408,7 @@ export async function getAnDashboard(anOrgId: string) {
     const policy = snapshot.policy && typeof snapshot.policy === "object"
       ? snapshot.policy as Record<string, unknown>
       : {};
-    const publicationStatus = snapshot.status === "SUSPENDED" || snapshot.status === "WITHDRAWN"
-      ? snapshot.status
-      : invitation.invitationExpiresAt && invitation.invitationExpiresAt < now ? "EXPIRED" : "PUBLISHED";
+    const publicationStatus = getDataOfferPublicationStatus(invitation);
     return {
       publicationId: invitation.dataPublicationId ?? invitation.id,
       title: typeof snapshot.title === "string" ? snapshot.title : invitation.dataPublicationTitle ?? invitation.projectName,

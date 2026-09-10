@@ -340,6 +340,37 @@ describe("Construct-X Campus West campaign", () => {
     expect((await db.select().from(projectMembershipsTable).where(eq(projectMembershipsTable.id, MEMBERSHIP)))[0]?.status).toBe("ACTIVE");
   });
 
+  it("honors a different baseline purpose in the end-to-end parent-policy contract", async () => {
+    const [parent] = await db.select({ effectivePolicy: coordinationPoliciesTable.effectivePolicy })
+      .from(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.id, AGREEMENT));
+    const effectiveParent = {
+      ...(parent.effectivePolicy as Record<string, unknown>),
+      templateVersion: 2,
+      purpose: "PROJECT_MEMBERSHIP",
+      baselinePurpose: "RAHMENTERMINE",
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION"],
+    };
+    const candidate = {
+      policyType: "PERFORMANCE_REQUEST" as const,
+      projectReference: PROJECT,
+      recipientOrganizationId: anId("AN1"),
+      permissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      workPackageReference: "L-101",
+      selectedFields: ["plannedTimeWindow"],
+      validFrom: baseline.validFrom,
+      validUntil: baseline.validUntil,
+    };
+
+    expect(resolvePolicyDelta(effectiveParent, {
+      ...candidate,
+      purpose: "RAHMENTERMINE",
+    }).deltaClass).toBe("WITHIN_BASELINE");
+    expect(resolvePolicyDelta(effectiveParent, {
+      ...candidate,
+      purpose: "LEISTUNGSKOORDINATION",
+    }).deltaClass).toBe("REQUIRES_CONSENT");
+  });
+
   it("keeps policy preview and batch creation bound to the selected parent policy", async () => {
     const preview = await request(app)
       .post("/api/leistungsanfragen/policy-preview")
@@ -382,9 +413,9 @@ describe("Construct-X Campus West campaign", () => {
           nuOrgId: anId("AN1"),
           parentPolicyId: AGREEMENT,
           parentPolicyVersion: 1,
+          purpose: "RAHMENTERMINE",
+          selectedFields: ["workPackage"],
         }],
-        purpose: "RAHMENTERMINE",
-        selectedFields: ["plannedTimeWindow"],
       });
     expect(forbiddenPurpose.status, JSON.stringify(forbiddenPurpose.body)).toBe(409);
     expect(forbiddenPurpose.body.error).toBe("POLICY_NOT_PERMITTED");

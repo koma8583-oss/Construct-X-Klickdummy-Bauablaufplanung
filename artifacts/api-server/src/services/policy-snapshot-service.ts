@@ -36,6 +36,8 @@ export interface PolicySnapshot {
   readonly validFrom: string | null;
   readonly validUntil: string | null;
   readonly createdAt: string;
+  /** Versioned by the parent template; absent on historical templates. */
+  readonly baselinePurpose?: string;
 }
 
 export type { PolicySnapshot as ConstructXBasePolicySnapshot };
@@ -122,5 +124,6 @@ export function createPolicySnapshot(input: CreatePolicySnapshotInput): PolicySn
     validFrom: values.validFrom ?? null,
     validUntil: values.validUntil ?? null,
     createdAt: new Date().toISOString(),
+    ...(template.baselinePurpose ? { baselinePurpose: template.baselinePurpose } : {}),
   });
 }

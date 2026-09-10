@@ -50,6 +50,12 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
   const busy = accept.isPending || reject.isPending;
   const policy = (invitation.policySnapshot ?? {}) as Record<string, unknown>;
   const policyName = policyText(policy, "name") ?? "Nutzungsrichtlinie";
+  const policyPurpose = policyText(policy, "purpose") ?? policyText(policy, "usagePurpose");
+  const policyCode = policyText(policy, "code");
+  const policyId = policyText(policy, "policyId") ?? policyText(policy, "id");
+  const templateVersion = typeof policy.templateVersion === "number" ? policy.templateVersion : null;
+  const validFrom = policyText(policy, "validFrom");
+  const validUntil = policyText(policy, "validUntil");
   const permissions = policyList(policy, "permissions");
   const prohibitions = policyList(policy, "prohibitions");
 
@@ -91,6 +97,14 @@ function InvitationCard({ invitation }: { invitation: AnProjectInvitation }) {
       </div>
       <div className="mt-4 space-y-2 rounded-xl border p-3 text-sm">
         <div className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4 text-primary" /><span>{policyName}</span></div>
+        {policyPurpose && <p><strong>Zweck:</strong> {policyPurpose}</p>}
+        {(policyCode || templateVersion !== null) && (
+          <p><strong>Policy:</strong> {[policyCode, templateVersion !== null ? `Version ${templateVersion}` : null].filter(Boolean).join(" · ")}</p>
+        )}
+        {policyId && <p className="break-all text-xs text-muted-foreground"><strong>Policy-ID:</strong> {policyId}</p>}
+        {(validFrom || validUntil) && (
+          <p><strong>Gültigkeit:</strong> {validFrom ? dateText(validFrom) : "sofort"} bis {validUntil ? dateText(validUntil) : "unbefristet"}</p>
+        )}
         {permissions.length > 0 && <p><strong>Erlaubt:</strong> {permissions.join(", ")}</p>}
         {prohibitions.length > 0 && <p><strong>Nicht erlaubt:</strong> {prohibitions.join(", ")}</p>}
       </div>

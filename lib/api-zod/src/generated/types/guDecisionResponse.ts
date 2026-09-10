@@ -5,6 +5,7 @@
  * Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.2.0
  */
+import type { GuDecisionDelivery } from './guDecisionDelivery';
 import type { GuDecisionResponseAutoCancelledRequestsItem } from './guDecisionResponseAutoCancelledRequestsItem';
 import type { GuDecisionResponseDecisionType } from './guDecisionResponseDecisionType';
 import type { GuDecisionResponseUpdatedRequestStatus } from './guDecisionResponseUpdatedRequestStatus';
@@ -30,4 +31,5 @@ export interface GuDecisionResponse {
   idempotent: boolean;
   /** Parallel AN requests cancelled because another AN was confirmed. */
   autoCancelledRequests: GuDecisionResponseAutoCancelledRequestsItem[];
+  delivery: GuDecisionDelivery;
 }

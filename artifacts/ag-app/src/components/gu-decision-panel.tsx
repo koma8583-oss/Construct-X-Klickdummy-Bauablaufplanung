@@ -14,7 +14,7 @@
  *  - CLOSE_WITHOUT_AGREEMENT → warning dialog
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, differenceInDays } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
@@ -30,12 +30,14 @@ import {
 } from 'lucide-react';
 import {
   useCreateGuDecision,
+  useRetryGuDecisionDelivery,
   getGetTaktRequestDetailQueryKey,
   getListTakteQueryKey,
   getListTaktRequestsQueryKey,
   getGetProjectQueryKey,
   type TaktRequestDetail,
   type GuDecisionResponse,
+  type GuDecisionDelivery,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -69,7 +71,7 @@ type DialogState =
 
 type ResultState =
   | { kind: 'idle' }
-  | { kind: 'success'; decision: GuDecisionResponse; notified: boolean | 'failed' }
+  | { kind: 'success'; decision: GuDecisionResponse }
   | { kind: 'error'; message: string };
 
 function newIdempotencyKey(): string {
@@ -88,6 +90,29 @@ function dayDiff(a: string | Date, b: string | Date): number {
   return differenceInDays(new Date(b), new Date(a));
 }
 
+function ResourceMixSummary({
+  resourceMix,
+}: {
+  resourceMix?: Array<{
+    resourceClass: 'CREW' | 'EQUIPMENT';
+    quantity: number;
+    unit: string;
+    utilizationPercent: number;
+  }> | null;
+}) {
+  if (!resourceMix?.length) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="space-y-0.5 text-xs">
+      {resourceMix.map((entry) => (
+        <div key={`${entry.resourceClass}-${entry.unit}`}>
+          <span className="font-medium">{entry.resourceClass}</span>{' '}
+          {entry.quantity} {entry.unit} · {entry.utilizationPercent}%
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Decision type labels ──────────────────────────────────────────────────────
 
 const DECISION_COLORS: Record<DecisionType, string> = {
@@ -100,43 +125,57 @@ const DECISION_COLORS: Record<DecisionType, string> = {
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
 function TransportStatusRow({
-  decisionSaved,
-  notified,
+  delivery,
+  onRetry,
+  retrying,
+  retryError,
 }: {
-  decisionSaved: boolean;
-  notified: boolean | 'failed';
+  delivery: GuDecisionDelivery | undefined;
+  onRetry?: () => void;
+  retrying?: boolean;
+  retryError?: boolean;
 }) {
   const { t } = useTranslation();
+  const status = delivery?.status ?? 'PENDING';
+  const isDelivered = status === 'DELIVERED';
+  const isFailed = status === 'FAILED';
   return (
     <div className="space-y-1.5 pt-2">
       <div className="flex items-center gap-2 text-sm">
-        {decisionSaved ? (
+        {isDelivered ? (
           <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+        ) : isFailed ? (
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
         ) : (
           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
         )}
-        <span className={decisionSaved ? 'text-emerald-700' : 'text-muted-foreground'}>
-          {t('taktRequestDetail.guDecision.transportStatus.decisionSaved')}
-        </span>
-      </div>
-      <div className="flex items-center gap-2 text-sm">
-        {notified === true && <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
-        {notified === 'failed' && <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />}
-        {notified === false && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-        <span
-          className={
-            notified === true
-              ? 'text-emerald-700'
-              : notified === 'failed'
-              ? 'text-amber-600'
-              : 'text-muted-foreground'
-          }
-        >
-          {notified === 'failed'
+        <span className={isDelivered ? 'text-emerald-700' : isFailed ? 'text-amber-600' : 'text-muted-foreground'}>
+          {isDelivered
+            ? t('taktRequestDetail.guDecision.transportStatus.notified')
+            : isFailed
             ? t('taktRequestDetail.guDecision.transportStatus.notifyFailed')
-            : t('taktRequestDetail.guDecision.transportStatus.notified')}
+            : t('taktRequestDetail.guDecision.transportStatus.notifyPending')}
         </span>
       </div>
+      {isFailed && onRetry && (
+        <>
+          {retryError && (
+            <p role="alert" className="text-xs text-red-600">
+              {t('taktRequestDetail.guDecision.transportStatus.retryFailed')}
+            </p>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-1"
+            onClick={onRetry}
+            disabled={retrying}
+          >
+            {retrying && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            {t('taktRequestDetail.guDecision.transportStatus.retry')}
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -185,6 +224,9 @@ function AlternativeTable({
             <th className="text-right py-2 pr-3 font-medium text-muted-foreground">
               {t('taktRequestDetail.guDecision.alternative.crew')}
             </th>
+            <th className="text-left py-2 pr-3 font-medium text-muted-foreground">
+              {t('taktRequestDetail.guDecision.alternative.resourceMix')}
+            </th>
             <th className="text-left py-2 font-medium text-muted-foreground">
               {t('taktRequestDetail.guDecision.alternative.conditions')}
             </th>
@@ -207,6 +249,7 @@ function AlternativeTable({
             </td>
             <td className="py-2 pr-3 text-right text-muted-foreground">–</td>
             <td className="py-2 pr-3 text-right text-muted-foreground">–</td>
+            <td className="py-2 pr-3 text-muted-foreground">–</td>
             <td className="py-2 text-muted-foreground">–</td>
           </tr>
           {/* Alternative rows */}
@@ -269,6 +312,9 @@ function AlternativeTable({
                 <td className="py-2 pr-3 text-right">
                   {alt.crewSize ?? '—'}
                 </td>
+                <td className="py-2 pr-3">
+                  <ResourceMixSummary resourceMix={alt.resourceMix} />
+                </td>
                 <td className="py-2 text-xs text-muted-foreground max-w-xs">
                   {alt.conditions && alt.conditions.length > 0
                     ? alt.conditions.join(', ')
@@ -294,16 +340,23 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { mutateAsync: createGuDecision } = useCreateGuDecision();
+  const { mutateAsync: retryGuDecisionDelivery, isPending: retryingDelivery } =
+    useRetryGuDecisionDelivery();
 
   const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
   const [comment, setComment] = useState('');
   const [result, setResult] = useState<ResultState>({ kind: 'idle' });
   const [submitting, setSubmitting] = useState(false);
+  const [retryError, setRetryError] = useState(false);
   const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
 
   const resp = detail.response;
   const guDecision = detail.guDecision;
   const taktLifecycle = detail.taktLifecycleStatus;
+
+  useEffect(() => {
+    setRetryError(false);
+  }, [detail.id]);
 
   // ── Determine what actions are available ──────────────────────────────────
 
@@ -341,10 +394,7 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
           },
         });
         closeDialog();
-        // Optimistically mark transport as "decision saved, notified pending"
-        // The backend does transport post-commit; we assume success unless told otherwise.
-        const notified: boolean | 'failed' = true; // transport is non-fatal but usually succeeds
-        setResult({ kind: 'success', decision, notified });
+        setResult({ kind: 'success', decision });
         onDecisionRecorded?.(decision);
         // Invalidate detail query so the page reloads with updated status
         await queryClient.invalidateQueries({
@@ -376,6 +426,20 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
     [comment, createGuDecision, detail.id, closeDialog, onDecisionRecorded, queryClient],
   );
 
+  const handleRetryDelivery = useCallback(async () => {
+    setRetryError(false);
+    try {
+      await retryGuDecisionDelivery({ requestId: detail.id });
+      await queryClient.invalidateQueries({
+        queryKey: getGetTaktRequestDetailQueryKey(detail.id),
+      });
+    } catch (err: unknown) {
+      // Keep transport details out of the planner-facing UI. The failed
+      // delivery status remains available so the planner can retry again.
+      setRetryError(true);
+    }
+  }, [detail.id, queryClient, retryGuDecisionDelivery]);
+
   // ── Already decided ───────────────────────────────────────────────────────
 
   if (guDecision) {
@@ -405,6 +469,12 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
             )}
           </div>
         </div>
+        <TransportStatusRow
+          delivery={guDecision.delivery}
+          onRetry={handleRetryDelivery}
+          retrying={retryingDelivery}
+          retryError={retryError}
+        />
         {taktLifecycle === 'CONFIRMED' && (
           <div className="flex items-center gap-2 text-sm text-emerald-700">
             <CheckCircle2 className="w-4 h-4" />
@@ -433,8 +503,10 @@ export function GUDecisionPanel({ detail, onDecisionRecorded }: GUDecisionPanelP
               })}
             </p>
             <TransportStatusRow
-              decisionSaved
-              notified={result.notified}
+              delivery={result.decision.delivery}
+              onRetry={handleRetryDelivery}
+              retrying={retryingDelivery}
+              retryError={retryError}
             />
           </div>
         </div>
@@ -813,6 +885,7 @@ function ConfirmationDetails({
     : resp?.acceptedEnd
     ? (resp.acceptedEnd as string)
     : origEnd;
+  const selectedResourceMix = selectedAlt?.resourceMix;
 
   const newVersion =
     decisionType === 'ACCEPT_ALTERNATIVE' ? detail.taktVersion + 1 : detail.taktVersion;
@@ -852,6 +925,12 @@ function ConfirmationDetails({
       ? {
           label: t('taktRequestDetail.guDecision.confirm.timeWindow'),
           value: formatWindow(effectiveStart, effectiveEnd),
+        }
+      : null,
+    selectedResourceMix?.length
+      ? {
+          label: t('taktRequestDetail.guDecision.confirm.resourceMix'),
+          value: <ResourceMixSummary resourceMix={selectedResourceMix} />,
         }
       : null,
     {

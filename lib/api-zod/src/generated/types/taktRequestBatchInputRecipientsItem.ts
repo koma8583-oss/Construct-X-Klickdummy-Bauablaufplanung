@@ -5,6 +5,7 @@
  * Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.2.0
  */
+import type { TaktRequestBatchInputRecipientsItemPurpose } from './taktRequestBatchInputRecipientsItemPurpose';
 
 export type TaktRequestBatchInputRecipientsItem = {
   /** @minLength 1 */
@@ -19,4 +20,12 @@ export type TaktRequestBatchInputRecipientsItem = {
      * @minimum 1
      */
   parentPolicyVersion: number;
+  /** Business purpose bound to this recipient. */
+  purpose: TaktRequestBatchInputRecipientsItemPurpose;
+  /**
+     * Explicit child-owned fields bound to this recipient.
+     * @minItems 1
+     * @items.minLength 1
+     */
+  selectedFields: string[];
 };

@@ -40,6 +40,7 @@ import { assertActiveProjectMembership, ProjectMembershipError } from "../servic
 import {
   LEISTUNGSFREIGABE_FIELD_WHITELISTS,
   PARENT_COVERED_LEISTUNGSFREIGABE_FIELDS,
+  hasExplicitLeistungsfreigabeScope,
   type LeistungsfreigabePurpose,
 } from "./leistungsfreigabe-policy";
 
@@ -398,6 +399,12 @@ export async function createTaktRequestWithSnapshot(
       "Die ausgewählte Projektvereinbarung wurde geändert. Bitte prüfen Sie die Freigabe erneut.",
     );
   }
+  if (!hasExplicitLeistungsfreigabeScope(agreement.effectivePolicy)) {
+    throw new ProjectMembershipError(
+      "PROJECT_AGREEMENT_SCOPE_REQUIRED",
+      "Die Projektvereinbarung enthält keinen expliziten Zweck- und Datenfeldumfang. Bitte führen Sie zuerst das Policy-Backfill aus.",
+    );
+  }
   // Acceptance is not an enduring grant: the agreement's effective window is
   // enforced before a child can be minted.
   const agreementEffective = agreement.effectivePolicy as Record<string, unknown>;
@@ -449,17 +456,25 @@ export async function createTaktRequestWithSnapshot(
   const policyTemplateId = purpose === "RAHMENTERMINE"
     ? "SCHEDULE_COORDINATION"
     : "PERFORMANCE_COORDINATION";
-  const basePolicySnapshot = createPolicySnapshot({
-    templateId: policyTemplateId,
-    providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
-    overrides: {
-      recipientOrganizationId: input.nuOrgId,
-      purpose,
-      projectReference: project.id,
-      ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
-    },
-  });
   const agreementPolicy = agreement?.effectivePolicy as Record<string, unknown> | undefined;
+  const agreementBaselinePurpose =
+    typeof agreementPolicy?.baselinePurpose === "string" &&
+    agreementPolicy.baselinePurpose.trim().length > 0
+      ? agreementPolicy.baselinePurpose
+      : null;
+  const basePolicySnapshot = {
+    ...createPolicySnapshot({
+      templateId: policyTemplateId,
+      providerContext: { organizationId: input.guOrgId, userId: input.createdByUserId, organizationType: "AG" },
+      overrides: {
+        recipientOrganizationId: input.nuOrgId,
+        purpose,
+        projectReference: project.id,
+        ...(purpose === "RAHMENTERMINE" ? {} : { workPackageReference: input.taktId }),
+      },
+    }),
+    ...(agreementBaselinePurpose ? { baselinePurpose: agreementBaselinePurpose } : {}),
+  };
   const agreementChildTypes = Array.isArray(agreementPolicy?.childPolicyTypes)
     ? agreementPolicy.childPolicyTypes.filter((value): value is string => typeof value === "string")
     : [];
@@ -604,13 +619,13 @@ export interface CreateTaktRequestBatchInput {
     nuOrgId: string;
     parentPolicyId: string;
     parentPolicyVersion: number;
+    purpose: LeistungsfreigabePurpose;
+    selectedFields: string[];
   }>;
   responseRequiredBy?: Date;
   createdByUserId: string;
   subject?: string;
   message?: string;
-  purpose: LeistungsfreigabePurpose;
-  selectedFields: string[];
 }
 
 export interface CreateTaktRequestBatchResult {
@@ -648,8 +663,8 @@ export async function createTaktRequestBatchWithSnapshot(
         createdByUserId: input.createdByUserId,
         subject: input.subject,
         message: input.message,
-        purpose: input.purpose,
-        selectedFields: input.selectedFields,
+        purpose: recipient.purpose,
+        selectedFields: recipient.selectedFields,
         parentPolicyId: recipient.parentPolicyId,
         parentPolicyVersion: recipient.parentPolicyVersion,
         selectionGroupId,

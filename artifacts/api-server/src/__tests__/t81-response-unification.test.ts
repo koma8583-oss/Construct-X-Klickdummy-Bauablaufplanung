@@ -36,6 +36,7 @@ import jwt from "jsonwebtoken";
 import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   anLeistungsanfragenTable,
+  anProjectInvitationsTable,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -218,6 +219,8 @@ beforeAll(async () => {
   );
   await db.delete(taktRequestsTable).where(eq(taktRequestsTable.guOrgId, GU_ORG));
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.receiverAnOrgId, NU_ORG));
   await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
 
   // Project
@@ -252,6 +255,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
@@ -263,6 +268,22 @@ beforeAll(async () => {
     invitationId: "t81-invitation",
     correlationId: "t81-correlation",
     projectAgreementPolicyId: "t81-agreement",
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: "t81-local-invitation",
+    correlationId: "t81-local-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT,
+    projectName: "T81 Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 
   // Tokens

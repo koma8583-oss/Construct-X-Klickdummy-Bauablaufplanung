@@ -32,6 +32,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   anLeistungsanfragenTable,
+  anProjectInvitationsTable,
   anLeistungsantwortenTable,
   dataspaceExchangesTable,
   taktResponsesTable,
@@ -144,6 +145,22 @@ beforeAll(async () => {
   await db.insert(projectsTable).values([
     { id: PROJECT, agOrgId: GU_ORG, name: "T48 Project", status: "ACTIVE" },
   ]).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: "t48-local-invitation",
+    correlationId: "t48-local-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG_A,
+    projectReference: PROJECT,
+    projectName: "T48 Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
+  }).onConflictDoNothing();
 
   nuTokenA = signToken({ userId: NU_USER, orgId: NU_ORG_A, orgType: "AN" });
   nuTokenB = signToken({ userId: NU_USER, orgId: NU_ORG_B, orgType: "AN" });
@@ -155,6 +172,7 @@ afterAll(async () => {
   await anDb.execute(sql`
     DELETE FROM an_leistungsantworten WHERE source_request_id LIKE 't48-req-%';
     DELETE FROM an_leistungsanfragen WHERE external_leistungsanfrage_id LIKE 't48-req-%';
+    DELETE FROM an_project_invitations WHERE invitation_id = 't48-local-invitation';
   `);
   await hubDb.execute(sql`
     DELETE FROM message_inbox WHERE correlation_id LIKE 't48-req-%';
@@ -208,43 +226,52 @@ describe("POST /takt-requests/:id/responses — permissions", () => {
 // ── Local/private input tests ─────────────────────────────────────────────────
 
 describe("POST /an/takt-requests/:id/responses — local/private input", () => {
-  it("localProjectId is never promoted into the public AG response", async () => {
+  it("rejects localProjectId before creating a public AG response", async () => {
     const reqId = await seedRequest("priv-lpid");
     const res = await request(app)
        .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", localProjectId: "LP-001", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(201);
-    const [publicResponse] = await db.select({ id: taktResponsesTable.id })
+    expect(res.status).toBe(400);
+    const publicResponses = await db.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
-    expect(publicResponse).toBeDefined();
+    expect(publicResponses).toHaveLength(0);
   });
 
-  it("resourceId is never promoted into the public AG response", async () => {
+  it("rejects resourceId before creating a public AG response", async () => {
     const reqId = await seedRequest("priv-resid");
     const res = await request(app)
        .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", resourceId: "RES-001", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    const publicResponses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    expect(publicResponses).toHaveLength(0);
   });
 
-  it("internal result input stays out of the public AG response", async () => {
+  it("rejects internal result input before creating a public AG response", async () => {
     const reqId = await seedRequest("priv-internal");
     const res = await request(app)
        .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", internalResultPayload: { conflicts: [] }, reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    const publicResponses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    expect(publicResponses).toHaveLength(0);
   });
 
-  it("unknown local metadata does not alter the public response contract", async () => {
+  it("rejects unknown local metadata before creating a public AG response", async () => {
     const reqId = await seedRequest("priv-unknown");
     const res = await request(app)
        .post(`/api/an/takt-requests/${reqId}/responses`)
       .set("Authorization", `Bearer ${nuTokenA}`)
       .send({ decision: "REJECTED", unknownField: "should-fail", reasonCode: "NO_CAPACITY" });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    const publicResponses = await db.select({ id: taktResponsesTable.id })
+      .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, reqId));
+    expect(publicResponses).toHaveLength(0);
   });
 });
 

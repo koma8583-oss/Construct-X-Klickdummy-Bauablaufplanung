@@ -52,6 +52,7 @@ const policySnapshotSchema = z.object({
   childPermissions: z.array(nonEmpty(500)).max(100).optional(),
   childPolicyTypes: z.array(nonEmpty(200)).max(100).optional(),
   allowedPurposes: z.array(nonEmpty(2000)).max(100).optional(),
+  baselinePurpose: nonEmpty(2000).optional(),
   allowedFieldScope: z.array(nonEmpty(500)).max(100).optional(),
   // Restrictive ODRL terms are carried in the child snapshot as well as its
   // effectivePolicy so a receiver never needs cross-Dataspace parent lookup.
@@ -124,12 +125,20 @@ const resourceRequirementSchema = z.object({
   message: "periodEnd must not be before periodStart",
 });
 
+const publicResourceMixEntrySchema = z.object({
+  resourceClass: z.enum(["CREW", "EQUIPMENT"]),
+  quantity: z.number().finite().positive(),
+  unit: nonEmpty(40),
+  utilizationPercent: z.number().finite().min(0).max(100),
+}).strict();
+
 const alternativeSchema = z.object({
   alternativeId: nonEmpty(200),
   rank: z.number().int().min(1).max(1000),
   timeWindow: timeWindowSchema,
   crewSize: z.number().int().positive().nullable().optional(),
   conditions: z.string().trim().max(2000).nullable().optional(),
+  resourceMix: z.array(publicResourceMixEntrySchema).max(10).optional(),
 }).strict();
 
 export const externalProjectInvitationSchema = z.object({
@@ -697,6 +706,14 @@ export type ExternalAlternativeProposal = {
   timeWindow: { start: string; end: string };
   crewSize?: number | null;
   conditions?: string | null;
+  resourceMix?: PublicResourceMixEntry[];
+};
+
+export type PublicResourceMixEntry = {
+  resourceClass: "CREW" | "EQUIPMENT";
+  quantity: number;
+  unit: string;
+  utilizationPercent: number;
 };
 
 export type ExternalServiceRequest = {

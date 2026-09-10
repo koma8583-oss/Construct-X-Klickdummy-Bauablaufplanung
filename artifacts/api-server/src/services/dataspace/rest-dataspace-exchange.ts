@@ -286,7 +286,10 @@ export class RestDataspaceExchange implements DataspaceExchange {
       ...(payload.acceptedTimeWindow ? { acceptedTimeWindow: payload.acceptedTimeWindow } : {}),
       ...(payload.reasonCode ? { reasonCode: payload.reasonCode } : {}),
       ...(payload.comment ? { comment: payload.comment } : {}),
-      alternatives: payload.alternatives ?? null,
+      alternatives: payload.alternatives?.map(({ resourceMix, ...alternative }) => ({
+        ...alternative,
+        ...(resourceMix ? { resourceMix } : {}),
+      })) ?? null,
       ...(payload.nextAvailableDate ? { nextAvailableDate: payload.nextAvailableDate } : {}),
     };
   }

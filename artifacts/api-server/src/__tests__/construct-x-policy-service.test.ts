@@ -12,6 +12,9 @@ const base = {
   ],
   validFrom: "2028-01-01T00:00:00.000Z",
   validUntil: "2028-12-31T23:59:59.000Z",
+  purpose: "construction-service-coordination",
+  allowedPurposes: ["construction-service-coordination"],
+  allowedFieldScope: [],
 };
 
 const candidate = {
@@ -179,5 +182,52 @@ describe("Construct-X coordination policy resolver", () => {
       ...candidate,
       purpose: "RAHMENTERMINE",
     }).deltaClass).toBe("REQUIRES_CONSENT");
+  });
+
+  it("uses the versioned parent baseline purpose instead of a global default", () => {
+    const parent = {
+      ...base,
+      policyVersion: 2,
+      templateVersion: 2,
+      baselinePurpose: "RAHMENTERMINE",
+      purpose: "PROJECT_MEMBERSHIP",
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION"],
+    };
+
+    expect(resolvePolicyDelta(parent, {
+      ...candidate,
+      purpose: "RAHMENTERMINE",
+    }).deltaClass).toBe("WITHIN_BASELINE");
+    expect(resolvePolicyDelta(parent, {
+      ...candidate,
+      purpose: "LEISTUNGSKOORDINATION",
+    }).deltaClass).toBe("REQUIRES_CONSENT");
+  });
+
+  it("rejects a current parent that omits its baseline purpose", () => {
+    const result = resolvePolicyDelta({
+      ...base,
+      policyVersion: 2,
+      templateVersion: 2,
+      purpose: "PROJECT_MEMBERSHIP",
+    }, candidate);
+
+    expect(result.deltaClass).toBe("NOT_PERMITTED");
+  });
+
+  it("does not infer the baseline from the parent descriptive purpose", () => {
+    const result = resolvePolicyDelta({
+      ...base,
+      policyVersion: 2,
+      templateVersion: 2,
+      purpose: "LEISTUNGSKOORDINATION",
+      baselinePurpose: "RAHMENTERMINE",
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION"],
+    }, {
+      ...candidate,
+      purpose: "LEISTUNGSKOORDINATION",
+    });
+
+    expect(result.deltaClass).toBe("REQUIRES_CONSENT");
   });
 });

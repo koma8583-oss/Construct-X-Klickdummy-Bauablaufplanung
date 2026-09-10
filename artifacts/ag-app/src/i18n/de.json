@@ -195,8 +195,11 @@
       "transportStatus": {
         "title": "Zustellstatus",
         "decisionSaved": "Fachliche Entscheidung gespeichert",
+        "notifyPending": "Zustellung an NU ausstehend",
         "notified": "Nachricht an NU zugestellt",
-        "notifyFailed": "Zustellung fehlgeschlagen – NU wurde nicht benachrichtigt"
+        "notifyFailed": "Zustellung fehlgeschlagen – NU wurde nicht benachrichtigt",
+        "retryFailed": "Erneuter Zustellversuch fehlgeschlagen. Die Entscheidung ist weiterhin gespeichert; Sie können die Zustellung erneut versuchen.",
+        "retry": "Zustellung erneut versuchen"
       },
       "actions": {
         "confirmAccepted": "Bestätigung übernehmen",
@@ -239,6 +242,7 @@
         "duration": "Dauer",
         "shift": "Verschiebung",
         "crew": "Kolonnenstärke",
+        "resourceMix": "Ressourcenmix",
         "conditions": "Bedingungen",
         "rank": "Rang",
         "next": "Weiter zur Bestätigung",

@@ -18,7 +18,10 @@ const providerContext = {
 describe("policy template registry", () => {
   it("looks up stable templates by id/code and exposes parallel versions", () => {
     const templates = listPolicyTemplateRegistry();
-    expect(templates).toHaveLength(9);
+    expect(templates).toHaveLength(10);
+    expect(getPolicyTemplateRegistryEntry("PROJECT_MEMBERSHIP")?.version).toBe(2);
+    expect(getPolicyTemplateRegistryEntry("PROJECT_MEMBERSHIP")?.baselinePurpose)
+      .toBe("LEISTUNGSKOORDINATION");
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 1)?.version).toBe(1);
     expect(getPolicyTemplateRegistryEntry("PROJECT_COORDINATION", 2)?.version).toBe(2);
     expect(getPolicyTemplateRegistryEntry("SCHEDULE_COORDINATION", 1)?.templateId)
@@ -101,6 +104,31 @@ describe("policy snapshot builder", () => {
     });
     expect(snapshot.code).toBe("SCHEDULE_COORDINATION");
     expect(snapshot.templateVersion).toBe(1);
+  });
+
+  it("carries the parent baseline purpose in the current immutable snapshot", () => {
+    const snapshot = createPolicySnapshot({
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 2,
+      providerContext,
+      overrides: {
+        recipientOrganizationId: "an-recipient-1",
+        purpose: "PROJECT_MEMBERSHIP",
+        projectReference: "project-1",
+      },
+    });
+
+    expect(snapshot.baselinePurpose).toBe("LEISTUNGSKOORDINATION");
+    expect(createPolicySnapshot({
+      templateId: "PROJECT_MEMBERSHIP",
+      templateVersion: 1,
+      providerContext,
+      overrides: {
+        recipientOrganizationId: "an-recipient-1",
+        purpose: "PROJECT_MEMBERSHIP",
+        projectReference: "project-1",
+      },
+    }).baselinePurpose).toBeUndefined();
   });
 
   it("rejects unknown templates and missing required parameters", () => {

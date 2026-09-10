@@ -96,7 +96,7 @@ async function createScheduleChangePolicy(tx: any, input: {
   const validUntil = validIsoDate(
     typeof parentEffective?.validUntil === "string" ? parentEffective.validUntil : undefined,
   );
-  const baseSnapshot = createPolicySnapshot({
+  const generatedBaseSnapshot = createPolicySnapshot({
     templateId: "SCHEDULE_COORDINATION",
     providerContext: { organizationId: input.request.guOrgId, userId: input.createdByUserId ?? undefined, organizationType: "AG" },
     overrides: {
@@ -109,6 +109,16 @@ async function createScheduleChangePolicy(tx: any, input: {
       ...(validUntil ? { validUntil } : {}),
     },
   });
+  // A schedule child inherits the parent's explicit consent-free baseline.
+  // Keep that value in the immutable child snapshot as well as the effective
+  // policy so the policy consistency check cannot see two different
+  // representations of the same baseline.
+  const baseSnapshot = {
+    ...generatedBaseSnapshot,
+    ...(typeof parentEffective?.baselinePurpose === "string"
+      ? { baselinePurpose: parentEffective.baselinePurpose }
+      : {}),
+  };
   const candidate = {
     ...baseSnapshot,
     policyType: "SCHEDULE_CHANGE" as const,
@@ -138,7 +148,9 @@ async function createScheduleChangePolicy(tx: any, input: {
     projectId: parent.projectId, providerOrgId: input.request.guOrgId, recipientOrgId: input.request.nuOrgId,
     parentPolicyId: parent.id, lifecycleStatus: policy.lifecycleStatus, deltaClass: policy.deltaClass,
     policySnapshot: snapshot as Record<string, unknown>, diff: policy.diff,
-    effectivePolicy: policy.effectivePolicy, createdByUserId: input.createdByUserId,
+    effectivePolicy: policy.effectivePolicy,
+    baselinePurpose: policy.baselinePurpose ?? null,
+    createdByUserId: input.createdByUserId,
   });
   return snapshot;
 }
@@ -632,6 +644,7 @@ export async function createChangeProposal(input: { requestId: string; orgId: st
       projectName: project?.name,
       senderOrganizationName: senderOrganization?.name,
       senderOrgId: request.guOrgId,
+      senderUserId: input.userId,
       receiverOrgId: request.nuOrgId,
       correlationId: proposal.id,
       messageId: `schedule-change:${proposal.id}`,
@@ -795,6 +808,40 @@ export async function applyIncomingScheduleChangeResponseOnAg(payload: ExternalS
   const [request] = await agDb.select().from(leistungsanfragenTable).where(eq(leistungsanfragenTable.id, sourceRequestId)).limit(1);
   if (!request || request.guOrgId !== payload.metadata.receiverOrgId || request.nuOrgId !== payload.metadata.senderOrgId || payload.metadata.correlationId !== proposalId) throw new Error("Inbound schedule-change response organisations or correlation do not match");
   const payloadHash = JSON.stringify(payload);
+  const capacityConflict = payload.decision === "REJECTED" && payload.reasonCode === "NO_CAPACITY";
+  if (proposal.status === "ACCEPTED" && capacityConflict) {
+    // The AG may have committed its side of the acceptance before the AN
+    // checked its own capacity. Keep the current agreement intact, but make
+    // the failed proposal and its reason visible so a new window can be
+    // chosen instead of leaving the UI in a falsely agreed state.
+    await agDb.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${sourceRequestId}, 0))`);
+      const [current] = await tx.select().from(serviceChangeProposalsTable).where(and(
+        eq(serviceChangeProposalsTable.id, proposalId),
+        eq(serviceChangeProposalsTable.status, "ACCEPTED"),
+      )).limit(1);
+      if (!current) return;
+      const [rejected] = await tx.update(serviceChangeProposalsTable).set({
+        status: "REJECTED",
+        reasonCode: payload.reasonCode,
+        comment: payload.comment ?? "The accepted schedule is no longer available. Please choose a new time window.",
+        resolvedAt: new Date(),
+        resolvedByUserId: null,
+      }).where(and(
+        eq(serviceChangeProposalsTable.id, proposalId),
+        eq(serviceChangeProposalsTable.status, "ACCEPTED"),
+      )).returning();
+      if (rejected) {
+        await setScheduleChangePolicyLifecycle(tx, {
+          request,
+          proposal: rejected,
+          lifecycleStatus: "REJECTED",
+          consentedByOrgId: payload.metadata.senderOrgId,
+        });
+      }
+    });
+    return { idempotent: false, newStatus: "REJECTED", payloadHash };
+  }
   if (proposal.status !== "OPEN") return { idempotent: true, newStatus: proposal.status === "ACCEPTED" ? "ACCEPTED" : "REJECTED", payloadHash };
   if (payload.decision === "ALTERNATIVES_PROPOSED") {
     return { idempotent: false, newStatus: "ALTERNATIVES_PROPOSED", payloadHash };

@@ -102,9 +102,9 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
         nuOrgId: 'an-1',
         parentPolicyId: 'parent-policy-7',
         parentPolicyVersion: 7,
+        purpose: 'RAHMENTERMINE',
+        selectedFields: ['plannedTimeWindow'],
       }],
-      purpose: 'RAHMENTERMINE',
-      selectedFields: ['plannedTimeWindow'],
     })));
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       purpose: 'RAHMENTERMINE',
@@ -145,12 +145,12 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
     await user.click(screen.getByRole('button', { name: 'Vergeben' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      purpose: 'LEISTUNGSKOORDINATION',
-      selectedFields: ['plannedTimeWindow'],
       recipients: [{
         nuOrgId: 'an-2',
         parentPolicyId: 'parent-policy-7',
         parentPolicyVersion: 7,
+        purpose: 'LEISTUNGSKOORDINATION',
+        selectedFields: ['plannedTimeWindow'],
       }],
     })));
   });
@@ -170,12 +170,12 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
           {
             anOrgId: 'an-a',
             label: 'Partner A',
-            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-a', version: 2 },
+            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'], allowedFieldScope: ['trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'predecessors', 'successors'] }), id: 'policy-a', version: 2 },
           },
           {
             anOrgId: 'an-b',
             label: 'Partner B',
-            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'] }), id: 'policy-b', version: 4 },
+            parentAgreement: { ...parentAgreement({ allowedPurposes: ['RAHMENTERMINE'], allowedFieldScope: ['trade', 'workPackage', 'kurzbezeichnung', 'location', 'plannedTimeWindow', 'bufferTimeWindow', 'predecessors', 'successors'] }), id: 'policy-b', version: 4 },
           },
         ]}
         onSubmit={onSubmit}
@@ -183,13 +183,14 @@ describe('LeistungVergabeDialog Parent-Policy contract', () => {
     );
     await user.click(screen.getByRole('checkbox', { name: /Partner A/i }));
     await user.click(screen.getByRole('checkbox', { name: /Partner B/i }));
-    fireEvent.change(screen.getByLabelText('Fachlicher Zweck'), { target: { value: 'RAHMENTERMINE' } });
+    fireEvent.change(screen.getAllByLabelText('Fachlicher Zweck')[0], { target: { value: 'RAHMENTERMINE' } });
+    fireEvent.change(screen.getAllByLabelText('Fachlicher Zweck')[1], { target: { value: 'RAHMENTERMINE' } });
     await user.click(screen.getByRole('button', { name: 'Vorschau prüfen' }));
     await user.click(screen.getByRole('button', { name: 'Vergeben' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       recipients: [
-        { nuOrgId: 'an-a', parentPolicyId: 'policy-a', parentPolicyVersion: 2 },
-        { nuOrgId: 'an-b', parentPolicyId: 'policy-b', parentPolicyVersion: 4 },
+        { nuOrgId: 'an-a', parentPolicyId: 'policy-a', parentPolicyVersion: 2, purpose: 'RAHMENTERMINE', selectedFields: expect.any(Array) },
+        { nuOrgId: 'an-b', parentPolicyId: 'policy-b', parentPolicyVersion: 4, purpose: 'RAHMENTERMINE', selectedFields: expect.any(Array) },
       ],
     })));
   });

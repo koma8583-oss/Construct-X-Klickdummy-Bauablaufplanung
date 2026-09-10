@@ -182,8 +182,6 @@ export default function TaktDetail() {
           ...(values.responseRequiredBy
             ? { responseRequiredBy: new Date(values.responseRequiredBy).toISOString() }
             : {}),
-          purpose: values.purpose,
-          selectedFields: values.selectedFields,
         },
       });
       await Promise.all(created.requests.map((request) => sendRequest.mutateAsync({ requestId: request.id })));

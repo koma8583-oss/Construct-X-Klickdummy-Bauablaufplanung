@@ -258,6 +258,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   // The shared test database predates the optional publication columns in the

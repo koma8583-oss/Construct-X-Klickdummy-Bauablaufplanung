@@ -85,6 +85,7 @@ import {
 } from "../services/nu-response-service";
 import {
   createGuDecision,
+  retryGuDecisionDelivery,
   GuDecisionError,
   GuDecisionIdempotencyConflict,
   VersionConflictError,
@@ -1562,6 +1563,7 @@ router.post(
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,
         senderOrganizationName: senderOrganization[0]?.name,
+        senderUserId: req.user?.userId,
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
         messageId: notificationMessageId(id),
@@ -1673,6 +1675,40 @@ router.post(
         status: finalRequest?.status ?? "SENT",
         messageId: transportResult.messageId,
       });
+    }
+  },
+);
+
+// ── POST /leistungsanfragen/:id/gu-decisions/delivery/retry ───────────────────
+// Canonical alias for retrying the persisted Dataspace envelope.
+router.post(
+  "/leistungsanfragen/:id/gu-decisions/delivery/retry",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id = req.params.id as string;
+    if (user.hubAdmin || !user.orgId || user.orgType !== "AG") {
+      res.status(403).json({ error: "Only the creating GU organisation may retry this delivery" });
+      return;
+    }
+
+    try {
+      const result = await retryGuDecisionDelivery({
+        taktRequestId: id,
+        guOrgId: user.orgId,
+      });
+      res.json({
+        decisionId: result.decision.id,
+        leistungsanfrageId: result.decision.taktRequestId,
+        taktRequestId: result.decision.taktRequestId,
+        delivery: result.delivery,
+      });
+    } catch (err) {
+      if (err instanceof GuDecisionError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      throw err;
     }
   },
 );
@@ -2017,6 +2053,7 @@ router.post(
           timeWindow:    { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
           crewSize:      a.crewSize   ?? null,
           conditions:    a.conditions ?? null,
+          resourceMix:   a.resourceMix ?? null,
         })),
         nextAvailableDate:  result.response.nextAvailableDate ?? null,
         transportStatus:    transportResult.status,
@@ -2133,6 +2170,7 @@ router.post(
         updatedRequestStatus:  updatedRequest.status,
         newTaktVersion:        newTaktVersion?.version ?? null,
         newTaktVersionId:      newTaktVersion?.id      ?? null,
+        delivery:              result.delivery,
         idempotent,
         autoCancelledRequests: result.autoCancelledRequests,
       });

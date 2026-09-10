@@ -42,6 +42,7 @@ import {
   messageOutboxTable,
   messageInboxTable,
   coordinationPoliciesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import * as jwt from "jsonwebtoken";
@@ -303,6 +304,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   });
   await db.insert(projectMembershipsTable).values({
@@ -314,6 +317,22 @@ beforeAll(async () => {
     invitationId: `t116-invitation-${crypto.randomUUID()}`,
     correlationId: `t116-correlation-${crypto.randomUUID()}`,
     projectAgreementPolicyId: agreementId,
+  });
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: `t116-invitation-${projectId}`,
+    correlationId: `t116-correlation-${projectId}`,
+    senderAgOrgId: agOrgId,
+    receiverAnOrgId: anOrgId,
+    projectReference: projectId,
+    projectName: "T116-Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   });
 
   const [takt] = await db
@@ -350,6 +369,7 @@ afterAll(async () => {
   await db.delete(dataPublicationsTable).where(eq(dataPublicationsTable.agOrgId, agOrgId)).catch(() => {});
   await db.delete(takteTable).where(eq(takteTable.projectId, projectId)).catch(() => {});
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, projectId)).catch(() => {});
+  await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.receiverAnOrgId, anOrgId)).catch(() => {});
   await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, projectId)).catch(() => {});
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, projectId)).catch(() => {});
   await db.delete(projectsTable).where(eq(projectsTable.id, projectId)).catch(() => {});

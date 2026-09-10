@@ -51,6 +51,7 @@ import type {
   DelegationResponse,
   ErrorResponse,
   GuDecisionCreate,
+  GuDecisionDeliveryRetryResponse,
   GuDecisionResponse,
   HealthStatus,
   InboundExchangeResult,
@@ -6381,6 +6382,78 @@ export const useCreateGuDecision = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCreateGuDecisionMutationOptions(options));
     }
 
+export const getRetryGuDecisionDeliveryUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/takt-requests/${requestId}/gu-decisions/delivery/retry`
+}
+
+/**
+ * Retries the persisted public Dataspace envelope for the existing GU decision. This never creates another decision or changes the selected time window. The response contains delivery metadata only; AN resource identifiers are not exposed.
+ * @summary Retry delivery of an existing GU decision
+ */
+export const retryGuDecisionDelivery = async (requestId: string, options?: RequestInit): Promise<GuDecisionDeliveryRetryResponse> => {
+
+  return customFetch<GuDecisionDeliveryRetryResponse>(getRetryGuDecisionDeliveryUrl(requestId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryGuDecisionDeliveryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryGuDecisionDelivery>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryGuDecisionDelivery>>, TError,{requestId: string}, TContext> => {
+
+const mutationKey = ['retryGuDecisionDelivery'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryGuDecisionDelivery>>, {requestId: string}> = (props) => {
+          const {requestId} = props ?? {};
+
+          return  retryGuDecisionDelivery(requestId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryGuDecisionDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof retryGuDecisionDelivery>>>
+
+    export type RetryGuDecisionDeliveryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Retry delivery of an existing GU decision
+ */
+export const useRetryGuDecisionDelivery = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryGuDecisionDelivery>>, TError,{requestId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryGuDecisionDelivery>>,
+        TError,
+        {requestId: string},
+        TContext
+      > => {
+      return useMutation(getRetryGuDecisionDeliveryMutationOptions(options));
+    }
+
 export const getCreateRevisionUrl = (requestId: string,) => {
 
 
@@ -8214,6 +8287,78 @@ export const useCreateLeistungsanfrageGuDecision = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateLeistungsanfrageGuDecisionMutationOptions(options));
+    }
+
+export const getRetryLeistungsanfrageGuDecisionDeliveryUrl = (leistungsanfrageId: string,) => {
+
+
+
+
+  return `/api/leistungsanfragen/${leistungsanfrageId}/gu-decisions/delivery/retry`
+}
+
+/**
+ * Wiederholt die Zustellung des gespeicherten öffentlichen Dataspace- Umschlags für die bestehende GU-Entscheidung. Es wird keine zweite Entscheidung erstellt und kein Zeitfenster erneut angewendet. AN-Ressourcen-IDs werden nicht zurückgegeben.
+ * @summary Zustellung einer bestehenden GU-Entscheidung erneut versuchen
+ */
+export const retryLeistungsanfrageGuDecisionDelivery = async (leistungsanfrageId: string, options?: RequestInit): Promise<GuDecisionDeliveryRetryResponse> => {
+
+  return customFetch<GuDecisionDeliveryRetryResponse>(getRetryLeistungsanfrageGuDecisionDeliveryUrl(leistungsanfrageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryLeistungsanfrageGuDecisionDeliveryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>, TError,{leistungsanfrageId: string}, TContext> => {
+
+const mutationKey = ['retryLeistungsanfrageGuDecisionDelivery'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>, {leistungsanfrageId: string}> = (props) => {
+          const {leistungsanfrageId} = props ?? {};
+
+          return  retryLeistungsanfrageGuDecisionDelivery(leistungsanfrageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryLeistungsanfrageGuDecisionDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>>
+
+    export type RetryLeistungsanfrageGuDecisionDeliveryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Zustellung einer bestehenden GU-Entscheidung erneut versuchen
+ */
+export const useRetryLeistungsanfrageGuDecisionDelivery = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>, TError,{leistungsanfrageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryLeistungsanfrageGuDecisionDelivery>>,
+        TError,
+        {leistungsanfrageId: string},
+        TContext
+      > => {
+      return useMutation(getRetryLeistungsanfrageGuDecisionDeliveryMutationOptions(options));
     }
 
 export const getCreateLeistungsanfrageRevisionUrl = (leistungsanfrageId: string,) => {

@@ -33,7 +33,10 @@ import { createAnServiceResponse } from "../nu-response-service";
 import { runAnAvailabilityCheck } from "../an-leistungsanfrage-service";
 import { createDataspaceExchange } from "./dataspace-exchange-factory";
 import { applyIncomingAnScheduleChangeProposalOnAg } from "../service-change-proposal-service";
-import { applyAcceptedAnScheduleChange } from "../an-schedule-change-booking-service";
+import {
+  AcceptedScheduleCapacityConflictError,
+  applyAcceptedAnScheduleChange,
+} from "../an-schedule-change-booking-service";
 
 /**
  * Domain boundary for Dataspace deliveries. Transport code only validates the
@@ -78,6 +81,24 @@ export async function processIncomingServiceRequest(
   const hash = createHash("sha256").update(canonical).digest("hex");
   const leistungReference = payload.leistungReference ?? payload.requestId;
 
+  const [invitation] = await anDb.select().from(anProjectInvitationsTable).where(and(
+    eq(anProjectInvitationsTable.projectReference, payload.projectReference),
+    eq(anProjectInvitationsTable.senderAgOrgId, metadata.senderOrgId),
+    eq(anProjectInvitationsTable.receiverAnOrgId, metadata.receiverOrgId),
+  )).limit(1);
+  const invitationPolicy = invitation?.policySnapshot as Record<string, unknown> | null;
+  const invitationEffectivePolicy = invitationPolicy?.effectivePolicy &&
+    typeof invitationPolicy.effectivePolicy === "object"
+    ? invitationPolicy.effectivePolicy as Record<string, unknown>
+    : null;
+  const localMembershipIsActive =
+    invitation?.status === "ACCEPTED" &&
+    (invitationEffectivePolicy?.parentMembershipStatus === undefined ||
+      invitationEffectivePolicy.parentMembershipStatus === "ACTIVE");
+  if (!localMembershipIsActive) {
+    throw new Error("Inbound service request requires an accepted active local project membership");
+  }
+
   const [sameMessage] = await anDb.select().from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.sourceMessageId, metadata.messageId)).limit(1);
   if (sameMessage) {
@@ -110,12 +131,6 @@ export async function processIncomingServiceRequest(
   // Root membership/agreement state is projected from the AN-local invitation.
   // This is deliberately read from anDb only: action services must remain
   // usable with physically separated AG and AN databases.
-  const [invitation] = await anDb.select().from(anProjectInvitationsTable).where(and(
-    eq(anProjectInvitationsTable.projectReference, payload.projectReference),
-    eq(anProjectInvitationsTable.senderAgOrgId, metadata.senderOrgId),
-    eq(anProjectInvitationsTable.receiverAnOrgId, metadata.receiverOrgId),
-  )).limit(1);
-  const invitationPolicy = invitation?.policySnapshot as Record<string, unknown> | null;
   const parentEffective = invitationPolicy?.effectivePolicy && typeof invitationPolicy.effectivePolicy === "object"
     ? invitationPolicy.effectivePolicy as Record<string, unknown>
     : invitationPolicy ?? {};
@@ -285,6 +300,7 @@ export async function processIncomingServiceResponse(payload: ExternalServiceRes
  */
 export async function processIncomingCoordinationDecision(
   payload: ExternalCoordinationDecision,
+  dispatchResponse?: (payload: ExternalServiceResponse) => Promise<unknown>,
 ): Promise<void> {
   const { metadata } = payload;
   if (!metadata.senderOrgId || !metadata.receiverOrgId || metadata.senderOrgId === metadata.receiverOrgId) {
@@ -303,37 +319,59 @@ export async function processIncomingCoordinationDecision(
   }
 
   const now = new Date();
-  await anDb.transaction(async (tx) => {
-    const acceptance =
-      payload.decisionType === "CONFIRM_ACCEPTED" ||
-      payload.decisionType === "ACCEPT_ALTERNATIVE";
+  try {
+    await anDb.transaction(async (tx) => {
+      const acceptance =
+        payload.decisionType === "CONFIRM_ACCEPTED" ||
+        payload.decisionType === "ACCEPT_ALTERNATIVE";
 
-    if (acceptance) {
-      const timeWindow = payload.confirmedTimeWindow!;
-      const projectionSnapshot = projection.payloadSnapshot as { requestKind?: string } | null;
-      await applyAcceptedAnScheduleChange(tx, {
-        projectionId: projection.id,
-        targetStart: new Date(timeWindow.start),
-        targetEnd: new Date(timeWindow.end),
-        note: `AG decision ${payload.decisionType}`,
-        useRequirementPeriods: projectionSnapshot?.requestKind === "SCHEDULE_CHANGE",
-      });
-      return;
-    }
+      if (acceptance) {
+        const timeWindow = payload.confirmedTimeWindow!;
+        const projectionSnapshot = projection.payloadSnapshot as { requestKind?: string } | null;
+        await applyAcceptedAnScheduleChange(tx, {
+          projectionId: projection.id,
+          targetStart: new Date(timeWindow.start),
+          targetEnd: new Date(timeWindow.end),
+          note: `AG decision ${payload.decisionType}`,
+          useRequirementPeriods: projectionSnapshot?.requestKind === "SCHEDULE_CHANGE",
+        });
+        return;
+      }
 
-    if (payload.decisionType === "REQUEST_REVISION" || payload.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
-      await tx.update(resourceBookingsTable).set({ status: "CANCELLED", updatedAt: now }).where(and(
-        eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
-        eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
-        eq(resourceBookingsTable.sourceReferenceId, projection.id),
-        eq(resourceBookingsTable.status, "CONFIRMED"),
-      ));
-      await tx.update(anLeistungsanfragenTable).set({
-        status: payload.decisionType === "REQUEST_REVISION" ? "REVISION_REQUIRED" : "CANCELLED",
-        updatedAt: now,
-      }).where(eq(anLeistungsanfragenTable.id, projection.id));
+      if (payload.decisionType === "REQUEST_REVISION" || payload.decisionType === "CLOSE_WITHOUT_AGREEMENT") {
+        await tx.update(resourceBookingsTable).set({ status: "CANCELLED", updatedAt: now }).where(and(
+          eq(resourceBookingsTable.nuOrgId, metadata.receiverOrgId),
+          eq(resourceBookingsTable.sourceType, "TAKT_REQUEST"),
+          eq(resourceBookingsTable.sourceReferenceId, projection.id),
+          eq(resourceBookingsTable.status, "CONFIRMED"),
+        ));
+        await tx.update(anLeistungsanfragenTable).set({
+          status: payload.decisionType === "REQUEST_REVISION" ? "REVISION_REQUIRED" : "CANCELLED",
+          updatedAt: now,
+        }).where(eq(anLeistungsanfragenTable.id, projection.id));
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof AcceptedScheduleCapacityConflictError)) throw error;
+
+    const response = await createAnServiceResponse({
+      anLeistungsanfrageId: projection.id,
+      anOrgId: metadata.receiverOrgId,
+      userId: null,
+      decision: "REJECTED",
+      reasonCode: "NO_CAPACITY",
+      comment: "The accepted schedule is no longer available. Please choose a new time window.",
+      // The decision message is the stable causation key. Reprocessing a
+      // failed delivery therefore returns the same public response envelope.
+      outboundMessageId: `schedule-capacity-conflict:${payload.requestId}:${payload.requestVersion}`,
+      allowRespondedRejection: true,
+    });
+    if (dispatchResponse) {
+      await dispatchResponse(response.payload);
+    } else {
+      await createDataspaceExchange().publishServiceResponse(response.payload);
     }
-  });
+  }
 }
 
 export async function processIncomingProjectInvitation(payload: ExternalProjectInvitation): Promise<void> {

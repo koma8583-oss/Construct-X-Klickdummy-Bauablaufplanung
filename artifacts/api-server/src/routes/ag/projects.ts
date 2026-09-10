@@ -34,6 +34,10 @@ import {
   getLatestPolicyTemplateRegistryEntry,
   getPolicyTemplateRegistryEntry,
 } from "../../lib/policy-template-registry";
+import {
+  assertActiveProjectMembership,
+  ProjectMembershipError,
+} from "../../services/project-membership-service";
 
 const router = Router();
 
@@ -366,6 +370,15 @@ router.post("/ag/projects/:projectId/subcontractors", requireJwt, requireRole("A
   if (!anOrg) {
     res.status(404).json({ error: "AN organisation not found" });
     return;
+  }
+  try {
+    await assertActiveProjectMembership(projectId, anOrgId);
+  } catch (error) {
+    if (error instanceof ProjectMembershipError) {
+      res.status(403).json({ error: error.message, code: error.code });
+      return;
+    }
+    throw error;
   }
 
   const activePolicies = await db

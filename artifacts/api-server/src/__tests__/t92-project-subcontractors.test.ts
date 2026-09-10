@@ -17,6 +17,7 @@ import {
   organizationsTable,
   projectsTable,
   projectContractorsTable,
+  projectMembershipsTable,
   usersTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -44,6 +45,8 @@ let nu1UserId: string;
 let gu1Token: string;
 let gu2Token: string;
 let nu1Token: string;
+const ACTIVE_MEMBERSHIP_ID = `${T92}-active-membership`;
+const PENDING_MEMBERSHIP_ID = `${T92}-pending-membership`;
 
 beforeAll(async () => {
   // GU orgs
@@ -66,6 +69,26 @@ beforeAll(async () => {
   const [p1] = await db.insert(projectsTable).values({ name: `${T92}-Proj1`, agOrgId: guOrg1Id }).returning();
   const [p2] = await db.insert(projectsTable).values({ name: `${T92}-Proj2`, agOrgId: guOrg2Id }).returning();
   proj1Id = p1.id; proj2Id = p2.id;
+  await db.insert(projectMembershipsTable).values([
+    {
+      id: ACTIVE_MEMBERSHIP_ID,
+      projectId: proj1Id,
+      agOrgId: guOrg1Id,
+      anOrgId: nuOrg1Id,
+      status: "ACTIVE",
+      invitationId: `${T92}-accepted-invitation`,
+      correlationId: `${T92}-accepted-correlation`,
+    },
+    {
+      id: PENDING_MEMBERSHIP_ID,
+      projectId: proj1Id,
+      agOrgId: guOrg1Id,
+      anOrgId: nuOrg2Id,
+      status: "INVITED",
+      invitationId: `${T92}-pending-invitation`,
+      correlationId: `${T92}-pending-correlation`,
+    },
+  ]);
 
   gu1Token = makeToken(guOrg1Id, "AG", gu1UserId);
   gu2Token = makeToken(guOrg2Id, "AG", gu2UserId);
@@ -75,6 +98,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, proj1Id));
   await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, proj2Id));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, proj1Id));
+  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, proj2Id));
   await db.delete(projectsTable).where(eq(projectsTable.id, proj1Id));
   await db.delete(projectsTable).where(eq(projectsTable.id, proj2Id));
   await db.delete(usersTable).where(eq(usersTable.id, gu1UserId));
@@ -129,6 +154,15 @@ describe("Suite A — Project subcontractor assignment CRUD", () => {
       .set("Authorization", `Bearer ${gu1Token}`)
       .send({ anOrgId: "does-not-exist" });
     expect(res.status).toBe(404);
+  });
+
+  it("POST /ag/projects/:id/subcontractors → 403 while project membership is pending", async () => {
+    const res = await request(app)
+      .post(`/api/ag/projects/${proj1Id}/subcontractors`)
+      .set("Authorization", `Bearer ${gu1Token}`)
+      .send({ anOrgId: nuOrg2Id, trade: "Rohbau" });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PROJECT_MEMBERSHIP_NOT_ACTIVE");
   });
 
   it("POST /ag/projects/:id/subcontractors → 403 for AN user", async () => {

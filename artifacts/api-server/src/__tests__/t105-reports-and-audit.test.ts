@@ -440,6 +440,8 @@ describe("Audit trail — new event types", () => {
         validUntil: null,
         childPolicyTypes: ["PERFORMANCE_REQUEST"],
         childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
       },
     }).onConflictDoNothing();
     await db.insert(projectMembershipsTable).values({

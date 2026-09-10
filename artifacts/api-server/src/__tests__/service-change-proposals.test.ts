@@ -26,6 +26,7 @@ import {
   messageOutboxTable,
   serviceChangeProposalsTable,
   coordinationPoliciesTable,
+  anProjectInvitationsTable,
   usersTable,
 } from "@workspace/db";
 import app from "../app";
@@ -135,6 +136,9 @@ async function cleanupFixtures() {
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG))
     .catch(() => {});
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.receiverAnOrgId, NU_ORG))
+    .catch(() => {});
   await db.delete(serviceChangeProposalsTable)
     .where(inArray(serviceChangeProposalsTable.leistungsanfrageId, REQUEST_IDS))
     .catch(() => {});
@@ -187,6 +191,24 @@ beforeAll(async () => {
     { id: NU_ORG, name: "T212 NU", type: "AN" },
     { id: OTHER_ORG, name: "T212 Other", type: "AN" },
   ]).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: "t212-local-project-invitation",
+    correlationId: "t212-local-project-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT,
+    projectName: "Published T212 project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+        validFrom: "2020-01-01T00:00:00.000Z",
+        validUntil: "2099-12-31T23:59:59.000Z",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
+  }).onConflictDoNothing();
   await db.insert(usersTable).values([
     { id: GU_USER, name: "T212 GU user", email: "t212-gu@test.invalid", passwordHash: "x" },
     { id: NU_USER, name: "T212 NU user", email: "t212-nu@test.invalid", passwordHash: "x" },
@@ -224,6 +246,8 @@ beforeAll(async () => {
         validFrom: "2020-01-01T00:00:00.000Z", validUntil: "2099-12-31T23:59:59.000Z",
         childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE"],
         childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION", "scheduleCoordination"],
+        allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
         permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: ["COMMERCIAL_REUSE"],
         retentionUntil: "2099-12-31T23:59:59.000Z",
         duties: [{ action: "DELETE", target: "after-retention" }],
@@ -233,9 +257,10 @@ beforeAll(async () => {
     {
       id: POLICY_PERFORMANCE, policyKey: "t212:performance", version: 1, kind: "PERFORMANCE_REQUEST",
       projectId: PROJECT, providerOrgId: GU_ORG, recipientOrgId: NU_ORG, parentPolicyId: POLICY_AGREEMENT,
-      lifecycleStatus: "ACCEPTED", policySnapshot: {}, effectivePolicy: {
+      lifecycleStatus: "ACCEPTED", baselinePurpose: "RAHMENTERMINE", policySnapshot: {}, effectivePolicy: {
         policyType: "PERFORMANCE_REQUEST", projectReference: PROJECT, recipientOrganizationId: NU_ORG,
         validFrom: "2020-01-01T00:00:00.000Z", validUntil: "2099-12-31T23:59:59.000Z",
+        baselinePurpose: "RAHMENTERMINE",
         childPolicyTypes: ["SCHEDULE_CHANGE"], childPermissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"],
         permissions: ["READ", "USE_FOR_SCHEDULE_COORDINATION"], prohibitions: ["COMMERCIAL_REUSE"],
         retentionUntil: "2099-12-31T23:59:59.000Z",

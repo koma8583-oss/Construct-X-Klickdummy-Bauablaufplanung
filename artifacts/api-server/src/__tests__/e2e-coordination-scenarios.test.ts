@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { hubDb } from "@workspace/db";
+import { hubDb, anDb } from "@workspace/db";
 import request from "supertest";
 import app from "../app";
 import {
@@ -36,6 +36,7 @@ import {
   taktVersionsTable,
   messageOutboxTable,
   messageInboxTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import jwt from "jsonwebtoken";
@@ -49,6 +50,7 @@ const NU_USER_ID   = "t69-nu-user";
 const PROJECT_ID   = "t69-project";
 const TAKT_ID      = "t69-takt";
 const PROJECT_AGREEMENT_ID = "t69-project-agreement";
+const AN_INVITATION_ID = "t69-an-project-invitation";
 const PARENT_POLICY_VERSION = 1;
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
@@ -117,6 +119,8 @@ async function flushRelated() {
   await db.delete(usersTable).where(eq(usersTable.id, NU_USER_ID)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG_ID)).catch(() => {});
   await db.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG_ID)).catch(() => {});
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, AN_INVITATION_ID)).catch(() => {});
 }
 
 beforeAll(async () => {
@@ -160,6 +164,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
 
@@ -172,6 +178,27 @@ beforeAll(async () => {
     correlationId: "t69-correlation",
     status: "ACTIVE",
     projectAgreementPolicyId: PROJECT_AGREEMENT_ID,
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    id: AN_INVITATION_ID,
+    invitationId: AN_INVITATION_ID,
+    correlationId: "t69-an-invitation-correlation",
+    senderAgOrgId: GU_ORG_ID,
+    senderAgOrgName: "t69-GU",
+    receiverAnOrgId: NU_ORG_ID,
+    projectReference: PROJECT_ID,
+    projectName: "t69-Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 });
 

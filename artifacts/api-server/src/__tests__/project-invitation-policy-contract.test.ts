@@ -220,6 +220,25 @@ describe("inbound project invitation policy participants", () => {
     expect(projection.policySnapshot).toEqual(completeSnapshot);
   });
 
+  it("keeps a complete policy snapshot immutable when the invitation is delivered again", async () => {
+    const invitation = inboundInvitation();
+    await expect(processIncomingProjectInvitation(invitation)).resolves.toBeUndefined();
+
+    await expect(processIncomingProjectInvitation({
+      ...invitation,
+      policySnapshot: {
+        ...invitation.policySnapshot!,
+        description: "A changed policy must not replace the accepted invitation contract",
+      },
+    })).rejects.toMatchObject({
+      code: "INVITATION_POLICY_SNAPSHOT_CONFLICT",
+    });
+
+    const [projection] = await anDb.select().from(anProjectInvitationsTable)
+      .where(eq(anProjectInvitationsTable.invitationId, invitation.invitationId));
+    expect(projection.policySnapshot).toEqual(invitation.policySnapshot);
+  });
+
   it("rejects a provider mismatch before creating an AN invitation projection", async () => {
     const invitation = inboundInvitation(inboundPolicySnapshot("t300-other-provider"));
 

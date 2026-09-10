@@ -23,8 +23,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, hubDb } from "@workspace/db";
+import { createHash } from "node:crypto";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
+  anLeistungsanfrageResourceRequirementsTable,
+  anLeistungsanfragenTable,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -36,11 +39,19 @@ import {
   taktResponseDecisionsTable,
   taktVersionsTable,
   messageOutboxTable,
+  messageDeliveryAttemptsTable,
   messageInboxTable,
   projectContractorsTable,
+  dataspaceExchangesTable,
+  resourceBookingsTable,
+  resourceTypesTable,
+  resourcesTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import app from "../app";
+import { handleIncomingCoordinationDecision } from "../services/dataspace/inbound-exchange-service";
+import { processIncomingCoordinationDecision } from "../services/dataspace/inbound-domain-service";
+import type { ExternalCoordinationDecision } from "../services/dataspace/external-contracts";
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 
@@ -719,5 +730,423 @@ describe("ACCEPT_ALTERNATIVE — public alternativeId", () => {
     await db.delete(taktResponseAlternativesTable).where(eq(taktResponseAlternativesTable.responseId, resp2.id)).catch(() => {});
     await db.delete(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, req2.id)).catch(() => {});
     await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, req2.id)).catch(() => {});
+  });
+});
+
+// ── Failed Dataspace delivery retry regression ─────────────────────────────────
+// A retry must deliver the immutable public envelope that was originally
+// persisted, not rebuild a new decision from the response's current window.
+describe("GU decision delivery retry preserves the accepted time window", () => {
+  const RETRY_TAKTS = ["t63-retry-takt-canonical", "t63-retry-takt-legacy"];
+  const RETRY_REQUEST_NUMBERS = ["TKR-6300-RETRY-CANONICAL", "TKR-6300-RETRY-LEGACY"];
+  const AN_RETRY_TYPE = "t63-retry-an-resource-type";
+  const AN_RETRY_RESOURCE = "t63-retry-an-resource";
+  const ORIGINAL_WINDOW = {
+    start: "2026-11-02T08:00:00.000Z",
+    end: "2026-11-06T17:00:00.000Z",
+  };
+  const CHANGED_WINDOW = {
+    start: "2026-12-07T08:00:00.000Z",
+    end: "2026-12-11T17:00:00.000Z",
+  };
+  const DECIDED_AT = "2026-11-01T12:00:00.000Z";
+  const fixtures: Array<{
+    taktId: string;
+    requestId: string;
+    responseId: string;
+    decisionId: string;
+    messageId: string;
+    anProjectionId?: string;
+  }> = [];
+
+  async function seedFailedDecision(
+    taktId: string,
+    requestNumber: string,
+    withAnProjection = false,
+  ) {
+    await db.insert(takteTable).values({
+      id: taktId,
+      projectId: PROJECT,
+      taktBezeichnung: `${requestNumber} Takt`,
+      zone: "RETRY",
+      gewerk: "Elektro",
+      plannedStart: "2026-11-02",
+      plannedEnd: "2026-11-06",
+      version: 1,
+      lifecycleStatus: "CONFIRMED" as const,
+    });
+
+    const [requestRow] = await db.insert(taktRequestsTable).values({
+      taktId,
+      taktVersion: 1,
+      guOrgId: GU_ORG,
+      nuOrgId: NU_ORG,
+      requestNumber,
+      status: "ACCEPTED" as const,
+      createdByUserId: GU_USER,
+    }).returning();
+
+    const [responseRow] = await db.insert(taktResponsesTable).values({
+      taktRequestId: requestRow.id,
+      decision: "ACCEPTED" as const,
+      acceptedStart: new Date(ORIGINAL_WINDOW.start),
+      acceptedEnd: new Date(ORIGINAL_WINDOW.end),
+      createdByUserId: NU_USER,
+    }).returning();
+
+    const decidedAt = new Date(DECIDED_AT);
+    const [decisionRow] = await db.insert(taktResponseDecisionsTable).values({
+      taktRequestId: requestRow.id,
+      responseId: responseRow.id,
+      guOrgId: GU_ORG,
+      decisionType: "CONFIRM_ACCEPTED" as const,
+      comment: "Persisted retry envelope",
+      idempotencyKey: `${requestNumber}-decision`,
+      decidedByUserId: GU_USER,
+      decidedAt,
+    }).returning();
+
+    await db.insert(taktVersionsTable).values({
+      taktId,
+      version: 1,
+      sourceType: "ACCEPTED_ALTERNATIVE" as const,
+      sourceRequestId: requestRow.id,
+      sourceResponseId: responseRow.id,
+      sourceDecisionId: decisionRow.id,
+      snapshotPayload: {
+        taktBezeichnung: `${requestNumber} Takt`,
+        plannedStart: "2026-11-02",
+        plannedEnd: "2026-11-06",
+        version: 1,
+      },
+      createdByUserId: GU_USER,
+    });
+
+    const messageId = `gu-decision-${decisionRow.id}`;
+    const persistedPayload = {
+      taktRequestId: requestRow.id,
+      decisionType: "CONFIRM_ACCEPTED",
+      acceptedAlternativeId: null,
+      confirmedTimeWindow: ORIGINAL_WINDOW,
+      taktVersion: 1,
+      comment: "Persisted retry envelope",
+    };
+    await hubDb.insert(messageOutboxTable).values({
+      messageId,
+      schemaVersion: "1.0",
+      messageType: "TAKT_RESPONSE_ACCEPTED",
+      senderOrgId: GU_ORG,
+      recipientOrgId: NU_ORG,
+      correlationId: requestRow.id,
+      payload: persistedPayload,
+      status: "FAILED",
+      attemptCount: 1,
+      failureReason: "seeded delivery failure",
+    });
+    await hubDb.insert(messageDeliveryAttemptsTable).values({
+      messageId,
+      attemptNumber: 1,
+      status: "FAILED",
+      attemptedAt: decidedAt,
+      failureReason: "seeded delivery failure",
+    });
+    await hubDb.insert(dataspaceExchangesTable).values({
+      direction: "OUTBOUND",
+      messageType: "TAKT_RESPONSE_ACCEPTED",
+      messageId,
+      correlationId: requestRow.id,
+      senderOrgId: GU_ORG,
+      receiverOrgId: NU_ORG,
+      businessObjectId: requestRow.id,
+      businessObjectVersion: 1,
+      status: "FAILED",
+      errorCode: "SEEDED_FAILURE",
+    });
+
+    let anProjectionId: string | undefined;
+    if (withAnProjection) {
+      const [projection] = await anDb.insert(anLeistungsanfragenTable).values({
+        externalLeistungsanfrageId: requestRow.id,
+        externalRequestVersion: 1,
+        sourceMessageId: `${messageId}-request`,
+        payloadHash: `${messageId}-request-hash`,
+        correlationId: requestRow.id,
+        senderAgOrgId: GU_ORG,
+        receiverAnOrgId: NU_ORG,
+        projectReference: PROJECT,
+        leistungReference: requestNumber,
+        plannedStart: "2026-11-02",
+        plannedEnd: "2026-11-06",
+        payloadSnapshot: {},
+        status: "RESPONDED",
+      }).returning();
+      anProjectionId = projection.id;
+      await anDb.insert(anLeistungsanfrageResourceRequirementsTable).values({
+        id: `${messageId}-requirement`,
+        anLeistungsanfrageId: projection.id,
+        externalResourceTypeCode: "WORKER",
+        externalResourceTypeName: "Worker",
+        localResourceTypeId: AN_RETRY_TYPE,
+        requiredCapacity: "2",
+        capacityUnit: "PERSONS",
+        utilizationPercent: 100,
+        periodStart: "2026-11-02",
+        periodEnd: "2026-11-06",
+      });
+    }
+
+    // Simulate a later response edit. A retry must not apply this changed
+    // window because the decision's public envelope is immutable.
+    await db.update(taktResponsesTable).set({
+      acceptedStart: new Date(CHANGED_WINDOW.start),
+      acceptedEnd: new Date(CHANGED_WINDOW.end),
+    }).where(eq(taktResponsesTable.id, responseRow.id));
+
+    const fixture = {
+      taktId,
+      requestId: requestRow.id,
+      responseId: responseRow.id,
+      decisionId: decisionRow.id,
+      messageId,
+      anProjectionId,
+    };
+    fixtures.push(fixture);
+    return fixture;
+  }
+
+  beforeAll(async () => {
+    await anDb.delete(resourceBookingsTable).where(eq(resourceBookingsTable.nuOrgId, NU_ORG)).catch(() => {});
+    await anDb.delete(anLeistungsanfragenTable).where(eq(
+      anLeistungsanfragenTable.receiverAnOrgId,
+      NU_ORG,
+    )).catch(() => {});
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, AN_RETRY_RESOURCE)).catch(() => {});
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, AN_RETRY_TYPE)).catch(() => {});
+    await anDb.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
+    await anDb.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});
+    await anDb.insert(organizationsTable).values([
+      { id: GU_ORG, name: "t63 retry GU", type: "AG" as const },
+      { id: NU_ORG, name: "t63 retry NU", type: "AN" as const },
+    ]).onConflictDoNothing();
+    await anDb.insert(resourceTypesTable).values({
+      id: AN_RETRY_TYPE,
+      anOrgId: NU_ORG,
+      name: "Retry workers",
+      category: "PERSONNEL",
+      active: true,
+    }).onConflictDoNothing();
+    await anDb.insert(resourcesTable).values({
+      id: AN_RETRY_RESOURCE,
+      anOrgId: NU_ORG,
+      resourceTypeId: AN_RETRY_TYPE,
+      type: "CREW",
+      name: "Retry worker pool",
+      capacity: 8,
+      capacityUnit: "PERSONS",
+      active: true,
+    }).onConflictDoNothing();
+    for (let index = 0; index < RETRY_TAKTS.length; index += 1) {
+      await seedFailedDecision(
+        RETRY_TAKTS[index],
+        RETRY_REQUEST_NUMBERS[index],
+        index === 0,
+      );
+    }
+  });
+
+  afterAll(async () => {
+    for (const fixture of fixtures) {
+      await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.messageId, fixture.messageId)).catch(() => {});
+      await hubDb.delete(messageDeliveryAttemptsTable).where(eq(messageDeliveryAttemptsTable.messageId, fixture.messageId)).catch(() => {});
+      await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, fixture.messageId)).catch(() => {});
+      await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, fixture.messageId)).catch(() => {});
+      await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, fixture.taktId)).catch(() => {});
+      await db.delete(taktResponseDecisionsTable).where(eq(taktResponseDecisionsTable.id, fixture.decisionId)).catch(() => {});
+      await db.delete(taktResponsesTable).where(eq(taktResponsesTable.id, fixture.responseId)).catch(() => {});
+      await db.delete(taktRequestsTable).where(eq(taktRequestsTable.id, fixture.requestId)).catch(() => {});
+      await db.delete(takteTable).where(eq(takteTable.id, fixture.taktId)).catch(() => {});
+      if (fixture.anProjectionId) {
+        await anDb.delete(resourceBookingsTable)
+          .where(eq(resourceBookingsTable.sourceReferenceId, fixture.anProjectionId))
+          .catch(() => {});
+        await anDb.delete(anLeistungsanfrageResourceRequirementsTable)
+          .where(eq(anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId, fixture.anProjectionId))
+          .catch(() => {});
+        await anDb.delete(anLeistungsanfragenTable)
+          .where(eq(anLeistungsanfragenTable.id, fixture.anProjectionId))
+          .catch(() => {});
+      }
+    }
+    await anDb.delete(resourcesTable).where(eq(resourcesTable.id, AN_RETRY_RESOURCE)).catch(() => {});
+    await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, AN_RETRY_TYPE)).catch(() => {});
+    await anDb.delete(organizationsTable).where(eq(organizationsTable.id, GU_ORG)).catch(() => {});
+    await anDb.delete(organizationsTable).where(eq(organizationsTable.id, NU_ORG)).catch(() => {});
+  });
+
+  async function expectRetryToPreserveState(
+    fixture: (typeof fixtures)[number],
+    path: string,
+  ) {
+    const [decisionsBefore, versionsBefore] = await Promise.all([
+      db.select().from(taktResponseDecisionsTable)
+        .where(eq(taktResponseDecisionsTable.taktRequestId, fixture.requestId)),
+      db.select().from(taktVersionsTable)
+        .where(eq(taktVersionsTable.taktId, fixture.taktId)),
+    ]);
+
+    const retry = await request(app)
+      .post(path)
+      .set("Authorization", `Bearer ${guToken}`);
+
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({
+      decisionId: fixture.decisionId,
+      taktRequestId: fixture.requestId,
+      delivery: { status: "DELIVERED", attemptCount: 2 },
+    });
+
+    const [decisionsAfter, versionsAfter] = await Promise.all([
+      db.select().from(taktResponseDecisionsTable)
+        .where(eq(taktResponseDecisionsTable.taktRequestId, fixture.requestId)),
+      db.select().from(taktVersionsTable)
+        .where(eq(taktVersionsTable.taktId, fixture.taktId)),
+    ]);
+    expect(decisionsAfter).toHaveLength(decisionsBefore.length);
+    expect(versionsAfter).toHaveLength(versionsBefore.length);
+    expect(decisionsAfter[0].id).toBe(decisionsBefore[0].id);
+    expect(versionsAfter.map((version) => version.id))
+      .toEqual(versionsBefore.map((version) => version.id));
+
+    const [outbox] = await hubDb.select().from(messageOutboxTable)
+      .where(eq(messageOutboxTable.messageId, fixture.messageId));
+    const [inbox] = await hubDb.select().from(messageInboxTable)
+      .where(eq(messageInboxTable.messageId, fixture.messageId));
+    expect(outbox.status).toBe("DELIVERED");
+    expect(inbox.status).toBe("DELIVERED");
+
+    const payload = inbox.payload as Record<string, unknown>;
+    expect(payload.confirmedTimeWindow).toEqual(ORIGINAL_WINDOW);
+    expect(payload.confirmedTimeWindow).not.toEqual(CHANGED_WINDOW);
+    for (const privateField of [
+      "resourceId",
+      "resourceName",
+      "localProjectId",
+      "customerAlias",
+      "internalConflicts",
+      "internalPriority",
+      "internalCost",
+    ]) {
+      expect(JSON.stringify(payload)).not.toContain(privateField);
+    }
+
+    const [inboundExchange] = await hubDb.select({
+      payloadHash: dataspaceExchangesTable.payloadHash,
+    }).from(dataspaceExchangesTable).where(and(
+      eq(dataspaceExchangesTable.messageId, fixture.messageId),
+      eq(dataspaceExchangesTable.direction, "INBOUND"),
+    ));
+    const originalInboundEnvelope = {
+      metadata: {
+        messageId: fixture.messageId,
+        correlationId: fixture.requestId,
+        schemaVersion: "1.0",
+        senderOrgId: GU_ORG,
+        receiverOrgId: NU_ORG,
+        createdAt: DECIDED_AT,
+      },
+      requestId: fixture.requestId,
+      requestVersion: 1,
+      taktVersion: 1,
+      decisionType: "CONFIRM_ACCEPTED",
+      acceptedAlternativeId: null,
+      confirmedTimeWindow: ORIGINAL_WINDOW,
+      comment: "Persisted retry envelope",
+    };
+    const originalPayloadHash = createHash("sha256").update(JSON.stringify(
+      originalInboundEnvelope,
+      (_, value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+        return Object.keys(value).sort().reduce<Record<string, unknown>>((sorted, key) => {
+          sorted[key] = value[key];
+          return sorted;
+        }, {});
+      },
+    )).digest("hex");
+    expect(inboundExchange.payloadHash).toBe(originalPayloadHash);
+  }
+
+  it("retries through the TaktRequest alias without changing the accepted window", async () => {
+    const fixture = fixtures[0];
+    await expectRetryToPreserveState(
+      fixture,
+      `/api/takt-requests/${fixtures[0].requestId}/gu-decisions/delivery/retry`,
+    );
+
+    expect(fixture.anProjectionId).toBeTruthy();
+    const [booking] = await anDb.select().from(resourceBookingsTable).where(and(
+      eq(resourceBookingsTable.nuOrgId, NU_ORG),
+      eq(resourceBookingsTable.sourceReferenceId, fixture.anProjectionId!),
+    ));
+    expect(booking).toMatchObject({
+      sourceReferenceId: fixture.anProjectionId,
+      resourceTypeId: AN_RETRY_TYPE,
+      quantity: "2.00",
+      status: "CONFIRMED",
+    });
+    expect(booking.startAt.toISOString()).toBe(`${ORIGINAL_WINDOW.start}`);
+    expect(booking.endAt.toISOString()).toBe(`${ORIGINAL_WINDOW.end}`);
+    const [projectionAfterRetry] = await anDb.select({
+      status: anLeistungsanfragenTable.status,
+      updatedAt: anLeistungsanfragenTable.updatedAt,
+    }).from(anLeistungsanfragenTable).where(eq(
+      anLeistungsanfragenTable.id,
+      fixture.anProjectionId!,
+    ));
+    expect(projectionAfterRetry.status).toBe("CONFIRMED");
+
+    const repeatedInbound: ExternalCoordinationDecision = {
+      metadata: {
+        messageId: fixture.messageId,
+        correlationId: fixture.requestId,
+        schemaVersion: "1.0",
+        senderOrgId: GU_ORG,
+        receiverOrgId: NU_ORG,
+        createdAt: DECIDED_AT,
+      },
+      requestId: fixture.requestId,
+      requestVersion: 1,
+      taktVersion: 1,
+      decisionType: "CONFIRM_ACCEPTED",
+      acceptedAlternativeId: null,
+      confirmedTimeWindow: ORIGINAL_WINDOW,
+      comment: "Persisted retry envelope",
+    };
+    const repeated = await handleIncomingCoordinationDecision(
+      repeatedInbound,
+      processIncomingCoordinationDecision,
+    );
+    expect(repeated).toEqual({ duplicate: true, status: "DUPLICATE" });
+
+    const bookingsAfterRepeat = await anDb.select().from(resourceBookingsTable).where(and(
+      eq(resourceBookingsTable.nuOrgId, NU_ORG),
+      eq(resourceBookingsTable.sourceReferenceId, fixture.anProjectionId!),
+    ));
+    expect(bookingsAfterRepeat).toHaveLength(1);
+    expect(bookingsAfterRepeat[0].id).toBe(booking.id);
+    const [projectionAfterRepeat] = await anDb.select({
+      status: anLeistungsanfragenTable.status,
+      updatedAt: anLeistungsanfragenTable.updatedAt,
+    }).from(anLeistungsanfragenTable).where(eq(
+      anLeistungsanfragenTable.id,
+      fixture.anProjectionId!,
+    ));
+    expect(projectionAfterRepeat).toEqual(projectionAfterRetry);
+  });
+
+  it("retries through the Leistungsanfrage alias without changing the accepted window", async () => {
+    await expectRetryToPreserveState(
+      fixtures[1],
+      `/api/leistungsanfragen/${fixtures[1].requestId}/gu-decisions/delivery/retry`,
+    );
   });
 });

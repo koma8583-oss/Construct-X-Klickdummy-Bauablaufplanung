@@ -14,4 +14,5 @@ export const DashboardDataOfferPublicationStatus = {
   SUSPENDED: 'SUSPENDED',
   WITHDRAWN: 'WITHDRAWN',
   EXPIRED: 'EXPIRED',
+  UNKNOWN: 'UNKNOWN',
 } as const;

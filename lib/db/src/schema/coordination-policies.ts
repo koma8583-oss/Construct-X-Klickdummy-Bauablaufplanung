@@ -59,6 +59,11 @@ export const coordinationPoliciesTable = pgTable(
       .notNull()
       .default("DRAFT"),
     deltaClass: coordinationPolicyDeltaClassEnum("delta_class"),
+    /**
+     * The consent-free child purpose agreed by the parent policy.
+     * Historical rows may be null until the versioned backfill runs.
+     */
+    baselinePurpose: text("baseline_purpose"),
     policySnapshot: jsonb("policy_snapshot").$type<Record<string, unknown>>().notNull(),
     diff: jsonb("diff").$type<Record<string, unknown> | null>(),
     effectivePolicy: jsonb("effective_policy").$type<Record<string, unknown> | null>(),

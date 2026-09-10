@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import * as jwt from "jsonwebtoken";
-import { agDb as db, hubDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   usersTable,
@@ -41,6 +41,7 @@ import {
   messageOutboxTable,
   messageInboxTable,
   availabilityChecksTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import app from "../app";
@@ -186,6 +187,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["LEISTUNGSKOORDINATION"],
+      allowedFieldScope: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
     },
   }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
@@ -197,6 +200,26 @@ beforeAll(async () => {
     invitationId: `${PREFIX}-invitation`,
     correlationId: `${PREFIX}-correlation`,
     projectAgreementPolicyId: PROJECT_AGREEMENT,
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    id: `${PREFIX}-an-project-invitation`,
+    invitationId: `${PREFIX}-invitation`,
+    correlationId: `${PREFIX}-an-invitation-correlation`,
+    senderAgOrgId: AG_ORG,
+    senderAgOrgName: `${PREFIX} AG Org`,
+    receiverAnOrgId: AN_ORG,
+    projectReference: PROJECT,
+    projectName: `${PREFIX} Project`,
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 
   // Takt
@@ -282,6 +305,8 @@ afterAll(async () => {
     .execute(sql`DELETE FROM project_contractors WHERE project_id = ${PROJECT}`).catch(() => {});
   await db
     .execute(sql`DELETE FROM project_memberships WHERE project_id = ${PROJECT}`).catch(() => {});
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, `${PREFIX}-invitation`)).catch(() => {});
   await db
     .execute(sql`DELETE FROM coordination_policies WHERE project_id = ${PROJECT}`).catch(() => {});
   await db

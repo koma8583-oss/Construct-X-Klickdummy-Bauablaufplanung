@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb, hubDb } from "@workspace/db";
+import { agDb, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -26,6 +26,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   usersTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -86,6 +87,8 @@ async function cleanupFixtures() {
   await agDb.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`);
   await agDb.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
   await agDb.execute(sql`DELETE FROM project_memberships WHERE project_id = '${sql.raw(PROJECT_ID)}'`);
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, "t37-invitation"));
   await agDb.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT_ID));
   await agDb.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`);
   await agDb.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(NU_USER_2)}'])`);
@@ -160,6 +163,8 @@ beforeAll(async () => {
       createdAt: "2026-11-01T00:00:00.000Z",
       childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   await agDb.insert(projectMembershipsTable).values({
@@ -171,6 +176,26 @@ beforeAll(async () => {
     invitationId: "t37-invitation",
     correlationId: "t37-correlation",
     projectAgreementPolicyId: agreementId,
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    id: "t37-an-project-invitation",
+    invitationId: "t37-invitation",
+    correlationId: "t37-an-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    senderAgOrgName: "T37 GU Org",
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT_ID,
+    projectName: "T37 Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 
   await agDb.insert(takteTable).values({

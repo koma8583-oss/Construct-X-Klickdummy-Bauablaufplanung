@@ -14,6 +14,8 @@ export const anProjectInvitationStatusEnum = pgEnum("an_project_invitation_statu
   "REJECTED",
 ]);
 
+export type DataOfferLifecycleStatus = "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
+
 /**
  * AN-local projection of an incoming project invitation.
  *
@@ -41,6 +43,9 @@ export const anProjectInvitationsTable = pgTable(
     selectedFields: jsonb("selected_fields").$type<string[]>(),
     /** Immutable Dataspace data-offer payload, including its own policy snapshot. */
     dataOfferSnapshot: jsonb("data_offer_snapshot").$type<Record<string, unknown> | null>(),
+    /** Mutable publication lifecycle, deliberately separate from the immutable offer snapshot. */
+    dataOfferLifecycleStatus: text("data_offer_lifecycle_status")
+      .$type<DataOfferLifecycleStatus | null>(),
     policySnapshot: jsonb("policy_snapshot").$type<Record<string, unknown>>().notNull(),
     status: anProjectInvitationStatusEnum("status").notNull().default("PENDING"),
     policyAcceptedAt: timestamp("policy_accepted_at", { withTimezone: true }),

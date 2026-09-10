@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { agDb as db, hubDb } from "@workspace/db";
+import { agDb as db, anDb, hubDb } from "@workspace/db";
 import {
   organizationsTable,
   projectsTable,
@@ -21,6 +21,7 @@ import {
   taktRequestsTable,
   taktRequestSnapshotsTable,
   usersTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -105,6 +106,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
@@ -116,6 +119,22 @@ beforeAll(async () => {
     invitationId: "t36-invitation",
     correlationId: "t36-membership-correlation",
     projectAgreementPolicyId: "t36-agreement",
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    invitationId: "t36-local-invitation",
+    correlationId: "t36-local-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT_ID,
+    projectName: "T36 Test Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 
   await db.insert(takteTable).values({
@@ -145,6 +164,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM leistungsanfragen WHERE gu_org_id = ANY(ARRAY[${sql.raw(orgSql)}])`).catch(() => {});
   await db.execute(sql`DELETE FROM leistungen WHERE id = '${sql.raw(TAKT_ID)}'`).catch(() => {});
   await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT_ID)).catch(() => {});
+  await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.receiverAnOrgId, NU_ORG)).catch(() => {});
   await db.execute(sql`DELETE FROM project_contractors WHERE project_id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM projects WHERE id = '${sql.raw(PROJECT_ID)}'`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ANY(ARRAY['${sql.raw(GU_USER)}','${sql.raw(NU_USER)}','${sql.raw(OTHER_USER)}'])`).catch(() => {});

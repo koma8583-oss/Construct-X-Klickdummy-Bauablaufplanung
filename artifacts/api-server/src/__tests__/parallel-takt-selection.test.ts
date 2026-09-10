@@ -32,6 +32,7 @@ import {
   anLeistungsantwortenTable,
   anLeistungsantwortAlternativenTable,
   dataspaceExchangesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import app from "../app";
 
@@ -70,7 +71,10 @@ type RequestRow = {
   selectionGroupId: string;
 };
 
-async function createBatch(taktId: string, nuOrgIds: string[]): Promise<{
+async function createBatch(taktId: string, nuOrgIds: string[], overrides: Record<string, {
+  purpose?: "RAHMENTERMINE" | "LEISTUNGSKOORDINATION";
+  selectedFields?: string[];
+}> = {}): Promise<{
   selectionGroupId: string;
   requests: RequestRow[];
 }> {
@@ -83,9 +87,9 @@ async function createBatch(taktId: string, nuOrgIds: string[]): Promise<{
         nuOrgId,
         parentPolicyId: `${PREFIX}-agreement-${NU_ORGS.indexOf(nuOrgId)}`,
         parentPolicyVersion: 1,
+        purpose: overrides[nuOrgId]?.purpose ?? "LEISTUNGSKOORDINATION",
+        selectedFields: overrides[nuOrgId]?.selectedFields ?? ["workPackage", "plannedTimeWindow"],
       })),
-      purpose: "LEISTUNGSKOORDINATION",
-      selectedFields: ["workPackage", "plannedTimeWindow"],
     });
 
   expect(response.status).toBe(201);
@@ -242,6 +246,12 @@ beforeAll(async () => {
           createdAt: "2026-09-01T00:00:00.000Z",
           childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
           childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+          allowedPurposes: ["LEISTUNGSKOORDINATION", "RAHMENTERMINE"],
+          allowedFieldScope: [
+            "taktReference", "taktVersion", "trade", "workPackage", "kurzbezeichnung",
+            "location", "plannedTimeWindow", "bufferTimeWindow", "requiredOutput",
+            "resourceRequirements", "constraints", "predecessors", "successors", "documentReferences",
+          ],
         },
       };
     }),
@@ -258,6 +268,29 @@ beforeAll(async () => {
       projectAgreementPolicyId: `${PREFIX}-agreement-${index}`,
     })),
   );
+  await anDb.insert(anProjectInvitationsTable).values(
+    NU_ORGS.map((anOrgId, index) => ({
+      id: `${PREFIX}-an-invitation-${index}`,
+      invitationId: `${PREFIX}-invitation-${index}`,
+      correlationId: `${PREFIX}-an-invitation-correlation-${index}`,
+      senderAgOrgId: GU_ORG,
+      senderAgOrgName: "Parallel Selection GU",
+      receiverAnOrgId: anOrgId,
+      projectReference: PROJECT_ID,
+      projectName: "Parallel Selection Project",
+      policySnapshot: {
+        effectivePolicy: {
+          parentMembershipStatus: "ACTIVE",
+          childPolicyTypes: ["PERFORMANCE_REQUEST"],
+          childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+          allowedPurposes: ["LEISTUNGSKOORDINATION", "RAHMENTERMINE"],
+          allowedFieldScope: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
+        },
+      },
+      status: "ACCEPTED" as const,
+      policyAcceptedAt: new Date(),
+    })),
+  ).onConflictDoNothing();
 
   await createTakt(BATCH_TAKT_ID);
   await createTakt(SELECTION_TAKT_ID);
@@ -347,8 +380,11 @@ async function cleanupFixtures() {
 afterAll(cleanupFixtures);
 
 describe("parallel TaktRequest selection", () => {
-  it("creates one atomic batch with one shared selection group", async () => {
-    const result = await createBatch(BATCH_TAKT_ID, [NU_A, NU_B]);
+it("creates one atomic batch with recipient-specific policies, purposes and fields", async () => {
+    const result = await createBatch(BATCH_TAKT_ID, [NU_A, NU_B], {
+      [NU_A]: { purpose: "RAHMENTERMINE", selectedFields: ["plannedTimeWindow"] },
+      [NU_B]: { purpose: "LEISTUNGSKOORDINATION", selectedFields: ["workPackage", "requiredOutput"] },
+    });
 
     expect(result.requests).toHaveLength(2);
     expect(result.selectionGroupId).toBeTruthy();
@@ -381,10 +417,28 @@ describe("parallel TaktRequest selection", () => {
     ]));
 
     const snapshots = await db
-      .select({ requestId: taktRequestSnapshotsTable.taktRequestId })
+      .select({ requestId: taktRequestSnapshotsTable.taktRequestId, snapshotPayload: taktRequestSnapshotsTable.snapshotPayload })
       .from(taktRequestSnapshotsTable)
       .where(inArray(taktRequestSnapshotsTable.taktRequestId, result.requests.map((row) => row.id)));
     expect(snapshots).toHaveLength(2);
+    expect(snapshots.map((row) => row.snapshotPayload)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        policySnapshot: expect.objectContaining({
+          effectivePolicy: expect.objectContaining({
+            purpose: "RAHMENTERMINE",
+            selectedFields: ["plannedTimeWindow"],
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        policySnapshot: expect.objectContaining({
+          effectivePolicy: expect.objectContaining({
+            purpose: "LEISTUNGSKOORDINATION",
+            selectedFields: ["workPackage", "requiredOutput"],
+          }),
+        }),
+      }),
+    ]));
   });
 
   it("rolls the complete batch back when a recipient cannot be created", async () => {
@@ -399,11 +453,9 @@ describe("parallel TaktRequest selection", () => {
       .send({
         taktId: BATCH_TAKT_ID,
         recipients: [
-          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
-          { nuOrgId: INVALID_NU_ORG, parentPolicyId: `${PREFIX}-invalid-agreement`, parentPolicyVersion: 1 },
+          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1, purpose: "LEISTUNGSKOORDINATION", selectedFields: ["workPackage"] },
+          { nuOrgId: INVALID_NU_ORG, parentPolicyId: `${PREFIX}-invalid-agreement`, parentPolicyVersion: 1, purpose: "LEISTUNGSKOORDINATION", selectedFields: ["workPackage"] },
         ],
-        purpose: "LEISTUNGSKOORDINATION",
-        selectedFields: ["workPackage", "plannedTimeWindow"],
       });
 
     expect(response.status).toBe(403);
@@ -425,11 +477,9 @@ describe("parallel TaktRequest selection", () => {
       .send({
         taktId: BATCH_TAKT_ID,
         recipients: [
-          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
-          { nuOrgId: NU_B, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1 },
+          { nuOrgId: NU_A, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1, purpose: "LEISTUNGSKOORDINATION", selectedFields: ["workPackage"] },
+          { nuOrgId: NU_B, parentPolicyId: `${PREFIX}-agreement-0`, parentPolicyVersion: 1, purpose: "LEISTUNGSKOORDINATION", selectedFields: ["workPackage"] },
         ],
-        purpose: "LEISTUNGSKOORDINATION",
-        selectedFields: ["workPackage", "plannedTimeWindow"],
       });
     expect(response.status).toBe(403);
     const after = await db.select({ id: taktRequestsTable.id })

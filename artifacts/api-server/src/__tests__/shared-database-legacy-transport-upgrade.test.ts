@@ -25,6 +25,13 @@ function psql(statement: string) {
   });
 }
 
+function psqlQuery(statement: string): string {
+  return execFileSync("psql", [adminUrl, "-Atqc", statement], {
+    cwd: rootDir,
+    encoding: "utf8",
+  }).trim();
+}
+
 function cleanup() {
   if (!adminUrl) return;
   psql(`
@@ -171,10 +178,30 @@ upgradeSuite("legacy AG/AN transport table upgrade", () => {
         an_inbox: false,
         an_exchanges: false,
         hub_local_cascade_fks: 4,
-        transport_identity_fks: 0,
+         transport_identity_fks: 0,
       });
+      expect(psqlQuery(`
+        SELECT count(*)::int
+        FROM information_schema.columns
+        WHERE (table_schema, table_name, column_name) IN (
+          ('ag', 'leistungsantwort_alternativen', 'resource_mix'),
+          ('an', 'an_leistungsantwort_alternativen', 'resource_mix')
+        )
+      `)).toBe("2");
     } finally {
       cleanup();
     }
+  });
+
+  it("keeps resource_mix migration and verification in both bootstrap paths", () => {
+    const setupScript = require("node:fs").readFileSync(
+      `${rootDir}/scripts/setup-shared-database.sh`,
+      "utf8",
+    ) as string;
+    expect(setupScript).toContain("0028_public_resource_mix.sql");
+    expect(setupScript).toContain("('ag', 'leistungsantwort_alternativen', 'resource_mix')");
+    expect(setupScript).toContain("('an', 'an_leistungsantwort_alternativen', 'resource_mix')");
+    expect(setupScript).toContain("fresh_database");
+    expect(setupScript).toContain("legacy-public");
   });
 });
