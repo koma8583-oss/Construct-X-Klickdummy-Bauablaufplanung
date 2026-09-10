@@ -1759,6 +1759,7 @@ export const DashboardDataOfferPublicationStatus = {
   SUSPENDED: 'SUSPENDED',
   WITHDRAWN: 'WITHDRAWN',
   EXPIRED: 'EXPIRED',
+  UNKNOWN: 'UNKNOWN',
 } as const;
 
 export type DashboardDataOfferRecipientStatus = typeof DashboardDataOfferRecipientStatus[keyof typeof DashboardDataOfferRecipientStatus];
@@ -2035,20 +2036,43 @@ export type TaktRequestBatchInputRecipientsItem = {
 };
 
 /**
- * Business purpose of the Leistungsfreigabe.
+ * Business purpose bound to this recipient.
  */
-export type TaktRequestBatchInputPurpose = typeof TaktRequestBatchInputPurpose[keyof typeof TaktRequestBatchInputPurpose];
+export type TaktRequestBatchInputRecipientsItemPurpose = typeof TaktRequestBatchInputRecipientsItemPurpose[keyof typeof TaktRequestBatchInputRecipientsItemPurpose];
 
 
-export const TaktRequestBatchInputPurpose = {
+export const TaktRequestBatchInputRecipientsItemPurpose = {
   RAHMENTERMINE: 'RAHMENTERMINE',
   LEISTUNGSKOORDINATION: 'LEISTUNGSKOORDINATION',
   AUSFUEHRUNGSINFORMATIONEN: 'AUSFUEHRUNGSINFORMATIONEN',
   INDIVIDUELLE_FREIGABE: 'INDIVIDUELLE_FREIGABE',
 } as const;
 
+export type TaktRequestBatchInputRecipientsItem = {
+  /** @minLength 1 */
+  nuOrgId: string;
+  /**
+     * Exact accepted Parent Policy for this recipient.
+     * @minLength 1
+     */
+  parentPolicyId: string;
+  /**
+     * Exact version of this recipient's Parent Policy.
+     * @minimum 1
+     */
+  parentPolicyVersion: number;
+  /** Business purpose bound to this recipient. */
+  purpose: TaktRequestBatchInputRecipientsItemPurpose;
+  /**
+     * Explicit child-owned fields bound to this recipient.
+     * @minItems 1
+     * @items.minLength 1
+     */
+  selectedFields: string[];
+};
+
 /**
- * Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
+ * Body for atomically creating one request per selected NU. Every recipient row carries its own accepted Parent Policy binding, business purpose and selected fields.
  */
 export interface TaktRequestBatchInput {
   /** @minLength 1 */
@@ -2063,13 +2087,6 @@ export interface TaktRequestBatchInput {
   subject?: string;
   /** @maxLength 2000 */
   message?: string;
-  /** Business purpose of the Leistungsfreigabe. */
-  purpose: TaktRequestBatchInputPurpose;
-  /**
-     * Explicit child-owned fields; the server enforces the purpose whitelist.
-     * @items.minLength 1
-     */
-  selectedFields: string[];
 }
 
 /**
@@ -2276,6 +2293,26 @@ export interface TaktRequestDetailTimeline {
   responseCreatedAt?: string | null;
 }
 
+export type TaktRequestDetailResponseAltResourceMixItemResourceClass = typeof TaktRequestDetailResponseAltResourceMixItemResourceClass[keyof typeof TaktRequestDetailResponseAltResourceMixItemResourceClass];
+
+
+export const TaktRequestDetailResponseAltResourceMixItemResourceClass = {
+  CREW: 'CREW',
+  EQUIPMENT: 'EQUIPMENT',
+} as const;
+
+export type TaktRequestDetailResponseAltResourceMixItem = {
+  resourceClass: TaktRequestDetailResponseAltResourceMixItemResourceClass;
+  /** @exclusiveMinimum 0 */
+  quantity: number;
+  unit: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  utilizationPercent: number;
+};
+
 export interface TaktRequestDetailResponseAlt {
   /** Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision. */
   id: string;
@@ -2286,6 +2323,11 @@ export interface TaktRequestDetailResponseAlt {
   proposedEnd: string;
   crewSize?: number | null;
   conditions?: string[] | null;
+  /**
+     * Public capacity aggregates only; contains no concrete resource, booking, or project identifiers.
+     * @maxItems 10
+     */
+  resourceMix?: TaktRequestDetailResponseAltResourceMixItem[];
 }
 
 export type TaktRequestDetailResponseDecision = typeof TaktRequestDetailResponseDecision[keyof typeof TaktRequestDetailResponseDecision];
@@ -2383,6 +2425,26 @@ export type GuDecisionResponseAutoCancelledRequestsItem = {
   requestNumber: string;
 };
 
+export type GuDecisionDeliveryStatus = typeof GuDecisionDeliveryStatus[keyof typeof GuDecisionDeliveryStatus];
+
+
+export const GuDecisionDeliveryStatus = {
+  PENDING: 'PENDING',
+  DELIVERED: 'DELIVERED',
+  FAILED: 'FAILED',
+} as const;
+
+/**
+ * Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.
+ */
+export interface GuDecisionDelivery {
+  status: GuDecisionDeliveryStatus;
+  attemptCount: number | null;
+  lastAttemptAt: string | null;
+  deliveredAt: string | null;
+  failureReason: string | null;
+}
+
 /**
  * Created or existing GU decision with updated TaktRequest status.
  */
@@ -2404,6 +2466,13 @@ export interface GuDecisionResponse {
   idempotent: boolean;
   /** Parallel AN requests cancelled because another AN was confirmed. */
   autoCancelledRequests: GuDecisionResponseAutoCancelledRequestsItem[];
+  delivery: GuDecisionDelivery;
+}
+
+export interface GuDecisionDeliveryRetryResponse {
+  decisionId: string;
+  taktRequestId: string;
+  delivery: GuDecisionDelivery;
 }
 
 export type TaktRequestDetailSnapshot = {
