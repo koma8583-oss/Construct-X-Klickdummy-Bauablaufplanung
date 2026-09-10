@@ -7,6 +7,7 @@ import {
   anDb,
   anLeistungsanfragenTable,
   anLeistungsanfrageResourceRequirementsTable,
+  anProjectInvitationsTable,
   dataspaceExchangesTable,
   hubDb,
   organizationsTable,
@@ -28,6 +29,7 @@ const AG = "ag-local-projection-test";
 const AN = "an-local-projection-test";
 const RESOURCE_TYPE = "an-local-projection-resource-type";
 const RESOURCE = "an-local-projection-resource";
+const INVITATION = "an-local-projection-invitation";
 
 function policySnapshot(providerOrganizationId = AG, recipientOrganizationId = AN) {
   return {
@@ -50,9 +52,14 @@ function policySnapshot(providerOrganizationId = AG, recipientOrganizationId = A
   };
 }
 
-function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServiceRequest {
+type TestPayloadOverrides = Omit<Partial<ExternalServiceRequest>, "metadata"> & {
+  metadata?: Partial<ExternalServiceRequest["metadata"]>;
+};
+
+function payload(overrides: TestPayloadOverrides = {}): ExternalServiceRequest {
   const messageId = overrides.metadata?.messageId ?? crypto.randomUUID();
   messageIds.push(messageId);
+  const { metadata: metadataOverrides, ...fieldOverrides } = overrides;
   return {
     metadata: {
       messageId,
@@ -61,7 +68,7 @@ function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServi
       senderOrgId: AG,
       receiverOrgId: AN,
       createdAt: new Date().toISOString(),
-      ...overrides.metadata,
+      ...metadataOverrides,
     },
     requestId: "external-leistungsanfrage-1",
     requestVersion: 1,
@@ -84,7 +91,7 @@ function payload(overrides: Partial<ExternalServiceRequest> = {}): ExternalServi
       usagePurpose: "PROJECT_COORDINATION",
     },
     policySnapshot: policySnapshot(),
-    ...overrides,
+    ...fieldOverrides,
   };
 }
 
@@ -111,6 +118,7 @@ afterEach(async () => {
   messageIds.length = 0;
   await anDb.delete(resourcesTable).where(eq(resourcesTable.id, RESOURCE));
   await anDb.delete(resourceTypesTable).where(eq(resourceTypesTable.id, RESOURCE_TYPE));
+  await anDb.delete(anProjectInvitationsTable).where(eq(anProjectInvitationsTable.invitationId, INVITATION));
   await agDb.delete(organizationsTable).where(eq(organizationsTable.id, AG));
   await agDb.delete(organizationsTable).where(eq(organizationsTable.id, AN));
 });
@@ -139,7 +147,28 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
       capacityUnit: "PERSONS",
       qualifications: ["Qualifikation A", "Qualifikation B"],
     });
+    await anDb.insert(anProjectInvitationsTable).values({
+      invitationId: INVITATION,
+      correlationId: "an-local-projection-membership",
+      senderAgOrgId: AG,
+      receiverAnOrgId: AN,
+      projectReference: "project-1",
+      projectName: "Projection test project",
+      policySnapshot: inboundMembershipPolicy(),
+      status: "ACCEPTED",
+      policyAcceptedAt: new Date(),
+    });
   });
+
+  function inboundMembershipPolicy() {
+    return {
+      policyId: "project-membership-policy",
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        parentAgreementStatus: "ACCEPTED",
+      },
+    };
+  }
 
   it("legt Payload-Snapshot und Ressourcen bei Erstempfang an", async () => {
     const request = payload();
@@ -169,6 +198,81 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
         zone: null,
       },
     });
+  });
+
+  it("weist Leistungsanfragen bei noch ausstehender Projektmitgliedschaft zurück", async () => {
+    await anDb.update(anProjectInvitationsTable)
+      .set({ status: "PENDING", policyAcceptedAt: null })
+      .where(eq(anProjectInvitationsTable.invitationId, INVITATION));
+    const request = payload();
+
+    await expect(receive(request)).rejects.toThrow(
+      /Invalid external exchange payload|accepted(?: active)? local project membership/,
+    );
+
+    const projections = await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
+    expect(projections).toHaveLength(0);
+  });
+
+  it.each([
+    ["fehlender Einladung", async () => {
+      await anDb.delete(anProjectInvitationsTable)
+        .where(eq(anProjectInvitationsTable.invitationId, INVITATION));
+    }],
+    ["abgelehnter Einladung", async () => {
+      await anDb.update(anProjectInvitationsTable)
+        .set({ status: "REJECTED", policyAcceptedAt: null })
+        .where(eq(anProjectInvitationsTable.invitationId, INVITATION));
+    }],
+    ["inaktive lokale Membership", async () => {
+      await anDb.update(anProjectInvitationsTable)
+        .set({
+          policySnapshot: {
+            ...inboundMembershipPolicy(),
+            effectivePolicy: {
+              parentMembershipStatus: "REVOKED",
+              parentAgreementStatus: "REVOKED",
+            },
+          },
+        })
+        .where(eq(anProjectInvitationsTable.invitationId, INVITATION));
+    }],
+  ])("weist Leistungsanfragen bei %s ohne Seiteneffekte zurück", async (_name, mutate) => {
+    await mutate();
+    const request = payload();
+    const requirementsBefore = await anDb.select({ id: anLeistungsanfrageResourceRequirementsTable.id })
+      .from(anLeistungsanfrageResourceRequirementsTable);
+
+    await expect(receive(request)).rejects.toThrow(
+      /Invalid external exchange payload|accepted(?: active)? local project membership/,
+    );
+
+    const projections = await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
+    expect(projections).toHaveLength(0);
+    const requirementsAfter = await anDb.select({ id: anLeistungsanfrageResourceRequirementsTable.id })
+      .from(anLeistungsanfrageResourceRequirementsTable);
+    expect(requirementsAfter).toHaveLength(requirementsBefore.length);
+  });
+
+  it.each([
+    ["falsches Projekt", { projectReference: "project-other" }],
+    ["falsche AG", { metadata: { senderOrgId: "ag-other" } }],
+    ["falsche AN", { metadata: { receiverOrgId: "an-other" } }],
+  ])("weist direkte Cross-Tenant-Referenz (%s) ohne Projektion zurück", async (_name, overrides) => {
+    const request = payload(overrides);
+
+    await expect(receive(request)).rejects.toThrow(
+      /Invalid external exchange payload|accepted(?: active)? local project membership/,
+    );
+
+    expect(await anDb.select({ id: anLeistungsanfragenTable.id })
+      .from(anLeistungsanfragenTable)
+      .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId)))
+      .toHaveLength(0);
   });
 
   it("spiegelt lokale Anforderungsänderungen in Detail und Verfügbarkeitsprüfung", async () => {
@@ -353,6 +457,86 @@ describe("AN-lokale Leistungsanfrage-Projektion", () => {
     const rows = await anDb.select().from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId));
     expect(rows).toHaveLength(1);
+  });
+
+  it("verarbeitet einen fehlgeschlagenen Domain-Retry ohne doppelte Projektion oder Side Effects", async () => {
+    const request = payload();
+    let failAfterDomainProcessing = true;
+
+    await expect(handleIncomingServiceRequest(request, async (incoming) => {
+      await processIncomingServiceRequest(incoming);
+      if (failAfterDomainProcessing) {
+        failAfterDomainProcessing = false;
+        throw new Error("simulated post-domain processing failure");
+      }
+    })).rejects.toThrow("simulated post-domain processing failure");
+
+    const afterFailedAttempt = {
+      projections: await anDb.select({ id: anLeistungsanfragenTable.id })
+        .from(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId)),
+      requirements: await anDb.select({ id: anLeistungsanfrageResourceRequirementsTable.id })
+        .from(anLeistungsanfrageResourceRequirementsTable)
+        .innerJoin(
+          anLeistungsanfragenTable,
+          eq(
+            anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId,
+            anLeistungsanfragenTable.id,
+          ),
+        )
+        .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId)),
+      invitations: await anDb.select({ id: anProjectInvitationsTable.id })
+        .from(anProjectInvitationsTable)
+        .where(and(
+          eq(anProjectInvitationsTable.projectReference, request.projectReference),
+          eq(anProjectInvitationsTable.senderAgOrgId, AG),
+          eq(anProjectInvitationsTable.receiverAnOrgId, AN),
+        )),
+    };
+    expect(afterFailedAttempt.projections).toHaveLength(1);
+    expect(afterFailedAttempt.requirements).toHaveLength(1);
+    expect(afterFailedAttempt.invitations).toHaveLength(1);
+
+    await expect(receive(request)).resolves.toEqual({ duplicate: false, status: "PROCESSED" });
+
+    const afterRetry = {
+      projections: await anDb.select({ id: anLeistungsanfragenTable.id })
+        .from(anLeistungsanfragenTable)
+        .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId)),
+      requirements: await anDb.select({ id: anLeistungsanfrageResourceRequirementsTable.id })
+        .from(anLeistungsanfrageResourceRequirementsTable)
+        .innerJoin(
+          anLeistungsanfragenTable,
+          eq(
+            anLeistungsanfrageResourceRequirementsTable.anLeistungsanfrageId,
+            anLeistungsanfragenTable.id,
+          ),
+        )
+        .where(eq(anLeistungsanfragenTable.sourceMessageId, request.metadata.messageId)),
+      invitations: await anDb.select({ id: anProjectInvitationsTable.id })
+        .from(anProjectInvitationsTable)
+        .where(and(
+          eq(anProjectInvitationsTable.projectReference, request.projectReference),
+          eq(anProjectInvitationsTable.senderAgOrgId, AG),
+          eq(anProjectInvitationsTable.receiverAnOrgId, AN),
+        )),
+      exchanges: await hubDb.select({
+        id: dataspaceExchangesTable.id,
+        status: dataspaceExchangesTable.status,
+        correlationId: dataspaceExchangesTable.correlationId,
+      }).from(dataspaceExchangesTable).where(and(
+        eq(dataspaceExchangesTable.messageId, request.metadata.messageId),
+        eq(dataspaceExchangesTable.direction, "INBOUND"),
+      )),
+    };
+    expect(afterRetry.projections).toHaveLength(1);
+    expect(afterRetry.requirements).toHaveLength(1);
+    expect(afterRetry.invitations).toHaveLength(1);
+    expect(afterRetry.exchanges).toHaveLength(1);
+    expect(afterRetry.exchanges[0]).toMatchObject({
+      status: "PROCESSED",
+      correlationId: request.metadata.correlationId,
+    });
   });
 
   it("weist geänderten Inhalt unter derselben Message-ID als Konflikt ab", async () => {
