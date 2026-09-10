@@ -306,7 +306,23 @@ export async function cleanupCampusWest(seed: Seed): Promise<void> {
     await agDb.delete(leistungsanfragenTable).where(inArray(leistungsanfragenTable.id, requestIds));
   }
   await agDb.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, seed.projectId));
-  await agDb.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, seed.projectId));
+  const policies = await agDb.select({
+    id: coordinationPoliciesTable.id,
+    parentPolicyId: coordinationPoliciesTable.parentPolicyId,
+  }).from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.projectId, seed.projectId));
+  const remainingPolicies = new Map(policies.map((policy) => [policy.id, policy.parentPolicyId]));
+  while (remainingPolicies.size) {
+    const deletablePolicyIds = [...remainingPolicies.entries()]
+      .filter(([, parentPolicyId]) => !parentPolicyId || !remainingPolicies.has(parentPolicyId))
+      .map(([policyId]) => policyId);
+    if (!deletablePolicyIds.length) {
+      throw new Error(`Cannot determine a safe coordination policy cleanup order for project ${seed.projectId}`);
+    }
+    await agDb.delete(coordinationPoliciesTable)
+      .where(inArray(coordinationPoliciesTable.id, deletablePolicyIds));
+    for (const policyId of deletablePolicyIds) remainingPolicies.delete(policyId);
+  }
   await agDb.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, seed.projectId));
   await agDb.delete(leistungsabhaengigkeitenTable).where(eq(leistungsabhaengigkeitenTable.projectId, seed.projectId));
   await agDb.delete(leistungsVersionenTable).where(inArray(
