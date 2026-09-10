@@ -263,12 +263,12 @@ describe("DataPublicationWizard", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/leistungsanfragen/policy-preview", expect.objectContaining({ method: "POST" }));
     await user.click(screen.getByRole("button", { name: "Senden" }));
     expect(mocks.createBatch).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      purpose: "RAHMENTERMINE",
-      selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
       recipients: [{
         nuOrgId: "an-1",
         parentPolicyId: "agreement-1",
         parentPolicyVersion: 7,
+        purpose: "RAHMENTERMINE",
+        selectedFields: expect.not.arrayContaining(["resourceRequirements"]),
       }],
     }) }));
     expect(mocks.send).toHaveBeenCalledWith({ requestId: "request-1" });
