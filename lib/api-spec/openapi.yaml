@@ -2162,6 +2162,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /takt-requests/{requestId}/gu-decisions/delivery/retry:
+    post:
+      operationId: retryGuDecisionDelivery
+      tags: [takt-requests]
+      summary: Retry delivery of an existing GU decision
+      description: >
+        Retries the persisted public Dataspace envelope for the existing GU
+        decision. This never creates another decision or changes the selected
+        time window. The response contains delivery metadata only; AN resource
+        identifiers are not exposed.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delivery attempt result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionDeliveryRetryResponse"
+        "403":
+          description: Caller is not the creating GU organisation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TaktRequest or GU decision not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Delivery is not currently failed and cannot be retried
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /takt-requests/{requestId}/revisions:
     post:
       operationId: createRevision
@@ -3126,6 +3168,48 @@ paths:
           description: Leistungsanfrage nicht gefunden
         "409":
           description: Entscheidung bereits vorhanden
+
+  /leistungsanfragen/{leistungsanfrageId}/gu-decisions/delivery/retry:
+    post:
+      operationId: retryLeistungsanfrageGuDecisionDelivery
+      tags: [leistungsanfragen]
+      summary: Zustellung einer bestehenden GU-Entscheidung erneut versuchen
+      description: >
+        Wiederholt die Zustellung des gespeicherten öffentlichen Dataspace-
+        Umschlags für die bestehende GU-Entscheidung. Es wird keine zweite
+        Entscheidung erstellt und kein Zeitfenster erneut angewendet.
+        AN-Ressourcen-IDs werden nicht zurückgegeben.
+      parameters:
+        - name: leistungsanfrageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ergebnis des Zustellversuchs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuDecisionDeliveryRetryResponse"
+        "403":
+          description: Kein GU oder falsches Unternehmen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Leistungsanfrage oder GU-Entscheidung nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Zustellung ist nicht fehlgeschlagen und kann nicht wiederholt werden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /leistungsanfragen/{leistungsanfrageId}/revisions:
     post:
@@ -5746,7 +5830,7 @@ components:
           type: string
         publicationStatus:
           type: string
-          enum: [PUBLISHED, SUSPENDED, WITHDRAWN, EXPIRED]
+          enum: [PUBLISHED, SUSPENDED, WITHDRAWN, EXPIRED, UNKNOWN]
         recipientStatus:
           type: string
           enum: [OFFERED, ACCEPTED, REJECTED, REVOKED, EXPIRED]
@@ -6110,8 +6194,8 @@ components:
 
     TaktRequestBatchInput:
       type: object
-      description: Body for atomically creating one request per selected NU with its own accepted Parent Policy binding.
-      required: [taktId, recipients, purpose, selectedFields]
+      description: Body for atomically creating one request per selected NU. Every recipient row carries its own accepted Parent Policy binding, business purpose and selected fields.
+      required: [taktId, recipients]
       properties:
         taktId:
           type: string
@@ -6122,7 +6206,7 @@ components:
           maxItems: 50
           items:
             type: object
-            required: [nuOrgId, parentPolicyId, parentPolicyVersion]
+            required: [nuOrgId, parentPolicyId, parentPolicyVersion, purpose, selectedFields]
             properties:
               nuOrgId:
                 type: string
@@ -6135,6 +6219,17 @@ components:
                 type: integer
                 minimum: 1
                 description: Exact version of this recipient's Parent Policy.
+              purpose:
+                type: string
+                enum: [RAHMENTERMINE, LEISTUNGSKOORDINATION, AUSFUEHRUNGSINFORMATIONEN, INDIVIDUELLE_FREIGABE]
+                description: Business purpose bound to this recipient.
+              selectedFields:
+                type: array
+                minItems: 1
+                description: Explicit child-owned fields bound to this recipient.
+                items:
+                  type: string
+                  minLength: 1
         responseRequiredBy:
           type: string
           format: date-time
@@ -6144,16 +6239,6 @@ components:
         message:
           type: string
           maxLength: 2000
-        purpose:
-          type: string
-          enum: [RAHMENTERMINE, LEISTUNGSKOORDINATION, AUSFUEHRUNGSINFORMATIONEN, INDIVIDUELLE_FREIGABE]
-          description: Business purpose of the Leistungsfreigabe.
-        selectedFields:
-          type: array
-          description: Explicit child-owned fields; the server enforces the purpose whitelist.
-          items:
-            type: string
-            minLength: 1
 
     TaktRequestDraftResponse:
       type: object
@@ -6553,6 +6638,27 @@ components:
           nullable: true
           items:
             type: string
+        resourceMix:
+          type: array
+          description: Public capacity aggregates only; contains no concrete resource, booking, or project identifiers.
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              resourceClass:
+                type: string
+                enum: [CREW, EQUIPMENT]
+              quantity:
+                type: number
+                exclusiveMinimum: 0
+              unit:
+                type: string
+              utilizationPercent:
+                type: number
+                minimum: 0
+                maximum: 100
+            required: [resourceClass, quantity, unit, utilizationPercent]
       required:
         - id
         - alternativeId
@@ -6700,6 +6806,8 @@ components:
               nuOrgId: { type: string }
               requestNumber: { type: string }
             required: [id, nuOrgId, requestNumber]
+        delivery:
+          $ref: "#/components/schemas/GuDecisionDelivery"
       required:
         - decisionId
         - taktRequestId
@@ -6710,6 +6818,41 @@ components:
         - updatedRequestStatus
         - idempotent
         - autoCancelledRequests
+        - delivery
+
+    GuDecisionDelivery:
+      type: object
+      description: Dataspace delivery metadata for a GU decision. Contains no payload or AN resource identifiers.
+      properties:
+        status:
+          type: string
+          enum: [PENDING, DELIVERED, FAILED]
+        attemptCount:
+          type: integer
+          nullable: true
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        failureReason:
+          type: string
+          nullable: true
+      required: [status, attemptCount, lastAttemptAt, deliveredAt, failureReason]
+
+    GuDecisionDeliveryRetryResponse:
+      type: object
+      properties:
+        decisionId:
+          type: string
+        taktRequestId:
+          type: string
+        delivery:
+          $ref: "#/components/schemas/GuDecisionDelivery"
+      required: [decisionId, taktRequestId, delivery]
 
     TaktRequestDetail:
       type: object
