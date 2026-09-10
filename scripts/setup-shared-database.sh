@@ -55,7 +55,8 @@ for migration in \
   0016_an_project_invitation_offer_snapshot.sql \
   0005_an_leistungsanfragen.sql \
   0007_an_leistungsantworten.sql \
-  0024_an_policy_consent.sql; do
+  0024_an_policy_consent.sql \
+  0031_an_data_offer_lifecycle_status.sql; do
   apply_migration an "lib/db/migrations/$migration"
 done
 
@@ -75,6 +76,14 @@ psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0026_atomic_hub_outbox.sql
 psql "$database_admin_url" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0027_deadline_reminder_dedup.sql
+psql "$database_admin_url" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0028_public_resource_mix.sql
+PGOPTIONS="-c search_path=ag,public,pg_catalog" \
+  psql "$database_admin_url" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0029_project_agreement_scope_backfill.sql
+PGOPTIONS="-c search_path=ag,public,pg_catalog" \
+  psql "$database_admin_url" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0030_project_agreement_baseline_purpose_backfill.sql
 
 PGOPTIONS="-c search_path=ag,public,pg_catalog" \
   psql "$database_admin_url" -v ON_ERROR_STOP=1 <<'SQL'
@@ -128,6 +137,7 @@ DECLARE
   target_schema text;
   expected_table text;
   expected_tables text[];
+  required_column record;
 BEGIN
   FOREACH target_schema IN ARRAY ARRAY['ag', 'an', 'hub'] LOOP
     expected_tables := CASE target_schema
@@ -169,6 +179,28 @@ BEGIN
           target_schema, expected_table;
       END IF;
     END LOOP;
+  END LOOP;
+
+  FOR required_column IN
+    SELECT *
+    FROM (VALUES
+      ('ag', 'leistungsantwort_alternativen', 'resource_mix'),
+      ('an', 'an_leistungsantwort_alternativen', 'resource_mix')
+    ) AS columns(schema_name, table_name, column_name)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = required_column.schema_name
+        AND table_name = required_column.table_name
+        AND column_name = required_column.column_name
+    ) THEN
+      RAISE EXCEPTION
+        'Shared database bootstrap is incomplete: %.%.% is missing',
+        required_column.schema_name,
+        required_column.table_name,
+        required_column.column_name;
+    END IF;
   END LOOP;
 END $$;
 SQL
