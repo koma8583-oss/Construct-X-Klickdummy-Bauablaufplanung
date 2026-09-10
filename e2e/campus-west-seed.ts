@@ -79,135 +79,12 @@ export async function seedCampusWest(): Promise<Seed> {
     "Maler Süd GmbH",
   ];
   const password = `E2E-${crypto.randomUUID()}`;
-  const hash = await bcrypt.hash(password, 10);
-  const accounts = [
-    {
-      id: userIds[0],
-      name: companyNames[0],
-      email: `${namespace}-ag@example.test`,
-      passwordHash: hash,
-      roles: ["AG_ADMIN"],
-    },
-    ...anOrgIds.map((_, index) => ({
-      id: userIds[index + 1],
-      name: companyNames[index + 1],
-      email: `${namespace}-an${index + 1}@example.test`,
-      passwordHash: hash,
-      roles: ["AN_ADMIN"],
-    })),
-  ];
-  const orgs = [
-    { id: agOrgId, name: companyNames[0], type: "AG" as const },
-    ...anOrgIds.map((orgId, index) => ({
-      id: orgId,
-      name: companyNames[index + 1],
-      type: "AN" as const,
-    })),
-  ];
-
-  // Authentication is served from Hub; the AG and AN stores also enforce
-  // their own foreign keys for the local projections created later.
-  for (const database of [agDb, anDb, hubDb]) {
-    await database.insert(organizationsTable).values(orgs).onConflictDoNothing();
-    await database.insert(usersTable).values(accounts).onConflictDoNothing();
-    await database.insert(userOrganizationsTable).values([
-      { userId: userIds[0], orgId: agOrgId, role: "ADMIN" },
-      ...anOrgIds.map((orgId, index) => ({
-        userId: userIds[index + 1],
-        orgId,
-        role: "ADMIN" as const,
-      })),
-    ]).onConflictDoNothing();
-  }
-
-  await agDb.insert(projectsTable).values({
-    id: projectId,
-    agOrgId,
-    name: "Campus-West",
-    location: "Campus-West",
-    status: "ACTIVE",
-    startDate: "2027-01-01",
-    endDate: "2027-12-31",
-  });
-
-  await agDb.insert(projectContractorsTable).values(anOrgIds.map((anOrgId, index) => ({
-    id: id(namespace, `contractor-${index + 1}`),
-    projectId,
-    anOrgId,
-    trade: ["STAHLBAU", "ELEKTRO", "TGA", "MALER"][index],
-    workPackageReference: `L-${101 + index * 100}`,
-    assignmentStatus: "ACTIVE",
-    validFrom: "2027-01-01",
-    validTo: "2027-12-31",
-    createdByUserId: userIds[0],
-  })));
-
-  const services = ["L-101", "L-201", "L-301", "L-401"].map((code, index) => ({
-    id: id(namespace, code),
-    projectId,
-    leistungsBezeichnung: `${code} Campus-West`,
-    kurzbezeichnung: code,
-    zone: "West",
-    gewerk: index % 2 ? "Elektro" : "Trockenbau",
-    plannedStart: "2027-05-10",
-    plannedEnd: "2027-05-14",
-    lifecycleStatus: "PLANNED" as const,
-  }));
-  await agDb.insert(leistungenTable).values(services);
-
+  const serviceIds = ["L-101", "L-201", "L-301", "L-401"].map((code) => id(namespace, code));
   const dependencyIds = ["L-101-201", "L-201-301", "L-301-401"]
     .map((pair) => id(namespace, `dependency-${pair}`));
-  await agDb.insert(leistungsabhaengigkeitenTable).values([
-    {
-      id: dependencyIds[0],
-      projectId,
-      predecessorId: services[0].id,
-      successorId: services[1].id,
-      type: "EA",
-      lagDays: 0,
-    },
-    {
-      id: dependencyIds[1],
-      projectId,
-      predecessorId: services[1].id,
-      successorId: services[2].id,
-      type: "EA",
-      lagDays: 2,
-    },
-    {
-      id: dependencyIds[2],
-      projectId,
-      predecessorId: services[2].id,
-      successorId: services[3].id,
-      type: "EA",
-      lagDays: 0,
-    },
-  ]);
-
   const resourceTypeIds = anOrgIds.map((_, index) => id(namespace, `resource-type-an-${index + 1}`));
   const resourceIds = anOrgIds.map((_, index) => id(namespace, `resource-an-${index + 1}`));
-  await anDb.insert(resourceTypesTable).values(anOrgIds.map((anOrgId, index) => ({
-    id: resourceTypeIds[index],
-    anOrgId,
-    name: `${companyNames[index + 1]} Mannschaft`,
-    category: "CREW",
-    code: `CW-AN${index + 1}-CREW`,
-    capacityUnit: "PERSONS",
-    defaultDailyCapacity: index === 0 ? 8 : 4,
-  })));
-  await anDb.insert(resourcesTable).values(anOrgIds.map((anOrgId, index) => ({
-    id: resourceIds[index],
-    anOrgId,
-    type: "CREW",
-    name: `${companyNames[index + 1]} Montageteam`,
-    trade: ["STAHLBAU", "ELEKTRO", "TGA", "MALER"][index],
-    capacity: index === 0 ? 8 : 2,
-    capacityUnit: "PERSONS",
-    resourceTypeId: resourceTypeIds[index],
-    qualifications: index === 0 ? ["Schweißfachbetrieb"] : [],
-  })));
-
-  return {
+  const seed: Seed = {
     runId: namespace,
     ids: [namespace],
     projectId,
@@ -215,15 +92,18 @@ export async function seedCampusWest(): Promise<Seed> {
     anOrgIds,
     userIds,
     policyIds: [],
-    serviceIds: services.map(({ id: serviceId }) => serviceId),
+    serviceIds,
     dependencyIds,
     resourceTypeIds,
     resourceIds,
     companyNames,
     assignments: [],
     boundaryRequestIds: { an3Expiring: "", an4ChildReject: "" },
-    ag: { email: accounts[0].email, password },
-    an: accounts.slice(1).map(({ email }) => ({ email, password })),
+    ag: { email: `${namespace}-ag@example.test`, password },
+    an: anOrgIds.map((_, index) => ({
+      email: `${namespace}-an${index + 1}@example.test`,
+      password,
+    })),
     requests: {} as Record<PolicyClass, string>,
     consentDeltaClass: "REQUIRES_CONSENT",
     notPermittedAttempt: {
@@ -238,6 +118,161 @@ export async function seedCampusWest(): Promise<Seed> {
     bilateralProposalId: "",
     multiRequestIds: [],
   };
+
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const accounts = [
+      {
+        id: userIds[0],
+        name: companyNames[0],
+        email: seed.ag.email,
+        passwordHash: hash,
+        roles: ["AG_ADMIN"],
+      },
+      ...anOrgIds.map((_, index) => ({
+        id: userIds[index + 1],
+        name: companyNames[index + 1],
+        email: seed.an[index].email,
+        passwordHash: hash,
+        roles: ["AN_ADMIN"],
+      })),
+    ];
+    const orgs = [
+      { id: agOrgId, name: companyNames[0], type: "AG" as const },
+      ...anOrgIds.map((orgId, index) => ({
+        id: orgId,
+        name: companyNames[index + 1],
+        type: "AN" as const,
+      })),
+    ];
+
+    // Authentication is served from Hub; the AG and AN stores also enforce
+    // their own foreign keys for the local projections created later.
+    for (const database of [agDb, anDb, hubDb]) {
+      await database.insert(organizationsTable).values(orgs).onConflictDoNothing();
+      await database.insert(usersTable).values(accounts).onConflictDoNothing();
+      await database.insert(userOrganizationsTable).values([
+        { userId: userIds[0], orgId: agOrgId, role: "ADMIN" },
+        ...anOrgIds.map((orgId, index) => ({
+          userId: userIds[index + 1],
+          orgId,
+          role: "ADMIN" as const,
+        })),
+      ]).onConflictDoNothing();
+    }
+
+    await agDb.insert(projectsTable).values({
+      id: projectId,
+      agOrgId,
+      name: "Campus-West",
+      location: "Campus-West",
+      status: "ACTIVE",
+      startDate: "2027-01-01",
+      endDate: "2027-12-31",
+    });
+
+    await agDb.insert(projectContractorsTable).values(anOrgIds.map((anOrgId, index) => ({
+      id: id(namespace, `contractor-${index + 1}`),
+      projectId,
+      anOrgId,
+      trade: ["STAHLBAU", "ELEKTRO", "TGA", "MALER"][index],
+      workPackageReference: `L-${101 + index * 100}`,
+      assignmentStatus: "ACTIVE",
+      validFrom: "2027-01-01",
+      validTo: "2027-12-31",
+      createdByUserId: userIds[0],
+    })));
+
+    const services = ["L-101", "L-201", "L-301", "L-401"].map((code, index) => ({
+      id: id(namespace, code),
+      projectId,
+      leistungsBezeichnung: `${code} Campus-West`,
+      kurzbezeichnung: code,
+      zone: "West",
+      gewerk: index % 2 ? "Elektro" : "Trockenbau",
+      plannedStart: "2027-05-10",
+      plannedEnd: "2027-05-14",
+      lifecycleStatus: "PLANNED" as const,
+    }));
+    await agDb.insert(leistungenTable).values(services);
+
+    await agDb.insert(leistungsabhaengigkeitenTable).values([
+    {
+      id: dependencyIds[0],
+      projectId,
+      predecessorId: serviceIds[0],
+      successorId: serviceIds[1],
+      type: "EA",
+      lagDays: 0,
+    },
+    {
+      id: dependencyIds[1],
+      projectId,
+      predecessorId: serviceIds[1],
+      successorId: serviceIds[2],
+      type: "EA",
+      lagDays: 2,
+    },
+    {
+      id: dependencyIds[2],
+      projectId,
+      predecessorId: serviceIds[2],
+      successorId: serviceIds[3],
+      type: "EA",
+      lagDays: 0,
+    },
+    ]);
+    await anDb.insert(resourceTypesTable).values(anOrgIds.map((anOrgId, index) => ({
+      id: resourceTypeIds[index],
+      anOrgId,
+      name: `${companyNames[index + 1]} Mannschaft`,
+      category: "CREW",
+      code: `CW-AN${index + 1}-CREW`,
+      capacityUnit: "PERSONS",
+      defaultDailyCapacity: index === 0 ? 8 : 4,
+    })));
+    await anDb.insert(resourcesTable).values(anOrgIds.map((anOrgId, index) => ({
+      id: resourceIds[index],
+      anOrgId,
+      type: "CREW",
+      name: `${companyNames[index + 1]} Montageteam`,
+      trade: ["STAHLBAU", "ELEKTRO", "TGA", "MALER"][index],
+      capacity: index === 0 ? 8 : 2,
+      capacityUnit: "PERSONS",
+      resourceTypeId: resourceTypeIds[index],
+      qualifications: index === 0 ? ["Schweißfachbetrieb"] : [],
+    })));
+
+    return seed;
+  } catch (error) {
+    try {
+      await cleanupCampusWest(seed);
+    } catch {
+      // Preserve the seeding failure when best-effort cleanup also fails.
+    }
+    throw error;
+  }
+}
+
+export async function restrictProjectAgreementPurposes(
+  policyId: string,
+  allowedPurposes: string[],
+): Promise<void> {
+  const [policy] = await agDb.select().from(coordinationPoliciesTable)
+    .where(eq(coordinationPoliciesTable.id, policyId));
+  if (!policy) throw new Error(`Project agreement ${policyId} not found`);
+  await agDb.update(coordinationPoliciesTable)
+    .set({
+      policySnapshot: {
+        ...(policy.policySnapshot as Record<string, unknown>),
+        allowedPurposes,
+      },
+      effectivePolicy: {
+        ...(policy.effectivePolicy as Record<string, unknown>),
+        allowedPurposes,
+      },
+    })
+    .where(eq(coordinationPoliciesTable.id, policyId));
 }
 
 export async function restrictProjectAgreementPurposes(
