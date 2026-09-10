@@ -277,6 +277,12 @@ export const taktResponseAlternativesTable = pgTable(
     proposedEnd: timestamp("proposed_end", { withTimezone: true }).notNull(),
     crewSize: integer("crew_size"),
     conditions: jsonb("conditions").$type<string[]>(),
+     resourceMix: jsonb("resource_mix").$type<Array<{
+       resourceClass: "CREW" | "EQUIPMENT";
+       quantity: number;
+       unit: string;
+       utilizationPercent: number;
+     }> | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
