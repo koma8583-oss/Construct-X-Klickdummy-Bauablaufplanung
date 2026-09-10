@@ -17,6 +17,7 @@ const resources = [
 function requirement(overrides: Partial<{
   id: string;
   requiredCapacity: number;
+  utilizationPercent: number;
   periodStart: string | null;
   periodEnd: string | null;
 }> = {}) {
@@ -24,21 +25,27 @@ function requirement(overrides: Partial<{
     id: overrides.id ?? "requirement",
     resourceTypeId: "type-crew",
     requiredCapacity: overrides.requiredCapacity ?? 1,
-    utilizationPercent: 100,
+    utilizationPercent: overrides.utilizationPercent ?? 100,
     requiredQualification: null,
     periodStart: overrides.periodStart ?? null,
     periodEnd: overrides.periodEnd ?? null,
   };
 }
 
-function booking(id: string, resourceId: string, start: string, end: string) {
+function booking(
+  id: string,
+  resourceId: string,
+  start: string,
+  end: string,
+  utilizationPercent = 100,
+) {
   return {
     id,
     resourceId,
     resourceTypeId: "type-crew",
     startAt: new Date(start),
     endAt: new Date(end),
-    utilizationPercent: 100,
+    utilizationPercent,
   };
 }
 
@@ -199,6 +206,46 @@ describe("restoreConcreteResourceAssignments", () => {
       periodEnd: "2026-09-11",
     }]);
   });
+
+  it("matches fractional effective demand and preserves utilization on residual bookings", () => {
+    const result = restoreConcreteResourceAssignments(
+      [requirement({
+        requiredCapacity: 3,
+        utilizationPercent: 50,
+        periodStart: "2026-09-02",
+        periodEnd: "2026-09-04",
+      })],
+      [booking(
+        "booking-a",
+        "resource-a",
+        "2026-09-02T00:00:00Z",
+        "2026-09-05T00:00:00Z",
+        50,
+      )],
+      [{ ...resources[0], capacity: 2 }, resources[1]],
+      [],
+      oldStart,
+      oldEnd,
+      newStart,
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        resourceId: "resource-a",
+        quantity: 0,
+        utilizationPercent: 50,
+        periodStart: "2026-09-09",
+        periodEnd: "2026-09-11",
+      }),
+      expect.objectContaining({
+        resourceId: null,
+        quantity: 1,
+        utilizationPercent: 50,
+        periodStart: "2026-09-09",
+        periodEnd: "2026-09-11",
+      }),
+    ]);
+  });
 });
 
 describe("shiftRequirementsToWindow", () => {
@@ -255,5 +302,47 @@ describe("shiftRequirementsToWindow", () => {
     expect(evaluate(shifted).conflicts).toEqual([
       expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
     ]);
+  });
+
+  it("uses effective demand for partially overlapping requirements with different utilization", () => {
+    const requirements = [
+      requirement({
+        id: "fractional-a",
+        requiredCapacity: 1,
+        utilizationPercent: 50,
+        periodStart: "2026-09-01",
+        periodEnd: "2026-09-03",
+      }),
+      requirement({
+        id: "fractional-b",
+        requiredCapacity: 1,
+        utilizationPercent: 75,
+        periodStart: "2026-09-02",
+        periodEnd: "2026-09-04",
+      }),
+    ];
+    const result = evaluateResourceRequirements({
+      requirements,
+      resources: [{
+        ...resources[0],
+        capacity: 1,
+        type: "CREW",
+        name: "Crew",
+        qualifications: null,
+      }],
+      bookings: [],
+      windowStart: oldStart,
+      windowEnd: oldEnd,
+    });
+
+    expect(result.conflicts).toEqual([
+      expect.objectContaining({ conflictType: "CAPACITY_EXCEEDED" }),
+    ]);
+    expect(result.dailyAvailability).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        date: "2026-09-02",
+        requiredCapacity: 1.25,
+      }),
+    ]));
   });
 });
