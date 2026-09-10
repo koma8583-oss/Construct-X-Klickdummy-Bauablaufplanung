@@ -7,6 +7,8 @@ import {
 } from "./campus-west-seed";
 
 export type PolicyClass = "WITHIN_BASELINE" | "REQUIRES_CONSENT" | "NOT_PERMITTED";
+export type ScenarioMode = "within" | "consent" | "denied" | "full";
+
 export type Scenario = {
   runId: string;
   ag: { email: string; password: string };
@@ -27,6 +29,7 @@ export type Scenario = {
 };
 
 type Fixtures = {
+  scenarioMode: ScenarioMode | undefined;
   scenario: Seed;
   agContext: BrowserContext;
   anContext: BrowserContext;
@@ -123,7 +126,45 @@ async function createAndSendRequest(
   return requestId;
 }
 
-type ScenarioMode = "within" | "consent" | "denied" | "full";
+const scenarioModes = new Set<ScenarioMode>([
+  "within",
+  "consent",
+  "denied",
+  "full",
+]);
+
+function requireScenarioMode(value: unknown): ScenarioMode {
+  if (typeof value !== "string" || !scenarioModes.has(value as ScenarioMode)) {
+    throw new Error(
+      `Campus-West scenarioMode must be one of within, consent, denied, or full; received ${String(value)}`,
+    );
+  }
+  return value as ScenarioMode;
+}
+
+export async function seedCampusWestScenario(
+  scenarioMode: unknown,
+  seedFactory: () => Promise<Seed> = seedCampusWest,
+  prepare: (seed: Seed, mode: ScenarioMode) => Promise<void> = prepareCampusWest,
+  cleanup: (seed: Seed) => Promise<void> = cleanupCampusWest,
+): Promise<Seed> {
+  const mode = requireScenarioMode(scenarioMode);
+  let value: Seed | undefined;
+  try {
+    value = await seedFactory();
+    await prepare(value, mode);
+    return value;
+  } catch (error) {
+    if (value) {
+      try {
+        await cleanup(value);
+      } catch {
+        // Preserve the preparation failure when best-effort cleanup also fails.
+      }
+    }
+    throw error;
+  }
+}
 
 async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> {
   const agApi = await authenticatedSeedApi(seed.ag);
@@ -344,22 +385,18 @@ async function prepareCampusWest(seed: Seed, mode: ScenarioMode): Promise<void> 
 }
 
 export const test = base.extend<Fixtures>({
-  scenario: [async ({}, use, testInfo) => {
-    const value = await seedCampusWest();
-    const mode: ScenarioMode = testInfo.title.includes("WITHIN_BASELINE")
-      ? "within"
-      : testInfo.title.includes("REQUIRES_CONSENT")
-        ? "consent"
-        : testInfo.title.includes("NOT_PERMITTED")
-          ? "denied"
-          : "full";
-    await prepareCampusWest(value, mode);
-    try {
-      await use(value);
-    } finally {
-      await cleanupCampusWest(value as Seed);
-    }
-  }, { scope: "test" }],
+  scenarioMode: [undefined, { option: true }],
+  scenario: [
+    async ({ scenarioMode }, use) => {
+      const value = await seedCampusWestScenario(scenarioMode);
+      try {
+        await use(value);
+      } finally {
+        await cleanupCampusWest(value as Seed);
+      }
+    },
+    { scope: "test" },
+  ],
   agContext: async ({ browser, scenario }, use, testInfo) => {
     const viewport = testInfo.project.use.viewport as { width: number; height: number } | undefined;
     const context = await browser.newContext({ baseURL: baseUrl(), viewport });
