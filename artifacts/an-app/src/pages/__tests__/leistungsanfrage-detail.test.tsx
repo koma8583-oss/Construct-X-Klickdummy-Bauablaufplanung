@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { getListLeistungsanfrageResourceRequirementsQueryKey, setAuthTokenGetter } from "@workspace/api-client-react";
 import { Route, Router } from "wouter";
 import LeistungsanfrageDetailPage from "../leistungsanfrage-detail";
 
@@ -77,9 +77,13 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 type DetailRenderOptions = {
+  client?: QueryClient;
+  detailRetryResponse?: unknown;
   availabilityResponse?: Response;
+  availabilityRetryResponse?: Response | Promise<Response>;
   availabilityMutationResponse?: Response;
   resourceMutationResponse?: Response;
+  resourceRetryResponse?: Response | Promise<Response>;
 };
 
 function renderDetail(
@@ -88,22 +92,40 @@ function renderDetail(
   resourceResponse = jsonResponse([]),
   options: DetailRenderOptions = {},
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const client = options.client ?? new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  let resourceRequestCount = 0;
+  let detailRequestCount = 0;
+  let availabilityRequestCount = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(detailResponse);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) {
+      const response = detailRequestCount === 0 ? detailResponse : options.detailRetryResponse ?? detailResponse;
+      detailRequestCount += 1;
+      return jsonResponse(response);
+    }
     if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) return jsonResponse(coordination);
     if (
       url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)
       || url.endsWith(`/api/leistungsanfragen/${requestId}/resource-requirements`)
       || url.includes(`/api/an/leistungsanfragen/${requestId}/resource-requirements/`)
       || url.includes(`/api/leistungsanfragen/${requestId}/resource-requirements/`)
-    ) return method === "GET" ? resourceResponse : options.resourceMutationResponse ?? jsonResponse({});
+    ) {
+      if (method !== "GET") return options.resourceMutationResponse ?? jsonResponse({});
+      const response = resourceRequestCount === 0 ? resourceResponse : options.resourceRetryResponse ?? resourceResponse;
+      resourceRequestCount += 1;
+      return response;
+    }
     if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/availability-checks`)) {
       return options.availabilityMutationResponse ?? jsonResponse({});
     }
-    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return options.availabilityResponse ?? jsonResponse({ error: "No local availability checks found" }, 404);
+    if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) {
+      const response = availabilityRequestCount === 0
+        ? options.availabilityResponse
+        : options.availabilityRetryResponse ?? options.availabilityResponse;
+      availabilityRequestCount += 1;
+      return response ?? jsonResponse({ error: "No local availability checks found" }, 404);
+    }
     if (method === "POST" && url.endsWith(`/api/leistungsanfragen/${requestId}/responses`)) return jsonResponse({ responseId: "response-1", decision: "ACCEPTED", requestStatus: "RESPONDED" }, 201);
     if (method === "POST" && url.includes(`/api/an/leistungsanfragen/${requestId}/change-proposals`)) {
       const path = new URL(url, "http://localhost").pathname;
@@ -150,6 +172,7 @@ describe("AN Leistungsanfrage detail", () => {
     expect(block).toHaveTextContent("Ressourcendetails durch Policy gesperrt");
     expect(block).toHaveTextContent("Projektvereinbarung");
     expect(screen.queryByText("Ressourcenbedarf konnte nicht aktualisiert werden")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("button-retry-resources")).not.toBeInTheDocument();
   });
 
   it("nennt die Zustimmung als nächsten Schritt bei geschützten Ressourcendetails", async () => {
@@ -158,6 +181,297 @@ describe("AN Leistungsanfrage detail", () => {
     const block = await screen.findByTestId("resource-policy-block");
     expect(block).toHaveTextContent("Ressourcendetails noch nicht freigegeben");
     expect(block).toHaveTextContent("Bestätigen Sie zuerst");
+  });
+
+  it("aktualisiert geschützte Abfragen direkt nach der Zustimmung", async () => {
+    const consentRequired = {
+      ...detail,
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      policyDetailsAvailable: false,
+      policyDiff: { summary: ["Zeitraum wurde erweitert"], changed: ["Zeitraum"] },
+    };
+    const accepted = {
+      ...consentRequired,
+      policyConsentStatus: "ACCEPTED",
+      policyDetailsAvailable: true,
+    };
+    const resourceAfterConsent = [{
+      id: "resource-after-consent",
+      resourceTypeName: "Team",
+      resourceTypeCode: "TEAM",
+      requiredCapacity: 2,
+      capacityUnit: "Personen",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+      notes: null,
+    }];
+    const fetchMock = renderDetail(
+      initialCoordination(),
+      consentRequired,
+      jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      {
+        detailRetryResponse: accepted,
+        availabilityResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+        availabilityRetryResponse: jsonResponse({ status: "COMPLETED", result: "FEASIBLE", publicResult: {} }),
+        resourceRetryResponse: jsonResponse(resourceAfterConsent),
+      },
+    );
+
+    await userEvent.setup().click(await screen.findByTestId("button-accept-policy"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("policy-consent-accepted")).toBeInTheDocument();
+      expect(screen.getByTestId("resource-row-resource-after-consent")).toBeInTheDocument();
+      expect(screen.getByTestId("availability-result")).toHaveTextContent("Machbar");
+    });
+    expect(screen.queryByTestId("policy-consent-panel")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/an/leistungsanfragen/${requestId}/policy-consent`);
+  });
+
+  it("zeigt den Zustimmungsstatus bis zum Abschluss jedes geschützten Refreshs", async () => {
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 390 });
+    const consentRequired = {
+      ...detail,
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      policyDetailsAvailable: false,
+      policyDiff: { summary: ["Zeitraum wurde erweitert"], changed: ["Zeitraum"] },
+    };
+    const accepted = {
+      ...consentRequired,
+      policyConsentStatus: "ACCEPTED",
+      policyDetailsAvailable: true,
+    };
+    let resolveAvailabilityRefresh!: (response: Response) => void;
+    const delayedAvailabilityRefresh = new Promise<Response>((resolve) => {
+      resolveAvailabilityRefresh = resolve;
+    });
+
+    renderDetail(
+      initialCoordination(),
+      consentRequired,
+      jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      {
+        detailRetryResponse: accepted,
+        availabilityResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+        availabilityRetryResponse: delayedAvailabilityRefresh,
+        resourceRetryResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      },
+    );
+
+    await userEvent.setup().click(await screen.findByTestId("button-accept-policy"));
+
+    const refreshStatus = await screen.findByTestId("policy-refresh-status");
+    expect(refreshStatus).toHaveTextContent("Policy-Zugriff bestätigt");
+    expect(screen.getByTestId("policy-refresh-sections")).toHaveClass("grid", "min-w-0", "sm:flex");
+    expect(screen.getByTestId("policy-refresh-details")).toHaveTextContent("Anfrage:");
+    expect(screen.getByTestId("policy-refresh-resources")).toHaveTextContent("Ressourcen:");
+    expect(screen.getByTestId("policy-refresh-availability")).toHaveTextContent("Verfügbarkeit:");
+    await waitFor(() => {
+      expect(screen.getByTestId("policy-refresh-resources")).toHaveTextContent("siehe Hinweis");
+      expect(screen.getByTestId("policy-refresh-availability")).toHaveTextContent("wird aktualisiert");
+    });
+    expect(screen.getByTestId("resource-policy-block")).toHaveTextContent("noch nicht freigegeben");
+
+    resolveAvailabilityRefresh(jsonResponse({ status: "COMPLETED", result: "FEASIBLE", publicResult: {} }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("policy-refresh-status")).not.toBeInTheDocument();
+      expect(screen.getByTestId("availability-result")).toHaveTextContent("Machbar");
+    });
+  });
+
+  it("behält die Zustimmung nach Verlassen und erneutem Öffnen der kanonischen Leistungsanfrage", async () => {
+    const consentRequired = {
+      ...detail,
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      policyDetailsAvailable: false,
+      policyDiff: { summary: ["Zeitraum wurde erweitert"], changed: ["Zeitraum"] },
+    };
+    const accepted = {
+      ...consentRequired,
+      policyConsentStatus: "ACCEPTED",
+      policyDetailsAvailable: true,
+    };
+    const resourceAfterConsent = [{
+      id: "resource-after-reopen",
+      resourceTypeName: "Team",
+      resourceTypeCode: "TEAM",
+      requiredCapacity: 2,
+      capacityUnit: "Personen",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+      notes: null,
+    }];
+    const availabilityAfterConsent = jsonResponse({
+      status: "COMPLETED",
+      result: "FEASIBLE",
+      publicResult: {},
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const firstFetch = renderDetail(
+      { ...initialCoordination(), openProposal: null },
+      consentRequired,
+      jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      {
+        client,
+        detailRetryResponse: accepted,
+        availabilityResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+        availabilityRetryResponse: availabilityAfterConsent,
+        resourceRetryResponse: jsonResponse(resourceAfterConsent),
+      },
+    );
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId("button-accept-policy"));
+    await waitFor(() => {
+      expect(screen.getByTestId("policy-consent-accepted")).toBeInTheDocument();
+      expect(screen.getByTestId("resource-row-resource-after-reopen")).toBeInTheDocument();
+      expect(screen.getByTestId("availability-result")).toHaveTextContent("Machbar");
+    });
+    expect(firstFetch.mock.calls.map(([url]) => String(url))).toContain(`/api/an/leistungsanfragen/${requestId}/policy-consent`);
+
+    cleanup();
+    window.history.pushState({}, "", "/leistungsanfragen");
+
+    const reopenedFetch = renderDetail(
+      { ...initialCoordination(), openProposal: null },
+      accepted,
+      jsonResponse(resourceAfterConsent),
+      { client, availabilityResponse: availabilityAfterConsent },
+    );
+
+    expect(window.location.pathname).toBe(`/leistungsanfragen/${requestId}`);
+    await waitFor(() => {
+      expect(screen.queryByTestId("policy-consent-panel")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("policy-consent-rejected")).not.toBeInTheDocument();
+      expect(screen.getByTestId("policy-consent-accepted")).toBeInTheDocument();
+      expect(screen.getByTestId("resource-row-resource-after-reopen")).toBeInTheDocument();
+      expect(screen.getByTestId("availability-result")).toHaveTextContent("Machbar");
+    });
+    expect(reopenedFetch.mock.calls.map(([url]) => String(url))).toEqual(
+      expect.arrayContaining([
+        `/api/an/leistungsanfragen/${requestId}/details`,
+        `/api/leistungsanfragen/${requestId}/resource-requirements`,
+        `/api/an/leistungsanfragen/${requestId}/availability-checks/latest`,
+      ]),
+    );
+  });
+
+  it("behält unterschiedliche Policy-Gründe bei einem fehlgeschlagenen Refresh", async () => {
+    const consentRequired = {
+      ...detail,
+      policyDeltaClass: "REQUIRES_CONSENT",
+      policyConsentStatus: "PENDING",
+      policyDetailsAvailable: false,
+      policyDiff: { summary: ["Zeitraum wurde erweitert"], changed: ["Zeitraum"] },
+    };
+    const accepted = {
+      ...consentRequired,
+      policyConsentStatus: "ACCEPTED",
+      policyDetailsAvailable: true,
+    };
+    renderDetail(
+      initialCoordination(),
+      consentRequired,
+      jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      {
+        detailRetryResponse: accepted,
+        availabilityResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+        availabilityRetryResponse: jsonResponse({ error: "NOT_PERMITTED" }, 409),
+        resourceRetryResponse: jsonResponse({ error: "POLICY_CONSENT_REQUIRED" }, 409),
+      },
+    );
+
+    await userEvent.setup().click(await screen.findByTestId("button-accept-policy"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("availability-policy-block")).toHaveTextContent("durch Policy gesperrt");
+      expect(screen.getByTestId("resource-policy-block")).toHaveTextContent("noch nicht freigegeben");
+    });
+    expect(screen.queryByText("Ressourcenbedarf konnte nicht aktualisiert werden")).not.toBeInTheDocument();
+  });
+
+  it("bietet bei einem vorübergehenden Ressourcenfehler eine lokale Wiederholung an", async () => {
+    const retryResponse = [{
+      id: "resource-after-retry",
+      resourceTypeName: "Team",
+      resourceTypeCode: "TEAM",
+      requiredCapacity: 2,
+      capacityUnit: "Personen",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+      notes: null,
+    }];
+    const fetchMock = renderDetail(initialCoordination(), detail, jsonResponse({ error: "Server temporarily unavailable" }, 503), {
+      resourceRetryResponse: jsonResponse(retryResponse),
+    });
+
+    const retry = await screen.findByTestId("button-retry-resources");
+    expect(screen.getByText("Ressourcenbedarf konnte nicht geladen werden. Bitte versuchen Sie es erneut.")).toBeInTheDocument();
+    expect(screen.getByText("Noch kein Ressourcenbedarf erfasst. Ergänzen Sie nur den Bedarf, der für Ihre Rückmeldung relevant ist.")).toBeInTheDocument();
+    await userEvent.setup().click(retry);
+
+    await waitFor(() => expect(screen.getByTestId("resource-row-resource-after-retry")).toBeInTheDocument());
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      (String(url).endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)
+        || String(url).endsWith(`/api/leistungsanfragen/${requestId}/resource-requirements`))
+      && (init?.method ?? "GET") === "GET",
+    )).toHaveLength(2);
+    expect(screen.queryByTestId("button-retry-resources")).not.toBeInTheDocument();
+  });
+
+  it("hält Warnung und lokale Wiederholung nach einem erneut fehlgeschlagenen Ressourcen-Refresh verfügbar", async () => {
+    const loadedResources = [{
+      id: "resource-before-outage",
+      resourceTypeName: "Team",
+      resourceTypeCode: "TEAM",
+      requiredCapacity: 2,
+      capacityUnit: "Personen",
+      utilizationPercent: 100,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-10",
+      requiredQualification: null,
+      notes: null,
+    }];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const fetchMock = renderDetail(
+      initialCoordination(),
+      detail,
+      jsonResponse(loadedResources),
+      {
+        client,
+        resourceRetryResponse: jsonResponse({ error: "Gateway timeout" }, 504),
+      },
+    );
+
+    expect(await screen.findByTestId("resource-row-resource-before-outage")).toBeInTheDocument();
+    const warning = "Ressourcenbedarf konnte nicht aktualisiert werden. Die angezeigten Angaben stammen aus dem letzten erfolgreichen Abruf und können veraltet sein.";
+    await client.refetchQueries({ queryKey: getListLeistungsanfrageResourceRequirementsQueryKey(requestId) });
+
+    await waitFor(() => {
+      expect(screen.getByText(warning)).toBeInTheDocument();
+      expect(screen.getByTestId("button-retry-resources")).toBeEnabled();
+      expect(screen.getByTestId("resource-row-resource-before-outage")).toBeInTheDocument();
+    });
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      (String(url).endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)
+        || String(url).endsWith(`/api/leistungsanfragen/${requestId}/resource-requirements`))
+      && (init?.method ?? "GET") === "GET",
+    )).toHaveLength(2);
+    expect(screen.queryByTestId("resource-policy-block")).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByTestId("button-retry-resources"));
+    await waitFor(() => expect(screen.getByTestId("button-retry-resources")).toBeEnabled());
+    expect(screen.getByText(warning)).toBeInTheDocument();
   });
 
   it("erklärt einen Policy-Block beim Start der Verfügbarkeitsprüfung", async () => {
@@ -373,6 +687,32 @@ describe("AN Leistungsanfrage detail", () => {
       && (init as RequestInit | undefined)?.method === "POST",
     )).toHaveLength(1));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Neuer Terminvorschlag" })).not.toBeInTheDocument());
+  });
+
+  it("wartet bei einem bereits beantworteten Auftrag auf die Koordination vor dem ersten Aktionszustand", async () => {
+    const delayedDetail = { ...detail, status: "RESPONDED" };
+    const coordination = initialCoordination();
+    let resolveCoordination: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/details`)) return jsonResponse(delayedDetail);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/coordination`)) {
+        return new Promise<Response>((resolve) => { resolveCoordination = resolve; });
+      }
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/resource-requirements`)) return jsonResponse([]);
+      if (url.endsWith(`/api/an/leistungsanfragen/${requestId}/availability-checks/latest`)) return jsonResponse({}, 404);
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.pushState({}, "", `/leistungsanfragen/${requestId}`);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={client}><Router base="/"><Route path="/leistungsanfragen/:requestId" component={LeistungsanfrageDetailPage} /></Router></QueryClientProvider>);
+
+    await waitFor(() => expect(screen.queryByTestId("terminal-notice")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("schedule-change-response")).not.toBeInTheDocument();
+    resolveCoordination?.(jsonResponse(coordination));
+    await expect(screen.findByTestId("schedule-change-response")).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-notice")).not.toBeInTheDocument();
   });
 
   it("zeigt für eine nicht zugeordnete Projektion keine AN-Aktionen", async () => {
