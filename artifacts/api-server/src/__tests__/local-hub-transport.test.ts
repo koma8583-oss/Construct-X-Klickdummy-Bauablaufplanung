@@ -5,9 +5,10 @@
  * Tests verify the full outbox → inbox delivery flow against the real DB.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { hubDb as db, messageOutboxTable, messageInboxTable } from "@workspace/db";
+import { messageOutboxTable, messageInboxTable } from "@workspace/db";
 import { organizationsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { buildHubFixture } from "./fixtures";
 import { LocalHubTransport } from "../lib/transport/local-hub-transport";
 import {
   InvalidEnvelopeError,
@@ -23,6 +24,11 @@ import type { MessageEnvelope } from "../lib/transport/message-transport";
 const GU_ORG = "t34-org-gu";
 const NU_ORG = "t34-org-nu";
 const OTHER_ORG = "t34-org-other";
+const hubFixture = buildHubFixture({
+  prefix: "t34",
+  organizationIds: [GU_ORG, NU_ORG, OTHER_ORG],
+});
+const hubDatabase = hubFixture.database;
 
 const BASE_PAYLOAD = {
   taktRequestId: "t34-req-001",
@@ -49,7 +55,7 @@ function makeEnvelope(overrides: Partial<MessageEnvelope> = {}): MessageEnvelope
 // ── Setup / teardown ──────────────────────────────────────────────────────────
 
 beforeAll(async () => {
-  await db
+  await hubDatabase
     .insert(organizationsTable)
     .values([
       { id: GU_ORG, name: "T34 GU Org", type: "AG" },
@@ -62,16 +68,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const orgs = [GU_ORG, NU_ORG, OTHER_ORG];
-  await db
+  await hubDatabase
     .execute(sql`DELETE FROM message_inbox  WHERE sender_org_id    = ANY(ARRAY[${sql.raw(orgs.map((o) => `'${o}'`).join(","))}])`)
     .catch(() => {});
-  await db
+  await hubDatabase
     .execute(sql`DELETE FROM message_inbox  WHERE recipient_org_id = ANY(ARRAY[${sql.raw(orgs.map((o) => `'${o}'`).join(","))}])`)
     .catch(() => {});
-  await db
+  await hubDatabase
     .execute(sql`DELETE FROM message_outbox WHERE sender_org_id    = ANY(ARRAY[${sql.raw(orgs.map((o) => `'${o}'`).join(","))}])`)
     .catch(() => {});
-  await db
+  await hubDatabase
     .execute(sql`DELETE FROM organizations  WHERE id               = ANY(ARRAY[${sql.raw(orgs.map((o) => `'${o}'`).join(","))}])`)
     .catch(() => {});
 });
@@ -97,7 +103,7 @@ describe("LocalHubTransport.send()", () => {
     const envelope = makeEnvelope();
     await transport.send(envelope);
 
-    const [outboxRow] = await db
+    const [outboxRow] = await hubDatabase
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, envelope.messageId));
@@ -114,7 +120,7 @@ describe("LocalHubTransport.send()", () => {
     const envelope = makeEnvelope();
     await transport.send(envelope);
 
-    const inboxRows = await db
+    const inboxRows = await hubDatabase
       .select()
       .from(messageInboxTable)
       .where(eq(messageInboxTable.messageId, envelope.messageId));
@@ -134,13 +140,13 @@ describe("LocalHubTransport.send()", () => {
     expect(result2.messageId).toBe(envelope.messageId);
     expect(result2.status).toBe("DELIVERED");
 
-    const outboxRows = await db
+    const outboxRows = await hubDatabase
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, envelope.messageId));
     expect(outboxRows).toHaveLength(1);
 
-    const inboxRows = await db
+    const inboxRows = await hubDatabase
       .select()
       .from(messageInboxTable)
       .where(eq(messageInboxTable.messageId, envelope.messageId));
@@ -171,7 +177,7 @@ describe("LocalHubTransport.send()", () => {
     // Pre-insert an inbox row to cause the DB unique constraint to fire
     // when LocalHubTransport tries to insert during send()
     const messageId = `t34-prefail-${crypto.randomUUID()}`;
-    await db.insert(messageInboxTable).values({
+    await hubDatabase.insert(messageInboxTable).values({
       messageId,
       recipientOrgId: NU_ORG,
       senderOrgId: GU_ORG,
@@ -189,7 +195,7 @@ describe("LocalHubTransport.send()", () => {
     expect(result.error!.code).toBe("TRANSPORT_FAILURE");
 
     // Outbox must be FAILED, not stuck at PENDING
-    const [outboxRow] = await db
+    const [outboxRow] = await hubDatabase
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, messageId));
@@ -282,7 +288,7 @@ describe("LocalHubTransport.markAsRead()", () => {
 
     await transport.markAsRead(envelope.messageId, NU_ORG);
 
-    const [inboxRow] = await db
+    const [inboxRow] = await hubDatabase
       .select()
       .from(messageInboxTable)
       .where(eq(messageInboxTable.messageId, envelope.messageId));
@@ -330,7 +336,7 @@ describe("LocalHubTransport.retry()", () => {
     const corr = `t34-retry-corr-${messageId}`;
 
     // Pre-insert inbox to trigger failure
-    await db.insert(messageInboxTable).values({
+    await hubDatabase.insert(messageInboxTable).values({
       messageId,
       recipientOrgId: NU_ORG,
       senderOrgId: GU_ORG,
@@ -344,14 +350,14 @@ describe("LocalHubTransport.retry()", () => {
     await transport.send(makeEnvelope({ messageId, correlationId: corr }));
 
     // Verify outbox is FAILED
-    const [failedRow] = await db
+    const [failedRow] = await hubDatabase
       .select()
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.messageId, messageId));
     expect(failedRow.status).toBe("FAILED");
 
     // Remove the conflicting inbox row so retry can succeed
-    await db
+    await hubDatabase
       .delete(messageInboxTable)
       .where(
         and(
