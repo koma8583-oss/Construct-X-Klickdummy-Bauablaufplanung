@@ -11,7 +11,7 @@ import {
   shiftRequirementsToWindow,
   evaluateResourceRequirements,
 } from "./resource-availability-service";
-import { sql } from "drizzle-orm";
+import { lockAnConfirmedCapacity } from "./an-capacity-lock-service";
 
 export class AcceptedScheduleCapacityConflictError extends Error {
   constructor() {
@@ -86,11 +86,7 @@ export async function applyAcceptedAnScheduleChange(
   // Serialize every confirmed-booking decision for one AN. The feasibility
   // read and booking write below then observe a stable shared capacity pool,
   // so concurrent acceptances cannot both consume the same remaining units.
-  await tx.execute(sql`
-    SELECT pg_advisory_xact_lock(
-      hashtextextended(${"an-confirmed-capacity:" + projection.receiverAnOrgId}, 0)
-    )
-  `);
+  await lockAnConfirmedCapacity(tx, projection.receiverAnOrgId);
 
   const snapshot = projection.payloadSnapshot as Record<string, unknown>;
   const sourceRequestId = typeof snapshot.sourceRequestId === "string"
