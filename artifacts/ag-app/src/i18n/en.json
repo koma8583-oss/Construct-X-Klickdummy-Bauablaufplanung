@@ -194,8 +194,11 @@
       "transportStatus": {
         "title": "Delivery status",
         "decisionSaved": "Business decision saved",
+        "notifyPending": "Delivery to contractor is pending",
         "notified": "Notification delivered to contractor",
-        "notifyFailed": "Delivery failed — contractor was not notified"
+        "notifyFailed": "Delivery failed — contractor was not notified",
+        "retryFailed": "Retry failed. The decision is still saved; you can try delivery again.",
+        "retry": "Retry delivery"
       },
       "actions": {
         "confirmAccepted": "Confirm acceptance",
@@ -238,6 +241,7 @@
         "duration": "Duration",
         "shift": "Shift",
         "crew": "Crew size",
+        "resourceMix": "Resource mix",
         "conditions": "Conditions",
         "rank": "Rank",
         "next": "Continue to confirmation",
