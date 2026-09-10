@@ -16,8 +16,6 @@ const projects = new Map(
   ]),
 );
 
-const failedTests = [];
-
 function visitSuite(suite) {
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests ?? []) {
@@ -32,37 +30,6 @@ function visitSuite(suite) {
         results.every((result) => result.status === "skipped");
       if (skipped) state.skipped += 1;
       else state.executed += 1;
-      if (
-        test.status === "unexpected" ||
-        results.some((result) =>
-          result.status === "failed" || result.status === "timedOut",
-        )
-      ) {
-        const errorMessages = results
-          .flatMap((result) => [
-            ...(result.errors ?? []),
-            ...(result.error ? [result.error] : []),
-          ])
-          .map((error) =>
-            typeof error === "string"
-              ? error
-              : error?.message ?? error?.value ?? JSON.stringify(error),
-          )
-          .filter(Boolean)
-          .join(" | ")
-          .replace(/\s+/g, " ")
-          .slice(0, 800);
-        failedTests.push(
-          [
-            [...(suite.title ? [suite.title] : []), spec.title, test.projectName]
-              .filter(Boolean)
-              .join(" › "),
-            errorMessages,
-          ]
-            .filter(Boolean)
-            .join(" › "),
-        );
-      }
     }
   }
   for (const child of suite.suites ?? []) visitSuite(child);
@@ -87,9 +54,6 @@ if ((report.stats?.skipped ?? 0) > 0)
   failures.push(`${report.stats.skipped} skipped result(s)`);
 
 if (failures.length > 0) {
-  for (const test of failedTests) {
-    console.error(`::error::Playwright failed: ${test}`);
-  }
   throw new Error(
     `Required Playwright execution incomplete:\n- ${failures.join("\n- ")}`,
   );
