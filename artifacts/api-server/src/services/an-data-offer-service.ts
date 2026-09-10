@@ -5,6 +5,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import type { ExternalDataOfferResponse } from "./dataspace/external-contracts";
 import { enqueueHubMessageInTransaction } from "./hub-transport-service";
+import { getDataOfferPublicationStatus } from "./an-project-invitation-service";
 
 export class AnDataOfferError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -47,11 +48,7 @@ export async function decideAnDataOffer(input: {
     throw new AnDataOfferError("DATA_OFFER_EXPIRED", "Die Leistungsfreigabe ist abgelaufen.");
   }
   if (input.action === "accept") {
-    const snapshot = offer.dataOfferSnapshot;
-    const status = snapshot && typeof snapshot === "object" && "status" in snapshot
-      ? snapshot.status
-      : "PUBLISHED";
-    if (status !== "PUBLISHED") {
+    if (getDataOfferPublicationStatus(offer) !== "PUBLISHED") {
       throw new AnDataOfferError("DATA_OFFER_UNAVAILABLE", "Die Leistungsfreigabe ist nicht verfügbar.");
     }
   }
