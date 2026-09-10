@@ -28,8 +28,20 @@ import {
   loadOwnedResourceType,
   validateResourceBooking,
 } from "../services/resource-domain-service";
+import {
+  assertConfirmedBookingCapacity,
+  ConfirmedBookingCapacityConflictError,
+} from "../services/confirmed-booking-service";
+import { lockAnConfirmedCapacity } from "../services/an-capacity-lock-service";
 
 const router = Router();
+
+class CancelledBookingConcurrencyError extends Error {
+  constructor() {
+    super("Cannot update a cancelled booking");
+    this.name = "CancelledBookingConcurrencyError";
+  }
+}
 
 // ── Guard helper ──────────────────────────────────────────────────────────────
 
@@ -625,12 +637,34 @@ router.post("/nu/resource-bookings", requireJwt, async (req, res): Promise<void>
     return;
   }
 
-  const [booking] = await db
-    .insert(resourceBookingsTable)
-    .values({ nuOrgId, ...data, startAt, endAt })
-    .returning();
+  try {
+    const [booking] = await db.transaction(async (tx) => {
+      if (data.status === "CONFIRMED") {
+        await lockAnConfirmedCapacity(tx, nuOrgId);
+        await assertConfirmedBookingCapacity(tx, {
+          nuOrgId,
+          resourceId: data.resourceId ?? null,
+          resourceTypeId: data.resourceTypeId!,
+          quantity: data.quantity ?? null,
+          startAt,
+          endAt,
+          utilizationPercent: data.utilizationPercent,
+        });
+      }
+      return tx
+        .insert(resourceBookingsTable)
+        .values({ nuOrgId, ...data, startAt, endAt })
+        .returning();
+    });
 
-  res.status(201).json(booking);
+    res.status(201).json(booking);
+  } catch (error) {
+    if (error instanceof ConfirmedBookingCapacityConflictError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 // GET /api/nu/resource-bookings/:bookingId
@@ -752,25 +786,71 @@ router.patch("/nu/resource-bookings/:bookingId", requireJwt, async (req, res): P
     return;
   }
 
-  const [updated] = await db
-    .update(resourceBookingsTable)
-    .set({
-      ...(patchData.resourceId !== undefined ? { resourceId: patchData.resourceId } : {}),
-      ...(patchData.resourceTypeId !== undefined ? { resourceTypeId: patchData.resourceTypeId } : {}),
-      ...(patchData.quantity !== undefined ? { quantity: patchData.quantity } : {}),
-      ...(patchData.localProjectId !== undefined ? { localProjectId: patchData.localProjectId } : {}),
-      ...(patchData.sourceReferenceId !== undefined ? { sourceReferenceId: patchData.sourceReferenceId } : {}),
-      ...(patchData.startAt !== undefined ? { startAt: new Date(patchData.startAt) } : {}),
-      ...(patchData.endAt   !== undefined ? { endAt:   new Date(patchData.endAt)   } : {}),
-      ...(patchData.utilizationPercent !== undefined ? { utilizationPercent: patchData.utilizationPercent } : {}),
-      ...(patchData.status !== undefined ? { status: patchData.status } : {}),
-      ...(patchData.note !== undefined ? { note: patchData.note } : {}),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(resourceBookingsTable.id, bookingId), eq(resourceBookingsTable.nuOrgId, nuOrgId)))
-    .returning();
+  try {
+    const [updated] = await db.transaction(async (tx) => {
+      const serializesBookingState =
+        existing.status === "CONFIRMED" ||
+        patchData.status === "CONFIRMED" ||
+        patchData.status === "CANCELLED";
+      if (serializesBookingState) {
+        await lockAnConfirmedCapacity(tx, nuOrgId);
+        const [current] = await tx
+          .select({ status: resourceBookingsTable.status })
+          .from(resourceBookingsTable)
+          .where(and(
+            eq(resourceBookingsTable.id, bookingId),
+            eq(resourceBookingsTable.nuOrgId, nuOrgId),
+          ))
+          .limit(1);
+        if (!current) {
+          throw new CancelledBookingConcurrencyError();
+        }
+        if (current.status === "CANCELLED" && patchData.status !== "CANCELLED") {
+          throw new CancelledBookingConcurrencyError();
+        }
+      }
+      if ((patchData.status ?? existing.status) === "CONFIRMED") {
+        await assertConfirmedBookingCapacity(tx, {
+          nuOrgId,
+          resourceId: nextResourceId,
+          resourceTypeId: nextResourceTypeId!,
+          quantity: nextQuantity,
+          startAt: newStart,
+          endAt: newEnd,
+          utilizationPercent: patchData.utilizationPercent ?? existing.utilizationPercent,
+          excludeBookingId: bookingId,
+        });
+      }
+      return tx
+        .update(resourceBookingsTable)
+        .set({
+          ...(patchData.resourceId !== undefined ? { resourceId: patchData.resourceId } : {}),
+          ...(patchData.resourceTypeId !== undefined ? { resourceTypeId: patchData.resourceTypeId } : {}),
+          ...(patchData.quantity !== undefined ? { quantity: patchData.quantity } : {}),
+          ...(patchData.localProjectId !== undefined ? { localProjectId: patchData.localProjectId } : {}),
+          ...(patchData.sourceReferenceId !== undefined ? { sourceReferenceId: patchData.sourceReferenceId } : {}),
+          ...(patchData.startAt !== undefined ? { startAt: new Date(patchData.startAt) } : {}),
+          ...(patchData.endAt   !== undefined ? { endAt:   new Date(patchData.endAt)   } : {}),
+          ...(patchData.utilizationPercent !== undefined ? { utilizationPercent: patchData.utilizationPercent } : {}),
+          ...(patchData.status !== undefined ? { status: patchData.status } : {}),
+          ...(patchData.note !== undefined ? { note: patchData.note } : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(resourceBookingsTable.id, bookingId), eq(resourceBookingsTable.nuOrgId, nuOrgId)))
+        .returning();
+    });
 
-  res.status(200).json(updated);
+    res.status(200).json(updated);
+  } catch (error) {
+    if (
+      error instanceof ConfirmedBookingCapacityConflictError ||
+      error instanceof CancelledBookingConcurrencyError
+    ) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 // POST /api/nu/resource-bookings/:bookingId/cancel
@@ -779,28 +859,39 @@ router.post("/nu/resource-bookings/:bookingId/cancel", requireJwt, async (req, r
   const nuOrgId = (req.user as { orgId: string }).orgId;
   const bookingId = req.params.bookingId as string;
 
-  const [existing] = await db
-    .select()
-    .from(resourceBookingsTable)
-    .where(and(eq(resourceBookingsTable.id, bookingId), eq(resourceBookingsTable.nuOrgId, nuOrgId)))
-    .limit(1);
+  const cancelled = await db.transaction(async (tx) => {
+    // Cancellation must serialize with confirmed edits. If the edit wins the
+    // lock first, this update commits afterwards and remains the terminal state.
+    await lockAnConfirmedCapacity(tx, nuOrgId);
 
-  if (!existing) {
+    const [existing] = await tx
+      .select()
+      .from(resourceBookingsTable)
+      .where(and(
+        eq(resourceBookingsTable.id, bookingId),
+        eq(resourceBookingsTable.nuOrgId, nuOrgId),
+      ))
+      .limit(1);
+
+    if (!existing || existing.status === "CANCELLED") {
+      return existing ?? null;
+    }
+
+    const [updated] = await tx
+      .update(resourceBookingsTable)
+      .set({ status: "CANCELLED", updatedAt: new Date() })
+      .where(and(
+        eq(resourceBookingsTable.id, bookingId),
+        eq(resourceBookingsTable.nuOrgId, nuOrgId),
+      ))
+      .returning();
+    return updated ?? null;
+  });
+
+  if (!cancelled) {
     res.status(404).json({ error: "Booking not found" });
     return;
   }
-
-  if (existing.status === "CANCELLED") {
-    // Idempotent — already cancelled
-    res.status(200).json(existing);
-    return;
-  }
-
-  const [cancelled] = await db
-    .update(resourceBookingsTable)
-    .set({ status: "CANCELLED", updatedAt: new Date() })
-    .where(and(eq(resourceBookingsTable.id, bookingId), eq(resourceBookingsTable.nuOrgId, nuOrgId)))
-    .returning();
 
   res.status(200).json(cancelled);
 });
