@@ -39,6 +39,7 @@
 - [Atomic invitation delivery](atomic-invitation-delivery.md) — pre-created transactional outbox rows must allow the first delivery retry from PENDING.
 - [AN API namespace routing](an-api-namespace-routes.md) — AN fetch rewrites `/api/*` to `/api/an/*`; AN-facing handlers need an AN-subrouter mount.
 - [AN-local projections](an-local-projections.md) — AN request details, responses, availability and booking ownership must resolve from local projections, never AG planning tables.
+- [AN-local membership gate](an-membership-gate.md) — normal inbound SERVICE_REQUESTs require a matching accepted AN-local invitation with active projected membership before any projection writes.
 - [Wouter test router base](wouter-test-router-base.md) — use an empty test Router base for root-relative href assertions; slash bases can produce double-slash links.
 - [Shared test DB schema drift](shared-test-db-schema-drift.md) — project_memberships may lack additive ORM columns until the shared database is migrated.
 - [Inbound response attribution](inbound-response-attribution.md) — Dataspace AN responses retain external origin and receipt provenance, never an AG-local creator.
@@ -46,6 +47,7 @@
 - [Test data cleanup](test-data-cleanup.md) — database cleanup must run after the complete Vitest process, never in per-worker setup teardown.
 - [Policy template registry](policy-template-registry.md) — keep stable versioned policy templates in code and preserve the existing policy_templates Dataspace compatibility layer.
 - [Dataspace schedule changes](dataspace-schedule-changes.md) — AG commits bilateral schedule changes only after an AN Dataspace response; AN validates local projections and bookings.
+- [Stale schedule capacity outcomes](stale-schedule-capacity-outcomes.md) — AN capacity conflicts publish generic NO_CAPACITY outcomes; AG preserves its agreement and records the rejected proposal for a new window.
 - [External decision retry](external-decision-retry.md) — Tractus-X decisions retry from the persisted public envelope and never loop back through local inbound processing.
 - [AG public requirement boundary](ag-public-resource-requirements.md) — AG outbound coordination payloads derive requirements from immutable public snapshots, never AN catalog tables.
 - [Published display labels](published-display-labels.md) — business-facing AN labels must come from published Dataspace names; missing names use neutral text, never technical IDs.
@@ -60,6 +62,7 @@
 - [Independent data-offer responses](independent-data-offer-responses.md) — publication decisions use their own contract and never mutate project membership.
 - [Tractus-X access grants](tractusx-access-grants.md) — reuse only active, unexpired agreement/EDR pairs; a transfer ID alone is not data-plane authorization.
 - [Construct-X policy hierarchy](construct-x-policy-hierarchy.md) — resolve child policies against explicit inherited capabilities, not project-admission permissions.
+- [Project agreement scope backfill](project-agreement-scope-backfill.md) — historical accepted agreements need explicit valid child-purpose and field-scope arrays before coordination is allowed.
 - [Authenticated API caching](authenticated-api-cache.md) — protected worklists use no-store and no ETags so deleted or changed records cannot survive as stale 304 responses.
 - [Performance request child policies](performance-request-child-policies.md) — normal Leistungsanfragen inherit an accepted project agreement and never depend on DataOffer acceptance.
 - [Schedule-response retry identity](schedule-response-retry-identity.md) — root-addressed AN response retries must remain bound to the same schedule child after its terminal status transition.
@@ -70,4 +73,10 @@
 - [CI gate conclusions](ci-gate-conclusions.md) — required browser gates must reject skipped/flaky work and prove each project executed; discovery or retry-success is not release evidence.
 - [GitHub workflow API scope](github-workflow-api-scope.md) — workflow-file contents operations may need a scope the connected GitHub API does not expose.
 - [Shared policy contracts](shared-policy-contracts.md) — enforce security-sensitive policy input in the lowest shared service and every mounted alias; route-only checks are bypassable.
+- [AN schedule proposal phase](an-schedule-proposal-phase.md) — reopen the response phase only when a persisted response/agreement status accompanies an open bilateral proposal.
 - [Multi-recipient Parent Policies](multi-recipient-parent-policy-binding.md) — every AN in an atomic batch carries its own accepted Parent-Policy ID and version.
+- [Optional JSON outbox fields](optional-json-outbox.md) — omit undefined optional fields before comparing in-memory envelopes with JSONB outbox rows.
+- [Inbound membership compatibility](inbound-membership-compatibility.md) — known AN invitation projections must be accepted; projection-less legacy prepared flows remain compatible.
+- [Versioned policy baselines](versioned-policy-baselines.md) — current Parent-Policies declare their consent-free purpose; legacy versions keep the historical Leistungskoordination fallback.
+- [Migration role boundaries](migration-role-boundaries.md) — shared setup owns schema DDL; API-role repair services should perform conditional, idempotent data backfills.
+- [Booking cancellation concurrency](booking-cancellation-concurrency.md) — terminal cancellations share the AN capacity lock, and confirmed edits re-check state after acquiring it.
