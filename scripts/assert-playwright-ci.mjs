@@ -16,6 +16,8 @@ const projects = new Map(
   ]),
 );
 
+const failedTests = [];
+
 function visitSuite(suite) {
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests ?? []) {
@@ -50,7 +52,6 @@ function visitSuite(suite) {
 for (const suite of report.suites ?? []) visitSuite(suite);
 
 const failures = [];
-const failedTests = [];
 for (const [name, state] of projects) {
   if (state.discovered === 0) failures.push(`${name}: no tests discovered`);
   if (state.executed === 0) failures.push(`${name}: no tests executed`);
