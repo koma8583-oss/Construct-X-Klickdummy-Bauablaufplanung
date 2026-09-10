@@ -30,6 +30,18 @@ function visitSuite(suite) {
         results.every((result) => result.status === "skipped");
       if (skipped) state.skipped += 1;
       else state.executed += 1;
+      if (
+        test.status === "unexpected" ||
+        results.some((result) =>
+          result.status === "failed" || result.status === "timedOut",
+        )
+      ) {
+        failedTests.push(
+          [...(suite.title ? [suite.title] : []), spec.title, test.projectName]
+            .filter(Boolean)
+            .join(" › "),
+        );
+      }
     }
   }
   for (const child of suite.suites ?? []) visitSuite(child);
@@ -38,6 +50,7 @@ function visitSuite(suite) {
 for (const suite of report.suites ?? []) visitSuite(suite);
 
 const failures = [];
+const failedTests = [];
 for (const [name, state] of projects) {
   if (state.discovered === 0) failures.push(`${name}: no tests discovered`);
   if (state.executed === 0) failures.push(`${name}: no tests executed`);
@@ -54,6 +67,9 @@ if ((report.stats?.skipped ?? 0) > 0)
   failures.push(`${report.stats.skipped} skipped result(s)`);
 
 if (failures.length > 0) {
+  for (const test of failedTests) {
+    console.error(`::error::Playwright failed: ${test}`);
+  }
   throw new Error(
     `Required Playwright execution incomplete:\n- ${failures.join("\n- ")}`,
   );
