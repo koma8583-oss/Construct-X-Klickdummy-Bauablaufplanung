@@ -55,9 +55,14 @@ import {
   withCanonicalVersion,
 } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
-import { deliverLocalCoordinationDecision } from "./dataspace/local-dataspace-delivery";
+import {
+  deliverLocalCoordinationDecision,
+  retryLocalCoordinationDecision,
+} from "./dataspace/local-dataspace-delivery";
 import type { ExternalCoordinationDecision } from "./dataspace/external-contracts";
 import { enqueueHubMessageInTransaction } from "./hub-transport-service";
+import { getHubOutboxMessage } from "./hub-transport-service";
+import type { ExchangeReference } from "./dataspace/dataspace-exchange";
 
 const logger = pino({ name: "gu-decision-service" });
 
@@ -122,10 +127,46 @@ export interface GuDecisionResult {
   decision:       TaktResponseDecision;
   updatedRequest: TaktRequest;
   newTaktVersion: TaktVersion | null;
+  delivery:       GuDecisionDelivery;
   /** true when the idempotency key matched an existing identical decision */
   idempotent:     boolean;
   /** Parallel requests automatically cancelled after this exclusive selection. */
   autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string; requestVersion: number }>;
+}
+
+export interface GuDecisionDelivery {
+  status: "PENDING" | "DELIVERED" | "FAILED";
+  attemptCount: number | null;
+  lastAttemptAt: Date | null;
+  deliveredAt: Date | null;
+  failureReason: string | null;
+}
+
+function deliveryFromOutbox(
+  row: Awaited<ReturnType<typeof getHubOutboxMessage>>,
+): GuDecisionDelivery {
+  const status = row?.status === "DELIVERED"
+    ? "DELIVERED"
+    : row?.status === "FAILED"
+      ? "FAILED"
+      : "PENDING";
+  return {
+    status,
+    attemptCount: row?.attemptCount ?? null,
+    lastAttemptAt: row?.lastAttemptAt ?? null,
+    deliveredAt: row?.deliveredAt ?? null,
+    failureReason: row?.failureReason ?? null,
+  };
+}
+
+export async function getGuDecisionDelivery(
+  decisionId: string,
+  guOrgId: string,
+): Promise<GuDecisionDelivery> {
+  const row = await getHubOutboxMessage(`gu-decision-${decisionId}`, {
+    senderOrgId: guOrgId,
+  });
+  return deliveryFromOutbox(row);
 }
 
 function toPublicDecision(
@@ -248,6 +289,7 @@ export async function createGuDecision(
         decision: toPublicDecision(existingDecision, publicAcceptedAlternativeId),
         updatedRequest: withCanonicalTaktRequest(updatedRequest!),
         newTaktVersion: null,
+        delivery: await getGuDecisionDelivery(existingDecision.id, guOrgId),
         idempotent: true,
         autoCancelledRequests: [],
       };
@@ -528,8 +570,9 @@ export async function createGuDecision(
 
   // ── 9. Post-commit transport message to NU (Task 6.6) ─────────────────────
   // Fire-and-forget post-commit: transport failure does NOT roll back the decision.
+  let delivery: GuDecisionDelivery;
   try {
-    await sendGuDecisionMessage({
+    const deliveryReference = await sendGuDecisionMessage({
       decision:       result.decision,
       request,
       newTaktVersion: result.newTaktVersion,
@@ -537,10 +580,19 @@ export async function createGuDecision(
         ? { start: bookingStart.toISOString(), end: bookingEnd.toISOString() }
         : null,
     });
+    delivery = await getGuDecisionDelivery(result.decision.id, guOrgId);
+    if (deliveryReference.status === "FAILED" && delivery.status !== "FAILED") {
+      delivery = {
+        ...delivery,
+        status: "FAILED",
+        failureReason: deliveryReference.error?.message ?? delivery.failureReason,
+      };
+    }
   } catch (err) {
     // Transport failure is non-fatal — decision is already committed.
     // The outbox FAILED state allows retry later.
     logger.warn({ err, decisionId: result.decision.id }, "Transport message failed after GU decision commit");
+    delivery = await getGuDecisionDelivery(result.decision.id, guOrgId);
   }
 
   // Cancellation notices and audit events are post-commit by design. Their
@@ -579,8 +631,118 @@ export async function createGuDecision(
     newTaktVersion: result.newTaktVersion
       ? withCanonicalVersion(result.newTaktVersion)
       : null,
+    delivery,
     idempotent:     false,
     autoCancelledRequests: result.autoCancelledRequests,
+  };
+}
+
+export interface RetryGuDecisionDeliveryParams {
+  taktRequestId: string;
+  guOrgId: string;
+}
+
+export async function retryGuDecisionDelivery(
+  params: RetryGuDecisionDeliveryParams,
+): Promise<{
+  decision: TaktResponseDecision;
+  delivery: GuDecisionDelivery;
+}> {
+  const request = await getTaktRequestById(params.taktRequestId);
+  if (!request) {
+    throw new GuDecisionError("TaktRequest not found", 404);
+  }
+  if (request.guOrgId !== params.guOrgId) {
+    throw new GuDecisionError(
+      "Only the creating GU organisation may retry this TaktRequest delivery",
+      403,
+    );
+  }
+
+  const [decisionRow] = await db
+    .select()
+    .from(taktResponseDecisionsTable)
+    .where(eq(taktResponseDecisionsTable.taktRequestId, params.taktRequestId))
+    .limit(1);
+  if (!decisionRow) {
+    throw new GuDecisionError("No GU decision exists for this TaktRequest", 404);
+  }
+
+  const currentDelivery = await getGuDecisionDelivery(decisionRow.id, params.guOrgId);
+  if (currentDelivery.status !== "FAILED") {
+    throw new GuDecisionError(
+      `GU decision delivery cannot be retried while its status is ${currentDelivery.status}`,
+      409,
+    );
+  }
+
+  const [responseRow] = await db
+    .select()
+    .from(taktResponsesTable)
+    .where(eq(taktResponsesTable.id, decisionRow.responseId))
+    .limit(1);
+  if (!responseRow) {
+    throw new GuDecisionError("The response for this GU decision no longer exists", 404);
+  }
+
+  let acceptedAlternative: typeof taktResponseAlternativesTable.$inferSelect | null = null;
+  if (decisionRow.acceptedAlternativeId) {
+    [acceptedAlternative] = await db
+      .select()
+      .from(taktResponseAlternativesTable)
+      .where(eq(taktResponseAlternativesTable.id, decisionRow.acceptedAlternativeId))
+      .limit(1);
+  }
+
+  const publicAlternativeId = acceptedAlternative?.alternativeId ?? null;
+  const decision = toPublicDecision(decisionRow, publicAlternativeId);
+  const confirmedTimeWindow =
+    decision.decisionType === "CONFIRM_ACCEPTED" && responseRow.acceptedStart && responseRow.acceptedEnd
+      ? {
+          start: responseRow.acceptedStart.toISOString(),
+          end: responseRow.acceptedEnd.toISOString(),
+        }
+      : decision.decisionType === "ACCEPT_ALTERNATIVE" && acceptedAlternative
+        ? {
+            start: acceptedAlternative.proposedStart.toISOString(),
+            end: acceptedAlternative.proposedEnd.toISOString(),
+          }
+        : null;
+
+  // The exchange retry claims the already-persisted message. Reconstructing
+  // the typed envelope here is only for the local adapter's inbound handoff;
+  // that adapter replaces its public fields from the persisted outbox payload.
+  const payload = buildGuDecisionMessage({
+    decision,
+    request,
+    newTaktVersion: null,
+    confirmedTimeWindow,
+  });
+  if (!payload) {
+    throw new GuDecisionError("Could not rebuild the GU decision envelope", 409);
+  }
+  try {
+    await retryLocalCoordinationDecision(payload);
+  } catch (err) {
+    // A local inbound processor failure does not undo a technically delivered
+    // Dataspace retry. Keep the delivery result authoritative, matching the
+    // post-commit handling used by the initial decision send.
+    const deliveryAfterInboundFailure = await getGuDecisionDelivery(
+      decisionRow.id,
+      params.guOrgId,
+    );
+    if (deliveryAfterInboundFailure.status !== "DELIVERED") {
+      throw err;
+    }
+    logger.warn(
+      { err, decisionId: decisionRow.id },
+      "Retried GU decision delivered but local inbound processing failed",
+    );
+  }
+
+  return {
+    decision,
+    delivery: await getGuDecisionDelivery(decisionRow.id, params.guOrgId),
   };
 }
 
@@ -593,11 +755,12 @@ interface SendGuDecisionMessageParams {
   confirmedTimeWindow: { start: string; end: string } | null;
 }
 
-async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promise<void> {
+async function sendGuDecisionMessage(params: SendGuDecisionMessageParams): Promise<ExchangeReference> {
   const payload = buildGuDecisionMessage(params);
   if (payload) {
-    await deliverLocalCoordinationDecision(payload);
+    return deliverLocalCoordinationDecision(payload);
   }
+  throw new Error("Could not build GU decision transport envelope");
 }
 
 function coordinationMessageType(
