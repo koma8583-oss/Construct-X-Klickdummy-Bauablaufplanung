@@ -63,6 +63,12 @@ export interface TaktRequestDetailResponseAlt {
   proposedEnd: Date;
   crewSize: number | null;
   conditions: string[] | null;
+  resourceMix: Array<{
+    resourceClass: "CREW" | "EQUIPMENT";
+    quantity: number;
+    unit: string;
+    utilizationPercent: number;
+  }> | null;
 }
 
 export interface TaktRequestDetailResponse {
@@ -75,6 +81,14 @@ export interface TaktRequestDetailResponse {
   nextAvailableDate: string | null;
   createdAt: Date;
   alternatives: TaktRequestDetailResponseAlt[];
+}
+
+export interface TaktRequestDetailGuDecisionDelivery {
+  status: "PENDING" | "DELIVERED" | "FAILED";
+  attemptCount: number | null;
+  lastAttemptAt: Date | null;
+  deliveredAt: Date | null;
+  failureReason: string | null;
 }
 
 /** All timeline timestamps in one flat object — null = event not yet occurred / not tracked */
@@ -134,6 +148,7 @@ export interface TaktRequestDetail {
     decidedAt: Date;
     createdAt: Date;
     updatedRequestStatus: string;
+    delivery: TaktRequestDetailGuDecisionDelivery;
     idempotent: boolean;
     autoCancelledRequests: Array<{ id: string; nuOrgId: string; requestNumber: string }>;
   } | null;
@@ -259,10 +274,27 @@ export async function getTaktRequestDetailForGu(
       proposedEnd: a.proposedEnd,
       crewSize: a.crewSize ?? null,
       conditions: (a.conditions ?? null) as string[] | null,
+      resourceMix: (a.resourceMix ?? null) as TaktRequestDetailResponseAlt["resourceMix"],
     }));
   }
 
   const coordination = await getCoordination(requestId, guOrgId);
+  const decisionOutbox = row.guDecisionId
+    ? await getHubOutboxMessage(`gu-decision-${row.guDecisionId}`, {
+        senderOrgId: row.guOrgId,
+      })
+    : null;
+  const guDecisionDelivery: TaktRequestDetailGuDecisionDelivery = {
+    status: decisionOutbox?.status === "DELIVERED"
+      ? "DELIVERED"
+      : decisionOutbox?.status === "FAILED"
+        ? "FAILED"
+        : "PENDING",
+    attemptCount: decisionOutbox?.attemptCount ?? null,
+    lastAttemptAt: decisionOutbox?.lastAttemptAt ?? null,
+    deliveredAt: decisionOutbox?.deliveredAt ?? null,
+    failureReason: decisionOutbox?.failureReason ?? null,
+  };
   const guDecisionPublicAlternativeId = alternatives.find(
     (alternative) => alternative.id === row.guDecisionAcceptedAlternativeId,
   )?.alternativeId ?? row.guDecisionAcceptedAlternativeId;
@@ -327,6 +359,7 @@ export async function getTaktRequestDetailForGu(
           decidedAt: row.guDecisionDecidedAt!,
           createdAt: row.guDecisionCreatedAt!,
           updatedRequestStatus: row.guDecisionUpdatedRequestStatus as string,
+          delivery: guDecisionDelivery,
           idempotent: false,
           autoCancelledRequests: [],
         }
