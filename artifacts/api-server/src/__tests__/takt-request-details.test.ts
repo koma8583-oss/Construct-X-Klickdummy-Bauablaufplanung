@@ -35,6 +35,7 @@ import {
   dataPublicationsTable,
   dataPublicationRecipientsTable,
   policyTemplatesTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import app from "../app";
@@ -121,6 +122,8 @@ beforeAll(async () => {
       validUntil: null,
       childPolicyTypes: ["PERFORMANCE_REQUEST"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+      allowedPurposes: ["LEISTUNGSKOORDINATION"],
+      allowedFieldScope: ["workPackage", "plannedTimeWindow", "resourceRequirements"],
     },
   }).onConflictDoNothing();
   await db.insert(projectMembershipsTable).values({
@@ -132,6 +135,27 @@ beforeAll(async () => {
     invitationId: "t38-invitation",
     correlationId: "t38-correlation",
     projectAgreementPolicyId: PROJECT_AGREEMENT_ID,
+  }).onConflictDoNothing();
+  await anDb.insert(anProjectInvitationsTable).values({
+    id: "t38-an-invitation",
+    invitationId: "t38-invitation",
+    correlationId: "t38-an-invitation-correlation",
+    senderAgOrgId: GU_ORG,
+    senderAgOrgName: "T38 GU",
+    receiverAnOrgId: NU_ORG,
+    projectReference: PROJECT_ID,
+    projectName: "T38 Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["plannedTimeWindow", "workPackage"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
   }).onConflictDoNothing();
 
   // Takt (version 1)
