@@ -5,6 +5,7 @@
  * Construction Service Coordination API – bilateral coordination between clients (AG) and subcontractors (AN)
  * OpenAPI spec version: 0.2.0
  */
+import type { TaktRequestDetailResponseAltResourceMixItem } from './taktRequestDetailResponseAltResourceMixItem';
 
 export interface TaktRequestDetailResponseAlt {
   /** Row UUID of the takt_response_alternatives row. Use this value as acceptedAlternativeId when submitting an ACCEPT_ALTERNATIVE GU decision. */
@@ -16,4 +17,9 @@ export interface TaktRequestDetailResponseAlt {
   proposedEnd: Date;
   crewSize?: number | null;
   conditions?: string[] | null;
+  /**
+     * Public capacity aggregates only; contains no concrete resource, booking, or project identifiers.
+     * @maxItems 10
+     */
+  resourceMix?: TaktRequestDetailResponseAltResourceMixItem[];
 }
