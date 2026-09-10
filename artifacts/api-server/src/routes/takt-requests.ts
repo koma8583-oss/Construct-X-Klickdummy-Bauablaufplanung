@@ -64,6 +64,7 @@ import {
 } from "../lib/takt-request-snapshot-service";
 import { createPolicySnapshot } from "../services/policy-snapshot-service";
 import { resolvePolicyDelta } from "../services/construct-x-policy-service";
+import { hasExplicitLeistungsfreigabeScope } from "../lib/leistungsfreigabe-policy";
 import {
   getTaktResponseWithAlternatives,
   TaktResponseValidationError,
@@ -96,6 +97,7 @@ import {
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
   createGuDecision,
+  retryGuDecisionDelivery,
   GuDecisionError,
   GuDecisionIdempotencyConflict,
   VersionConflictError,
@@ -508,6 +510,21 @@ router.post("/leistungsanfragen/policy-preview", requireJwt, requireRole("AG_ADM
       if (!agreement || agreement.id !== parsed.data.parentPolicyId || agreement.version !== parsed.data.parentPolicyVersion) {
         return { taktId, deltaClass: "NOT_PERMITTED" as const, error: "Die ausgewählte Projektvereinbarung wurde geändert. Bitte prüfen Sie die Freigabe erneut.", inheritedEffectivePolicy: null, diff: { changed: [], summary: ["Die ausgewählte Projektvereinbarung ist nicht mehr gültig."] } };
       }
+      if (
+        agreement.lifecycleStatus !== "ACCEPTED" ||
+        !hasExplicitLeistungsfreigabeScope(agreement.effectivePolicy)
+      ) {
+        return {
+          taktId,
+          deltaClass: "NOT_PERMITTED" as const,
+          error: "Die Projektvereinbarung enthält keinen expliziten Zweck- und Datenfeldumfang. Bitte führen Sie zuerst das Policy-Backfill aus.",
+          inheritedEffectivePolicy: null,
+          diff: {
+            changed: [],
+            summary: ["Die Projektvereinbarung ist für Leistungsfreigaben nicht vollständig definiert."],
+          },
+        };
+      }
       const base = createPolicySnapshot({
         templateId: purpose === "RAHMENTERMINE" ? "SCHEDULE_COORDINATION" : "PERFORMANCE_COORDINATION",
         providerContext: { organizationId: guOrgId, userId: req.user!.userId!, organizationType: "AG" },
@@ -838,12 +855,12 @@ router.post(["/takt-requests/batch", "/leistungsanfragen/batch"], requireJwt, re
       nuOrgId: z.string().min(1),
       parentPolicyId: z.string().min(1),
       parentPolicyVersion: z.number().int().positive(),
+      purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
+      selectedFields: z.array(z.string().min(1)).min(1),
     })).min(1).max(50),
     responseRequiredBy: z.string().datetime({ offset: true }).optional(),
     subject: z.string().max(255).optional(),
     message: z.string().max(2000).optional(),
-    purpose: z.enum(["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"]),
-    selectedFields: z.array(z.string().min(1)).min(1),
   }).safeParse(req.body);
 
   if (!parsed.success) {
@@ -1154,6 +1171,7 @@ router.post(
         plannedEnd: plannedTimeWindow.end,
         senderOrgId: guOrgId,
         senderOrganizationName: senderOrganization[0]?.name,
+        senderUserId: req.user?.userId,
         receiverOrgId: existing.nuOrgId,
         correlationId: id,
         messageId: notificationMessageId(id),
@@ -1634,7 +1652,13 @@ router.post(
       proposedEnd:   z.string().datetime({ offset: true }),
       crewSize:      z.number().int().min(1).optional(),
       conditions:    z.array(z.string()).optional(),
-    });
+      resourceMix:   z.array(z.object({
+        resourceClass: z.enum(["CREW", "EQUIPMENT"]),
+        quantity: z.number().finite().positive(),
+        unit: z.string().trim().min(1).max(40),
+        utilizationPercent: z.number().finite().min(0).max(100),
+      }).strict()).max(10).optional(),
+    }).strict();
 
     const schema = z.object({
       decision:          z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
@@ -1646,7 +1670,7 @@ router.post(
       acceptedEnd:       z.string().datetime({ offset: true }).optional(),
       nextAvailableDate: z.string().optional(),
       alternatives:      z.array(alternativeSchema).max(3).optional(),
-    });
+    }).strict();
 
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1675,6 +1699,7 @@ router.post(
       timeWindow:    { start: alt.proposedStart, end: alt.proposedEnd },
       crewSize:      alt.crewSize,
       conditions:    alt.conditions,
+      resourceMix:   alt.resourceMix,
     }));
 
     // ── 5. Store the response only in the AN context ────────────────────────
@@ -1775,7 +1800,13 @@ router.post(
       timeWindow:    z.object({ start: z.string().min(1), end: z.string().min(1) }),
       crewSize:      z.number().int().min(1).optional(),
       conditions:    z.array(z.string()).optional(),
-    });
+      resourceMix:   z.array(z.object({
+        resourceClass: z.enum(["CREW", "EQUIPMENT"]),
+        quantity: z.number().finite().positive(),
+        unit: z.string().trim().min(1).max(40),
+        utilizationPercent: z.number().finite().min(0).max(100),
+      }).strict()).max(10).optional(),
+    }).strict();
 
     const bodySchema = z.object({
       decision:          z.enum(["ACCEPTED", "ALTERNATIVES_PROPOSED", "REJECTED"]),
@@ -1786,7 +1817,7 @@ router.post(
       comment:           z.string().max(2000).optional(),
       alternatives:      z.array(alternativeSchema).max(3).optional(),
       nextAvailableDate: z.string().optional(),
-    });
+    }).strict();
 
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1858,6 +1889,7 @@ router.post(
         timeWindow:    { start: a.proposedStart.toISOString(), end: a.proposedEnd.toISOString() },
         crewSize:      a.crewSize   ?? null,
         conditions:    a.conditions ?? null,
+        resourceMix:   a.resourceMix ?? null,
       })),
       nextAvailableDate:   result.response.nextAvailableDate ?? null,
       transportStatus:     transportResult.status,
@@ -2058,6 +2090,7 @@ router.post(
         updatedRequestStatus:    updatedRequest.status,
         newTaktVersion:          newTaktVersion?.version ?? null,
         newTaktVersionId:        newTaktVersion?.id      ?? null,
+        delivery:                result.delivery,
         idempotent,
         autoCancelledRequests:   result.autoCancelledRequests,
       });
@@ -2076,6 +2109,39 @@ router.post(
       }
       if (err instanceof TaktRequestTransitionError) {
         res.status(409).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// ── POST /takt-requests/:id/gu-decisions/delivery/retry ─────────────────────
+// Retries only the persisted Dataspace envelope for the immutable decision.
+router.post(
+  "/takt-requests/:id/gu-decisions/delivery/retry",
+  requireJwt,
+  async (req, res): Promise<void> => {
+    const user = req.user!;
+    const id = req.params.id as string;
+    if (user.hubAdmin || !user.orgId || user.orgType !== "AG") {
+      res.status(403).json({ error: "Only the creating GU organisation may retry this delivery" });
+      return;
+    }
+
+    try {
+      const result = await retryGuDecisionDelivery({
+        taktRequestId: id,
+        guOrgId: user.orgId,
+      });
+      res.json({
+        decisionId: result.decision.id,
+        taktRequestId: result.decision.taktRequestId,
+        delivery: result.delivery,
+      });
+    } catch (err) {
+      if (err instanceof GuDecisionError) {
+        res.status(err.statusCode).json({ error: err.message });
         return;
       }
       throw err;
