@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle, Info, Loader2, Send, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,9 +14,9 @@ export type LeistungVergabeSubmitValues = {
     nuOrgId: string;
     parentPolicyId: string;
     parentPolicyVersion: number;
+    purpose: LeistungsfreigabePurpose;
+    selectedFields: string[];
   }>;
-  purpose: LeistungsfreigabePurpose;
-  selectedFields: string[];
   message?: string;
   responseRequiredBy?: string;
 };
@@ -56,6 +56,11 @@ type PreviewItem = {
   diff?: { summary?: string[] };
 };
 
+type RecipientSelection = {
+  purpose: LeistungsfreigabePurpose | '';
+  selectedFields: string[];
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -78,31 +83,50 @@ export function LeistungVergabeDialog({
   onSubmit,
 }: Props) {
   const [selectedNuIds, setSelectedNuIds] = useState<string[]>([]);
-  const [purpose, setPurpose] = useState<LeistungsfreigabePurpose | ''>('');
-  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [recipientSelections, setRecipientSelections] = useState<Record<string, RecipientSelection>>({});
   const [message, setMessage] = useState('');
   const [responseRequiredBy, setResponseRequiredBy] = useState('');
   const [responseRequiredByError, setResponseRequiredByError] = useState('');
-  const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+  const [preview, setPreview] = useState<Record<string, PreviewItem> | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const selectedPartners = partners.filter((partner) => selectedNuIds.includes(partner.anOrgId));
-  const availablePurposes = PURPOSES.filter((item) => selectedPartners.every((partner) => {
+
+  const hasExplicitScope = (partner: VergabePartner) => {
     const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
-    return !Array.isArray(effectivePolicy.allowedPurposes) || effectivePolicy.allowedPurposes.includes(item.value);
-  }));
-  const allowedFields = useMemo(() => purpose
-    ? PURPOSE_FIELDS[purpose].filter((field) => selectedPartners.every((partner) => {
+    return Array.isArray(effectivePolicy.allowedPurposes) &&
+      effectivePolicy.allowedPurposes.every((purpose) => typeof purpose === 'string') &&
+      Array.isArray(effectivePolicy.allowedFieldScope) &&
+      effectivePolicy.allowedFieldScope.every((field) => typeof field === 'string');
+  };
+
+  const availablePurposes = (partner: VergabePartner) => PURPOSES.filter((item) => {
+    if (!hasExplicitScope(partner)) return false;
+    const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
+    return (effectivePolicy.allowedPurposes as string[]).includes(item.value);
+  });
+
+  const allowedFields = (partner: VergabePartner, purpose: LeistungsfreigabePurpose | '') => purpose
+    ? PURPOSE_FIELDS[purpose].filter((field) => {
+      if (!hasExplicitScope(partner)) return false;
       const effectivePolicy = (partner.parentAgreement?.effectivePolicy ?? {}) as Record<string, unknown>;
-      return !Array.isArray(effectivePolicy.allowedFieldScope) || effectivePolicy.allowedFieldScope.includes(field);
-    }))
-    : [], [purpose, selectedPartners]);
+      return (effectivePolicy.allowedFieldScope as string[]).includes(field);
+    })
+    : [];
+
+  const selectionFor = (partner: VergabePartner): RecipientSelection =>
+    recipientSelections[partner.anOrgId] ?? { purpose: '', selectedFields: [] };
+
+  const updateRecipientSelection = (nuOrgId: string, selection: RecipientSelection) => {
+    setRecipientSelections((current) => ({ ...current, [nuOrgId]: selection }));
+    setPreview(null);
+    setPreviewError('');
+  };
 
   useEffect(() => {
     if (!open) {
       setSelectedNuIds([]);
-      setPurpose('');
-      setSelectedFields([]);
+      setRecipientSelections({});
       setPreview(null);
       setPreviewError('');
       setMessage('');
@@ -112,31 +136,44 @@ export function LeistungVergabeDialog({
     }
   }, [open]);
 
-  useEffect(() => {
-    setPurpose('');
-    setSelectedFields([]);
-    setPreview(null);
+  const handleRecipientToggle = (partner: VergabePartner, checked: boolean) => {
+    if (checked) {
+      const defaults = availablePurposes(partner);
+      const purpose = defaults[0]?.value ?? '';
+      setSelectedNuIds((current) => [...new Set([...current, partner.anOrgId])]);
+      setRecipientSelections((current) => ({
+        ...current,
+        [partner.anOrgId]: {
+          purpose,
+          selectedFields: purpose ? allowedFields(partner, purpose) : [],
+        },
+      }));
+    } else {
+      setSelectedNuIds((current) => current.filter((id) => id !== partner.anOrgId));
+      setRecipientSelections((current) => {
+        const next = { ...current };
+        delete next[partner.anOrgId];
+        return next;
+      });
+      setPreview(null);
+    }
     setPreviewError('');
-  }, [selectedNuIds]);
-
-  useEffect(() => {
-    setSelectedFields([...allowedFields]);
-    setPreview(null);
-    setPreviewError('');
-  }, [purpose]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    setPreview(null);
-    setPreviewError('');
-  }, [selectedFields, selectedNuIds]);
+  };
 
   const createPreview = async (): Promise<boolean> => {
-    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return false;
+    if (
+      selectedPartners.length === 0 ||
+      selectedPartners.some((partner) => {
+        const selection = selectionFor(partner);
+        return !selection.purpose || selection.selectedFields.length === 0;
+      })
+    ) return false;
     setPreviewing(true);
     setPreviewError('');
     try {
-      const items = await Promise.all(selectedPartners.map(async (partner) => {
+      const entries = await Promise.all(selectedPartners.map(async (partner) => {
         const parentPolicy = partner.parentAgreement!;
+        const selection = selectionFor(partner);
         const response = await fetch('/api/leistungsanfragen/policy-preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -144,8 +181,8 @@ export function LeistungVergabeDialog({
           body: JSON.stringify({
             taktIds: [taktId],
             nuOrgId: partner.anOrgId,
-            purpose,
-            selectedFields,
+            purpose: selection.purpose,
+            selectedFields: selection.selectedFields,
             parentPolicyId: parentPolicy.id,
             parentPolicyVersion: parentPolicy.version,
           }),
@@ -153,10 +190,11 @@ export function LeistungVergabeDialog({
         const body = await response.json().catch(() => ({})) as { items?: PreviewItem[]; error?: string };
         const item = body.items?.[0];
         if (!response.ok || !item) throw new Error(`${partner.label}: ${body.error || 'Policy-Vorschau konnte nicht erstellt werden.'}`);
-        return item;
+        return [partner.anOrgId, item] as const;
       }));
+      const items = Object.fromEntries(entries);
       setPreview(items);
-      return items.every((item) => item.deltaClass !== 'NOT_PERMITTED');
+      return Object.values(items).every((item) => item.deltaClass !== 'NOT_PERMITTED');
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : 'Policy-Vorschau konnte nicht erstellt werden.');
       return false;
@@ -167,7 +205,13 @@ export function LeistungVergabeDialog({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (selectedPartners.length === 0 || !purpose || selectedFields.length === 0) return;
+    if (
+      selectedPartners.length === 0 ||
+      selectedPartners.some((partner) => {
+        const selection = selectionFor(partner);
+        return !selection.purpose || selection.selectedFields.length === 0;
+      })
+    ) return;
     if (responseRequiredBy) {
       const deadline = new Date(responseRequiredBy);
       const minimum = new Date(Date.now() + 60 * 60 * 1000);
@@ -177,15 +221,20 @@ export function LeistungVergabeDialog({
       }
     }
     if (!preview && !(await createPreview())) return;
-    if (preview?.some((item) => item.deltaClass === 'NOT_PERMITTED')) return;
+    if (preview && Object.values(preview).some((item) => item.deltaClass === 'NOT_PERMITTED')) return;
     await onSubmit({
       recipients: selectedPartners.map((partner) => ({
+        ...(() => {
+          const selection = selectionFor(partner);
+          return {
+            purpose: selection.purpose as LeistungsfreigabePurpose,
+            selectedFields: selection.selectedFields,
+          };
+        })(),
         nuOrgId: partner.anOrgId,
         parentPolicyId: partner.parentAgreement!.id,
         parentPolicyVersion: partner.parentAgreement!.version,
       })),
-      purpose,
-      selectedFields,
       message: message.trim() || undefined,
       responseRequiredBy: responseRequiredBy || undefined,
     });
@@ -234,13 +283,16 @@ export function LeistungVergabeDialog({
                   <label key={partner.anOrgId} className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
                     <Checkbox
                       checked={selectedNuIds.includes(partner.anOrgId)}
-                      disabled={!partner.parentAgreement}
-                      onCheckedChange={(checked) => setSelectedNuIds((current) => checked
-                        ? [...new Set([...current, partner.anOrgId])]
-                        : current.filter((id) => id !== partner.anOrgId))}
+                      disabled={!partner.parentAgreement || !hasExplicitScope(partner)}
+                      onCheckedChange={(checked) => handleRecipientToggle(partner, checked === true)}
                     />
-                    <span className={!partner.parentAgreement ? 'text-muted-foreground' : ''}>
-                      {partner.label}{!partner.parentAgreement ? ' · keine akzeptierte Projektvereinbarung' : ''}
+                    <span className={!partner.parentAgreement || !hasExplicitScope(partner) ? 'text-muted-foreground' : ''}>
+                      {partner.label}
+                      {!partner.parentAgreement
+                        ? ' · keine akzeptierte Projektvereinbarung'
+                        : !hasExplicitScope(partner)
+                          ? ' · Policy-Scope muss zuerst backgefüllt werden'
+                          : ''}
                     </span>
                   </label>
                 ))}
@@ -253,102 +305,130 @@ export function LeistungVergabeDialog({
             )}
           </div>
 
-          <div className="space-y-2">
-             <Label>Fachlicher Zweck *</Label>
-            {selectedNuIds.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Bitte zuerst mindestens ein Nachunternehmen auswählen.</p>
-            ) : availablePurposes.length === 0 ? (
-             <p className="text-sm text-destructive">Die akzeptierte Projektvereinbarung erlaubt keinen unterstützten Leistungszweck.</p>
-            ) : (
-              <>
-                <Select
-                  value={purpose}
-                  onValueChange={(value) => setPurpose(value as LeistungsfreigabePurpose)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Policy auswählen…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                     {availablePurposes.map((item) => (
-                       <SelectItem key={item.value} value={item.value}>
-                         {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                    {selectedPartners.length === 1
-                      ? `Parent-Policy: ${selectedPartners[0].parentAgreement?.id} · Version ${selectedPartners[0].parentAgreement?.version}`
-                      : `${selectedPartners.length} empfängerbezogene Parent-Policies`}
-                </p>
-              </>
-            )}
-          </div>
-
-          <div className="space-y-2">
-             <div className="flex items-center justify-between">
-             <Label>Freizugebende Leistungsdaten *</Label>
-               <button
-                 type="button"
-                 className="text-xs text-primary hover:underline"
-                 onClick={() => setSelectedFields(
-                   selectedFields.length === allowedFields.length ? [] : [...allowedFields],
-                 )}
-               >
-                 {selectedFields.length === allowedFields.length ? 'Alle abwählen' : 'Alle wählen'}
-               </button>
-             </div>
-             <p className="text-xs text-muted-foreground">
-               Die Auswahl betrifft nur die Leistungsfreigabe. Interne Angaben wie Kosten, Risiko, Priorität und Notizen bleiben immer ausgeschlossen.
-             </p>
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {purpose && allowedFields.length === 0 ? (
-                  <p className="text-sm text-destructive">Für diesen Zweck erlaubt die Parent-Policy keine freigebbaren Leistungsfelder.</p>
-                ) : (
-                  <div className="rounded-md border overflow-hidden">
-                    <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
-                      {allowedFields.map((field) => (
-                       <label key={field} className="flex items-center gap-2 py-1 text-sm">
-                         <Checkbox
-                           checked={selectedFields.includes(field)}
-                           onCheckedChange={(checked) => setSelectedFields((current) => (
-                             checked
-                               ? [...new Set([...current, field])]
-                               : current.filter((item) => item !== field)
-                           ))}
-                         />
-                         <span>{FIELD_LABELS[field] ?? field}</span>
-                       </label>
-                     ))}
-                    </div>
-                  </div>
-                )}
-             </div>
-             {selectedFields.length === 0 && (
-               <p className="flex items-center gap-1 text-xs text-destructive">
-                 <AlertCircle className="h-3 w-3" /> Mindestens ein Datenfeld muss freigegeben werden.
-               </p>
-             )}
-          </div>
-          {purpose && selectedFields.length > 0 && (
-            <div className="space-y-2 rounded-md border p-3 text-sm" data-testid="policy-preview">
+          {selectedPartners.length > 0 && (
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="font-medium">Konkrete Child-Policy</span>
+                <Label>Empfängerbezogene Freigaben *</Label>
+                <span className="text-xs text-muted-foreground">Zweck und Felder je Empfänger</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Jede Zeile wird mit der akzeptierten Parent-Policy des jeweiligen Nachunternehmens geprüft und versendet.
+              </p>
+              {selectedPartners.map((partner) => {
+                const selection = selectionFor(partner);
+                const recipientPurposes = availablePurposes(partner);
+                const recipientFields = allowedFields(partner, selection.purpose);
+                const recipientPreview = preview?.[partner.anOrgId];
+                return (
+                  <div key={partner.anOrgId} className="space-y-3 rounded-md border p-3" data-testid={`recipient-config-${partner.anOrgId}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{partner.label}</p>
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Info className="h-3 w-3" />
+                          Parent-Policy: {partner.parentAgreement?.id} · Version {partner.parentAgreement?.version}
+                        </p>
+                      </div>
+                      {recipientPreview && (
+                        <span className={recipientPreview.deltaClass === 'NOT_PERMITTED' ? 'text-xs text-destructive' : 'text-xs text-emerald-700'}>
+                          {recipientPreview.deltaClass}
+                        </span>
+                      )}
+                    </div>
+                    {recipientPurposes.length === 0 ? (
+                      <p className="text-sm text-destructive">
+                        {!hasExplicitScope(partner)
+                          ? 'Diese Parent-Policy enthält noch keinen expliziten Zweck- und Datenfeldumfang.'
+                          : 'Diese Parent-Policy erlaubt keinen unterstützten Leistungszweck.'}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor={`purpose-${partner.anOrgId}`}>Fachlicher Zweck *</Label>
+                          <Select
+                            value={selection.purpose}
+                            onValueChange={(value) => {
+                              const purpose = value as LeistungsfreigabePurpose;
+                              updateRecipientSelection(partner.anOrgId, {
+                                purpose,
+                                selectedFields: allowedFields(partner, purpose),
+                              });
+                            }}
+                          >
+                            <SelectTrigger id={`purpose-${partner.anOrgId}`} aria-label={`Fachlicher Zweck für ${partner.label}`}>
+                              <SelectValue placeholder="Zweck auswählen…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {recipientPurposes.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>Freizugebende Leistungsdaten *</Label>
+                            <button
+                              type="button"
+                              className="text-xs text-primary hover:underline"
+                              onClick={() => updateRecipientSelection(partner.anOrgId, {
+                                ...selection,
+                                selectedFields: selection.selectedFields.length === recipientFields.length ? [] : [...recipientFields],
+                              })}
+                            >
+                              {selection.selectedFields.length === recipientFields.length ? 'Alle abwählen' : 'Alle wählen'}
+                            </button>
+                          </div>
+                          <div className="rounded-md border overflow-hidden">
+                            <div className="grid grid-cols-2 gap-x-3 px-3 py-2">
+                              {recipientFields.map((field) => (
+                                <label key={field} className="flex items-center gap-2 py-1 text-sm">
+                                  <Checkbox
+                                    checked={selection.selectedFields.includes(field)}
+                                    onCheckedChange={(checked) => updateRecipientSelection(partner.anOrgId, {
+                                      ...selection,
+                                      selectedFields: checked
+                                        ? [...new Set([...selection.selectedFields, field])]
+                                        : selection.selectedFields.filter((item) => item !== field),
+                                    })}
+                                  />
+                                  <span>{FIELD_LABELS[field] ?? field}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          {selection.selectedFields.length === 0 && (
+                            <p className="flex items-center gap-1 text-xs text-destructive">
+                              <AlertCircle className="h-3 w-3" /> Mindestens ein Datenfeld muss freigegeben werden.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex justify-end">
                 <Button type="button" size="sm" variant="outline" onClick={createPreview} disabled={previewing}>
                   {previewing && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
                   Vorschau prüfen
                 </Button>
               </div>
-               {preview && (
-                 <p className={preview.some((item) => item.deltaClass === 'NOT_PERMITTED') ? 'text-destructive' : 'text-emerald-700'}>
-                   {preview.every((item) => item.deltaClass === 'WITHIN_BASELINE')
-                     ? 'WITHIN_BASELINE'
-                     : `${preview.length} Parent-Policies geprüft`}
-                 </p>
-               )}
-               {preview?.flatMap((item) => item.diff?.summary ?? []).map((summary, index) => <p key={`${summary}-${index}`} className="text-xs text-muted-foreground">{summary}</p>)}
-               {(preview?.find((item) => item.error)?.error || previewError) && <p className="text-xs text-destructive">{preview?.find((item) => item.error)?.error || previewError}</p>}
+              {preview && (
+                <div className="space-y-1 rounded-md border p-3 text-sm" data-testid="policy-preview">
+                  <p className={Object.values(preview).some((item) => item.deltaClass === 'NOT_PERMITTED') ? 'text-destructive' : 'text-emerald-700'}>
+                    {Object.values(preview).every((item) => item.deltaClass === 'WITHIN_BASELINE')
+                      ? 'WITHIN_BASELINE'
+                      : `${Object.keys(preview).length} Parent-Policies geprüft`}
+                  </p>
+                  {Object.entries(preview).flatMap(([nuOrgId, item]) =>
+                    (item.diff?.summary ?? []).map((summary, index) => (
+                      <p key={`${nuOrgId}-${summary}-${index}`} className="text-xs text-muted-foreground">{summary}</p>
+                    )),
+                  )}
+                </div>
+              )}
+              {previewError && <p className="text-xs text-destructive">{previewError}</p>}
             </div>
           )}
 
@@ -380,7 +460,17 @@ export function LeistungVergabeDialog({
           <Button
             type="submit"
             form="leistung-vergabe-form"
-              disabled={isSubmitting || previewing || selectedNuIds.length === 0 || !purpose || selectedFields.length === 0 || preview?.some((item) => item.deltaClass === 'NOT_PERMITTED') || !!responseRequiredByError}
+              disabled={
+                isSubmitting ||
+                previewing ||
+                selectedPartners.length === 0 ||
+                selectedPartners.some((partner) => {
+                  const selection = selectionFor(partner);
+                  return !selection.purpose || selection.selectedFields.length === 0;
+                }) ||
+                (preview != null && Object.values(preview).some((item) => item.deltaClass === 'NOT_PERMITTED')) ||
+                !!responseRequiredByError
+              }
           >
             <Send className="mr-2 h-4 w-4" />
             {isSubmitting ? 'Vergabe läuft…' : 'Vergeben'}
