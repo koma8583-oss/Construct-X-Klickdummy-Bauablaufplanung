@@ -10,9 +10,6 @@ import jwt from "jsonwebtoken";
 import { sql, and, eq, inArray, or } from "drizzle-orm";
 import app from "../app";
 import {
-  agDb as db,
-  anDb,
-  hubDb,
   organizationsTable,
   usersTable,
   projectsTable,
@@ -33,7 +30,9 @@ import {
   anAvailabilityChecksTable,
   anLeistungsantwortAlternativenTable,
   anLeistungsantwortenTable,
+  anProjectInvitationsTable,
 } from "@workspace/db";
+import { buildAgFixture, buildAnFixture, buildHubFixture } from "./fixtures";
 
 const PREFIX = "independent-ag-an";
 const AG = `${PREFIX}-ag`;
@@ -63,86 +62,113 @@ const token = (userId: string, orgId: string, orgType: "AG" | "AN") =>
 
 const agToken = token(AG_USER, AG, "AG");
 const anToken = token(AN_USER, AN, "AN");
+const agFixture = buildAgFixture({
+  prefix: PREFIX,
+  organizationIds: [AG, AN],
+  userIds: [AG_USER, AN_USER],
+});
+const anFixture = buildAnFixture({
+  prefix: PREFIX,
+  organizationIds: [AN],
+});
+const hubFixture = buildHubFixture({
+  prefix: PREFIX,
+  organizationIds: [AG, AN],
+});
+const agDatabase = agFixture.database;
+const anDatabase = anFixture.database;
+const hubDatabase = hubFixture.database;
 
 async function cleanup() {
-  const localRequests = await anDb.select({ id: anLeistungsanfragenTable.id })
+  const localRequests = await anDatabase.select({ id: anLeistungsanfragenTable.id })
     .from(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, AN));
   const localRequestIds = localRequests.map(({ id }) => id);
   if (localRequestIds.length) {
-    await anDb.delete(anAvailabilityChecksTable)
+    await anDatabase.delete(anAvailabilityChecksTable)
       .where(inArray(anAvailabilityChecksTable.anLeistungsanfrageId, localRequestIds));
-    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDatabase.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(inArray(anLeistungsantwortenTable.anLeistungsanfrageId, localRequestIds));
     const localResponseIds = localResponses.map(({ id }) => id);
     if (localResponseIds.length) {
-      await anDb.delete(anLeistungsantwortAlternativenTable)
+      await anDatabase.delete(anLeistungsantwortAlternativenTable)
         .where(inArray(anLeistungsantwortAlternativenTable.responseId, localResponseIds));
-      await anDb.delete(anLeistungsantwortenTable)
+      await anDatabase.delete(anLeistungsantwortenTable)
         .where(inArray(anLeistungsantwortenTable.id, localResponseIds));
     }
-    await anDb.delete(anLeistungsanfragenTable)
+    await anDatabase.delete(anLeistungsanfragenTable)
       .where(inArray(anLeistungsanfragenTable.id, localRequestIds));
   }
-  const requests = await db.select({ id: taktRequestsTable.id })
+  const requests = await agDatabase.select({ id: taktRequestsTable.id })
     .from(taktRequestsTable).where(eq(taktRequestsTable.taktId, TAKT));
   const requestIds = requests.map(({ id }) => id);
   if (requestIds.length) {
-    const responses = await db.select({ id: taktResponsesTable.id })
+    const responses = await agDatabase.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(inArray(taktResponsesTable.taktRequestId, requestIds));
     const responseIds = responses.map(({ id }) => id);
-    await db.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
-    await db.delete(taktResponseDecisionsTable).where(inArray(taktResponseDecisionsTable.taktRequestId, requestIds));
+    await agDatabase.delete(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
+    await agDatabase.delete(taktResponseDecisionsTable).where(inArray(taktResponseDecisionsTable.taktRequestId, requestIds));
     if (responseIds.length) {
-      await db.delete(taktResponseAlternativesTable).where(inArray(taktResponseAlternativesTable.responseId, responseIds));
-      await db.delete(taktResponsesTable).where(inArray(taktResponsesTable.id, responseIds));
+      await agDatabase.delete(taktResponseAlternativesTable).where(inArray(taktResponseAlternativesTable.responseId, responseIds));
+      await agDatabase.delete(taktResponsesTable).where(inArray(taktResponsesTable.id, responseIds));
     }
-    await db.delete(taktRequestSnapshotsTable).where(inArray(taktRequestSnapshotsTable.taktRequestId, requestIds));
-    await db.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
+    await agDatabase.delete(taktRequestSnapshotsTable).where(inArray(taktRequestSnapshotsTable.taktRequestId, requestIds));
+    await agDatabase.delete(taktRequestsTable).where(inArray(taktRequestsTable.id, requestIds));
   }
-  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
-  await hubDb.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
-  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
-  await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
-  await hubDb.delete(dataspaceExchangesTable).where(or(
+  await hubDatabase.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AN));
+  await hubDatabase.delete(messageInboxTable).where(eq(messageInboxTable.recipientOrgId, AG));
+  await hubDatabase.delete(messageOutboxTable).where(eq(messageOutboxTable.senderOrgId, AG));
+  await hubDatabase.delete(messageOutboxTable).where(eq(messageOutboxTable.recipientOrgId, AG));
+  await hubDatabase.delete(dataspaceExchangesTable).where(or(
     eq(dataspaceExchangesTable.senderOrgId, AG),
     eq(dataspaceExchangesTable.receiverOrgId, AG),
     eq(dataspaceExchangesTable.senderOrgId, AN),
     eq(dataspaceExchangesTable.receiverOrgId, AN),
   ));
-  await db.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
-  await db.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
-  await db.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
-  await db.delete(takteTable).where(eq(takteTable.id, TAKT));
-  await db.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
-  await db.delete(usersTable).where(inArray(usersTable.id, [AG_USER, AN_USER]));
-  await db.delete(organizationsTable).where(inArray(organizationsTable.id, [AG, AN]));
+  await agDatabase.delete(projectContractorsTable).where(eq(projectContractorsTable.projectId, PROJECT));
+  await agDatabase.delete(projectMembershipsTable).where(eq(projectMembershipsTable.projectId, PROJECT));
+  await agDatabase.delete(coordinationPoliciesTable).where(eq(coordinationPoliciesTable.projectId, PROJECT));
+  await agDatabase.delete(takteTable).where(eq(takteTable.id, TAKT));
+  await agDatabase.delete(projectsTable).where(eq(projectsTable.id, PROJECT));
+  await anDatabase.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, `${PREFIX}-invitation`));
+  await agDatabase.delete(usersTable).where(eq(usersTable.id, AG_USER));
+  await anDatabase.delete(usersTable).where(eq(usersTable.id, AN_USER));
+  await hubFixture.cleanupOrganizations();
+  await anFixture.cleanupOrganizations();
+  await agFixture.cleanupIdentity();
 }
 
 beforeAll(async () => {
   await cleanup();
-  await db.insert(organizationsTable).values([
+  await agFixture.seedOrganizations([
     { id: AG, name: "Independent AG", type: "AG" },
     { id: AN, name: "Independent AN", type: "AN" },
   ]);
-  await db.insert(usersTable).values([
+  await anFixture.seedOrganizations([
+    { id: AN, name: "Independent AN", type: "AN" },
+  ]);
+  await agFixture.seedUsers([
     { id: AG_USER, name: "Independent AG User", email: `${AG_USER}@test.local`, passwordHash: "x" },
     { id: AN_USER, name: "Independent AN User", email: `${AN_USER}@test.local`, passwordHash: "x" },
   ]);
-  await db.insert(projectsTable).values({
+  await anDatabase.insert(usersTable).values({
+    id: AN_USER, name: "Independent AN User", email: `${AN_USER}@test.local`, passwordHash: "x",
+  }).onConflictDoNothing();
+  await agDatabase.insert(projectsTable).values({
     id: PROJECT, name: "Independent Project", agOrgId: AG,
     status: "ACTIVE", startDate: "2026-09-01", endDate: "2026-12-31",
   });
-  await db.insert(takteTable).values({
+  await agDatabase.insert(takteTable).values({
     id: TAKT, projectId: PROJECT, taktBezeichnung: "Independent Leistung",
     zone: "A", gewerk: "Rohbau", plannedStart: "2026-10-01", plannedEnd: "2026-10-14",
     lifecycleStatus: "IN_COORDINATION",
   });
-  await db.insert(projectContractorsTable).values({
+  await agDatabase.insert(projectContractorsTable).values({
     projectId: PROJECT, anOrgId: AN, assignmentStatus: "ACTIVE",
   });
-  await db.insert(coordinationPoliciesTable).values({
+  await agDatabase.insert(coordinationPoliciesTable).values({
     id: PROJECT_AGREEMENT_ID,
     policyKey: PROJECT_AGREEMENT_ID,
     version: PARENT_POLICY_VERSION,
@@ -189,15 +215,38 @@ beforeAll(async () => {
       createdAt: "2026-09-01T00:00:00.000Z",
       childPolicyTypes: ["PERFORMANCE_REQUEST", "SCHEDULE_CHANGE", "DATA_OFFER"],
       childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION", "USE_FOR_SCHEDULE_COORDINATION", "USE_FOR_RESOURCE_COORDINATION", "USE_FOR_EXECUTION_COORDINATION"],
+      allowedPurposes: ["RAHMENTERMINE", "LEISTUNGSKOORDINATION", "AUSFUEHRUNGSINFORMATIONEN", "INDIVIDUELLE_FREIGABE"],
+      allowedFieldScope: ["trade", "workPackage", "kurzbezeichnung", "location", "plannedTimeWindow", "bufferTimeWindow", "predecessors", "successors", "taktReference", "taktVersion", "requiredOutput", "resourceRequirements", "constraints", "documentReferences"],
     },
   });
-  await db.execute(sql`
+  await agDatabase.execute(sql`
     INSERT INTO project_memberships
       (id, project_id, ag_org_id, an_org_id, invitation_id, correlation_id, status, project_agreement_policy_id)
     VALUES (${`${PREFIX}-membership`}, ${PROJECT}, ${AG}, ${AN},
       ${`${PREFIX}-invitation`}, ${`${PREFIX}-correlation`}, 'ACTIVE', ${PROJECT_AGREEMENT_ID})
     ON CONFLICT DO NOTHING
   `);
+  await anDatabase.insert(anProjectInvitationsTable).values({
+    id: `${PREFIX}-an-invitation`,
+    invitationId: `${PREFIX}-invitation`,
+    correlationId: `${PREFIX}-invitation-correlation`,
+    senderAgOrgId: AG,
+    senderAgOrgName: "Independent AG",
+    receiverAnOrgId: AN,
+    projectReference: PROJECT,
+    projectName: "Independent Project",
+    policySnapshot: {
+      effectivePolicy: {
+        parentMembershipStatus: "ACTIVE",
+        childPolicyTypes: ["PERFORMANCE_REQUEST"],
+        childPermissions: ["READ", "DOWNLOAD", "USE_FOR_PERFORMANCE_COORDINATION"],
+        allowedPurposes: ["LEISTUNGSKOORDINATION"],
+        allowedFieldScope: ["workPackage", "plannedTimeWindow"],
+      },
+    },
+    status: "ACCEPTED",
+    policyAcceptedAt: new Date(),
+  }).onConflictDoNothing();
 });
 
 afterAll(cleanup);
@@ -218,7 +267,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
     requestId = created.body.id;
-    const beforeInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
+    const beforeInbound = await anDatabase.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(beforeInbound).toHaveLength(0);
@@ -228,18 +277,18 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect([200, 201]).toContain(sent.status);
     expect(sent.body.status).toMatch(/SENT|DELIVERED/);
-    const afterInbound = await anDb.select({ id: anLeistungsanfragenTable.id })
+    const afterInbound = await anDatabase.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(afterInbound).toHaveLength(1);
-    const [outboundEnvelope] = await hubDb.select({ payload: messageOutboxTable.payload })
+    const [outboundEnvelope] = await hubDatabase.select({ payload: messageOutboxTable.payload })
       .from(messageOutboxTable)
       .where(eq(messageOutboxTable.correlationId, requestId));
     const outboundPayload = outboundEnvelope.payload as {
       policySnapshot?: { policyId: string; templateId: string; templateVersion: number; code: string };
     };
     expect(outboundPayload.policySnapshot).toBeDefined();
-    const inbound = await hubDb.select({ status: dataspaceExchangesTable.status })
+    const inbound = await hubDatabase.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -248,7 +297,7 @@ describe("independent AG–AN coordination flow", () => {
       ));
     expect(inbound).toHaveLength(1);
     expect(inbound[0].status).toBe("PROCESSED");
-    const [anProjection] = await anDb.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
+    const [anProjection] = await anDatabase.select({ policySnapshot: anLeistungsanfragenTable.policySnapshot })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(anProjection.policySnapshot).toEqual(outboundPayload.policySnapshot);
@@ -269,7 +318,7 @@ describe("independent AG–AN coordination flow", () => {
   });
 
   it("AN accepts and AG confirms the response", async () => {
-    const [agRequestBefore] = await db.select({ status: taktRequestsTable.status })
+    const [agRequestBefore] = await agDatabase.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
     expect(["SENT", "DELIVERED"]).toContain(agRequestBefore.status);
 
@@ -285,7 +334,7 @@ describe("independent AG–AN coordination flow", () => {
     expect(reviewed.status).toBe(200);
     expect(reviewed.body.status).toBe("DETAILS_RETRIEVED");
     const agStatusBeforeAvailability = agRequestBefore.status;
-    const [localProjection] = await anDb.select({ id: anLeistungsanfragenTable.id })
+    const [localProjection] = await anDatabase.select({ id: anLeistungsanfragenTable.id })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(localProjection).toBeDefined();
@@ -301,11 +350,11 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${anToken}`);
     expect(latestAvailability.status).toBe(200);
     expect(latestAvailability.body.checkId).toBe(availability.body.checkId);
-    const localChecks = await anDb.select({ id: anAvailabilityChecksTable.id })
+    const localChecks = await anDatabase.select({ id: anAvailabilityChecksTable.id })
       .from(anAvailabilityChecksTable)
       .where(eq(anAvailabilityChecksTable.anLeistungsanfrageId, localProjection.id));
     expect(localChecks).toHaveLength(1);
-    const [agRequestAfterAvailability] = await db.select({ status: taktRequestsTable.status })
+    const [agRequestAfterAvailability] = await agDatabase.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
     expect(agRequestAfterAvailability.status).toBe(agStatusBeforeAvailability);
 
@@ -318,18 +367,18 @@ describe("independent AG–AN coordination flow", () => {
         comment: "Kapazität bestätigt",
       });
     expect(response.status).toBe(201);
-    const localResponses = await anDb.select({ id: anLeistungsantwortenTable.id })
+    const localResponses = await anDatabase.select({ id: anLeistungsantwortenTable.id })
       .from(anLeistungsantwortenTable)
       .where(eq(anLeistungsantwortenTable.anLeistungsanfrageId, localProjection.id));
     expect(localResponses).toHaveLength(1);
 
-    const [agRequestAfterResponse] = await db.select({ status: taktRequestsTable.status })
+    const [agRequestAfterResponse] = await agDatabase.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId));
     expect(["SENT", "DELIVERED", "UNDER_REVIEW", "ACCEPTED"]).toContain(agRequestAfterResponse.status);
-    const [agResponse] = await db.select({ id: taktResponsesTable.id })
+    const [agResponse] = await agDatabase.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable).where(eq(taktResponsesTable.taktRequestId, requestId));
     expect(agResponse).toBeDefined();
-    const responseInbound = await hubDb.select({ status: dataspaceExchangesTable.status })
+    const responseInbound = await hubDatabase.select({ status: dataspaceExchangesTable.status })
       .from(dataspaceExchangesTable)
       .where(and(
         eq(dataspaceExchangesTable.direction, "INBOUND"),
@@ -345,7 +394,7 @@ describe("independent AG–AN coordination flow", () => {
       .send({ decisionType: "CONFIRM_ACCEPTED", responseId: agResponse.id });
     expect(decision.status).toBe(201);
     expect(decision.body.updatedRequestStatus).toBe("ACCEPTED");
-    const [confirmedProjection] = await anDb.select({ status: anLeistungsanfragenTable.status })
+    const [confirmedProjection] = await anDatabase.select({ status: anLeistungsanfragenTable.status })
       .from(anLeistungsanfragenTable)
       .where(eq(anLeistungsanfragenTable.externalLeistungsanfrageId, requestId));
     expect(confirmedProjection.status).toBe("CONFIRMED");
@@ -412,7 +461,7 @@ describe("independent AG–AN coordination flow", () => {
       .set("Authorization", `Bearer ${agToken}`);
     expect([200, 201]).toContain(secondRoundSent.status);
 
-    const [oldRequest] = await db.select({ status: taktRequestsTable.status })
+    const [oldRequest] = await agDatabase.select({ status: taktRequestsTable.status })
       .from(taktRequestsTable).where(eq(taktRequestsTable.id, firstRoundId));
     expect(oldRequest.status).toBe("SUPERSEDED");
 
@@ -436,19 +485,19 @@ describe("independent AG–AN coordination flow", () => {
     expect(finalDecision.status).toBe(201);
     expect(finalDecision.body.updatedRequestStatus).toBe("ACCEPTED");
 
-    const [takt] = await db.select().from(takteTable).where(eq(takteTable.id, TAKT));
+    const [takt] = await agDatabase.select().from(takteTable).where(eq(takteTable.id, TAKT));
     expect(String(takt.plannedStart)).toContain("2026-11-01");
     expect(String(takt.plannedEnd)).toContain("2026-11-14");
     expect(takt.version).toBe(2);
 
-    const versions = await db.select({ version: taktVersionsTable.version, sourceType: taktVersionsTable.sourceType })
+    const versions = await agDatabase.select({ version: taktVersionsTable.version, sourceType: taktVersionsTable.sourceType })
       .from(taktVersionsTable).where(eq(taktVersionsTable.taktId, TAKT));
     expect(versions.some((version) => version.version === 2 && version.sourceType === "REVISION")).toBe(true);
 
-    const [agResponse] = await db.select({ id: taktResponsesTable.id })
+    const [agResponse] = await agDatabase.select({ id: taktResponsesTable.id })
       .from(taktResponsesTable)
       .where(eq(taktResponsesTable.taktRequestId, firstRoundId));
-    const alternativesInHistory = await db.select({ alternativeId: taktResponseAlternativesTable.alternativeId })
+    const alternativesInHistory = await agDatabase.select({ alternativeId: taktResponseAlternativesTable.alternativeId })
       .from(taktResponseAlternativesTable)
       .where(eq(taktResponseAlternativesTable.responseId, agResponse.id));
     expect(alternativesInHistory.map((alternative) => alternative.alternativeId).sort())
