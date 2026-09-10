@@ -170,6 +170,13 @@ export const leistungsantwortAlternativenTable = pgTable(
      * Generic conditions or constraints (array of strings).
      */
     conditions: jsonb("conditions").$type<string[]>(),
+    /** Public CREW/EQUIPMENT aggregates; never contains concrete resource IDs. */
+    resourceMix: jsonb("resource_mix").$type<Array<{
+      resourceClass: "CREW" | "EQUIPMENT";
+      quantity: number;
+      unit: string;
+      utilizationPercent: number;
+    }> | null>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
