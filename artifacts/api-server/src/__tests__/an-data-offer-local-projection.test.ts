@@ -7,14 +7,15 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
-import { processIncomingProjectInvitation } from "../services/dataspace/inbound-domain-service";
-import type { ExternalProjectInvitation } from "../services/dataspace/external-contracts";
+import { processIncomingDataOffer, processIncomingProjectInvitation } from "../services/dataspace/inbound-domain-service";
+import type { ExternalDataOffer, ExternalProjectInvitation } from "../services/dataspace/external-contracts";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "taktkoord-jwt-dev-secret-change-in-prod";
 const AN_ORG = "an-local-offer-test";
 const INVITATION_ID = "an-local-offer-invitation";
 const PUBLICATION_ID = "an-local-publication";
 const INBOUND_INVITATION_ID = "an-local-inbound-invitation";
+const DATA_OFFER_INVITATION_ID = "data-offer:an-local-standalone-publication:an-local-offer-test";
 
 const anToken = jwt.sign({
   userId: "an-local-offer-user",
@@ -29,7 +30,63 @@ afterEach(async () => {
     .where(eq(anProjectInvitationsTable.id, INVITATION_ID));
   await anDb.delete(anProjectInvitationsTable)
     .where(eq(anProjectInvitationsTable.invitationId, INBOUND_INVITATION_ID));
+  await anDb.delete(anProjectInvitationsTable)
+    .where(eq(anProjectInvitationsTable.invitationId, DATA_OFFER_INVITATION_ID));
 });
+
+function standaloneDataOffer(overrides: Partial<ExternalDataOffer> = {}): ExternalDataOffer {
+  return {
+    metadata: {
+      messageId: "an-local-standalone-offer-message",
+      correlationId: "an-local-standalone-offer-correlation",
+      schemaVersion: "1.0",
+      senderOrgId: "ag-local-offer-test",
+      receiverOrgId: AN_ORG,
+      createdAt: "2026-08-26T10:00:00.000Z",
+    },
+    publicationId: "an-local-standalone-publication",
+    projectReference: "an-local-standalone-project",
+    projectName: "Standalone offer project",
+    title: "Standalone immutable offer",
+    dataProductType: "TAKT_INFORMATION_PACKAGE",
+    publicationVersion: 1,
+    status: "PUBLISHED",
+    contentHash: "content-hash-1",
+    selectedFields: ["projectName", "location"],
+    detailsRef: "local://offer/details",
+    validFrom: "2026-08-26T10:00:00.000Z",
+    validUntil: "2026-09-26T10:00:00.000Z",
+    accessPolicy: {
+      policyId: "access-policy-1",
+      templateId: "DATA_OFFER",
+      templateVersion: 1,
+      code: "DATA_OFFER_ACCESS",
+      name: "Access",
+      description: "Access policy",
+      permissions: ["read:project"],
+      prohibitions: ["redistribute"],
+      provider: { organizationId: "ag-local-offer-test", userId: null },
+      recipientOrganizationId: AN_ORG,
+      purpose: "Project coordination",
+      projectReference: "an-local-standalone-project",
+      workPackageReference: null,
+      validFrom: null,
+      validUntil: null,
+      createdAt: "2026-08-26T10:00:00.000Z",
+    },
+    usagePolicy: {
+      id: "usage-policy-1",
+      code: "DATA_OFFER_USAGE",
+      name: "Usage",
+      purpose: "Project coordination",
+      permissions: ["read"],
+      prohibitions: ["redistribute"],
+      validityRule: "Project lifetime",
+      retentionRule: null,
+    },
+    ...overrides,
+  };
+}
 
 describe("AN data offers use local invitation projections", () => {
   it("reads offers and policies from the AN-local Dataspace snapshot", async () => {
@@ -218,5 +275,37 @@ describe("AN data offers use local invitation projections", () => {
         code: "OFFER_POLICY",
       }),
     ]));
+  });
+
+  it("keeps identical standalone data-offer redelivery idempotent", async () => {
+    const offer = standaloneDataOffer();
+    await expect(processIncomingDataOffer(offer)).resolves.toBeUndefined();
+    await expect(processIncomingDataOffer({
+      ...offer,
+      metadata: { ...offer.metadata, messageId: "an-local-standalone-offer-retry" },
+    })).resolves.toBeUndefined();
+
+    const rows = await anDb.select().from(anProjectInvitationsTable)
+      .where(eq(anProjectInvitationsTable.dataPublicationId, offer.publicationId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].dataOfferSnapshot).toEqual(offer);
+  });
+
+  it("rejects material standalone data-offer redelivery changes without overwriting", async () => {
+    const offer = standaloneDataOffer();
+    await processIncomingDataOffer(offer);
+
+    await expect(processIncomingDataOffer({
+      ...offer,
+      metadata: { ...offer.metadata, messageId: "an-local-standalone-offer-conflict" },
+      selectedFields: ["projectName", "secretField"],
+    })).rejects.toMatchObject({
+      code: "DATA_OFFER_SNAPSHOT_CONFLICT",
+    });
+
+    const [row] = await anDb.select().from(anProjectInvitationsTable)
+      .where(eq(anProjectInvitationsTable.dataPublicationId, offer.publicationId));
+    expect(row.selectedFields).toEqual(offer.selectedFields);
+    expect(row.dataOfferSnapshot).toEqual(offer);
   });
 });
