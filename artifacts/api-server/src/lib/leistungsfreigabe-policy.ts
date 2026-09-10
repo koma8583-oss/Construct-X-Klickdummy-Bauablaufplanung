@@ -35,3 +35,19 @@ export const PARENT_COVERED_LEISTUNGSFREIGABE_FIELDS = new Set([
   'projectLocation',
   'projectDescription',
 ]);
+
+/**
+ * A project agreement can authorize child performance coordination only when
+ * both dimensions of that authorization are explicit. Older agreements may
+ * omit one or both lists; those records are intentionally not treated as
+ * unrestricted.
+ */
+export function hasExplicitLeistungsfreigabeScope(
+  policy: unknown,
+): boolean {
+  if (!policy || typeof policy !== 'object') return false;
+  const candidate = policy as Record<string, unknown>;
+  return [candidate.allowedPurposes, candidate.allowedFieldScope].every(
+    (value) => Array.isArray(value) && value.every((item) => typeof item === 'string'),
+  );
+}
