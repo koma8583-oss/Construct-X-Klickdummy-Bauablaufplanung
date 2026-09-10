@@ -1,8 +1,10 @@
 import {
   anDb,
   anProjectInvitationsTable,
+  type DataOfferLifecycleStatus,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
 import type {
   ExternalProjectInvitation,
   ExternalDataOffer,
@@ -15,6 +17,118 @@ export class AnProjectInvitationError extends Error {
     super(message);
     this.name = "AnProjectInvitationError";
   }
+}
+
+function isLegacyInvitationPolicySnapshot(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+  const keys = Object.keys(value as Record<string, unknown>);
+  return keys.every((key) =>
+    key === "usagePurpose" || key === "allowedConsumerParticipantId"
+  );
+}
+
+export type LocalDataOfferPublicationStatus =
+  | DataOfferLifecycleStatus
+  | "EXPIRED"
+  | "UNKNOWN";
+
+export function parseDataOfferLifecycleStatus(
+  value: unknown,
+): DataOfferLifecycleStatus | "UNKNOWN" {
+  if (value === "PUBLISHED" || value === "SUSPENDED" || value === "WITHDRAWN") {
+    return value;
+  }
+  return "UNKNOWN";
+}
+
+function requireDataOfferLifecycleStatus(value: unknown): DataOfferLifecycleStatus {
+  const status = parseDataOfferLifecycleStatus(value);
+  if (status === "UNKNOWN") {
+    throw new AnProjectInvitationError(
+      "DATA_OFFER_LIFECYCLE_INVALID",
+      "Das Datenangebot enthält einen unbekannten Veröffentlichungsstatus.",
+    );
+  }
+  return status;
+}
+
+function immutableDataOfferSnapshot(value: Record<string, unknown>): Record<string, unknown> {
+  // Keep the original publication status as historical snapshot data. The
+  // mutable source of truth is data_offer_lifecycle_status; status is excluded
+  // only from conflict comparisons so lifecycle propagation cannot mutate the
+  // immutable snapshot.
+  return { ...value };
+}
+
+/**
+ * Resolve the local offer state without trusting malformed JSONB values.
+ * Unknown state is intentionally preserved as UNKNOWN so callers can fail
+ * closed instead of accidentally treating a corrupt projection as published.
+ */
+export function getDataOfferPublicationStatus(
+  invitation: typeof anProjectInvitationsTable.$inferSelect,
+  now = new Date(),
+): LocalDataOfferPublicationStatus {
+  const snapshot = invitation.dataOfferSnapshot ?? {};
+  const rawStatus = invitation.dataOfferLifecycleStatus
+    ?? (snapshot as Record<string, unknown>).status;
+  const lifecycleStatus = parseDataOfferLifecycleStatus(rawStatus);
+  if (lifecycleStatus === "UNKNOWN") return "UNKNOWN";
+
+  let validUntil = invitation.invitationExpiresAt;
+  if (Object.prototype.hasOwnProperty.call(snapshot, "validUntil")) {
+    const snapshotValidUntil = (snapshot as Record<string, unknown>).validUntil;
+    if (snapshotValidUntil === null) {
+      validUntil = null;
+    } else if (
+      typeof snapshotValidUntil === "string"
+      && !Number.isNaN(Date.parse(snapshotValidUntil))
+    ) {
+      validUntil = new Date(snapshotValidUntil);
+    } else {
+      return "UNKNOWN";
+    }
+  }
+
+  if (lifecycleStatus === "PUBLISHED" && validUntil && validUntil <= now) {
+    return "EXPIRED";
+  }
+  return lifecycleStatus;
+}
+
+/**
+ * Message metadata is intentionally excluded from this comparison. A retry
+ * can have a new delivery message id, but the published offer itself must not
+ * change once it has been projected locally.
+ */
+function protectedDataOfferContent(value: Record<string, unknown>) {
+  return {
+    publicationId: value.publicationId ?? null,
+    projectReference: value.projectReference ?? null,
+    projectName: value.projectName ?? null,
+    title: value.title ?? null,
+    dataProductType: value.dataProductType ?? null,
+    publicationVersion: value.publicationVersion ?? null,
+    contentHash: value.contentHash ?? null,
+    selectedFields: value.selectedFields ?? null,
+    detailsRef: value.detailsRef ?? null,
+    validFrom: value.validFrom ?? null,
+    validUntil: value.validUntil ?? null,
+    accessPolicy: value.accessPolicy ?? null,
+    usagePolicy: value.usagePolicy ?? value.policy ?? null,
+    contentSnapshot: value.contentSnapshot ?? null,
+  };
+}
+
+function dataOfferContentMatches(
+  stored: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown>,
+): boolean {
+  if (!stored) return false;
+  return isDeepStrictEqual(
+    protectedDataOfferContent(stored),
+    protectedDataOfferContent(incoming),
+  );
 }
 
 export async function storeIncomingProjectInvitation(payload: ExternalProjectInvitation) {
@@ -33,11 +147,42 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     ) {
       throw new AnProjectInvitationError("INVITATION_CONFLICT", "Die eingegangene Einladung stimmt nicht mit der vorhandenen Einladung überein.");
     }
+    const mayUpgradeLegacySnapshot =
+      Boolean(payload.policySnapshot) &&
+      isLegacyInvitationPolicySnapshot(invitation.policySnapshot);
+    if (
+      payload.policySnapshot &&
+      !mayUpgradeLegacySnapshot &&
+      !isDeepStrictEqual(invitation.policySnapshot, payload.policySnapshot)
+    ) {
+      throw new AnProjectInvitationError(
+        "INVITATION_POLICY_SNAPSHOT_CONFLICT",
+        "Die Policy der eingegangenen Einladung weicht vom unveränderlichen Policy-Snapshot ab.",
+      );
+    }
+    const mayUpgradeLegacyDataOffer =
+      Boolean(payload.dataOffer) && invitation.dataOfferSnapshot === null;
+    const incomingDataOfferLifecycleStatus = payload.dataOffer
+      ? requireDataOfferLifecycleStatus(payload.dataOffer.status ?? "PUBLISHED")
+      : null;
+    if (
+      payload.dataOffer &&
+      !mayUpgradeLegacyDataOffer &&
+      !dataOfferContentMatches(
+        invitation.dataOfferSnapshot,
+        payload.dataOffer as unknown as Record<string, unknown>,
+      )
+    ) {
+      throw new AnProjectInvitationError(
+        "DATA_OFFER_SNAPSHOT_CONFLICT",
+        "Das Datenangebot weicht vom unveränderlichen Datenangebots-Snapshot ab.",
+      );
+    }
     const updates: Partial<typeof anProjectInvitationsTable.$inferInsert> = {
       ...(payload.senderOrganizationName !== undefined
         ? { senderAgOrgName: payload.senderOrganizationName }
         : {}),
-      ...(payload.policySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
+      ...(mayUpgradeLegacySnapshot ? { policySnapshot: payload.policySnapshot } : {}),
       ...(payload.project.description !== undefined
         ? { projectDescription: payload.project.description }
         : {}),
@@ -52,11 +197,14 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
         : {}),
       updatedAt: new Date(),
     };
-    if (payload.dataOffer) {
+    if (payload.dataOffer && mayUpgradeLegacyDataOffer) {
       Object.assign(updates, {
         dataPublicationTitle: payload.dataOffer.title,
         selectedFields: payload.dataOffer.selectedFields,
-        dataOfferSnapshot: payload.dataOffer as unknown as Record<string, unknown>,
+        dataOfferSnapshot: immutableDataOfferSnapshot(
+          payload.dataOffer as unknown as Record<string, unknown>,
+        ),
+        dataOfferLifecycleStatus: incomingDataOfferLifecycleStatus,
         invitationExpiresAt: payload.dataOffer.validUntil
           ? new Date(payload.dataOffer.validUntil)
           : updates.invitationExpiresAt ?? invitation.invitationExpiresAt,
@@ -86,7 +234,10 @@ export async function storeIncomingProjectInvitation(payload: ExternalProjectInv
     dataPublicationTitle: payload.dataOffer?.title ?? null,
     selectedFields: payload.dataOffer?.selectedFields ?? null,
     dataOfferSnapshot: payload.dataOffer
-      ? payload.dataOffer as unknown as Record<string, unknown>
+      ? immutableDataOfferSnapshot(payload.dataOffer as unknown as Record<string, unknown>)
+      : null,
+    dataOfferLifecycleStatus: payload.dataOffer
+      ? requireDataOfferLifecycleStatus(payload.dataOffer.status ?? "PUBLISHED")
       : null,
     policySnapshot: payload.policySnapshot ?? payload.dataOffer?.policy ?? {
       usagePurpose: payload.policy.usagePurpose,
@@ -107,6 +258,7 @@ export async function storeIncomingDataOffer(payload: ExternalDataOffer) {
   if (payload.metadata.senderOrgId === payload.metadata.receiverOrgId) {
     throw new AnProjectInvitationError("DATA_OFFER_PARTICIPANTS_INVALID", "Absender und Empfänger des Datenangebots dürfen nicht identisch sein.");
   }
+  const incomingLifecycleStatus = requireDataOfferLifecycleStatus(payload.status);
   const invitationId = `data-offer:${payload.publicationId}:${payload.metadata.receiverOrgId}`;
   const [existing] = await anDb.select().from(anProjectInvitationsTable)
     .where(eq(anProjectInvitationsTable.dataPublicationId, payload.publicationId))
@@ -115,18 +267,60 @@ export async function storeIncomingDataOffer(payload: ExternalDataOffer) {
     if (
       existing.senderAgOrgId !== payload.metadata.senderOrgId ||
       existing.receiverAnOrgId !== payload.metadata.receiverOrgId ||
-      existing.projectReference !== payload.projectReference
+      existing.projectReference !== payload.projectReference ||
+      existing.correlationId !== payload.metadata.correlationId
     ) {
       throw new AnProjectInvitationError("DATA_OFFER_CONFLICT", "Das Datenangebot stimmt nicht mit der vorhandenen Projektion überein.");
     }
-    const [updated] = await anDb.update(anProjectInvitationsTable).set({
-      dataPublicationTitle: payload.title,
-      selectedFields: payload.selectedFields,
-      dataOfferSnapshot: payload as unknown as Record<string, unknown>,
-      policySnapshot: payload.accessPolicy,
-      invitationExpiresAt: payload.validUntil ? new Date(payload.validUntil) : null,
+    const mayUpgradeLegacyDataOffer = existing.dataOfferSnapshot === null;
+    if (
+      !mayUpgradeLegacyDataOffer
+      && !dataOfferContentMatches(
+        existing.dataOfferSnapshot,
+        payload as unknown as Record<string, unknown>,
+      )
+    ) {
+      throw new AnProjectInvitationError(
+        "DATA_OFFER_SNAPSHOT_CONFLICT",
+        "Das Datenangebot weicht vom unveränderlichen Datenangebots-Snapshot ab.",
+      );
+    }
+    const existingLifecycleStatus = parseDataOfferLifecycleStatus(
+      existing.dataOfferLifecycleStatus
+        ?? (existing.dataOfferSnapshot as Record<string, unknown> | null)?.status,
+    );
+    if (existingLifecycleStatus === "UNKNOWN" && !mayUpgradeLegacyDataOffer) {
+      throw new AnProjectInvitationError(
+        "DATA_OFFER_LIFECYCLE_CONFLICT",
+        "Der lokale Status des Datenangebots ist unbekannt und bleibt aus Sicherheitsgründen gesperrt.",
+      );
+    }
+    const nextLifecycleStatus = mayUpgradeLegacyDataOffer
+      ? incomingLifecycleStatus
+      : nextDataOfferLifecycleStatus(
+        existingLifecycleStatus as DataOfferLifecycleStatus,
+        incomingLifecycleStatus,
+      );
+    const updates: Partial<typeof anProjectInvitationsTable.$inferInsert> = {
+      dataOfferLifecycleStatus: nextLifecycleStatus,
       updatedAt: new Date(),
-    }).where(eq(anProjectInvitationsTable.id, existing.id)).returning();
+    };
+    if (mayUpgradeLegacyDataOffer) {
+      Object.assign(updates, {
+        dataPublicationTitle: payload.title,
+        selectedFields: payload.selectedFields,
+        dataOfferSnapshot: immutableDataOfferSnapshot(
+          payload as unknown as Record<string, unknown>,
+        ),
+        policySnapshot: payload.accessPolicy,
+        invitationExpiresAt: payload.validUntil ? new Date(payload.validUntil) : null,
+      });
+    }
+    if (!mayUpgradeLegacyDataOffer && existingLifecycleStatus === nextLifecycleStatus) {
+      return existing;
+    }
+    const [updated] = await anDb.update(anProjectInvitationsTable).set(updates)
+      .where(eq(anProjectInvitationsTable.id, existing.id)).returning();
     return updated ?? existing;
   }
   const [created] = await anDb.insert(anProjectInvitationsTable).values({
@@ -140,11 +334,25 @@ export async function storeIncomingDataOffer(payload: ExternalDataOffer) {
     dataPublicationId: payload.publicationId,
     dataPublicationTitle: payload.title,
     selectedFields: payload.selectedFields,
-    dataOfferSnapshot: payload as unknown as Record<string, unknown>,
+    dataOfferSnapshot: immutableDataOfferSnapshot(payload as unknown as Record<string, unknown>),
+    dataOfferLifecycleStatus: incomingLifecycleStatus,
     policySnapshot: payload.accessPolicy,
     status: "PENDING",
   }).returning();
   return created;
+}
+
+function nextDataOfferLifecycleStatus(
+  current: DataOfferLifecycleStatus,
+  incoming: DataOfferLifecycleStatus,
+): DataOfferLifecycleStatus {
+  if (current === incoming) return current;
+  if (current === "PUBLISHED") return incoming;
+  if (current === "SUSPENDED" && incoming === "WITHDRAWN") return incoming;
+  throw new AnProjectInvitationError(
+    "DATA_OFFER_LIFECYCLE_CONFLICT",
+    `Der Datenangebotsstatus darf nicht von ${current} auf ${incoming} zurückgesetzt werden.`,
+  );
 }
 
 export async function listAnProjectInvitations(anOrgId: string) {
