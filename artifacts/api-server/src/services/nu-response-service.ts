@@ -29,7 +29,10 @@ import {
   type TaktRequestStatus,
 } from "@workspace/db";
 import { and, desc, eq, ne } from "drizzle-orm";
-import type { ExternalServiceResponse } from "./dataspace/external-contracts";
+import type {
+  ExternalServiceResponse,
+  PublicResourceMixEntry,
+} from "./dataspace/external-contracts";
 import { getTaktResponseWithAlternatives, TaktResponseValidationError } from "../lib/takt-response-repository";
 import { withCanonicalResponse } from "../lib/legacy-takt-mappers";
 import { writeAuditEvent } from "../lib/takt-request-audit-service";
@@ -46,6 +49,7 @@ export interface NuResponseAlternativeInput {
   timeWindow: { start: string; end: string };
   crewSize?: number;
   conditions?: string[];
+  resourceMix?: PublicResourceMixEntry[];
 }
 
 export interface ProcessNuResponseInput {
@@ -112,6 +116,13 @@ export interface CreateAnServiceResponseInput {
   alternatives?: NuResponseAlternativeInput[];
   nextAvailableDate?: string;
   outboundMessageId?: string;
+  /**
+   * A stale AG acceptance is a new public outcome for an AN-originated
+   * schedule proposal. That projection is already RESPONDED because the
+   * proposal itself was published, but it still needs one rejection response
+   * when the acceptance loses capacity before booking.
+   */
+  allowRespondedRejection?: boolean;
 }
 
 export interface CreateAnServiceResponseResult {
@@ -157,6 +168,7 @@ function responsePayload(
       timeWindow: alternative.timeWindow,
       crewSize: alternative.crewSize ?? null,
       conditions: alternative.conditions ?? null,
+      resourceMix: alternative.resourceMix ?? null,
     })) ?? null,
     nextAvailableDate: input.nextAvailableDate ?? null,
   };
@@ -240,7 +252,13 @@ export async function createAnServiceResponse(
       idempotent: true,
     };
   }
-  const answerableStatuses = new Set(["RECEIVED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]);
+  const answerableStatuses = new Set([
+    "RECEIVED",
+    "DETAILS_RETRIEVED",
+    "UNDER_REVIEW",
+    "REVISION_REQUIRED",
+    ...(input.allowRespondedRejection && input.decision === "REJECTED" ? ["RESPONDED"] : []),
+  ]);
   if (!answerableStatuses.has(request.status)) {
     throw new ResponseStatusError(request.status, answerableStatuses);
   }
@@ -320,7 +338,10 @@ function responseTransportPayload(payload: ExternalServiceResponse): Record<stri
     ...(payload.acceptedTimeWindow ? { acceptedTimeWindow: payload.acceptedTimeWindow } : {}),
     ...(payload.reasonCode ? { reasonCode: payload.reasonCode } : {}),
     ...(payload.comment ? { comment: payload.comment } : {}),
-    alternatives: payload.alternatives ?? null,
+    alternatives: payload.alternatives?.map(({ resourceMix, ...alternative }) => ({
+      ...alternative,
+      ...(resourceMix ? { resourceMix } : {}),
+    })) ?? null,
     ...(payload.nextAvailableDate ? { nextAvailableDate: payload.nextAvailableDate } : {}),
   };
 }
@@ -359,6 +380,7 @@ function buildExternalResponse(
       },
       crewSize: alternative.crewSize,
       conditions: alternative.conditions?.join("; ") ?? null,
+      resourceMix: alternative.resourceMix ?? undefined,
     })),
     nextAvailableDate: response.nextAvailableDate ?? undefined,
   };
@@ -408,6 +430,7 @@ export async function applyIncomingServiceResponseOnAg(
       timeWindow: alternative.timeWindow,
       crewSize: alternative.crewSize ?? undefined,
       conditions: alternative.conditions ? [alternative.conditions] : undefined,
+      resourceMix: alternative.resourceMix,
     })),
     nextAvailableDate: payload.nextAvailableDate,
     answerableStatuses: new Set(["SENT", "DELIVERED", "DETAILS_RETRIEVED", "UNDER_REVIEW", "REVISION_REQUIRED"]),
@@ -435,6 +458,7 @@ export async function applyIncomingServiceResponseOnAg(
       conditions: alternative.conditions?.flatMap((condition) =>
         condition.split("; ").filter(Boolean),
       ) ?? null,
+      resourceMix: alternative.resourceMix ?? null,
     })) ?? null,
     nextAvailableDate: input.nextAvailableDate ?? null,
   });
@@ -511,6 +535,7 @@ export async function applyIncomingServiceResponseOnAg(
         proposedEnd: new Date(alternative.timeWindow.end),
         crewSize: alternative.crewSize ?? null,
         conditions: alternative.conditions ? [alternative.conditions] : null,
+        resourceMix: alternative.resourceMix ?? null,
       })),
     ).returning() : [];
     await tx.update(leistungsanfragenTable).set({ status: nextStatus, updatedAt: new Date() })
@@ -691,6 +716,7 @@ export async function processNuResponse(
       timeWindow:    a.timeWindow,
       crewSize:      a.crewSize   ?? null,
       conditions:    a.conditions ?? null,
+      resourceMix:   a.resourceMix ?? null,
     })) ?? null,
     nextAvailableDate: nextAvailableDate ?? null,
   };
@@ -792,6 +818,7 @@ export async function processNuResponse(
             proposedEnd:   new Date(alt.timeWindow.end),
             crewSize:      alt.crewSize   ?? null,
             conditions:    alt.conditions ?? null,
+            resourceMix:   alt.resourceMix ?? null,
           })),
         )
         .returning();
