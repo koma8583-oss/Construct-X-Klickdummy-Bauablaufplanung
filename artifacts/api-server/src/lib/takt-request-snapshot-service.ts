@@ -40,6 +40,7 @@ import { assertActiveProjectMembership, ProjectMembershipError } from "../servic
 import {
   LEISTUNGSFREIGABE_FIELD_WHITELISTS,
   PARENT_COVERED_LEISTUNGSFREIGABE_FIELDS,
+  hasExplicitLeistungsfreigabeScope,
   type LeistungsfreigabePurpose,
 } from "./leistungsfreigabe-policy";
 
@@ -398,6 +399,12 @@ export async function createTaktRequestWithSnapshot(
       "Die ausgewählte Projektvereinbarung wurde geändert. Bitte prüfen Sie die Freigabe erneut.",
     );
   }
+  if (!hasExplicitLeistungsfreigabeScope(agreement.effectivePolicy)) {
+    throw new ProjectMembershipError(
+      "PROJECT_AGREEMENT_SCOPE_REQUIRED",
+      "Die Projektvereinbarung enthält keinen expliziten Zweck- und Datenfeldumfang. Bitte führen Sie zuerst das Policy-Backfill aus.",
+    );
+  }
   // Acceptance is not an enduring grant: the agreement's effective window is
   // enforced before a child can be minted.
   const agreementEffective = agreement.effectivePolicy as Record<string, unknown>;
@@ -604,13 +611,13 @@ export interface CreateTaktRequestBatchInput {
     nuOrgId: string;
     parentPolicyId: string;
     parentPolicyVersion: number;
+    purpose: LeistungsfreigabePurpose;
+    selectedFields: string[];
   }>;
   responseRequiredBy?: Date;
   createdByUserId: string;
   subject?: string;
   message?: string;
-  purpose: LeistungsfreigabePurpose;
-  selectedFields: string[];
 }
 
 export interface CreateTaktRequestBatchResult {
@@ -648,8 +655,8 @@ export async function createTaktRequestBatchWithSnapshot(
         createdByUserId: input.createdByUserId,
         subject: input.subject,
         message: input.message,
-        purpose: input.purpose,
-        selectedFields: input.selectedFields,
+        purpose: recipient.purpose,
+        selectedFields: recipient.selectedFields,
         parentPolicyId: recipient.parentPolicyId,
         parentPolicyVersion: recipient.parentPolicyVersion,
         selectionGroupId,
