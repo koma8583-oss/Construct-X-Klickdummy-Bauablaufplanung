@@ -60,3 +60,9 @@ Hub transport participant IDs are external and must not reference the local iden
 **Why:** Treating every Hub FK as an external-identity constraint removes cleanup and integrity guarantees for authentication and webhook records.
 
 **How to apply:** Filter FK removal by both child-table purpose and identity parent; regression checks must assert transport identity FKs are absent while Hub-local cascade FKs remain.
+
+Test fixtures must expose separate AG, AN, and Hub builders and named database handles. AG fixtures may still seed directory copies of both participant organizations/users when AG-owned foreign keys require them; AN and Hub fixtures own only their local tables.
+
+**Why:** Shared physical schemas make a generic test `db` alias easy to point at the wrong role, while directory FKs are a deliberate exception to strict single-role fixture data.
+
+**How to apply:** Compose role builders in mixed-domain tests, keep cleanup role-local and dependency-ordered, and add a static guard for cross-role imports and generic aliases.
