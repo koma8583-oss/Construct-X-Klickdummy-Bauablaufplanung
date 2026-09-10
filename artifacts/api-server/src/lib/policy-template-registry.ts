@@ -26,6 +26,12 @@ export interface PolicyTemplateRegistryEntry {
   readonly prohibitions: readonly string[];
   readonly validityRule: string;
   readonly retentionRule: string | null;
+  /**
+   * The child purpose that is covered without an additional consent step
+   * when this template becomes a Project Agreement. Omitted only for
+   * historical versions that predate explicit baseline-purpose semantics.
+   */
+  readonly baselinePurpose?: string;
   readonly allowedPublicationFields?: readonly string[];
 }
 
@@ -135,6 +141,30 @@ const ENTRIES: readonly PolicyTemplateRegistryEntry[] = [
     ],
     validityRule: "Ausschließlich für die Aufnahme der Organisation in das konkrete Projekt.",
     retentionRule: null,
+  },
+  {
+    templateId: "tk-policy-project-membership",
+    version: 2,
+    code: "PROJECT_MEMBERSHIP",
+    name: "Projektaufnahme",
+    description:
+      "Schlanke Projektaufnahme mit einem versionierten Standardzweck für einwilligungsfreie Folgekoordination.",
+    purpose: "projectMembership",
+    requiredParameters: ["recipientOrganizationId", "purpose", "projectReference"],
+    allowedOverrides: ["recipientOrganizationId", "purpose", "projectReference", "validFrom", "validUntil"],
+    allowedPublicationFields: PROJECT_MEMBERSHIP_FIELDS,
+    permissions: ["READ", "USE_AS_PROJECT_PARTNER"],
+    prohibitions: [
+      "REDISTRIBUTE",
+      "SHARE_OUTSIDE_PROJECT_TEAM",
+      "DERIVE",
+      "MODIFY",
+      "COMMERCIAL_REUSE",
+      "AI_TRAINING",
+    ],
+    validityRule: "Ausschließlich für die Aufnahme der Organisation in das konkrete Projekt.",
+    retentionRule: null,
+    baselinePurpose: "LEISTUNGSKOORDINATION",
   },
   {
     templateId: "tk-policy-standard-data-exchange",
