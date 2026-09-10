@@ -275,27 +275,6 @@ export async function restrictProjectAgreementPurposes(
     .where(eq(coordinationPoliciesTable.id, policyId));
 }
 
-export async function restrictProjectAgreementPurposes(
-  policyId: string,
-  allowedPurposes: string[],
-): Promise<void> {
-  const [policy] = await agDb.select().from(coordinationPoliciesTable)
-    .where(eq(coordinationPoliciesTable.id, policyId));
-  if (!policy) throw new Error(`Project agreement ${policyId} not found`);
-  await agDb.update(coordinationPoliciesTable)
-    .set({
-      policySnapshot: {
-        ...(policy.policySnapshot as Record<string, unknown>),
-        allowedPurposes,
-      },
-      effectivePolicy: {
-        ...(policy.effectivePolicy as Record<string, unknown>),
-        allowedPurposes,
-      },
-    })
-    .where(eq(coordinationPoliciesTable.id, policyId));
-}
-
 export async function cleanupCampusWest(seed: Seed): Promise<void> {
   const seededRequestIds = [
     ...Object.values(seed.requests),
