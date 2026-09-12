@@ -10,6 +10,12 @@ import type {
 import type { InboundProcessResult } from "./inbound-exchange-service";
 import type { DataspaceMessageStatus } from "@workspace/api-zod";
 
+export type DataOfferContent = {
+  publicationId: string;
+  contentHash: string | null;
+  content: Record<string, unknown>;
+};
+
 export type ExchangeReference = {
   exchangeId: string;
   externalReference?: string;
@@ -24,6 +30,10 @@ export interface DataspaceExchange {
   publishProjectInvitation(payload: ExternalProjectInvitation): Promise<ExchangeReference>;
   publishProjectInvitationResponse(payload: ExternalProjectInvitationResponse): Promise<ExchangeReference>;
   publishDataOffer(payload: ExternalDataOffer): Promise<ExchangeReference>;
+  retrieveDataOfferContent(
+    publicationId: string,
+    anOrgId: string,
+  ): Promise<DataOfferContent>;
   publishDataOfferResponse(payload: ExternalDataOfferResponse): Promise<ExchangeReference>;
   retryProjectInvitation(messageId: string): Promise<ExchangeReference>;
   retryDataOffer(messageId: string): Promise<ExchangeReference>;

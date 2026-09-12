@@ -43,6 +43,7 @@ import {
   messageInboxTable,
   coordinationPoliciesTable,
   anProjectInvitationsTable,
+  leistungsanfragenTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import * as jwt from "jsonwebtoken";
@@ -692,6 +693,11 @@ describe("G3 – publication suspended after sending", () => {
     await request(app)
       .post(`/api/takt-requests/${requestId}/send`)
       .set("Authorization", `Bearer ${agToken}`);
+    // This case covers the compatibility gate for an older request that has
+    // no linked performance-policy row.
+    await db.update(leistungsanfragenTable)
+      .set({ performancePolicyId: null, dataPublicationId: pubId })
+      .where(eq(leistungsanfragenTable.id, requestId));
 
     // Then suspend the publication
     await db
@@ -708,10 +714,11 @@ describe("G3 – publication suspended after sending", () => {
 
   it("returns 403 DATA_PUBLICATION_INACTIVE when publication is SUSPENDED", async () => {
     const res = await request(app)
-      .get(`/api/an/takt-requests/${requestId}/details`)
+      .get(`/api/takt-requests/${requestId}/details`)
       .set("Authorization", `Bearer ${anToken}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("DATA_PUBLICATION_INACTIVE");
   });
 });
 

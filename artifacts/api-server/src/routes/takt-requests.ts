@@ -412,10 +412,15 @@ router.use(requireJwt, async (req, res, next) => {
     const [root] = requestId ? await db.select({
       nuOrgId: taktRequestsTable.nuOrgId,
       performancePolicyId: taktRequestsTable.performancePolicyId,
+      dataPublicationId: taktRequestsTable.dataPublicationId,
     }).from(taktRequestsTable).where(eq(taktRequestsTable.id, requestId)).limit(1) : [];
     // Do not turn root routes into a general AN API: only an addressed AN
-    // handling a policy-backed request reaches the dedicated domain guard.
-    if (root?.nuOrgId === req.user.orgId && root.performancePolicyId) return next();
+    // handling a policy-backed request or an explicitly linked legacy
+    // publication reaches the dedicated domain guard.
+    if (
+      root?.nuOrgId === req.user.orgId &&
+      (root.performancePolicyId || root.dataPublicationId)
+    ) return next();
     res.status(403).json({ error: "AN requests are available only through /api/an local projections" });
     return;
   }

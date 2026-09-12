@@ -119,6 +119,13 @@ async function removeRequestData(projectId: string) {
 }
 
 beforeAll(async () => {
+  const testProjectIds = [
+    PROJECT_ID,
+    OTHER_PROJECT_ID,
+    BACKFILL_PROJECT_ID,
+    REINVITE_PROJECT_ID,
+    RETRY_PROJECT_ID,
+  ];
   await anDb.delete(anProjectInvitationsTable).where(
     inArray(anProjectInvitationsTable.receiverAnOrgId, [AN_ID, OTHER_AN_ID]),
   ).catch(() => {});
@@ -132,32 +139,29 @@ beforeAll(async () => {
   await hubDb.delete(messageOutboxTable).where(eq(messageOutboxTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
   await hubDb.delete(dataspaceExchangesTable).where(eq(dataspaceExchangesTable.messageId, CONCURRENT_RETRY_MESSAGE_ID)).catch(() => {});
   await db.delete(projectMembershipsTable).where(
-    inArray(projectMembershipsTable.projectId, [
-      PROJECT_ID,
-      OTHER_PROJECT_ID,
-      BACKFILL_PROJECT_ID,
-      REINVITE_PROJECT_ID,
-      RETRY_PROJECT_ID,
-    ]),
-  ).catch(() => {});
-  await db.delete(dataPublicationRecipientsTable).where(
-    eq(dataPublicationRecipientsTable.anOrgId, AN_ID),
-  ).catch(() => {});
-  await db.delete(dataPublicationsTable).where(
-    eq(dataPublicationsTable.projectId, REINVITE_PROJECT_ID),
+    inArray(projectMembershipsTable.projectId, testProjectIds),
   ).catch(() => {});
   await removeRequestData(PROJECT_ID);
+  const publications = await db.select({ id: dataPublicationsTable.id })
+    .from(dataPublicationsTable)
+    .where(inArray(dataPublicationsTable.projectId, testProjectIds));
+  const publicationIds = publications.map(({ id }) => id);
+  if (publicationIds.length) {
+    await db.delete(dataPublicationRecipientsTable)
+      .where(inArray(dataPublicationRecipientsTable.publicationId, publicationIds))
+      .catch(() => {});
+    await db.delete(dataPublicationsTable)
+      .where(inArray(dataPublicationsTable.id, publicationIds))
+      .catch(() => {});
+  }
   await db.delete(projectContractorsTable).where(
-    inArray(projectContractorsTable.projectId, [PROJECT_ID, OTHER_PROJECT_ID, BACKFILL_PROJECT_ID]),
+    inArray(projectContractorsTable.projectId, testProjectIds),
   ).catch(() => {});
+  await db.delete(coordinationPoliciesTable)
+    .where(inArray(coordinationPoliciesTable.projectId, testProjectIds))
+    .catch(() => {});
   await db.delete(projectsTable).where(
-    inArray(projectsTable.id, [
-      PROJECT_ID,
-      OTHER_PROJECT_ID,
-      BACKFILL_PROJECT_ID,
-      REINVITE_PROJECT_ID,
-      RETRY_PROJECT_ID,
-    ]),
+    inArray(projectsTable.id, testProjectIds),
   ).catch(() => {});
   await db.delete(usersTable).where(
     inArray(usersTable.id, [AG_USER_ID, OTHER_AG_USER_ID, AN_USER_ID, OTHER_AN_USER_ID]),

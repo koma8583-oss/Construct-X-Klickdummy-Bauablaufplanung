@@ -50,6 +50,7 @@ import {
   availabilityChecksTable,
   messageInboxTable,
   messageOutboxTable,
+  messageDeliveryAttemptsTable,
   taktResponsesTable,
   dataPublicationsTable,
   dataPublicationRecipientsTable,
@@ -179,6 +180,14 @@ async function seedAnProjection(
 // ── Seed + teardown ───────────────────────────────────────────────────────────
 
 beforeAll(async () => {
+  await hubDb.delete(messageDeliveryAttemptsTable)
+    .where(eq(messageDeliveryAttemptsTable.messageId, "t49-mixed-response"));
+  await hubDb.delete(messageInboxTable)
+    .where(eq(messageInboxTable.messageId, "t49-mixed-response"));
+  await hubDb.delete(messageOutboxTable)
+    .where(eq(messageOutboxTable.messageId, "t49-mixed-response"));
+  await hubDb.delete(dataspaceExchangesTable)
+    .where(eq(dataspaceExchangesTable.messageId, "t49-mixed-response"));
   await anDb.delete(anLeistungsanfragenTable)
     .where(eq(anLeistungsanfragenTable.receiverAnOrgId, NU_ORG));
   await anDb.delete(anProjectInvitationsTable)
@@ -396,6 +405,8 @@ afterAll(async () => {
     .where(eq(resourceBookingsTable.nuOrgId, NU_ORG));
 
   // 5. messages
+  await hubDb.delete(messageDeliveryAttemptsTable)
+    .where(eq(messageDeliveryAttemptsTable.messageId, "t49-mixed-response"));
   await hubDb.delete(messageInboxTable)
     .where(inArray(messageInboxTable.recipientOrgId, testOrgIds));
   await hubDb.delete(messageOutboxTable)
@@ -677,7 +688,6 @@ describe("E2E Sprint 4 — AN-local mixed CREW and EQUIPMENT alternatives", () =
       outboundMessageId: "t49-mixed-response",
     });
     const delivery = await deliverLocalServiceResponse(response.payload);
-
     expect(delivery.status).toBe("DELIVERED");
 
     const [inboxMessage] = await hubDb.select().from(messageInboxTable).where(and(
@@ -798,7 +808,7 @@ describe("E2E Sprint 4 — Scenario B: ALTERNATIVES_PROPOSED", () => {
         nuOrgId:           NU_ORG,
         subject:           "T49 Koordinationsanfrage",
         message:           "Bitte prüfen Sie den Zeitraum.",
-        responseRequiredBy: "2026-09-10T23:59:59Z",
+        responseRequiredBy: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         dataPublicationId: testPublicationId,
         purpose: "LEISTUNGSKOORDINATION",
         selectedFields: ["workPackage", "plannedTimeWindow", "resourceRequirements"],

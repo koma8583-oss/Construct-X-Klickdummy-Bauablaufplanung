@@ -676,7 +676,6 @@ function createPublicationDataOffer(input: {
   createdAt: Date;
   status?: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
   contentHash?: string;
-  contentSnapshot?: Record<string, unknown>;
 }): ExternalDataOffer {
   const { publication, policy, recipientOrgId, projectName, senderOrgId, createdAt } = input;
   const lifecycleSuffix = input.status && input.status !== "PUBLISHED"
@@ -736,7 +735,6 @@ function createPublicationDataOffer(input: {
       validityRule: policy.validityRule,
       retentionRule: policy.retentionRule,
     },
-    ...(input.contentSnapshot ? { contentSnapshot: input.contentSnapshot } : {}),
   };
 }
 
@@ -839,7 +837,6 @@ export async function publishDataPublication(
         senderOrgId: agOrgId,
         createdAt: now,
         contentHash,
-        contentSnapshot: snapshot,
       });
       await enqueueHubMessageInTransaction(tx, {
         messageId: payload.metadata.messageId,
@@ -863,7 +860,6 @@ export async function publishDataPublication(
       const delivery = await deliverLocalDataOffer(
         payload,
         exchange,
-        isLocalDataspaceTransport() ? snapshot : undefined,
       );
 
       if (delivery.status === "DELIVERED") {
@@ -924,7 +920,6 @@ export async function syncDataPublicationProjection(
       createdAt: pub.publishedAt ?? pub.createdAt,
       status,
       contentHash: pub.contentHash ?? undefined,
-      contentSnapshot: pub.contentSnapshot ?? undefined,
     });
     try {
       const exchange = createDataspaceExchange();

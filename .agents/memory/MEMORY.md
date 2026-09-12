@@ -81,3 +81,4 @@
 - [Migration role boundaries](migration-role-boundaries.md) — shared setup owns schema DDL; API-role repair services should perform conditional, idempotent data backfills.
 - [Booking cancellation concurrency](booking-cancellation-concurrency.md) — terminal cancellations share the AN capacity lock, and confirmed edits re-check state after acquiring it.
 - [GitHub protected publishing](github-protected-publishing.md) — protected main requires a PR; the GitHub connector may block direct workflow-file writes.
+- [Publication gate fixtures](publication-gate-test-fixtures.md) — legacy publication lifecycle tests need explicit linkage and the compatibility route; modern performance requests ignore the compatibility field.
