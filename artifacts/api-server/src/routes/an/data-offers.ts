@@ -136,6 +136,30 @@ router.get(
       return;
     }
 
+    const publicationStatus = getDataOfferPublicationStatus(invitation);
+    if (publicationStatus !== "PUBLISHED") {
+      res.status(403).json({
+        error: publicationStatus === "UNKNOWN"
+          ? "Publication status is unavailable"
+          : `Publication is ${publicationStatus.toLowerCase()}`,
+        code: "DATA_PUBLICATION_INACTIVE",
+        publicationStatus,
+      });
+      return;
+    }
+    if (invitation.status !== "ACCEPTED" || !invitation.policyAcceptedAt) {
+      res.status(403).json({
+        error: "Policy must be accepted before policy metadata is available",
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        recipientStatus: recipientStatus(
+          invitation.status,
+          invitation.invitationExpiresAt?.toISOString() ?? null,
+          publicationStatus,
+        ),
+      });
+      return;
+    }
+
     const policy = asRecord(invitation.policySnapshot);
     res.json(buildOdrl({
       publicationId: invitation.dataPublicationId ?? invitation.id,
@@ -307,7 +331,7 @@ router.get(
       });
       return;
     }
-    if (invitation.status !== "ACCEPTED") {
+    if (invitation.status !== "ACCEPTED" || !invitation.policyAcceptedAt) {
       res.status(403).json({
         error: "Policy must be accepted before accessing content",
         recipientStatus: recipientStatus(invitation.status, offer.validUntil, offer.publicationStatus),
@@ -319,24 +343,30 @@ router.get(
       return;
     }
 
+    const exchange = createDataspaceExchange();
+    let retrieved;
+    try {
+      retrieved = await exchange.retrieveDataOfferContent(publicationId, anOrgId);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "DATA_OFFER_CONTENT_UNAVAILABLE";
+      res.status(code === "DATASPACE_RETRIEVAL_NOT_CONFIGURED" ? 503 : 403).json({
+        error: "Data offer content is unavailable",
+        code,
+      });
+      return;
+    }
+
     res.json({
       publicationId,
       title: offer.title,
       dataProductType: offer.dataProductType,
       version: offer.version,
       schemaVersion: "1.0",
-      contentHash: asString(asRecord(invitation.dataOfferSnapshot).contentHash, null),
+      contentHash: retrieved.contentHash,
       validFrom: offer.validFrom,
       validUntil: offer.validUntil,
       publishedAt: invitation.createdAt.toISOString(),
-      content: asRecord(invitation.dataOfferSnapshot).contentSnapshot ?? {
-        projectReference: invitation.projectReference,
-        projectName: invitation.projectName,
-        description: invitation.projectDescription,
-        location: invitation.projectLocation,
-        selectedFields: asRecord(invitation.dataOfferSnapshot).selectedFields ?? invitation.selectedFields ?? [],
-        policy: asRecord(asRecord(invitation.dataOfferSnapshot).policy ?? invitation.policySnapshot),
-      },
+      content: retrieved.content,
     });
   },
 );

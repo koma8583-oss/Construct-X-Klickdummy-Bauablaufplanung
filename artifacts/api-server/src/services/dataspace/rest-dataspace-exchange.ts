@@ -1,12 +1,19 @@
 import { DataspaceMessageType } from "@workspace/api-zod";
 import {
+  agDb,
   hubDb as db,
   dataspaceExchangesTable,
+  dataPublicationRecipientsTable,
+  dataPublicationsTable,
   messageOutboxTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { LocalHubTransport } from "../../lib/transport/local-hub-transport";
-import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
+import type {
+  DataOfferContent,
+  DataspaceExchange,
+  ExchangeReference,
+} from "./dataspace-exchange";
 import type {
   ExternalCoordinationDecision,
   ExternalDataOffer,
@@ -28,6 +35,41 @@ import {
 
 export class RestDataspaceExchange implements DataspaceExchange {
   constructor(private readonly transport = new LocalHubTransport()) {}
+
+  async retrieveDataOfferContent(
+    publicationId: string,
+    anOrgId: string,
+  ): Promise<DataOfferContent> {
+    const [publication] = await agDb.select().from(dataPublicationsTable)
+      .where(and(
+        eq(dataPublicationsTable.id, publicationId),
+        eq(dataPublicationsTable.status, "PUBLISHED"),
+      ))
+      .limit(1);
+    const [recipient] = await agDb.select().from(dataPublicationRecipientsTable)
+      .where(and(
+        eq(dataPublicationRecipientsTable.publicationId, publicationId),
+        eq(dataPublicationRecipientsTable.anOrgId, anOrgId),
+        eq(dataPublicationRecipientsTable.status, "ACCEPTED"),
+      ))
+      .limit(1);
+    if (
+      !publication
+      || !recipient
+      || !recipient.policyAcceptedAt
+      || (publication.validUntil && publication.validUntil <= new Date())
+    ) {
+      throw new Error("DATA_OFFER_CONTENT_UNAVAILABLE");
+    }
+    if (!publication.contentSnapshot || typeof publication.contentSnapshot !== "object") {
+      throw new Error("DATA_OFFER_CONTENT_MISSING");
+    }
+    return {
+      publicationId,
+      contentHash: publication.contentHash,
+      content: publication.contentSnapshot as Record<string, unknown>,
+    };
+  }
 
   /**
    * REST/webhook adapters call these entry points for inbound deliveries.

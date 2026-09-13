@@ -189,7 +189,6 @@ export const externalProjectInvitationSchema = z.object({
     publicationVersion: z.number().int().positive().optional(),
     status: z.enum(["PUBLISHED", "SUSPENDED", "WITHDRAWN"]).optional(),
     contentHash: nonEmpty(200).optional(),
-    contentSnapshot: z.record(z.string(), z.unknown()).optional(),
     selectedFields: z.array(nonEmpty(200)).min(1).max(100),
     policy: dataOfferPolicySnapshotSchema.optional(),
     validFrom: externalDate.optional(),
@@ -226,8 +225,8 @@ export const externalProjectInvitationResponseSchema = z.object({
 /**
  * A data offer is deliberately not a project invitation. It references an
  * already published immutable snapshot and carries the access and usage
- * policies that govern that publication. The optional contentSnapshot is only
- * used by the local PoC loopback; connector payloads must omit it.
+ * policies that govern that publication. Content is retrieved separately
+ * after the recipient has accepted the offer.
  */
 export const externalDataOfferSchema = z.object({
   metadata: metadataSchema,
@@ -250,7 +249,6 @@ export const externalDataOfferSchema = z.object({
   validUntil: externalDate.optional(),
   accessPolicy: policySnapshotSchema,
   usagePolicy: dataOfferPolicySnapshotSchema,
-  contentSnapshot: z.record(z.string(), z.unknown()).optional(),
 }).strict().superRefine((value, ctx) => {
   for (const issue of policySnapshotParticipantIssues({
     metadata: value.metadata,
@@ -501,7 +499,6 @@ export type ExternalProjectInvitation = {
     publicationVersion?: number;
     status?: "PUBLISHED" | "SUSPENDED" | "WITHDRAWN";
     contentHash?: string;
-    contentSnapshot?: Record<string, unknown>;
     selectedFields: string[];
     policy?: {
       id: string;
@@ -685,8 +682,6 @@ export type ExternalDataOffer = {
     validityRule: string;
     retentionRule: string | null;
   };
-  /** Local REST-PoC enrichment; never sent to an external connector. */
-  contentSnapshot?: Record<string, unknown>;
 };
 
 export type ExternalResourceRequirement = {

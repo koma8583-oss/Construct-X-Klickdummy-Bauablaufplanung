@@ -1,4 +1,8 @@
-import type { DataspaceExchange, ExchangeReference } from "./dataspace-exchange";
+import type {
+  DataOfferContent,
+  DataspaceExchange,
+  ExchangeReference,
+} from "./dataspace-exchange";
 import {
   hubDb as db,
   messageDeliveryAttemptsTable,
@@ -36,6 +40,13 @@ type CoordinationDecisionMessageType =
   | "TAKT_REQUEST_CANCELLED";
 
 export class TractusXEdcExchange implements DataspaceExchange {
+  async retrieveDataOfferContent(
+    _publicationId: string,
+    _anOrgId: string,
+  ): Promise<DataOfferContent> {
+    throw new Error("DATASPACE_RETRIEVAL_NOT_CONFIGURED");
+  }
+
   private async publish(
     payload: ExternalServiceRequest | ExternalServiceResponse | ExternalDataOffer | ExternalDataOfferResponse,
     messageType: "SERVICE_REQUEST" | "SERVICE_RESPONSE" | "DATA_OFFER_PUBLISHED" | "DATA_OFFER_RESPONSE",

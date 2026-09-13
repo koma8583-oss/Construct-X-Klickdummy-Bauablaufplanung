@@ -180,15 +180,11 @@ export async function deliverLocalProjectInvitationResponse(
 export async function deliverLocalDataOffer(
   payload: ExternalDataOffer,
   exchange: DataspaceExchange = createDataspaceExchange(),
-  localContentSnapshot?: Record<string, unknown>,
 ): Promise<ExchangeReference> {
   const delivery = await exchange.publishDataOffer(payload);
   if (isLocalDataspaceTransport() && wasTechnicallyDelivered(delivery)) {
-    const localPayload = localContentSnapshot
-      ? { ...payload, contentSnapshot: localContentSnapshot }
-      : payload;
     try {
-      await exchange.receiveDataOffer(localPayload, processIncomingDataOffer);
+      await exchange.receiveDataOffer(payload, processIncomingDataOffer);
     } catch (error) {
       // Technical transport delivery and domain projection are separate
       // concerns. A rejected projection must leave the outbox retryable.

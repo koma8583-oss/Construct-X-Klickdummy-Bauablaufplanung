@@ -53,11 +53,11 @@ function requireDataOfferLifecycleStatus(value: unknown): DataOfferLifecycleStat
 }
 
 function immutableDataOfferSnapshot(value: Record<string, unknown>): Record<string, unknown> {
-  // Keep the original publication status as historical snapshot data. The
-  // mutable source of truth is data_offer_lifecycle_status; status is excluded
-  // only from conflict comparisons so lifecycle propagation cannot mutate the
-  // immutable snapshot.
-  return { ...value };
+  // Keep offer metadata and policy immutable, but never persist provider
+  // content in the AN pre-acceptance projection. Content is retrieved through
+  // the Dataspace exchange only after acceptance.
+  const { contentSnapshot: _contentSnapshot, ...metadata } = value;
+  return metadata;
 }
 
 /**
@@ -116,7 +116,6 @@ function protectedDataOfferContent(value: Record<string, unknown>) {
     validUntil: value.validUntil ?? null,
     accessPolicy: value.accessPolicy ?? null,
     usagePolicy: value.usagePolicy ?? value.policy ?? null,
-    contentSnapshot: value.contentSnapshot ?? null,
   };
 }
 
@@ -382,6 +381,16 @@ export async function decideAnProjectInvitation(input: {
   const now = new Date();
   if (invitation.invitationExpiresAt && invitation.invitationExpiresAt <= now) {
     throw new AnProjectInvitationError("PROJECT_INVITATION_EXPIRED", "Die Einladung ist abgelaufen.");
+  }
+  if (
+    input.action === "accept"
+    && invitation.dataPublicationId
+    && getDataOfferPublicationStatus(invitation) !== "PUBLISHED"
+  ) {
+    throw new AnProjectInvitationError(
+      "DATA_OFFER_UNAVAILABLE",
+      "Die Projekteinladung kann nur bei einem veröffentlichten Datenangebot akzeptiert werden.",
+    );
   }
   if (input.action === "accept" && input.policyAccepted !== true) {
     throw new AnProjectInvitationError(

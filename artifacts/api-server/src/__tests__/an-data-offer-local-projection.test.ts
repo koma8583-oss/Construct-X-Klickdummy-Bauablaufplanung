@@ -103,6 +103,7 @@ describe("AN data offers use local invitation projections", () => {
       projectLocation: "Baufeld A",
       dataPublicationId: PUBLICATION_ID,
       dataPublicationTitle: "Lokales Datenangebot",
+      dataOfferLifecycleStatus: "PUBLISHED",
       selectedFields: ["projectName", "location"],
       policySnapshot: {
         id: "local-policy-id",
@@ -151,8 +152,20 @@ describe("AN data offers use local invitation projections", () => {
     const odrl = await request(app)
       .get(`/api/an/data-publications/${PUBLICATION_ID}/odrl`)
       .set("Authorization", `Bearer ${anToken}`);
-    expect(odrl.status).toBe(200);
-    expect(odrl.body).toMatchObject({
+    expect(odrl.status).toBe(403);
+    expect(odrl.body.code).toBe("POLICY_ACCEPTANCE_REQUIRED");
+
+    await anDb.update(anProjectInvitationsTable).set({
+      status: "ACCEPTED",
+      policyAcceptedAt: new Date(),
+      respondedAt: new Date(),
+    }).where(eq(anProjectInvitationsTable.id, INVITATION_ID));
+
+    const acceptedOdrl = await request(app)
+      .get(`/api/an/data-publications/${PUBLICATION_ID}/odrl`)
+      .set("Authorization", `Bearer ${anToken}`);
+    expect(acceptedOdrl.status).toBe(200);
+    expect(acceptedOdrl.body).toMatchObject({
       "@type": "Set",
       uid: `urn:odrl:data-publication:${PUBLICATION_ID}`,
       permission: [expect.objectContaining({
@@ -160,12 +173,6 @@ describe("AN data offers use local invitation projections", () => {
         assignee: "organization:an-local-offer-test",
       })],
     });
-
-    await anDb.update(anProjectInvitationsTable).set({
-      status: "ACCEPTED",
-      policyAcceptedAt: new Date(),
-      respondedAt: new Date(),
-    }).where(eq(anProjectInvitationsTable.id, INVITATION_ID));
 
     const policies = await request(app)
       .get("/api/an/policies")
@@ -288,7 +295,9 @@ describe("AN data offers use local invitation projections", () => {
     const rows = await anDb.select().from(anProjectInvitationsTable)
       .where(eq(anProjectInvitationsTable.dataPublicationId, offer.publicationId));
     expect(rows).toHaveLength(1);
-    expect(rows[0].dataOfferSnapshot).toEqual(offer);
+    expect(rows[0].dataOfferSnapshot).toEqual(
+      expect.not.objectContaining({ contentSnapshot: expect.anything() }),
+    );
   });
 
   it("rejects material standalone data-offer redelivery changes without overwriting", async () => {
@@ -306,6 +315,8 @@ describe("AN data offers use local invitation projections", () => {
     const [row] = await anDb.select().from(anProjectInvitationsTable)
       .where(eq(anProjectInvitationsTable.dataPublicationId, offer.publicationId));
     expect(row.selectedFields).toEqual(offer.selectedFields);
-    expect(row.dataOfferSnapshot).toEqual(offer);
+    expect(row.dataOfferSnapshot).toEqual(
+      expect.not.objectContaining({ contentSnapshot: expect.anything() }),
+    );
   });
 });
